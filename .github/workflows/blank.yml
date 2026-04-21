@@ -16,7 +16,7 @@ jobs:
           python-version: 3.11
       - name: Install dependencies
         run: |
-          pip install requests
+          pip install -r requirements.txt
       - name: Run weather alert
         run: |
           python weatherday.py
