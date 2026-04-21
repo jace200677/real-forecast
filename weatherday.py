@@ -163,8 +163,8 @@ def render_image(data):
 
 # ---------------- GIT PUSH ----------------
 def push_to_github():
-    os.system("git config jace200677 github-actions")
-    os.system("git config jacefink17@outlook.com github-actions@github.com")
+    os.system("git config user.name github-actions")
+    os.system("git config user.email github-actions@github.com")
 
     os.system(f"git add {OUTPUT_FILE}")
     os.system('git commit -m "Update Northland forecast image" || exit 0')
