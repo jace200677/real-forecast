@@ -19,4 +19,6 @@ jobs:
           pip install -r requirements.txt
       - name: Run weather alert
         run: |
+          git config --global user.email "jacefink17@outlook.com"
+          git config --global user.name "jace200677"
           python weatherday.py
