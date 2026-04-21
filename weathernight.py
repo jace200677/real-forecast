@@ -131,9 +131,6 @@ def forecast_dewpoint(temp, rh):
 def get_condition(avg_wind, now):
     hour = now.hour
 
-    if hour >= 18 or hour <= 6:
-        return "CLEAR NIGHT"
-
     if avg_wind >= 30:
         return "WINDY"
     elif avg_wind >= 20:
