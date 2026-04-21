@@ -7,13 +7,14 @@ from PIL import Image, ImageDraw, ImageFont
 
 # ---------------- CONFIG ----------------
 CST_OFFSET = -5
-OUTPUT_FILE = "northshore_forecast.png"
+OUTPUT_FILE = "northshore_day_forecast.png"
 
-# 🌊 North Shore MN / Lake Superior region stations
+# 🌊 NORTH SHORE ONLY (Lake Superior region)
 STATIONS = [
-    "KDLH",      # Duluth Airport
-    "KCKC",      # Grand Marais / Cook County region
-    "KBFW",      # Silver Bay area
+    "KDLH",   # Duluth
+    "KCKC",   # Grand Marais
+    "KHYR",   # Hayward (border influence lake air)
+    "KDYT",   # Superior / lakeshore influence
 ]
 
 API_KEY = "354b43fc8a5e4d7c8b43fc8a5ecd7c56"
@@ -74,23 +75,27 @@ def forecast_temp(temp, now):
     peak_hour = 15
     curve = math.cos((hour - peak_hour) / 24 * 2 * math.pi)
 
-    if now.month in [12, 1, 2]:
-        amp = 6
-    elif now.month in [6, 7, 8]:
-        amp = 10
-    else:
-        amp = 8
+    # Lake Superior moderation (cooler days, cooler nights)
+    lake_effect = -3 if now.month in [11, 12, 1, 2, 3] else -1
 
-    return temp + curve * amp
+    if now.month in [12, 1, 2]:
+        amp = 5
+    elif now.month in [6, 7, 8]:
+        amp = 8
+    else:
+        amp = 6
+
+    return temp + curve * amp + lake_effect
 
 
 def forecast_wind(speed, gust, now):
+    # North Shore = stronger lake winds
     if 10 <= now.hour <= 18:
-        speed *= 1.2
-        gust *= 1.3
+        speed *= 1.3
+        gust *= 1.4
     else:
-        speed *= 0.85
-        gust *= 0.9
+        speed *= 0.9
+        gust *= 0.95
 
     speed += random.uniform(-1.5, 1.5)
     gust += random.uniform(-3, 3)
@@ -99,7 +104,7 @@ def forecast_wind(speed, gust, now):
 
 
 def forecast_pressure(baro, now):
-    trend = math.sin(now.hour / 24 * 2 * math.pi) * 0.05
+    trend = math.sin(now.hour / 24 * 2 * math.pi) * 0.04
     return clamp(baro + trend, 28.5, 31.5)
 
 
@@ -110,7 +115,7 @@ def forecast_humidity(temp, dewpt):
     es = 6.11 * math.exp((17.27 * temp_c) / (237.7 + temp_c))
     e = 6.11 * math.exp((17.27 * dew_c) / (237.7 + dew_c))
 
-    return clamp((e / es) * 100, 20, 100)
+    return clamp((e / es) * 100, 25, 100)
 
 
 def forecast_dewpoint(temp, rh):
@@ -125,15 +130,15 @@ def forecast_dewpoint(temp, rh):
 
 def get_wind_condition(avg_wind):
     if avg_wind >= 30:
-        return "WINDY"
+        return "WINDY LAKE"
     elif avg_wind >= 20:
-        return "BREEZY"
+        return "BREEZY SHORE"
     else:
-        return "CALM"
+        return "CALM LAKE"
 
 # ---------------- IMAGE ----------------
 def render_image(data):
-    img = Image.new("RGB", (600, 350), (15, 25, 40))  # lake/shore tone
+    img = Image.new("RGB", (600, 350), (15, 25, 40))
     draw = ImageDraw.Draw(img)
 
     try:
@@ -143,23 +148,23 @@ def render_image(data):
     except:
         font_big = font_med = font_small = ImageFont.load_default()
 
-    draw.text((20, 15), "North Shore MN Forecast", fill="lightblue", font=font_med)
+    draw.text((20, 15), "North Shore MN DAY Forecast", fill="lightblue", font=font_med)
 
     draw.text((20, 70), f"{data['temp']:.0f}°F", fill="white", font=font_big)
 
     draw.text((20, 150), f"Avg Wind: {data['wind']:.0f} mph", fill="white", font=font_med)
     draw.text((20, 180), f"Avg Gust: {data['gust']:.0f} mph", fill="white", font=font_small)
 
-    draw.text((350, 70), data["condition"], fill="orange", font=font_med)
+    draw.text((350, 70), data["condition"], fill="cyan", font=font_med)
 
     draw.text((20, 220), f"Pressure: {data['pressure']:.2f} inHg", fill="white", font=font_small)
     draw.text((20, 250), f"Humidity: {data['humidity']:.0f}%", fill="white", font=font_small)
     draw.text((20, 280), f"Dew Pt: {data['dew']:.0f}°F", fill="white", font=font_small)
 
-    draw.text((320, 300), data["time"], fill="gray", font=font_small)
+    draw.text((300, 300), data["time"], fill="gray", font=font_small)
 
     img.save(OUTPUT_FILE)
-    print("Saved image:", OUTPUT_FILE)
+    print("Saved:", OUTPUT_FILE)
 
 # ---------------- GIT PUSH ----------------
 def push_to_github():
