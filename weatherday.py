@@ -2,18 +2,18 @@ import requests
 import random
 from datetime import datetime, timedelta
 import math
+import os
 from PIL import Image, ImageDraw, ImageFont
 
 # ---------------- CONFIG ----------------
 CST_OFFSET = -5
 OUTPUT_FILE = "northland_forecast.png"
 
-# Multiple stations across Northland MN
 STATIONS = [
-    "KMNBABBI27",  # local
-    "KMNDULUT33",  # Duluth
-    "KMNHIBBI5",   # Hibbing
-    "KMNGRAND4",   # Grand Rapids
+    "KMNBABBI27",
+    "KMNDULUT33",
+    "KMNHIBBI5",
+    "KMNGRAND4",
 ]
 
 API_KEY = "354b43fc8a5e4d7c8b43fc8a5ecd7c56"
@@ -143,20 +143,15 @@ def render_image(data):
     except:
         font_big = font_med = font_small = ImageFont.load_default()
 
-    # Title
     draw.text((20, 15), "Northland MN DAY Forecast", fill="white", font=font_med)
 
-    # Temperature
     draw.text((20, 70), f"{data['temp']:.0f}°F", fill="white", font=font_big)
 
-    # Wind
     draw.text((20, 150), f"Avg Wind: {data['wind']:.0f} mph", fill="white", font=font_med)
     draw.text((20, 180), f"Avg Gust: {data['gust']:.0f} mph", fill="white", font=font_small)
 
-    # Condition
     draw.text((350, 70), data["condition"], fill="orange", font=font_med)
 
-    # Other values
     draw.text((20, 220), f"Pressure: {data['pressure']:.2f} inHg", fill="white", font=font_small)
     draw.text((20, 250), f"Humidity: {data['humidity']:.0f}%", fill="white", font=font_small)
     draw.text((20, 280), f"Dew Pt: {data['dew']:.0f}°F", fill="white", font=font_small)
@@ -164,7 +159,18 @@ def render_image(data):
     draw.text((320, 300), data["time"], fill="gray", font=font_small)
 
     img.save(OUTPUT_FILE)
-    print("Saved:", OUTPUT_FILE)
+    print("Saved image:", OUTPUT_FILE)
+
+# ---------------- GIT PUSH ----------------
+def push_to_github():
+    os.system("git config jace200677 github-actions")
+    os.system("git config jacefink17@outlook.com github-actions@github.com")
+
+    os.system(f"git add {OUTPUT_FILE}")
+    os.system('git commit -m "Update Northland forecast image" || exit 0')
+    os.system("git push")
+
+    print("Pushed to GitHub")
 
 # ---------------- MAIN ----------------
 def main():
@@ -194,6 +200,7 @@ def main():
     }
 
     render_image(data)
+    push_to_github()
 
 if __name__ == "__main__":
     main()
