@@ -1,1 +1,22 @@
+name: Weather Alert Cron
 
+on:
+  schedule:
+  - cron: '* * * * *' # every 1 minute
+  workflow_dispatch: # allows manual trigger
+
+jobs:
+  run-python:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: 3.11
+      - name: Install dependencies
+        run: |
+          pip install requests
+      - name: Run weather alert
+        run: |
+          python weather.py
