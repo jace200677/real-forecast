@@ -23,3 +23,5 @@ jobs:
           git config --global user.name "jace200677"
           python weatherday.py
           python weathernight.py
+          python weather1day.py
+          python weather1night.py
