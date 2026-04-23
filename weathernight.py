@@ -210,7 +210,7 @@ def render_image(data, now):
         title_y = 15
 
     # --- TEXT ---
-    draw.text((20, title_y), "North Shore MN NIGHT Forecast", fill=title_color, font=font_med)
+    draw.text((20, title_y), "North Land MN NIGHT Forecast", fill=title_color, font=font_med)
 
     draw.text((20, 70), f"{data['temp']:.0f}°F", fill="white", font=font_big)
 
