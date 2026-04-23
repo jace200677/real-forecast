@@ -69,10 +69,9 @@ def fetch_regional_data(stations):
         sum(dews)/len(dews),
     )
 
-# ---------------- NIGHT FORECAST MODELS ----------------
+# ---------------- FORECAST MODELS ----------------
 def forecast_temp(temp, now):
     hour = now.hour + now.minute / 60
-
     peak_hour = 4
     curve = math.cos((hour - peak_hour) / 24 * 2 * math.pi)
 
@@ -145,35 +144,32 @@ def apply_override(data, now):
         data["temp"] = 45.0
         data["wind"] = 100.0
         data["gust"] = 120.0
-        data["condition"] = "EXTREME WIND/STORMS"
+        data["condition"] = "EXTREME STORM WATCH"
 
     return data
 
 # ---------------- IMAGE ----------------
 def render_image(data, now):
-    # --- TIME WINDOW ---
     start = now.replace(hour=17, minute=0, second=0, microsecond=0)
     end = (start + timedelta(days=1)).replace(hour=7)
     alert_mode = start <= now <= end
 
-    # --- COLORS ---
+    # --- COLORS (ORANGE STORM MODE) ---
     bg_color = (8, 12, 20)
     title_color = "#8fd3ff"
     condition_color = "#66d9ff"
     banner_color = None
 
     if alert_mode:
-        bg_color = (60, 0, 0)
-        title_color = "#ff4d4d"
-        condition_color = "#ff1a1a"
+        bg_color = (60, 30, 0)
+        title_color = "#ff9933"
+        condition_color = "#ff6600"
 
-        # Flashing effect (alternates every second)
         if now.second % 2 == 0:
-            banner_color = (255, 0, 0)
+            banner_color = (255, 140, 0)
         else:
-            banner_color = (120, 0, 0)
+            banner_color = (140, 70, 0)
 
-    # --- IMAGE ---
     img = Image.new("RGB", (600, 350), bg_color)
     draw = ImageDraw.Draw(img)
 
@@ -184,17 +180,16 @@ def render_image(data, now):
     except:
         font_big = font_med = font_small = ImageFont.load_default()
 
-    # --- WIND STREAK EFFECT ---
+    # --- WIND STREAK EFFECT (ORANGE) ---
     if alert_mode:
-        for _ in range(80):  # number of streaks
+        for _ in range(80):
             x = random.randint(0, 600)
             y = random.randint(50, 350)
             length = random.randint(20, 80)
 
-            # angled streaks
             draw.line(
                 (x, y, x + length, y - random.randint(2, 10)),
-                fill=(255, random.randint(50, 120), 120),
+                fill=(255, random.randint(120, 180), 0),
                 width=random.randint(1, 3)
             )
 
@@ -203,7 +198,7 @@ def render_image(data, now):
         draw.rectangle((0, 0, 600, 40), fill=banner_color)
         draw.text(
             (120, 8),
-            "⚠ EXTREME WIND WARNING ⚠",
+            "⚠ EXTREME STORM WATCH ⚠",
             fill="white",
             font=font_med
         )
@@ -234,11 +229,9 @@ def render_image(data, now):
 def push_to_github():
     os.system("git config user.name github-actions")
     os.system("git config user.email github-actions@github.com")
-
     os.system(f"git add {OUTPUT_FILE}")
     os.system('git commit -m "North Shore night forecast update" || exit 0')
     os.system("git push")
-
     print("Pushed to GitHub")
 
 # ---------------- MAIN ----------------
@@ -268,7 +261,6 @@ def main():
         "time": now_cst.strftime("%Y-%m-%d %H:%M CST")
     }
 
-    # ✅ APPLY OVERRIDE WINDOW
     data = apply_override(data, now_cst)
 
     render_image(data, now_cst)
