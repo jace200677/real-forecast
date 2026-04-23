@@ -72,7 +72,6 @@ def fetch_regional_data(stations):
 def forecast_temp(temp, now):
     hour = now.hour + now.minute / 60
 
-    # NIGHT cooling curve (coolest around 4–6 AM)
     peak_hour = 4
     curve = math.cos((hour - peak_hour) / 24 * 2 * math.pi)
 
@@ -89,7 +88,6 @@ def forecast_temp(temp, now):
 def forecast_wind(speed, gust, now):
     hour = now.hour
 
-    # calmer at night
     if hour >= 18 or hour <= 6:
         speed *= 0.75
         gust *= 0.80
@@ -129,8 +127,6 @@ def forecast_dewpoint(temp, rh):
 
 
 def get_condition(avg_wind, now):
-    hour = now.hour
-
     if avg_wind >= 30:
         return "WINDY"
     elif avg_wind >= 20:
@@ -138,9 +134,22 @@ def get_condition(avg_wind, now):
     else:
         return "CALM"
 
+# ---------------- OVERRIDE ----------------
+def apply_override(data, now):
+    start = now.replace(hour=17, minute=0, second=0, microsecond=0)
+    end = (start + timedelta(days=1)).replace(hour=7)
+
+    if start <= now <= end:
+        data["temp"] = 45.0
+        data["wind"] = 70.0
+        data["gust"] = 100.0
+        data["condition"] = "EXTREME WIND/STORMS"
+
+    return data
+
 # ---------------- IMAGE ----------------
 def render_image(data):
-    img = Image.new("RGB", (600, 350), (10, 12, 25))  # darker night theme
+    img = Image.new("RGB", (600, 350), (10, 12, 25))
     draw = ImageDraw.Draw(img)
 
     try:
@@ -205,6 +214,9 @@ def main():
         "condition": condition,
         "time": now_cst.strftime("%Y-%m-%d %H:%M CST")
     }
+
+    # ✅ APPLY OVERRIDE
+    data = apply_override(data, now_cst)
 
     render_image(data)
     push_to_github()
