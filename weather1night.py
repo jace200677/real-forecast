@@ -271,7 +271,7 @@ def main():
     # ✅ APPLY OVERRIDE WINDOW
     data = apply_override(data, now_cst)
 
-    render_image(data)
+    render_image(data, now_cst)
     push_to_github()
 
 if __name__ == "__main__":
