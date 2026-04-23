@@ -11,10 +11,10 @@ OUTPUT_FILE = "northshore_night_forecast.png"
 
 # 🌊 NORTH SHORE MN / LAKE SUPERIOR COASTAL STATIONS ONLY
 STATIONS = [
-    "KDLH",   # Duluth (Lake Superior shore)
-    "KINL",   # International Falls (northern edge influence)
-    "KDYT",   # Duluth Harbor / shoreline proxy
-    "KBFW",   # Silver Bay / North Shore region proxy
+    "KDLH",
+    "KINL",
+    "KDYT",
+    "KBFW",
 ]
 
 API_KEY = "354b43fc8a5e4d7c8b43fc8a5ecd7c56"
@@ -73,12 +73,10 @@ def fetch_regional_data(stations):
 def forecast_temp(temp, now):
     hour = now.hour + now.minute / 60
 
-    # Lake Superior effect → cooler nights
     peak_hour = 4
     curve = math.cos((hour - peak_hour) / 24 * 2 * math.pi)
 
     lake_cooling = -3.0 if hour >= 18 or hour <= 6 else 0
-
     amp = 7 if now.month in [12, 1, 2] else 5
 
     return temp + curve * amp + lake_cooling
@@ -86,8 +84,6 @@ def forecast_temp(temp, now):
 
 def forecast_wind(speed, gust, now):
     hour = now.hour
-
-    # Lake Superior increases wind variability
     lake_factor = 1.1
 
     if hour >= 18 or hour <= 6:
@@ -133,7 +129,6 @@ def get_condition(avg_wind, now):
 
     if hour >= 18 or hour <= 6:
         return "LAKE NIGHT"
-
     if avg_wind >= 30:
         return "LAKE WINDY"
     elif avg_wind >= 20:
@@ -141,9 +136,22 @@ def get_condition(avg_wind, now):
     else:
         return "CALM SHORE"
 
+# ---------------- OVERRIDE ----------------
+def apply_override(data, now):
+    start = now.replace(hour=17, minute=0, second=0, microsecond=0)
+    end = (start + timedelta(days=1)).replace(hour=7)
+
+    if start <= now <= end:
+        data["temp"] = 45.0
+        data["wind"] = 100.0
+        data["gust"] = 120.0
+        data["condition"] = "EXTREME WIND/STORMS"
+
+    return data
+
 # ---------------- IMAGE ----------------
 def render_image(data):
-    img = Image.new("RGB", (600, 350), (8, 12, 20))  # darker lake night tone
+    img = Image.new("RGB", (600, 350), (8, 12, 20))
     draw = ImageDraw.Draw(img)
 
     try:
@@ -208,6 +216,9 @@ def main():
         "condition": condition,
         "time": now_cst.strftime("%Y-%m-%d %H:%M CST")
     }
+
+    # ✅ APPLY OVERRIDE WINDOW
+    data = apply_override(data, now_cst)
 
     render_image(data)
     push_to_github()
