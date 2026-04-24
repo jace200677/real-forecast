@@ -3,6 +3,7 @@ import random
 from datetime import datetime, timedelta
 import math
 import os
+import time
 from PIL import Image, ImageDraw, ImageFont
 
 # ---------------- CONFIG ----------------
@@ -28,13 +29,11 @@ def clamp(val, min_v=None, max_v=None):
 
 # ---------------- FETCH ----------------
 def fetch_station(station_id):
-    url = (
-        "https://api.weather.com/v2/pws/observations/current"
-        f"?stationId={station_id}&format=json&units=e&apiKey={API_KEY}"
-    )
     try:
+        url = f"https://api.weather.com/v2/pws/observations/current?stationId={station_id}&format=json&units=e&apiKey={API_KEY}"
         r = requests.get(url, timeout=5)
         obs = r.json()["observations"][0]["imperial"]
+
         return (
             obs.get("temp", 35.0),
             obs.get("windSpeed", 5.0),
@@ -48,42 +47,23 @@ def fetch_station(station_id):
 
 
 def fetch_regional_data(stations):
-    temps, winds, gusts, baros, hums, dews = [], [], [], [], [], []
+    vals = [fetch_station(s) for s in stations]
+    return tuple(sum(x[i] for x in vals)/len(vals) for i in range(6))
 
-    for s in stations:
-        t, w, g, p, h, d = fetch_station(s)
-        temps.append(t)
-        winds.append(w)
-        gusts.append(g)
-        baros.append(p)
-        hums.append(h)
-        dews.append(d)
-
-    return (
-        sum(temps)/len(temps),
-        sum(winds)/len(winds),
-        sum(gusts)/len(gusts),
-        sum(baros)/len(baros),
-        sum(hums)/len(hums),
-        sum(dews)/len(dews),
-    )
-
-# ---------------- NIGHT FORECAST MODELS ----------------
+# ---------------- FORECAST ----------------
 def forecast_temp(temp, now):
     hour = now.hour + now.minute / 60
     peak_hour = 4
     curve = math.cos((hour - peak_hour) / 24 * 2 * math.pi)
 
     amp = 8 if now.month in [12, 1, 2] else 6
-    night_drop = -2.5 if hour >= 18 or hour <= 6 else 0
+    night_drop = -2.5 if (hour >= 18 or hour <= 6) else 0
 
     return temp + curve * amp + night_drop
 
 
 def forecast_wind(speed, gust, now):
-    hour = now.hour
-
-    if hour >= 18 or hour <= 6:
+    if now.hour >= 18 or now.hour <= 6:
         speed *= 0.75
         gust *= 0.80
     else:
@@ -97,8 +77,7 @@ def forecast_wind(speed, gust, now):
 
 
 def forecast_pressure(baro, now):
-    trend = math.sin(now.hour / 24 * 2 * math.pi) * 0.04
-    return clamp(baro + trend, 28.5, 31.5)
+    return clamp(baro + math.sin(now.hour / 24 * 2 * math.pi) * 0.04, 28.5, 31.5)
 
 
 def forecast_humidity(temp, dewpt):
@@ -121,50 +100,58 @@ def forecast_dewpoint(temp, rh):
     return dew_c * 9/5 + 32
 
 
-def get_condition(avg_wind, now):
-    if avg_wind >= 30:
+def get_condition(w):
+    if w >= 30:
         return "WINDY"
-    elif avg_wind >= 20:
+    elif w >= 20:
         return "BREEZY"
     else:
         return "CALM"
 
-# ---------------- OVERRIDE ----------------
+# ---------------- OVERRIDES ----------------
 def apply_override(data, now):
-    start = now.replace(hour=17, minute=0, second=0, microsecond=0)
-    end = (start + timedelta(days=1)).replace(hour=7)
+    d = now.strftime("%Y-%m-%d")
 
-    if start <= now <= end:
-        data["temp"] = 45.0
-        data["wind"] = 70.0
-        data["gust"] = 100.0
-        data["condition"] = "EXTREME STORM WATCH"
+    # ---------- APRIL 24 ----------
+    if d == "2026-04-24":
+        data["temp"] = 41
+        data["wind"] = 19
+        data["gust"] = 42
+        data["humidity"] = 49
+        data["condition"] = "CLEAR / WINDY"
+
+        data["alert"] = {
+            "active": True,
+            "level": "WATCH",
+            "color": (255, 220, 0),
+            "title": "EXTREME FIRE WATCH",
+            "desc": "Low humidity 5–15% | Winds 15–25 mph | Gusts 25–35 mph"
+        }
+
+    # ---------- APRIL 25 ----------
+    elif d == "2026-04-25":
+        data["temp"] = 30
+        data["wind"] = 34
+        data["gust"] = 69
+        data["humidity"] = 100
+        data["condition"] = "HEAVY THUNDERSTORMS / WINDY"
+
+        data["alert"] = {
+            "active": True,
+            "level": "WARNING",
+            "color": (255, 0, 0),
+            "title": "EXTREME STORM WARNING",
+            "desc": "Tornado possible | Small hail | Gusts 70–100 mph"
+        }
+
+    else:
+        data["alert"] = {"active": False}
 
     return data
 
 # ---------------- IMAGE ----------------
 def render_image(data, now):
-    start = now.replace(hour=17, minute=0, second=0, microsecond=0)
-    end = (start + timedelta(days=1)).replace(hour=7)
-    alert_mode = start <= now <= end
-
-    # --- COLORS (ORANGE STORM MODE) ---
-    bg_color = (8, 12, 20)
-    title_color = "#8fd3ff"
-    condition_color = "#66d9ff"
-    banner_color = None
-
-    if alert_mode:
-        bg_color = (60, 30, 0)
-        title_color = "#ff9933"
-        condition_color = "#ff6600"
-
-        if now.second % 2 == 0:
-            banner_color = (255, 140, 0)
-        else:
-            banner_color = (140, 70, 0)
-
-    img = Image.new("RGB", (600, 350), bg_color)
+    img = Image.new("RGB", (600, 350), (10, 15, 25))
     draw = ImageDraw.Draw(img)
 
     try:
@@ -174,38 +161,54 @@ def render_image(data, now):
     except:
         font_big = font_med = font_small = ImageFont.load_default()
 
-    # --- WIND STREAK EFFECT (ORANGE) ---
+    alert = data.get("alert", {})
+    alert_mode = alert.get("active", False)
+
+    # ---------------- WIND STREAKS ----------------
     if alert_mode:
-        for _ in range(80):
+        for _ in range(70):
             x = random.randint(0, 600)
             y = random.randint(50, 350)
-            length = random.randint(20, 80)
-
             draw.line(
-                (x, y, x + length, y - random.randint(2, 10)),
+                (x, y, x + random.randint(20, 80), y - random.randint(2, 10)),
                 fill=(255, random.randint(120, 180), 0),
-                width=random.randint(1, 3)
+                width=2
             )
 
-    # --- FLASHING BANNER ---
+    # ---------------- ALERT BANNER (FIXED FIT) ----------------
     if alert_mode:
-        draw.rectangle((0, 0, 600, 40), fill=banner_color)
-        draw.text(
-            (120, 8),
-            "⚠ EXTREME STORM WATCH ⚠",
-            fill="white",
-            font=font_med
-        )
-        title_y = 50
+        banner_color = alert["color"]
+
+        if now.second % 2 == 0:
+            banner_color = alert["color"]
+        else:
+            banner_color = (255, 255, 255)
+
+        draw.rectangle((0, 0, 600, 60), fill=banner_color)
+
+        import textwrap
+        text = f"{alert['title']} - {alert['desc']}"
+        lines = textwrap.wrap(text, width=45)
+
+        y = 5
+        for line in lines:
+            w = draw.textlength(line, font=font_small)
+            draw.text(((600 - w) / 2, y), line, fill="black", font=font_small)
+            y += 18
+
+        title_y = 70
     else:
         title_y = 15
 
-    # --- TEXT ---
-    draw.text((20, title_y), "North Land MN NIGHT Forecast", fill=title_color, font=font_med)
+    # ---------------- TEXT ----------------
+    draw.text((20, title_y), "Northland MN NIGHT Forecast", fill="cyan", font=font_med)
+
     draw.text((20, 70), f"{data['temp']:.0f}°F", fill="white", font=font_big)
 
     draw.text((20, 150), f"Avg Wind: {data['wind']:.0f} mph", fill="white", font=font_med)
     draw.text((20, 180), f"Avg Gust: {data['gust']:.0f} mph", fill="white", font=font_small)
+
+    condition_color = "#ff3b3b" if alert.get("level") == "WARNING" else "#66d9ff"
 
     draw.text((350, 70), data["condition"], fill=condition_color, font=font_med)
 
@@ -218,15 +221,13 @@ def render_image(data, now):
     img.save(OUTPUT_FILE)
     print("Saved:", OUTPUT_FILE)
 
-# ---------------- GIT PUSH ----------------
+# ---------------- GIT ----------------
 def push_to_github():
     os.system("git config user.name github-actions")
     os.system("git config user.email github-actions@github.com")
     os.system(f"git add {OUTPUT_FILE}")
     os.system('git commit -m "Update Northland NIGHT forecast" || exit 0')
     os.system("git push")
-
-    print("Pushed to GitHub")
 
 # ---------------- MAIN ----------------
 def main():
@@ -238,11 +239,8 @@ def main():
     f_temp = forecast_temp(temp, now_cst)
     f_wind, f_gust = forecast_wind(wind, gust, now_cst)
     f_pressure = forecast_pressure(baro, now_cst)
-
     f_rh = forecast_humidity(f_temp, dew)
     f_dew = forecast_dewpoint(f_temp, f_rh)
-
-    condition = get_condition(f_wind, now_cst)
 
     data = {
         "temp": f_temp,
@@ -251,7 +249,7 @@ def main():
         "pressure": f_pressure,
         "humidity": f_rh,
         "dew": f_dew,
-        "condition": condition,
+        "condition": get_condition(f_wind),
         "time": now_cst.strftime("%Y-%m-%d %H:%M CST")
     }
 
