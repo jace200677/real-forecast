@@ -112,7 +112,6 @@ def get_condition(w):
 def apply_override(data, now):
     d = now.strftime("%Y-%m-%d")
 
-    # ---------- APRIL 24, 2026 ----------
     if d == "2026-04-24":
         data["temp"] = 41
         data["wind"] = 20
@@ -128,7 +127,6 @@ def apply_override(data, now):
             "desc": "Low humidity 5–15% | Winds 15–25 mph | Gusts 25–35 mph"
         }
 
-    # ---------- APRIL 25, 2026 ----------
     elif d == "2026-04-25":
         data["temp"] = 21
         data["wind"] = 39
@@ -164,7 +162,6 @@ def render_image(data, now):
     alert = data.get("alert", {})
     alert_mode = alert.get("active", False)
 
-    # ---------------- WIND STREAKS ----------------
     if alert_mode:
         for _ in range(70):
             x = random.randint(0, 600)
@@ -175,10 +172,8 @@ def render_image(data, now):
                 width=2
             )
 
-    # ---------------- ALERT BANNER ----------------
     if alert_mode:
         banner_color = alert["color"]
-
         if now.second % 2 == 0:
             banner_color = alert["color"]
         else:
@@ -200,7 +195,7 @@ def render_image(data, now):
     else:
         title_y = 15
 
-    # ---------------- TEXT ----------------
+    # -------- TITLE UPDATED --------
     draw.text((20, title_y), "Northshore MN NIGHT Forecast", fill="cyan", font=font_med)
 
     draw.text((20, 70), f"{data['temp']:.0f}°F", fill="white", font=font_big)
@@ -225,7 +220,7 @@ def push_to_github():
     os.system("git config user.name github-actions")
     os.system("git config user.email github-actions@github.com")
     os.system(f"git add {OUTPUT_FILE}")
-    os.system('git commit -m "Update Northland NIGHT forecast" || exit 0')
+    os.system('git commit -m "Update Northshore NIGHT forecast" || exit 0')
     os.system("git push")
 
 # ---------------- MAIN ----------------
