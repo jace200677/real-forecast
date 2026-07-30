@@ -1,1 +1,146 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>7-Day DOS Forecast</title>
+<style>
+    body {
+        font-family: Arial, sans-serif;
+        background: #111;
+        color: #fff;
+        padding: 20px;
+    }
 
+    h1 {
+        text-align: center;
+        margin-bottom: 20px;
+    }
+
+    .forecast-container {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 16px;
+        justify-content: center;
+    }
+
+    .day-card {
+        background: #222;
+        padding: 16px;
+        border-radius: 12px;
+        width: 180px;
+        box-shadow: 0 0 12px rgba(0,0,0,0.5);
+        transition: transform 0.2s ease;
+    }
+
+    .day-card:hover {
+        transform: scale(1.05);
+    }
+
+    .day-name {
+        font-size: 18px;
+        margin-bottom: 8px;
+        text-align: center;
+    }
+
+    .dos-value {
+        font-size: 36px;
+        font-weight: bold;
+        text-align: center;
+        margin-bottom: 8px;
+    }
+
+    .dos-label {
+        font-size: 14px;
+        text-align: center;
+        opacity: 0.85;
+        margin-bottom: 10px;
+    }
+
+    .bar {
+        height: 14px;
+        background: #444;
+        border-radius: 8px;
+        overflow: hidden;
+    }
+
+    .bar-fill {
+        height: 100%;
+        width: 0%;
+        background: linear-gradient(90deg, #00ff00, #ffff00, #ff0000);
+        transition: width 0.8s ease;
+    }
+
+    .high-impact {
+        color: #ff4444;
+        font-weight: bold;
+    }
+</style>
+</head>
+<body>
+
+<h1>7-Day Daily Outlook Score Forecast</h1>
+
+<div class="forecast-container" id="forecastContainer"></div>
+
+<script>
+    // Example 7-day DOS values (0–200+). Replace with real data.
+    const dosForecast = [
+        { day: "Day 1", score: 155 },
+        { day: "Day 2", score: 130 },
+        { day: "Day 3", score: 170 },
+        { day: "Day 4", score: 95 },
+        { day: "Day 5", score: 150 },
+        { day: "Day 6", score: 60 },
+        { day: "Day 7", score: 40 }
+    ];
+
+    function getSeverityLabel(score) {
+        if (score >= 150) return "HIGH IMPACT";
+        if (score >= 100) return "Moderate Impact";
+        if (score >= 50)  return "Low Impact";
+        return "Quiet";
+    }
+
+    const container = document.getElementById("forecastContainer");
+
+    dosForecast.forEach(item => {
+        const card = document.createElement("div");
+        card.className = "day-card";
+
+        const dayName = document.createElement("div");
+        dayName.className = "day-name";
+        dayName.innerText = item.day;
+
+        const dosValue = document.createElement("div");
+        dosValue.className = "dos-value";
+        dosValue.innerText = item.score;
+
+        const dosLabel = document.createElement("div");
+        dosLabel.className = "dos-label";
+
+        const label = getSeverityLabel(item.score);
+        dosLabel.innerText = label;
+
+        if (label === "HIGH IMPACT") {
+            dosLabel.classList.add("high-impact");
+        }
+
+        const bar = document.createElement("div");
+        bar.className = "bar";
+
+        const barFill = document.createElement("div");
+        barFill.className = "bar-fill";
+        barFill.style.width = Math.min(item.score, 200) + "%";
+
+        bar.appendChild(barFill);
+        card.appendChild(dayName);
+        card.appendChild(dosValue);
+        card.appendChild(dosLabel);
+        card.appendChild(bar);
+
+        container.appendChild(card);
+    });
+</script>
+
+</body>
+</html>
