@@ -30,55 +30,81 @@
 // FETCH REAL NWS HAZARD DATA
 // ------------------------------
 
+async function fetchProduct(type) {
+    try {
+        const res = await fetch(`https://api.weather.gov/products/types/${type}`);
+        const json = await res.json();
+        if (!json || !json.products || json.products.length === 0) return null;
+
+        const productId = json.products[0].id;
+        const prodRes = await fetch(`https://api.weather.gov/products/${productId}`);
+        return await prodRes.json();
+    } catch {
+        return null;
+    }
+}
+
 async function fetchHazards() {
-
-    // SPC Convective Outlook (Day 1–3)
-    const spc = await fetch("https://api.weather.gov/products/types/CONVOUTLOOK")
-        .then(r => r.json()).catch(() => null);
-
-    // WPC Excessive Rainfall Outlook
-    const rainfall = await fetch("https://api.weather.gov/products/types/ERO")
-        .then(r => r.json()).catch(() => null);
-
-    // Winter Storm Severity Index
-    const wssi = await fetch("https://api.weather.gov/gridpoints/MPX/47,37/wssi")
-        .then(r => r.json()).catch(() => null);
-
-    // Fire Weather
-    const fire = await fetch("https://api.weather.gov/products/types/FWFE")
-        .then(r => r.json()).catch(() => null);
-
-    // Tropical Outlook
-    const nhc = await fetch("https://api.weather.gov/products/types/TCV")
-        .then(r => r.json()).catch(() => null);
-
-    return { spc, rainfall, wssi, fire, nhc };
+    return {
+        spc: await fetchProduct("CONVOUTLOOK"),   // Severe storms
+        ero: await fetchProduct("ERO"),           // Excessive rainfall
+        wssi: await fetchProduct("WSSI"),         // Winter storm severity
+        fire: await fetchProduct("FWFE"),         // Fire weather
+        tropical: await fetchProduct("TCV")       // Tropical cyclone
+    };
 }
 
 // ------------------------------
-// RYAN HALL Y’ALL STYLE SCORING
+// PARSE REAL NWS TEXT FOR SEVERITY
 // ------------------------------
 
-function computeDOS(h) {
+function scoreFromText(text) {
+    if (!text) return 0;
 
+    text = text.toLowerCase();
     let score = 0;
 
-    // Severe storms (SPC)
-    if (h.spc) score += 60;
+    // Severe storms
+    if (text.includes("tornado")) score += 50;
+    if (text.includes("hail")) score += 20;
+    if (text.includes("wind")) score += 20;
+    if (text.includes("enhanced") || text.includes("moderate") || text.includes("high risk")) score += 40;
 
     // Excessive rainfall
-    if (h.rainfall) score += 40;
+    if (text.includes("excessive rainfall")) score += 40;
+    if (text.includes("flood")) score += 30;
 
-    // Winter storm severity
-    if (h.wssi) score += 30;
+    // Winter storms
+    if (text.includes("snow")) score += 20;
+    if (text.includes("ice")) score += 30;
+    if (text.includes("blizzard")) score += 40;
 
     // Fire weather
-    if (h.fire) score += 20;
+    if (text.includes("fire weather")) score += 20;
+    if (text.includes("critical fire")) score += 30;
 
-    // Tropical threat
-    if (h.nhc) score += 30;
+    // Tropical
+    if (text.includes("hurricane")) score += 50;
+    if (text.includes("tropical storm")) score += 30;
+    if (text.includes("storm surge")) score += 40;
 
-    return Math.min(score, 200);
+    return score;
+}
+
+// ------------------------------
+// COMPUTE REAL DOS FROM REAL NWS DATA
+// ------------------------------
+
+function computeDOS(hazards) {
+    let total = 0;
+
+    total += scoreFromText(hazards.spc?.productText);
+    total += scoreFromText(hazards.ero?.productText);
+    total += scoreFromText(hazards.wssi?.productText);
+    total += scoreFromText(hazards.fire?.productText);
+    total += scoreFromText(hazards.tropical?.productText);
+
+    return Math.min(total, 200);
 }
 
 function severityText(score) {
@@ -94,13 +120,11 @@ function severityText(score) {
 // ------------------------------
 
 async function buildForecast() {
-
     const hazards = await fetchHazards();
+    const score = computeDOS(hazards);
 
     const dosForecast = [];
-
     for (let i = 1; i <= 7; i++) {
-        const score = computeDOS(hazards);
         dosForecast.push({ day: "Day " + i, score });
     }
 
@@ -112,11 +136,9 @@ async function buildForecast() {
 // ------------------------------
 
 function renderForecast(dosForecast) {
-
     const container = document.getElementById("forecastContainer");
 
     dosForecast.forEach(item => {
-
         const card = document.createElement("div");
         card.className = "day-card";
 
