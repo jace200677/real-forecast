@@ -63,7 +63,8 @@
     const endRampHour = 20;   // 8:15 PM
     const endRampMinute = 15;
 
-    const peakIntensity = 88;
+    const startIntensity = 75;   // starting now
+    const peakIntensity = 88;    // at 8 PM
 
     function getCelebrationIntensity(date) {
       const h = date.getHours();
@@ -72,16 +73,13 @@
       const peakMinutes = peakHour * 60 + peakMinute;
       const endRampMinutes = endRampHour * 60 + endRampMinute;
 
-      // If before 8 PM → ramp up from now until 8 PM
+      // If before 8 PM → ramp UP from 75% to 88%
       if (nowMinutes < peakMinutes) {
-        const startMinutes = nowMinutes; // ramp starts NOW
-        const totalRampUp = peakMinutes - startMinutes;
-        const elapsed = nowMinutes - startMinutes;
+        const totalRampUp = peakMinutes - nowMinutes;
+        const elapsed = 0; // ramp starts NOW
 
-        // Avoid divide-by-zero if exactly 8 PM
-        if (totalRampUp <= 0) return peakIntensity;
-
-        const intensity = (elapsed / totalRampUp) * peakIntensity;
+        const progress = (elapsed / totalRampUp);
+        const intensity = startIntensity + (peakIntensity - startIntensity) * progress;
         return intensity;
       }
 
