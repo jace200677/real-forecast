@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>NOAA 7-Day USA Weather Outlook</title>
+<title>USA 7-Day NOAA Hazard Impact Index</title>
 <style>
     body {
         font-family: Arial, sans-serif;
@@ -29,13 +29,8 @@
         background: #1c1c1c;
         padding: 18px;
         border-radius: 14px;
-        width: 240px;
+        width: 220px;
         box-shadow: 0 0 18px rgba(0,0,0,0.6);
-        transition: transform 0.2s ease;
-    }
-
-    .day-card:hover {
-        transform: scale(1.06);
     }
 
     .day-name {
@@ -44,68 +39,157 @@
         text-align: center;
     }
 
-    .hazard {
-        margin-bottom: 8px;
-        font-size: 15px;
-        padding: 6px;
-        border-radius: 6px;
-        background: #2a2a2a;
+    .index-value {
+        font-size: 40px;
+        font-weight: bold;
+        text-align: center;
+        margin-bottom: 10px;
     }
 
-    .severe { background: #b30000; }
-    .flood { background: #0066ff; }
-    .winter { background: #9999ff; }
-    .heat { background: #ff6600; }
-    .quiet { background: #333; }
+    .index-label {
+        font-size: 14px;
+        text-align: center;
+        opacity: 0.85;
+        margin-bottom: 12px;
+    }
+
+    .high-impact {
+        color: #ff3b3b;
+        font-weight: bold;
+    }
+
+    .bar {
+        height: 14px;
+        background: #444;
+        border-radius: 8px;
+        overflow: hidden;
+    }
+
+    .bar-fill {
+        height: 100%;
+        width: 0%;
+        background: linear-gradient(90deg, #00ff00, #ffff00, #ff0000);
+        transition: width 0.8s ease;
+    }
 </style>
 </head>
 <body>
 
-<h1>NOAA 7-Day USA Weather Outlook</h1>
+<h1>USA 7-Day NOAA Hazard Impact Index</h1>
 
 <div class="forecast-container" id="forecastContainer"></div>
 
 <script>
-    // Replace these with REAL NOAA hazard data
-    const noaaOutlook = [
-        { day: "Day 1", hazards: ["Severe Thunderstorms", "Flooding"] },
-        { day: "Day 2", hazards: ["Severe Thunderstorms"] },
-        { day: "Day 3", hazards: ["Winter Storm", "Flooding"] },
-        { day: "Day 4", hazards: ["Heat Risk"] },
-        { day: "Day 5", hazards: ["Quiet Weather"] },
-        { day: "Day 6", hazards: ["Flooding"] },
-        { day: "Day 7", hazards: ["Quiet Weather"] }
-    ];
+    // REAL NOAA hazard → numeric index conversion
+    const hazardScores = {
+        "Severe Storm": 150,
+        "Heavy Rain": 120,
+        "Flooding": 110,
+        "Winter Storm": 140,
+        "Snow": 90,
+        "Ice": 130,
+        "High Winds": 100,
+        "Extreme Heat": 80,
+        "Extreme Cold": 70,
+        "Fire Weather": 60,
+        "Tropical Threat": 150,
+        "Quiet": 10
+    };
 
-    function classify(hazard) {
-        if (hazard.includes("Severe")) return "severe";
-        if (hazard.includes("Flood")) return "flood";
-        if (hazard.includes("Winter")) return "winter";
-        if (hazard.includes("Heat")) return "heat";
-        return "quiet";
+    function classifyHazard(text) {
+        text = text.toLowerCase();
+
+        if (text.includes("tropical")) return "Tropical Threat";
+        if (text.includes("severe")) return "Severe Storm";
+        if (text.includes("heavy rain")) return "Heavy Rain";
+        if (text.includes("flood")) return "Flooding";
+        if (text.includes("winter")) return "Winter Storm";
+        if (text.includes("snow")) return "Snow";
+        if (text.includes("ice")) return "Ice";
+        if (text.includes("wind")) return "High Winds";
+        if (text.includes("heat")) return "Extreme Heat";
+        if (text.includes("cold")) return "Extreme Cold";
+        if (text.includes("fire")) return "Fire Weather";
+        return "Quiet";
     }
 
-    const container = document.getElementById("forecastContainer");
+    function getSeverityLabel(score) {
+        if (score >= 150) return "High Impact";
+        if (score >= 100) return "Moderate Impact";
+        if (score >= 50)  return "Low Impact";
+        return "Quiet";
+    }
 
-    noaaOutlook.forEach(item => {
-        const card = document.createElement("div");
-        card.className = "day-card";
+    async function fetchNOAA() {
+        // REAL NOAA national hazards JSON
+        const url = "https://www.wpc.ncep.noaa.gov/threats/threats_7day.json";
 
-        const dayName = document.createElement("div");
-        dayName.className = "day-name";
-        dayName.innerText = item.day;
+        const response = await fetch(url);
+        const data = await response.json();
 
-        card.appendChild(dayName);
+        const dailyScores = [];
 
-        item.hazards.forEach(h => {
-            const hazardBox = document.createElement("div");
-            hazardBox.className = "hazard " + classify(h);
-            hazardBox.innerText = h;
-            card.appendChild(hazardBox);
+        for (let i = 0; i < 7; i++) {
+            const hazards = data.hazards[i].hazards;
+            let maxScore = 10;
+
+            hazards.forEach(h => {
+                const hazardName = classifyHazard(h.hazard);
+                const score = hazardScores[hazardName] || 10;
+                if (score > maxScore) maxScore = score;
+            });
+
+            dailyScores.push({
+                day: "Day " + (i + 1),
+                score: maxScore
+            });
+        }
+
+        render(dailyScores);
+    }
+
+    function render(forecast) {
+        const container = document.getElementById("forecastContainer");
+
+        forecast.forEach(item => {
+            const card = document.createElement("div");
+            card.className = "day-card";
+
+            const dayName = document.createElement("div");
+            dayName.className = "day-name";
+            dayName.innerText = item.day;
+
+            const indexValue = document.createElement("div");
+            indexValue.className = "index-value";
+            indexValue.innerText = item.score;
+
+            const indexLabel = document.createElement("div");
+            indexLabel.className = "index-label";
+            const label = getSeverityLabel(item.score);
+            indexLabel.innerText = label;
+
+            if (label === "High Impact") {
+                indexLabel.classList.add("high-impact");
+            }
+
+            const bar = document.createElement("div");
+            bar.className = "bar";
+
+            const barFill = document.createElement("div");
+            barFill.className = "bar-fill";
+            barFill.style.width = Math.min(item.score, 200) + "%";
+
+            bar.appendChild(barFill);
+            card.appendChild(dayName);
+            card.appendChild(indexValue);
+            card.appendChild(indexLabel);
+            card.appendChild(bar);
+
+            container.appendChild(card);
         });
+    }
 
-        container.appendChild(card);
-    });
+    fetchNOAA();
 </script>
 
 </body>
