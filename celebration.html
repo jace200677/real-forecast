@@ -1,126 +1,108 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <title>Summer Celebration Intensity</title>
-  <style>
-    body {
-      font-family: Arial, sans-serif;
-      background: linear-gradient(to bottom, #ffefba, #ffffff);
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      height: 100vh;
-      margin: 0;
-    }
+<meta charset="UTF-8" />
+<title>Daily Intensity Curve</title>
+<style>
+  body {
+    font-family: Arial, sans-serif;
+    background: linear-gradient(to bottom, #dff3ff, #ffffff);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 100vh;
+    margin: 0;
+  }
 
-    h1 {
-      margin-bottom: 10px;
-    }
+  h1 {
+    margin-bottom: 10px;
+  }
 
-    #info {
-      margin-bottom: 20px;
-      font-size: 1rem;
-    }
+  #info {
+    margin-bottom: 20px;
+    font-size: 1rem;
+  }
 
-    .bar-container {
-      width: 80%;
-      max-width: 500px;
-      height: 30px;
-      border-radius: 15px;
-      background: #eee;
-      overflow: hidden;
-      box-shadow: 0 0 10px rgba(0,0,0,0.1);
-    }
+  .bar-container {
+    width: 80%;
+    max-width: 500px;
+    height: 30px;
+    border-radius: 15px;
+    background: #eee;
+    overflow: hidden;
+    box-shadow: 0 0 10px rgba(0,0,0,0.1);
+  }
 
-    .bar-fill {
-      height: 100%;
-      width: 0%;
-      background: linear-gradient(90deg, #ff9800, #ff5722);
-      transition: width 0.5s ease;
-    }
+  .bar-fill {
+    height: 100%;
+    width: 0%;
+    background: linear-gradient(90deg, #00b4ff, #0077ff);
+    transition: width 0.5s ease;
+  }
 
-    #percent {
-      margin-top: 10px;
-      font-size: 1.2rem;
-      font-weight: bold;
-    }
-  </style>
+  #percent {
+    margin-top: 10px;
+    font-size: 1.2rem;
+    font-weight: bold;
+  }
+</style>
 </head>
 <body>
-  <h1>Summer Celebration Surprise</h1>
-  <div id="info">Intensity updates live without reloading.</div>
 
-  <div class="bar-container">
-    <div class="bar-fill" id="barFill"></div>
-  </div>
-  <div id="percent">0%</div>
+<h1>Daily Intensity Curve</h1>
+<div id="info">Live intensity based on your 3 PM → 6 PM → 1 AM → 5 AM curve.</div>
 
-  <script>
-    const startIntensity = 0;      // before 7 AM today
-    const peakIntensity = 100;     // at 3 PM today
+<div class="bar-container">
+  <div class="bar-fill" id="barFill"></div>
+</div>
+<div id="percent">0%</div>
 
-    function getTimeStamp(h, m, year, month, day) {
-      return new Date(year, month, day, h, m).getTime();
-    }
+<script>
+function getIntensity() {
+  const now = new Date();
+  let hour = now.getHours() + now.getMinutes() / 60;
 
-    const now = new Date();
+  // Convert early-morning hours into next-day range
+  // Example: 1 AM → 25, 5 AM → 29
+  if (hour < 15) hour += 24;
 
-    // Ramp-up: 7 AM → 3 PM today
-    const rampStart = getTimeStamp(7, 0, now.getFullYear(), now.getMonth(), now.getDate());
-    const rampPeak  = getTimeStamp(15, 0, now.getFullYear(), now.getMonth(), now.getDate());
+  // Start at 100% at 3 PM (15)
+  if (hour < 15) return 100;
 
-    // Ramp-down begins at 7 AM on July 31, 2026
-    const rampDownStart = getTimeStamp(7, 0, 2026, 6, 31); // July = 6
+  // 3 PM → 5 PM : 100% → 300%
+  if (hour >= 15 && hour < 17) {
+    const progress = (hour - 15) / 2;
+    return 100 + (300 - 100) * progress;
+  }
 
-    // Ramp-down ends 12 hours later (adjust if needed)
-    const rampDownEnd = rampDownStart + (1000 * 60 * 60 * 12);
+  // 5 PM → 1 AM : hold 300%
+  if (hour >= 17 && hour < 25) {
+    return 300;
+  }
 
-    function getCelebrationIntensity() {
-      const now = Date.now();
+  // 1 AM → 5 AM : 300% → 0%
+  if (hour >= 25 && hour < 29) {
+    const progress = (hour - 25) / 4;
+    return 300 * (1 - progress);
+  }
 
-      // Before 7 AM today → 0%
-      if (now < rampStart) {
-        return startIntensity;
-      }
+  // After 5 AM → 0%
+  return 0;
+}
 
-      // Ramp UP: 7 AM → 3 PM today
-      if (now >= rampStart && now < rampPeak) {
-        const total = rampPeak - rampStart;
-        const elapsed = now - rampStart;
-        const progress = elapsed / total;
-        return startIntensity + (peakIntensity - startIntensity) * progress;
-      }
+function updateBar() {
+  const intensity = getIntensity();
+  const bar = document.getElementById("barFill");
+  const percentText = document.getElementById("percent");
 
-      // Hold 100% until 7 AM 7/31/26
-      if (now >= rampPeak && now < rampDownStart) {
-        return peakIntensity;
-      }
+  bar.style.width = intensity + "%";
+  percentText.textContent = Math.round(intensity) + "%";
+}
 
-      // Ramp DOWN: 7 AM 7/31/26 → rampDownEnd
-      if (now >= rampDownStart && now < rampDownEnd) {
-        const total = rampDownEnd - rampDownStart;
-        const elapsed = now - rampDownStart;
-        const progress = elapsed / total;
-        return peakIntensity * (1 - progress);
-      }
+updateBar();
+setInterval(updateBar, 1000);
+</script>
 
-      // After rampDownEnd → 0%
-      return 0;
-    }
-
-    function updateBar() {
-      const intensity = getCelebrationIntensity();
-      const bar = document.getElementById('barFill');
-      const percentText = document.getElementById('percent');
-
-      bar.style.width = intensity + '%';
-      percentText.textContent = Math.round(intensity) + '%';
-    }
-
-    updateBar();
-    setInterval(updateBar, 1000);
-  </script>
 </body>
 </html>
