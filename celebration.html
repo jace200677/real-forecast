@@ -1,108 +1,108 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8" />
-<title>Daily Intensity Curve</title>
-<style>
-  body {
-    font-family: Arial, sans-serif;
-    background: linear-gradient(to bottom, #dff3ff, #ffffff);
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    height: 100vh;
-    margin: 0;
-  }
-
-  h1 {
-    margin-bottom: 10px;
-  }
-
-  #info {
-    margin-bottom: 20px;
-    font-size: 1rem;
-  }
-
-  .bar-container {
-    width: 80%;
-    max-width: 500px;
-    height: 30px;
-    border-radius: 15px;
-    background: #eee;
-    overflow: hidden;
-    box-shadow: 0 0 10px rgba(0,0,0,0.1);
-  }
-
-  .bar-fill {
-    height: 100%;
-    width: 0%;
-    background: linear-gradient(90deg, #00b4ff, #0077ff);
-    transition: width 0.5s ease;
-  }
-
-  #percent {
-    margin-top: 10px;
-    font-size: 1.2rem;
-    font-weight: bold;
-  }
-</style>
+  <meta charset="UTF-8" />
+  <title>Daily Intensity Curve</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background: linear-gradient(to bottom, #ffe6cc, #ffffff);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      height: 100vh;
+      margin: 0;
+    }
+    h1 {
+      margin-bottom: 10px;
+      color: #ff6600;
+    }
+    #info {
+      margin-bottom: 20px;
+      font-size: 1rem;
+      color: #333;
+    }
+    .bar-container {
+      width: 80%;
+      max-width: 500px;
+      height: 30px;
+      border-radius: 15px;
+      background: #eee;
+      overflow: hidden;
+      box-shadow: 0 0 10px rgba(0,0,0,0.1);
+    }
+    .bar-fill {
+      height: 100%;
+      width: 0%;
+      background: linear-gradient(90deg, #ff9900, #ff3300);
+      transition: width 0.5s ease;
+    }
+    #percent {
+      margin-top: 10px;
+      font-size: 1.2rem;
+      font-weight: bold;
+    }
+  </style>
 </head>
 <body>
+  <h1>Summer Celebration Intensity</h1>
+  <div id="info">Live intensity based on your 3 PM → 5 PM → 1 AM → 5 AM curve.</div>
+  
+  <div class="bar-container">
+    <div class="bar-fill" id="barFill"></div>
+  </div>
+  <div id="percent">0%</div>
 
-<h1>Daily Intensity Curve</h1>
-<div id="info">Live intensity based on your 3 PM → 6 PM → 1 AM → 5 AM curve.</div>
+  <script>
+    function getIntensity() {
+      const now = new Date();
+      let hour = now.getHours() + now.getMinutes() / 60 + now.getSeconds() / 3600;
 
-<div class="bar-container">
-  <div class="bar-fill" id="barFill"></div>
-</div>
-<div id="percent">0%</div>
+      // Adjust timeline relative to the 3 PM (15:00) start line
+      // Hours from 00:00 to 14:59 roll over into the next day timeline (24 to 38.99)
+      if (hour < 15) {
+        hour += 24;
+      }
 
-<script>
-function getIntensity() {
-  const now = new Date();
-  let hour = now.getHours() + now.getMinutes() / 60;
+      // 1. Before 3 PM (hour < 15) -> Starts at 100%
+      if (hour < 15) return 100;
 
-  // Convert early-morning hours into next-day range
-  // Example: 1 AM → 25, 5 AM → 29
-  if (hour < 15) hour += 24;
+      // 2. 3 PM → 5 PM (15 to 17) -> Climbs from 100% to 300% (Peaks by 5 PM)
+      if (hour >= 15 && hour < 17) {
+        const progress = (hour - 15) / 2;
+        return 100 + (300 - 100) * progress;
+      }
 
-  // Start at 100% at 3 PM (15)
-  if (hour < 15) return 100;
+      // 3. 5 PM → 1 AM (17 to 25) -> Stays still at 300%
+      if (hour >= 17 && hour < 25) {
+        return 300;
+      }
 
-  // 3 PM → 5 PM : 100% → 300%
-  if (hour >= 15 && hour < 17) {
-    const progress = (hour - 15) / 2;
-    return 100 + (300 - 100) * progress;
-  }
+      // 4. 1 AM → 5 AM (25 to 29) -> Drops from 300% down to 0%
+      if (hour >= 25 && hour < 29) {
+        const progress = (hour - 25) / 4;
+        return 300 * (1 - progress);
+      }
 
-  // 5 PM → 1 AM : hold 300%
-  if (hour >= 17 && hour < 25) {
-    return 300;
-  }
+      // 5. After 5 AM (hour >= 29) -> Remains at 0% until the loop resets at 3 PM
+      return 0;
+    }
 
-  // 1 AM → 5 AM : 300% → 0%
-  if (hour >= 25 && hour < 29) {
-    const progress = (hour - 25) / 4;
-    return 300 * (1 - progress);
-  }
+    function updateBar() {
+      const intensity = getIntensity();
+      const bar = document.getElementById("barFill");
+      const percentText = document.getElementById("percent");
+      
+      // Caps visual width at 100% even if numerical value goes up to 300%
+      const visualWidth = Math.min(intensity, 100); 
+      
+      bar.style.width = visualWidth + "%";
+      percentText.textContent = Math.round(intensity) + "%";
+    }
 
-  // After 5 AM → 0%
-  return 0;
-}
-
-function updateBar() {
-  const intensity = getIntensity();
-  const bar = document.getElementById("barFill");
-  const percentText = document.getElementById("percent");
-
-  bar.style.width = intensity + "%";
-  percentText.textContent = Math.round(intensity) + "%";
-}
-
-updateBar();
-setInterval(updateBar, 1000);
-</script>
-
+    updateBar();
+    setInterval(updateBar, 1000);
+  </script>
 </body>
 </html>
