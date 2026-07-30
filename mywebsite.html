@@ -50,7 +50,7 @@
 </head>
 <body>
   <h1>Summer Celebration Surprise</h1>
-  <div id="info">Intensity changes automatically based on the current time.</div>
+  <div id="info">Intensity updates live without reloading.</div>
 
   <div class="bar-container">
     <div class="bar-fill" id="barFill"></div>
@@ -66,21 +66,23 @@
     const startIntensity = 75;   // starting now
     const peakIntensity = 88;    // at 8 PM
 
+    // Capture the moment the page loads — ramp starts NOW
+    const startTime = new Date();
+
     function getCelebrationIntensity(date) {
-      const h = date.getHours();
-      const m = date.getMinutes();
-      const nowMinutes = h * 60 + m;
+      const nowMinutes = date.getHours() * 60 + date.getMinutes();
       const peakMinutes = peakHour * 60 + peakMinute;
       const endRampMinutes = endRampHour * 60 + endRampMinute;
 
-      // If before 8 PM → ramp UP from 75% to 88%
-      if (nowMinutes < peakMinutes) {
-        const totalRampUp = peakMinutes - nowMinutes;
-        const elapsed = 0; // ramp starts NOW
+      const startMinutes = startTime.getHours() * 60 + startTime.getMinutes();
 
-        const progress = (elapsed / totalRampUp);
-        const intensity = startIntensity + (peakIntensity - startIntensity) * progress;
-        return intensity;
+      // Before 8 PM → ramp UP from 75% to 88%
+      if (nowMinutes < peakMinutes) {
+        const totalRampUp = peakMinutes - startMinutes;
+        const elapsed = nowMinutes - startMinutes;
+
+        const progress = Math.max(0, Math.min(elapsed / totalRampUp, 1));
+        return startIntensity + (peakIntensity - startIntensity) * progress;
       }
 
       // At exactly 8 PM → peak 88%
@@ -93,21 +95,18 @@
         const totalRampDown = endRampMinutes - peakMinutes;
         const elapsed = nowMinutes - peakMinutes;
 
-        const intensity = peakIntensity * (1 - (elapsed / totalRampDown));
-        return intensity;
+        const progress = Math.max(0, Math.min(elapsed / totalRampDown, 1));
+        return peakIntensity * (1 - progress);
       }
 
       // After 8:15 PM → 0%
-      if (nowMinutes >= endRampMinutes) {
-        return 0;
-      }
-
       return 0;
     }
 
     function updateBar() {
       const now = new Date();
       const intensity = getCelebrationIntensity(now);
+
       const bar = document.getElementById('barFill');
       const percentText = document.getElementById('percent');
 
@@ -116,7 +115,7 @@
     }
 
     updateBar();
-    setInterval(updateBar, 30 * 1000);
+    setInterval(updateBar, 1000); // update every second
   </script>
 </body>
 </html>
