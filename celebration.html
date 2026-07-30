@@ -58,28 +58,34 @@
   <div id="percent">0%</div>
 
   <script>
-    const startIntensity = 75;     // at 7:30 PM
-    const peakIntensity = 88;      // at 8:00 PM
+    const startIntensity = 0;      // before 7 AM today
+    const peakIntensity = 100;     // at 3 PM today
 
-    // Fixed timeline
-    function getTimeStamp(h, m) {
-      const now = new Date();
-      return new Date(now.getFullYear(), now.getMonth(), now.getDate(), h, m).getTime();
+    function getTimeStamp(h, m, year, month, day) {
+      return new Date(year, month, day, h, m).getTime();
     }
 
-    const rampStart = getTimeStamp(19, 30);  // 7:30 PM
-    const rampPeak  = getTimeStamp(20, 0);   // 8:00 PM
-    const rampEnd   = getTimeStamp(20, 15);  // 8:15 PM
+    const now = new Date();
+
+    // Ramp-up: 7 AM → 3 PM today
+    const rampStart = getTimeStamp(7, 0, now.getFullYear(), now.getMonth(), now.getDate());
+    const rampPeak  = getTimeStamp(15, 0, now.getFullYear(), now.getMonth(), now.getDate());
+
+    // Ramp-down begins at 7 AM on July 31, 2026
+    const rampDownStart = getTimeStamp(7, 0, 2026, 6, 31); // July = 6
+
+    // Ramp-down ends 12 hours later (adjust if needed)
+    const rampDownEnd = rampDownStart + (1000 * 60 * 60 * 12);
 
     function getCelebrationIntensity() {
       const now = Date.now();
 
-      // Before 7:30 PM → hold at 75%
+      // Before 7 AM today → 0%
       if (now < rampStart) {
         return startIntensity;
       }
 
-      // 7:30 PM → 8:00 PM → ramp UP 75% → 88%
+      // Ramp UP: 7 AM → 3 PM today
       if (now >= rampStart && now < rampPeak) {
         const total = rampPeak - rampStart;
         const elapsed = now - rampStart;
@@ -87,20 +93,20 @@
         return startIntensity + (peakIntensity - startIntensity) * progress;
       }
 
-      // Exactly 8:00 PM → 88%
-      if (now === rampPeak) {
+      // Hold 100% until 7 AM 7/31/26
+      if (now >= rampPeak && now < rampDownStart) {
         return peakIntensity;
       }
 
-      // 8:00 PM → 8:15 PM → ramp DOWN 88% → 0%
-      if (now > rampPeak && now < rampEnd) {
-        const total = rampEnd - rampPeak;
-        const elapsed = now - rampPeak;
+      // Ramp DOWN: 7 AM 7/31/26 → rampDownEnd
+      if (now >= rampDownStart && now < rampDownEnd) {
+        const total = rampDownEnd - rampDownStart;
+        const elapsed = now - rampDownStart;
         const progress = elapsed / total;
         return peakIntensity * (1 - progress);
       }
 
-      // After 8:15 PM → 0%
+      // After rampDownEnd → 0%
       return 0;
     }
 
@@ -114,7 +120,7 @@
     }
 
     updateBar();
-    setInterval(updateBar, 1000); // update every second
+    setInterval(updateBar, 1000);
   </script>
 </body>
 </html>
