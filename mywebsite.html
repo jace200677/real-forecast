@@ -2,108 +2,92 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>7-Day DOS Forecast</title>
+<title>NOAA 7-Day USA Weather Outlook</title>
 <style>
     body {
         font-family: Arial, sans-serif;
-        background: #111;
+        background: #0d0d0d;
         color: #fff;
         padding: 20px;
     }
 
     h1 {
         text-align: center;
-        margin-bottom: 20px;
+        margin-bottom: 25px;
+        font-size: 32px;
+        letter-spacing: 1px;
     }
 
     .forecast-container {
         display: flex;
         flex-wrap: wrap;
-        gap: 16px;
+        gap: 18px;
         justify-content: center;
     }
 
     .day-card {
-        background: #222;
-        padding: 16px;
-        border-radius: 12px;
-        width: 180px;
-        box-shadow: 0 0 12px rgba(0,0,0,0.5);
+        background: #1c1c1c;
+        padding: 18px;
+        border-radius: 14px;
+        width: 240px;
+        box-shadow: 0 0 18px rgba(0,0,0,0.6);
         transition: transform 0.2s ease;
     }
 
     .day-card:hover {
-        transform: scale(1.05);
+        transform: scale(1.06);
     }
 
     .day-name {
-        font-size: 18px;
-        margin-bottom: 8px;
-        text-align: center;
-    }
-
-    .dos-value {
-        font-size: 36px;
-        font-weight: bold;
-        text-align: center;
-        margin-bottom: 8px;
-    }
-
-    .dos-label {
-        font-size: 14px;
-        text-align: center;
-        opacity: 0.85;
+        font-size: 20px;
         margin-bottom: 10px;
+        text-align: center;
     }
 
-    .bar {
-        height: 14px;
-        background: #444;
-        border-radius: 8px;
-        overflow: hidden;
+    .hazard {
+        margin-bottom: 8px;
+        font-size: 15px;
+        padding: 6px;
+        border-radius: 6px;
+        background: #2a2a2a;
     }
 
-    .bar-fill {
-        height: 100%;
-        width: 0%;
-        background: linear-gradient(90deg, #00ff00, #ffff00, #ff0000);
-        transition: width 0.8s ease;
-    }
-
-    .high-impact {
-        color: #ff4444;
-        font-weight: bold;
-    }
+    .severe { background: #b30000; }
+    .flood { background: #0066ff; }
+    .winter { background: #9999ff; }
+    .heat { background: #ff6600; }
+    .quiet { background: #333; }
 </style>
 </head>
 <body>
 
-<h1>7-Day Daily Outlook Score Forecast</h1>
+<h1>NOAA 7-Day USA Weather Outlook</h1>
 
 <div class="forecast-container" id="forecastContainer"></div>
 
 <script>
-    // Example 7-day DOS values (0–200+). Replace with real data.
-    const dosForecast = [
-        { day: "Day 1", score: 155 },
-        { day: "Day 2", score: 130 },
-        { day: "Day 3", score: 170 },
-        { day: "Day 4", score: 95 },
-        { day: "Day 5", score: 150 },
-        { day: "Day 6", score: 60 },
-        { day: "Day 7", score: 40 }
+    // Replace these with REAL NOAA hazard data
+    const noaaOutlook = [
+        { day: "Day 1", hazards: ["Severe Thunderstorms", "Flooding"] },
+        { day: "Day 2", hazards: ["Severe Thunderstorms"] },
+        { day: "Day 3", hazards: ["Winter Storm", "Flooding"] },
+        { day: "Day 4", hazards: ["Heat Risk"] },
+        { day: "Day 5", hazards: ["Quiet Weather"] },
+        { day: "Day 6", hazards: ["Flooding"] },
+        { day: "Day 7", hazards: ["Quiet Weather"] }
     ];
 
-    function getSeverityLabel(score) {
-        if (score >= 150) return "HIGH IMPACT";
-        if (score >= 100) return "Moderate Impact";
-        if (score >= 50)  return "Low Impact";
-        return "Quiet";
+    function classify(hazard) {
+        if (hazard.includes("Severe")) return "severe";
+        if (hazard.includes("Flood")) return "flood";
+        if (hazard.includes("Winter")) return "winter";
+        if (hazard.includes("Heat")) return "heat";
+        return "quiet";
     }
 
     const container = document.getElementById("forecastContainer");
 
-    dosForecast.forEach(item => {
+    noaaOutlook.forEach(item => {
         const card = document.createElement("div");
         card.className = "day-card";
 
@@ -111,32 +95,14 @@
         dayName.className = "day-name";
         dayName.innerText = item.day;
 
-        const dosValue = document.createElement("div");
-        dosValue.className = "dos-value";
-        dosValue.innerText = item.score;
-
-        const dosLabel = document.createElement("div");
-        dosLabel.className = "dos-label";
-
-        const label = getSeverityLabel(item.score);
-        dosLabel.innerText = label;
-
-        if (label === "HIGH IMPACT") {
-            dosLabel.classList.add("high-impact");
-        }
-
-        const bar = document.createElement("div");
-        bar.className = "bar";
-
-        const barFill = document.createElement("div");
-        barFill.className = "bar-fill";
-        barFill.style.width = Math.min(item.score, 200) + "%";
-
-        bar.appendChild(barFill);
         card.appendChild(dayName);
-        card.appendChild(dosValue);
-        card.appendChild(dosLabel);
-        card.appendChild(bar);
+
+        item.hazards.forEach(h => {
+            const hazardBox = document.createElement("div");
+            hazardBox.className = "hazard " + classify(h);
+            hazardBox.innerText = h;
+            card.appendChild(hazardBox);
+        });
 
         container.appendChild(card);
     });
