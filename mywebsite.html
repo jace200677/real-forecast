@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Summer Celebration Intensity</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background: linear-gradient(to bottom, #ffefba, #ffffff);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      height: 100vh;
+      margin: 0;
+    }
+
+    h1 {
+      margin-bottom: 10px;
+    }
+
+    #info {
+      margin-bottom: 20px;
+      font-size: 1rem;
+    }
+
+    .bar-container {
+      width: 80%;
+      max-width: 500px;
+      height: 30px;
+      border-radius: 15px;
+      background: #eee;
+      overflow: hidden;
+      box-shadow: 0 0 10px rgba(0,0,0,0.1);
+    }
+
+    .bar-fill {
+      height: 100%;
+      width: 0%;
+      background: linear-gradient(90deg, #ff9800, #ff5722);
+      transition: width 0.5s ease;
+    }
+
+    #percent {
+      margin-top: 10px;
+      font-size: 1.2rem;
+      font-weight: bold;
+    }
+  </style>
+</head>
+<body>
+  <h1>Summer Celebration Surprise</h1>
+  <div id="info">Intensity changes automatically based on the current time.</div>
+
+  <div class="bar-container">
+    <div class="bar-fill" id="barFill"></div>
+  </div>
+  <div id="percent">0%</div>
+
+  <script>
+    const startEveningHour = 20;   // 8:00 PM
+    const peakHour = 20;           // still 8 PM
+    const peakMinute = 15;         // 8:15 PM
+
+    function getCelebrationIntensity(date) {
+      const h = date.getHours();
+      const m = date.getMinutes();
+
+      function isBefore(hour, minute) {
+        return h < hour || (h === hour && m < minute);
+      }
+
+      function isAfterOrEqual(hour, minute) {
+        return h > hour || (h === hour && m >= minute);
+      }
+
+      // Before 8:00 PM → 75%
+      if (isBefore(startEveningHour, 0)) {
+        return 75;
+      }
+
+      // Between 8:00 PM and 8:15 PM → ramp DOWN from 75% to 0%
+      if (!isBefore(startEveningHour, 0) && isBefore(peakHour, peakMinute)) {
+        const totalRampMinutes = 15; // 8:00–8:15
+        const minutesSince8 = (h - startEveningHour) * 60 + m;
+        const t = Math.min(Math.max(minutesSince8, 0), totalRampMinutes);
+
+        const startIntensity = 75;
+        const endIntensity = 0;
+
+        const intensity = startIntensity + (endIntensity - startIntensity) * (t / totalRampMinutes);
+        return intensity;
+      }
+
+      // After 8:15 PM → 0%
+      if (isAfterOrEqual(peakHour, peakMinute)) {
+        return 0;
+      }
+
+      return 0;
+    }
+
+    function updateBar() {
+      const now = new Date();
+      const intensity = getCelebrationIntensity(now);
+      const bar = document.getElementById('barFill');
+      const percentText = document.getElementById('percent');
+
+      bar.style.width = intensity + '%';
+      percentText.textContent = Math.round(intensity) + '%';
+    }
+
+    updateBar();
+    setInterval(updateBar, 30 * 1000);
+  </script>
+</body>
+</html>
