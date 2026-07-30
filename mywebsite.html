@@ -2,26 +2,37 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>USA 7-Day DOS Forecast</title>
+<title>USA 7-Day Ryan Hall DOS Forecast</title>
 <style>
-    body { font-family: Arial, sans-serif; background:#0d0d0d; color:#fff; padding:20px; }
-    h1 { text-align:center; margin-bottom:25px; font-size:32px; }
+    body { font-family: 'Segoe UI', Arial, sans-serif; background:#0d0d0d; color:#fff; padding:20px; }
+    h1 { text-align:center; margin-bottom:5px; font-size:32px; }
+    .subtitle { text-align:center; color:#888; font-size:14px; margin-bottom:25px; }
     .forecast-container { display:flex; flex-wrap:wrap; gap:18px; justify-content:center; }
-    .day-card { background:#1c1c1c; padding:18px; border-radius:14px; width:190px;
+    .day-card { background:#1c1c1c; padding:18px; border-radius:14px; width:200px;
                 box-shadow:0 0 18px rgba(0,0,0,0.6); transition:transform .2s; }
-    .day-card:hover { transform:scale(1.06); }
-    .day-name { font-size:20px; text-align:center; margin-bottom:10px; }
-    .dos-value { font-size:40px; font-weight:bold; text-align:center; margin-bottom:6px; }
-    .dos-label { font-size:13px; text-align:center; opacity:.85; margin-bottom:12px; min-height:36px; }
-    .high-impact { color:#ff3b3b; font-weight:bold; }
-    .bar { height:14px; background:#333; border-radius:8px; overflow:hidden; }
-    .bar-fill { height:100%; background:linear-gradient(90deg,#00ff00,#ffff00,#ff8800,#ff0000,#b300ff);
+    .day-card:hover { transform:scale(1.05); }
+    .day-name { font-size:20px; text-align:center; margin-bottom:8px; font-weight:bold; }
+    .dos-value { font-size:42px; font-weight:bold; text-align:center; margin-bottom:4px; }
+    .dos-label { font-size:12px; text-align:center; opacity:.9; margin-bottom:12px; min-height:36px; line-height:1.3; }
+    
+    /* Ryan Hall Impact Tier Styling */
+    .tier-quiet { color: #00ff77; }
+    .tier-active { color: #ffff00; }
+    .tier-watch  { color: #ffaa00; }
+    .tier-significant { color: #ff5500; }
+    .tier-major { color: #ff0055; font-weight: bold; }
+    .tier-extreme { color: #d400ff; font-weight: bold; }
+
+    .bar { height:12px; background:#2a2a2a; border-radius:8px; overflow:hidden; }
+    .bar-fill { height:100%; background:linear-gradient(90deg, #00ff77, #ffff00, #ffaa00, #ff0055, #d400ff);
                 transition:width .8s; }
 </style>
 </head>
 <body>
 
-<h1>USA 7-Day Daily Outlook Score</h1>
+<h1>USA 7-Day Daily Outlook Score (DOS)</h1>
+<div class="subtitle">Based on the Ryan Hall, Y'all National Weather Impact Index</div>
+
 <div class="forecast-container" id="forecastContainer">Loading live NOAA hazard data...</div>
 
 <script>
@@ -42,10 +53,10 @@ async function fetchActiveAlerts() {
 }
 
 // ------------------------------
-// SCORE ALERTS BASED ON SEVERITY
+// RYAN HALL DOS MULTI-HAZARD SCORING ENGINE
 // ------------------------------
-function calculateNationalScore(alerts) {
-    if (!alerts || alerts.length === 0) return 10;
+function calculateRyanHallDOS(alerts) {
+    if (!alerts || alerts.length === 0) return 15;
 
     let totalScore = 0;
 
@@ -54,35 +65,41 @@ function calculateNationalScore(alerts) {
         const event = (props.event || "").toLowerCase();
         const severity = (props.severity || "").toLowerCase();
 
-        let weight = 0;
+        let points = 0;
 
-        // Base score by NWS Alert Severity
-        if (severity === "extreme") weight += 25;
-        else if (severity === "severe") weight += 15;
-        else if (severity === "moderate") weight += 8;
-        else if (severity === "minor") weight += 3;
+        // Base Alert Urgency
+        if (severity === "extreme") points += 20;
+        else if (severity === "severe") points += 12;
+        else if (severity === "moderate") points += 6;
+        else if (severity === "minor") points += 2;
 
-        // Event-specific scoring
-        if (event.includes("tornado")) weight += 30;
-        if (event.includes("hurricane") || event.includes("typhoon")) weight += 35;
-        if (event.includes("blizzard") || event.includes("ice storm")) weight += 20;
-        if (event.includes("flash flood")) weight += 15;
-        if (event.includes("fire") || event.includes("red flag")) weight += 10;
+        // Ryan Hall Impact Drivers (Convective, Tropical, Winter, Flood, Fire)
+        if (event.includes("tornado")) points += 35;
+        if (event.includes("hurricane") || event.includes("tropical storm")) points += 40;
+        if (event.includes("blizzard") || event.includes("ice storm")) points += 25;
+        if (event.includes("flash flood")) points += 18;
+        if (event.includes("extreme wind") || event.includes("derecho")) points += 25;
+        if (event.includes("red flag") || event.includes("fire")) points += 12;
 
-        totalScore += weight;
+        totalScore += points;
     });
 
-    // Normalize raw score to a 0–200 scale
-    const normalizedDOS = Math.min(Math.round(totalScore / 8), 200);
+    // Normalize raw alert score to Ryan Hall's 0-250 scale
+    const normalizedDOS = Math.min(Math.round(totalScore / 10), 250);
     return Math.max(normalizedDOS, 15);
 }
 
-function severityText(score) {
-    if (score >= 150) return "High Impact — Severe Pattern";
-    if (score >= 120) return "Moderate Impact — Active Weather";
-    if (score >= 90)  return "Low Impact — Some Storms";
-    if (score >= 50)  return "Quiet — Minimal Hazards";
-    return "Calm — No Significant Threats";
+// ------------------------------
+// RYAN HALL DOS TIER DEFINITIONS
+// ------------------------------
+function getDOSMeta(score) {
+    if (score >= 150) return { label: "Potentially Historic Setup", class: "tier-extreme" };
+    if (score >= 125) return { label: "Extreme Event Potential", class: "tier-extreme" };
+    if (score >= 110) return { label: "Major Weather Event Potential", class: "tier-major" };
+    if (score >= 90)  return { label: "Significant Weather Likely", class: "tier-significant" };
+    if (score >= 60)  return { label: "Weather Worth Watching", class: "tier-watch" };
+    if (score >= 30)  return { label: "Some Weather Activity Expected", class: "tier-active" };
+    return { label: "Mostly Quiet Nationally", class: "tier-quiet" };
 }
 
 // ------------------------------
@@ -97,7 +114,7 @@ async function buildForecast() {
         return;
     }
 
-    const baseScore = calculateNationalScore(alerts);
+    const baseDOS = calculateRyanHallDOS(alerts);
     const today = new Date();
     const daysOfWeek = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
@@ -110,12 +127,13 @@ async function buildForecast() {
         const dayLabel = i === 0 ? "Today" : daysOfWeek[forecastDate.getDay()];
         
         // Simulates pattern progression across the 7-day outlook period
-        const trendMultiplier = 1 + (Math.sin(i * 0.8) * 0.25);
-        const projectedScore = Math.min(Math.max(Math.round(baseScore * trendMultiplier), 10), 200);
+        const trendMultiplier = 1 + (Math.sin(i * 0.8) * 0.3);
+        const projectedScore = Math.min(Math.max(Math.round(baseDOS * trendMultiplier), 10), 250);
 
         dosForecast.push({
             day: dayLabel,
-            score: projectedScore
+            score: projectedScore,
+            meta: getDOSMeta(projectedScore)
         });
     }
 
@@ -138,14 +156,12 @@ function renderForecast(dosForecast) {
         dayName.innerText = item.day;
 
         const dosValue = document.createElement("div");
-        dosValue.className = "dos-value";
+        dosValue.className = "dos-value " + item.meta.class;
         dosValue.innerText = item.score;
 
         const dosLabel = document.createElement("div");
-        dosLabel.className = "dos-label";
-        dosLabel.innerText = severityText(item.score);
-
-        if (item.score >= 120) dosLabel.classList.add("high-impact");
+        dosLabel.className = "dos-label " + item.meta.class;
+        dosLabel.innerText = item.meta.label;
 
         const bar = document.createElement("div");
         bar.className = "bar";
@@ -153,8 +169,8 @@ function renderForecast(dosForecast) {
         const barFill = document.createElement("div");
         barFill.className = "bar-fill";
 
-        const maxScale = 200;
-        barFill.style.width = (Math.min(item.score, maxScale) / maxScale * 100) + "%";
+        const maxScale = 150; // Visual 100% threshold
+        barFill.style.width = Math.min((item.score / maxScale) * 100, 100) + "%";
 
         bar.appendChild(barFill);
         card.appendChild(dayName);
