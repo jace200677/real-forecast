@@ -58,47 +58,49 @@
   <div id="percent">0%</div>
 
   <script>
-    const startEveningHour = 20;   // 8:00 PM
-    const peakHour = 20;           // 8 PM
-    const peakMinute = 15;         // 8:15 PM
+    const peakHour = 20;      // 8:00 PM
+    const peakMinute = 0;
+    const endRampHour = 20;   // 8:15 PM
+    const endRampMinute = 15;
+
+    const peakIntensity = 88;
 
     function getCelebrationIntensity(date) {
       const h = date.getHours();
       const m = date.getMinutes();
+      const nowMinutes = h * 60 + m;
+      const peakMinutes = peakHour * 60 + peakMinute;
+      const endRampMinutes = endRampHour * 60 + endRampMinute;
 
-      function isBefore(hour, minute) {
-        return h < hour || (h === hour && m < minute);
+      // If before 8 PM → ramp up from now until 8 PM
+      if (nowMinutes < peakMinutes) {
+        const startMinutes = nowMinutes; // ramp starts NOW
+        const totalRampUp = peakMinutes - startMinutes;
+        const elapsed = nowMinutes - startMinutes;
+
+        // Avoid divide-by-zero if exactly 8 PM
+        if (totalRampUp <= 0) return peakIntensity;
+
+        const intensity = (elapsed / totalRampUp) * peakIntensity;
+        return intensity;
       }
 
-      function isAfterOrEqual(hour, minute) {
-        return h > hour || (h === hour && m >= minute);
+      // At exactly 8 PM → peak 88%
+      if (nowMinutes === peakMinutes) {
+        return peakIntensity;
       }
 
-      // Before 8:00 PM → 75%
-      if (isBefore(startEveningHour, 0)) {
-        return 75;
-      }
+      // Between 8 PM and 8:15 PM → ramp DOWN from 88% to 0%
+      if (nowMinutes > peakMinutes && nowMinutes < endRampMinutes) {
+        const totalRampDown = endRampMinutes - peakMinutes;
+        const elapsed = nowMinutes - peakMinutes;
 
-      // At exactly 8:00 PM → 88%
-      if (h === startEveningHour && m === 0) {
-        return 88;
-      }
-
-      // Between 8:00 PM and 8:15 PM → ramp DOWN from 88% to 0%
-      if (!isBefore(startEveningHour, 0) && isBefore(peakHour, peakMinute)) {
-        const totalRampMinutes = 15; // 8:00–8:15
-        const minutesSince8 = (h - startEveningHour) * 60 + m;
-        const t = Math.min(Math.max(minutesSince8, 0), totalRampMinutes);
-
-        const startIntensity = 88;
-        const endIntensity = 0;
-
-        const intensity = startIntensity + (endIntensity - startIntensity) * (t / totalRampMinutes);
+        const intensity = peakIntensity * (1 - (elapsed / totalRampDown));
         return intensity;
       }
 
       // After 8:15 PM → 0%
-      if (isAfterOrEqual(peakHour, peakMinute)) {
+      if (nowMinutes >= endRampMinutes) {
         return 0;
       }
 
