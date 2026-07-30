@@ -6,7 +6,33 @@
 <style>
     body { font-family: 'Segoe UI', Arial, sans-serif; background:#0d0d0d; color:#fff; padding:20px; }
     h1 { text-align:center; margin-bottom:5px; font-size:32px; }
-    .subtitle { text-align:center; color:#888; font-size:14px; margin-bottom:25px; }
+    .subtitle { text-align:center; color:#888; font-size:14px; margin-bottom:20px; }
+
+    /* Search Bar Styling */
+    .search-container { display: flex; justify-content: center; gap: 10px; margin-bottom: 25px; }
+    .search-input { 
+        padding: 10px 16px; 
+        font-size: 16px; 
+        border-radius: 8px; 
+        border: 1px solid #333; 
+        background: #1c1c1c; 
+        color: #fff; 
+        width: 280px; 
+        outline: none;
+    }
+    .search-input:focus { border-color: #00a8cc; }
+    .search-btn { 
+        padding: 10px 20px; 
+        font-size: 16px; 
+        border: none; 
+        border-radius: 8px; 
+        background: #00a8cc; 
+        color: #fff; 
+        font-weight: bold; 
+        cursor: pointer; 
+        transition: background .2s;
+    }
+    .search-btn:hover { background: #0082a3; }
 
     .forecast-container { display:flex; flex-wrap:wrap; gap:18px; justify-content:center; }
     .day-card { background:#1c1c1c; padding:18px; border-radius:14px; width:220px;
@@ -28,8 +54,13 @@
 </head>
 <body>
 
-<h1>USA 7-Day Weather Forecast</h1>
-<div class="subtitle">Daily Temperature, Sustained Wind & Gust Trends</div>
+<h1 id="locationTitle">7-Day Weather Forecast</h1>
+<div class="subtitle" id="locationSub">Enter a location to view daily temperature and wind trends</div>
+
+<div class="search-container">
+    <input type="text" id="searchInput" class="search-input" placeholder="e.g., Babbitt, MN" value="Babbitt, MN">
+    <button onclick="fetchForecast()" class="search-btn">Search</button>
+</div>
 
 <div class="forecast-container" id="forecastContainer">Loading forecast data...</div>
 
@@ -51,59 +82,81 @@ function getTempColor(temp) {
 
 // Maps wind/gust speed (mph) to Ventusky wind scale colors
 function getWindColor(speed) {
-    if (speed >= 90) return "#5e0024"; // 90 mph - Dark Burgundy
-    if (speed >= 80) return "#990000"; // 80 mph - Dark Red
-    if (speed >= 70) return "#cc0000"; // 70 mph - Red
-    if (speed >= 60) return "#e62e00"; // 60 mph - Red-Orange
-    if (speed >= 50) return "#f54e00"; // 50 mph - Orange
-    if (speed >= 45) return "#f57c00"; // 45 mph - Light Orange
-    if (speed >= 40) return "#f5ab00"; // 40 mph - Warm Yellow
-    if (speed >= 35) return "#f0e100"; // 35 mph - Yellow
-    if (speed >= 30) return "#a3e000"; // 30 mph - Yellow-Green
-    if (speed >= 25) return "#45db00"; // 25 mph - Bright Green
-    if (speed >= 20) return "#00c875"; // 20 mph - Mint Green
-    if (speed >= 15) return "#00a8cc"; // 15 mph - Cyan / Teal
-    if (speed >= 10) return "#2b5cbf"; // 10 mph - Blue
-    if (speed >= 5)  return "#5a2a9e"; // 5 mph  - Purple / Indigo
-    return "#2d0a4e";                  // 0 mph  - Dark Purple
+    if (speed >= 90) return "#5e0024";
+    if (speed >= 80) return "#990000";
+    if (speed >= 70) return "#cc0000";
+    if (speed >= 60) return "#e62e00";
+    if (speed >= 50) return "#f54e00";
+    if (speed >= 45) return "#f57c00";
+    if (speed >= 40) return "#f5ab00";
+    if (speed >= 35) return "#f0e100";
+    if (speed >= 30) return "#a3e000";
+    if (speed >= 25) return "#45db00";
+    if (speed >= 20) return "#00c875";
+    if (speed >= 15) return "#00a8cc";
+    if (speed >= 10) return "#2b5cbf";
+    if (speed >= 5)  return "#5a2a9e";
+    return "#2d0a4e";
 }
 
-function buildForecast() {
-    const today = new Date();
-    const daysOfWeek = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-    
-    const baseHigh = 82; 
-    const baseLow = 62;
-    const baseWind = 14;
+// Fetch coordinates and forecast data from Open-Meteo API
+async function fetchForecast() {
+    const query = document.getElementById("searchInput").value.trim();
+    const container = document.getElementById("forecastContainer");
 
+    if (!query) return;
+
+    container.innerHTML = "Searching location...";
+
+    try {
+        // 1. Geocoding request to convert location name to coordinates
+        const geoRes = await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(query)}&count=1&language=en&format=json`);
+        const geoData = await geoRes.json();
+
+        if (!geoData.results || geoData.results.length === 0) {
+            container.innerHTML = "Location not found. Please try another search.";
+            return;
+        }
+
+        const place = geoData.results[0];
+        const lat = place.latitude;
+        const lon = place.longitude;
+        const placeName = `${place.name}${place.admin1 ? ', ' + place.admin1 : ''}`;
+
+        document.getElementById("locationTitle").innerText = `${placeName} 7-Day Forecast`;
+
+        // 2. Weather forecast request
+        container.innerHTML = "Loading weather data...";
+        const weatherUrl = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&daily=temperature_2m_max,temperature_2m_min,wind_speed_10m_max,wind_gusts_10m_max&temperature_unit=fahrenheit&wind_speed_unit=mph&timezone=auto`;
+        
+        const weatherRes = await fetch(weatherUrl);
+        const weatherData = await weatherRes.json();
+
+        parseAndRender(weatherData);
+
+    } catch (err) {
+        console.error(err);
+        container.innerHTML = "Error loading weather data. Please try again.";
+    }
+}
+
+function parseAndRender(data) {
+    const daysOfWeek = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+    const daily = data.daily;
     const forecastData = [];
 
-    for (let i = 0; i < 7; i++) {
-        const forecastDate = new Date();
-        forecastDate.setDate(today.getDate() + i);
-
-        const year = forecastDate.getFullYear();
-        const month = forecastDate.getMonth() + 1;
-        const dateNum = forecastDate.getDate();
-
-        const dayLabel = i === 0 ? "Today" : daysOfWeek[forecastDate.getDay()];
-        const dateString = `${month}/${dateNum}/${year}`;
-
-        const tempVariation = Math.round(Math.sin(i * 0.9) * 10);
-        const windVariation = Math.round(Math.abs(Math.cos(i * 1.2)) * 22);
-
-        const highTemp = baseHigh + tempVariation;
-        const lowTemp = baseLow + Math.round(tempVariation * 0.7);
-        const windSpeed = baseWind + windVariation;
-        const gustSpeed = Math.round(windSpeed * 1.6);
+    for (let i = 0; i < daily.time.length; i++) {
+        const dateObj = new Date(daily.time[i] + "T00:00:00");
+        const dayLabel = i === 0 ? "Today" : daysOfWeek[dateObj.getDay()];
+        const dateString = `${dateObj.getMonth() + 1}/${dateObj.getDate()}/${dateObj.getFullYear()}`;
 
         forecastData.push({
             day: dayLabel,
             dateStr: dateString,
-            high: highTemp,
-            low: lowTemp,
-            wind: windSpeed,
-            gusts: gustSpeed
+            high: Math.round(daily.temperature_2m_max[i]),
+            low: Math.round(daily.temperature_2m_min[i]),
+            wind: Math.round(daily.wind_speed_10m_max[i]),
+            gusts: Math.round(daily.wind_gusts_10m_max[i])
         });
     }
 
@@ -221,7 +274,15 @@ function renderForecast(forecastData) {
     });
 }
 
-buildForecast();
+// Enable pressing "Enter" key in search box
+document.getElementById("searchInput").addEventListener("keyup", function(event) {
+    if (event.key === "Enter") {
+        fetchForecast();
+    }
+});
+
+// Initial load for Babbitt, MN
+fetchForecast();
 </script>
 
 </body>
