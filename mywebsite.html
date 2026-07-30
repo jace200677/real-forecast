@@ -59,7 +59,7 @@
 
   <script>
     const startEveningHour = 20;   // 8:00 PM
-    const peakHour = 20;           // still 8 PM
+    const peakHour = 20;           // 8 PM
     const peakMinute = 15;         // 8:15 PM
 
     function getCelebrationIntensity(date) {
@@ -79,13 +79,18 @@
         return 75;
       }
 
-      // Between 8:00 PM and 8:15 PM → ramp DOWN from 75% to 0%
+      // At exactly 8:00 PM → 88%
+      if (h === startEveningHour && m === 0) {
+        return 88;
+      }
+
+      // Between 8:00 PM and 8:15 PM → ramp DOWN from 88% to 0%
       if (!isBefore(startEveningHour, 0) && isBefore(peakHour, peakMinute)) {
         const totalRampMinutes = 15; // 8:00–8:15
         const minutesSince8 = (h - startEveningHour) * 60 + m;
         const t = Math.min(Math.max(minutesSince8, 0), totalRampMinutes);
 
-        const startIntensity = 75;
+        const startIntensity = 88;
         const endIntensity = 0;
 
         const intensity = startIntensity + (endIntensity - startIntensity) * (t / totalRampMinutes);
