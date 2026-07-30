@@ -45,11 +45,11 @@
 
     /* Values & Labels */
     .metric-val { font-size:24px; font-weight:bold; margin-bottom:2px; }
-    .metric-sub { font-size:12px; color:#aaa; margin-bottom:6px; }
+    .metric-sub { font-size:13px; font-weight: 500; margin-bottom:6px; }
 
     /* Bar Styling */
     .bar { height:10px; background:#2a2a2a; border-radius:5px; overflow:hidden; margin-bottom:12px; }
-    .bar-fill { height:100%; border-radius:5px; transition:width .8s; }
+    .bar-fill { height:100%; border-radius:5px; transition:width .8s, background-color .8s; }
 </style>
 </head>
 <body>
@@ -99,7 +99,6 @@ function getWindColor(speed) {
     return "#2d0a4e";
 }
 
-// Fetch coordinates and forecast data from Open-Meteo API
 async function fetchForecast() {
     const query = document.getElementById("searchInput").value.trim();
     const container = document.getElementById("forecastContainer");
@@ -109,7 +108,6 @@ async function fetchForecast() {
     container.innerHTML = "Searching location...";
 
     try {
-        // 1. Geocoding request to convert location name to coordinates
         const geoRes = await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(query)}&count=1&language=en&format=json`);
         const geoData = await geoRes.json();
 
@@ -125,7 +123,6 @@ async function fetchForecast() {
 
         document.getElementById("locationTitle").innerText = `${placeName} 7-Day Forecast`;
 
-        // 2. Weather forecast request
         container.innerHTML = "Loading weather data...";
         const weatherUrl = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&daily=temperature_2m_max,temperature_2m_min,wind_speed_10m_max,wind_gusts_10m_max&temperature_unit=fahrenheit&wind_speed_unit=mph&timezone=auto`;
         
@@ -184,23 +181,24 @@ function renderForecast(forecastData) {
         tempTitle.className = "section-title";
         tempTitle.innerText = "Temperature";
 
-        const tempColor = getTempColor(item.high);
+        const highColor = getTempColor(item.high);
+        const lowColor = getTempColor(item.low);
 
         const tempDisplay = document.createElement("div");
         tempDisplay.className = "metric-val";
-        tempDisplay.style.color = tempColor;
+        tempDisplay.style.color = highColor;
         tempDisplay.innerText = `${item.high}°F`;
 
         const tempRange = document.createElement("div");
         tempRange.className = "metric-sub";
-        tempRange.innerText = `Low: ${item.low}°F`;
+        tempRange.innerHTML = `Low: <span style="color: ${lowColor}; font-weight: bold;">${item.low}°F</span>`;
 
         const tempBar = document.createElement("div");
         tempBar.className = "bar";
         const tempFill = document.createElement("div");
         tempFill.className = "bar-fill";
         tempFill.style.width = Math.min(Math.max(((item.high - (-40)) / (120 - (-40))) * 100, 5), 100) + "%";
-        tempFill.style.backgroundColor = tempColor;
+        tempFill.style.backgroundColor = highColor;
         tempBar.appendChild(tempFill);
 
         // --- 2. Sustained Wind Section ---
@@ -217,6 +215,7 @@ function renderForecast(forecastData) {
 
         const windSub = document.createElement("div");
         windSub.className = "metric-sub";
+        windSub.style.color = "#aaa";
         windSub.innerText = `Sustained`;
 
         const windBar = document.createElement("div");
@@ -241,6 +240,7 @@ function renderForecast(forecastData) {
 
         const gustSub = document.createElement("div");
         gustSub.className = "metric-sub";
+        gustSub.style.color = "#aaa";
         gustSub.innerText = `Max Gusts`;
 
         const gustBar = document.createElement("div");
@@ -274,14 +274,12 @@ function renderForecast(forecastData) {
     });
 }
 
-// Enable pressing "Enter" key in search box
 document.getElementById("searchInput").addEventListener("keyup", function(event) {
     if (event.key === "Enter") {
         fetchForecast();
     }
 });
 
-// Initial load for Babbitt, MN
 fetchForecast();
 </script>
 
