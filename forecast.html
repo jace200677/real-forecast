@@ -1,1 +1,228 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>USA 7-Day Weather Forecast</title>
+<style>
+    body { font-family: 'Segoe UI', Arial, sans-serif; background:#0d0d0d; color:#fff; padding:20px; }
+    h1 { text-align:center; margin-bottom:5px; font-size:32px; }
+    .subtitle { text-align:center; color:#888; font-size:14px; margin-bottom:25px; }
 
+    .forecast-container { display:flex; flex-wrap:wrap; gap:18px; justify-content:center; }
+    .day-card { background:#1c1c1c; padding:18px; border-radius:14px; width:220px;
+                box-shadow:0 0 18px rgba(0,0,0,0.6); transition:transform .2s; }
+    .day-card:hover { transform:scale(1.05); }
+    .day-name { font-size:20px; text-align:center; margin-bottom:2px; font-weight:bold; }
+    .day-date { font-size:12px; color:#777; text-align:center; margin-bottom:14px; }
+    
+    .section-title { font-size:11px; text-transform:uppercase; letter-spacing:1px; color:#777; margin-bottom:4px; }
+
+    /* Values & Labels */
+    .metric-val { font-size:24px; font-weight:bold; margin-bottom:2px; }
+    .metric-sub { font-size:12px; color:#aaa; margin-bottom:6px; }
+
+    /* Bar Styling */
+    .bar { height:10px; background:#2a2a2a; border-radius:5px; overflow:hidden; margin-bottom:12px; }
+    .bar-fill { height:100%; border-radius:5px; transition:width .8s; }
+</style>
+</head>
+<body>
+
+<h1>USA 7-Day Weather Forecast</h1>
+<div class="subtitle">Daily Temperature, Sustained Wind & Gust Trends</div>
+
+<div class="forecast-container" id="forecastContainer">Loading forecast data...</div>
+
+<script>
+// Maps temperature (°F) to Ventusky scale
+function getTempColor(temp) {
+    if (temp >= 110) return "#7b003a";
+    if (temp >= 95)  return "#bd0042";
+    if (temp >= 85)  return "#ff3300";
+    if (temp >= 75)  return "#ffaa00";
+    if (temp >= 65)  return "#ffff00";
+    if (temp >= 55)  return "#88ff00";
+    if (temp >= 45)  return "#00ffcc";
+    if (temp >= 35)  return "#0099ff";
+    if (temp >= 20)  return "#0033cc";
+    if (temp >= 0)   return "#4b0082";
+    return "#330044";
+}
+
+// Maps wind/gust speed (mph) to Ventusky wind scale colors
+function getWindColor(speed) {
+    if (speed >= 90) return "#5e0024"; // 90 mph - Dark Burgundy
+    if (speed >= 80) return "#990000"; // 80 mph - Dark Red
+    if (speed >= 70) return "#cc0000"; // 70 mph - Red
+    if (speed >= 60) return "#e62e00"; // 60 mph - Red-Orange
+    if (speed >= 50) return "#f54e00"; // 50 mph - Orange
+    if (speed >= 45) return "#f57c00"; // 45 mph - Light Orange
+    if (speed >= 40) return "#f5ab00"; // 40 mph - Warm Yellow
+    if (speed >= 35) return "#f0e100"; // 35 mph - Yellow
+    if (speed >= 30) return "#a3e000"; // 30 mph - Yellow-Green
+    if (speed >= 25) return "#45db00"; // 25 mph - Bright Green
+    if (speed >= 20) return "#00c875"; // 20 mph - Mint Green
+    if (speed >= 15) return "#00a8cc"; // 15 mph - Cyan / Teal
+    if (speed >= 10) return "#2b5cbf"; // 10 mph - Blue
+    if (speed >= 5)  return "#5a2a9e"; // 5 mph  - Purple / Indigo
+    return "#2d0a4e";                  // 0 mph  - Dark Purple
+}
+
+function buildForecast() {
+    const today = new Date();
+    const daysOfWeek = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+    
+    const baseHigh = 82; 
+    const baseLow = 62;
+    const baseWind = 14;
+
+    const forecastData = [];
+
+    for (let i = 0; i < 7; i++) {
+        const forecastDate = new Date();
+        forecastDate.setDate(today.getDate() + i);
+
+        const year = forecastDate.getFullYear();
+        const month = forecastDate.getMonth() + 1;
+        const dateNum = forecastDate.getDate();
+
+        const dayLabel = i === 0 ? "Today" : daysOfWeek[forecastDate.getDay()];
+        const dateString = `${month}/${dateNum}/${year}`;
+
+        const tempVariation = Math.round(Math.sin(i * 0.9) * 10);
+        const windVariation = Math.round(Math.abs(Math.cos(i * 1.2)) * 22);
+
+        const highTemp = baseHigh + tempVariation;
+        const lowTemp = baseLow + Math.round(tempVariation * 0.7);
+        const windSpeed = baseWind + windVariation;
+        const gustSpeed = Math.round(windSpeed * 1.6);
+
+        forecastData.push({
+            day: dayLabel,
+            dateStr: dateString,
+            high: highTemp,
+            low: lowTemp,
+            wind: windSpeed,
+            gusts: gustSpeed
+        });
+    }
+
+    renderForecast(forecastData);
+}
+
+function renderForecast(forecastData) {
+    const container = document.getElementById("forecastContainer");
+    container.innerHTML = "";
+
+    forecastData.forEach(item => {
+        const card = document.createElement("div");
+        card.className = "day-card";
+
+        const dayName = document.createElement("div");
+        dayName.className = "day-name";
+        dayName.innerText = item.day;
+
+        const dayDate = document.createElement("div");
+        dayDate.className = "day-date";
+        dayDate.innerText = item.dateStr;
+
+        // --- 1. Temperature Section ---
+        const tempTitle = document.createElement("div");
+        tempTitle.className = "section-title";
+        tempTitle.innerText = "Temperature";
+
+        const tempColor = getTempColor(item.high);
+
+        const tempDisplay = document.createElement("div");
+        tempDisplay.className = "metric-val";
+        tempDisplay.style.color = tempColor;
+        tempDisplay.innerText = `${item.high}°F`;
+
+        const tempRange = document.createElement("div");
+        tempRange.className = "metric-sub";
+        tempRange.innerText = `Low: ${item.low}°F`;
+
+        const tempBar = document.createElement("div");
+        tempBar.className = "bar";
+        const tempFill = document.createElement("div");
+        tempFill.className = "bar-fill";
+        tempFill.style.width = Math.min(Math.max(((item.high - (-40)) / (120 - (-40))) * 100, 5), 100) + "%";
+        tempFill.style.backgroundColor = tempColor;
+        tempBar.appendChild(tempFill);
+
+        // --- 2. Sustained Wind Section ---
+        const windTitle = document.createElement("div");
+        windTitle.className = "section-title";
+        windTitle.innerText = "Wind Speed";
+
+        const windColor = getWindColor(item.wind);
+
+        const windDisplay = document.createElement("div");
+        windDisplay.className = "metric-val";
+        windDisplay.style.color = windColor;
+        windDisplay.innerText = `${item.wind} mph`;
+
+        const windSub = document.createElement("div");
+        windSub.className = "metric-sub";
+        windSub.innerText = `Sustained`;
+
+        const windBar = document.createElement("div");
+        windBar.className = "bar";
+        const windFill = document.createElement("div");
+        windFill.className = "bar-fill";
+        windFill.style.width = Math.min(Math.max((item.wind / 90) * 100, 5), 100) + "%";
+        windFill.style.backgroundColor = windColor;
+        windBar.appendChild(windFill);
+
+        // --- 3. Wind Gusts Section ---
+        const gustTitle = document.createElement("div");
+        gustTitle.className = "section-title";
+        gustTitle.innerText = "Peak Gusts";
+
+        const gustColor = getWindColor(item.gusts);
+
+        const gustDisplay = document.createElement("div");
+        gustDisplay.className = "metric-val";
+        gustDisplay.style.color = gustColor;
+        gustDisplay.innerText = `${item.gusts} mph`;
+
+        const gustSub = document.createElement("div");
+        gustSub.className = "metric-sub";
+        gustSub.innerText = `Max Gusts`;
+
+        const gustBar = document.createElement("div");
+        gustBar.className = "bar";
+        const gustFill = document.createElement("div");
+        gustFill.className = "bar-fill";
+        gustFill.style.width = Math.min(Math.max((item.gusts / 90) * 100, 5), 100) + "%";
+        gustFill.style.backgroundColor = gustColor;
+        gustBar.appendChild(gustFill);
+
+        // Assemble card
+        card.appendChild(dayName);
+        card.appendChild(dayDate);
+
+        card.appendChild(tempTitle);
+        card.appendChild(tempDisplay);
+        card.appendChild(tempRange);
+        card.appendChild(tempBar);
+
+        card.appendChild(windTitle);
+        card.appendChild(windDisplay);
+        card.appendChild(windSub);
+        card.appendChild(windBar);
+
+        card.appendChild(gustTitle);
+        card.appendChild(gustDisplay);
+        card.appendChild(gustSub);
+        card.appendChild(gustBar);
+
+        container.appendChild(card);
+    });
+}
+
+buildForecast();
+</script>
+
+</body>
+</html>
