@@ -61,7 +61,7 @@
 <div class="subtitle" id="locationSub">Search any location to view high/low temperatures, sustained wind, and peak gusts</div>
 
 <div class="search-container">
-    <input type="text" id="searchInput" class="search-input" placeholder="Enter location (e.g. Washington, Minnesota...)">
+    <input type="text" id="searchInput" class="search-input" placeholder="Search location (e.g. Washington, Minnesota...)">
     <button onclick="fetchForecast()" class="search-btn">Search</button>
 </div>
 
@@ -98,16 +98,62 @@ function getWindColor(speed) {
     return "#5a2a9e";                  // Calm
 }
 
-// Regional Weather Event Scenarios by Date
-const regionalEvents = {
-    "7/31/2026": { high: 82, low: 64, wind: 38, gusts: 75, condition: "Storms Afternoon (MN)" },
-    "8/2/2026":  { high: 50, low: 38, wind: 68, gusts: 105, condition: "High Winds >100mph (WA)" },
-    "8/3/2026":  { high: 72, low: 48, wind: 20, gusts: 35, condition: "Moderate Winds (ID)" },
-    "8/4/2026":  { high: 98, low: 70, wind: 52, gusts: 88, condition: "Hot & Strong Winds (MT)" },
-    "8/5/2026":  { high: 92, low: 64, wind: 44, gusts: 80, condition: "Hot & Gusty (ND)" },
-    "8/6/2026":  { high: 70, low: 34, wind: 39, gusts: 87, condition: "High Gusts (Northern MN)" },
-    "8/7/2026":  { high: 62, low: 40, wind: 55, gusts: 99, condition: "Cool / Severe Winds (WI)" }
-};
+// Regional Weather Event Scenarios tagged by State/Location keywords
+const regionalEvents = [
+    {
+        date: "7/31/2026",
+        regionKeywords: ["minnesota", "mn"],
+        data: { high: 82, low: 64, wind: 38, gusts: 75, condition: "Storms Afternoon (MN)" }
+    },
+    {
+        date: "8/2/2026",
+        regionKeywords: ["washington", "wa"],
+        data: { high: 50, low: 38, wind: 68, gusts: 105, condition: "High Winds >100mph (WA)" }
+    },
+    {
+        date: "8/3/2026",
+        regionKeywords: ["idaho", "id"],
+        data: { high: 72, low: 48, wind: 20, gusts: 35, condition: "Moderate Winds (ID)" }
+    },
+    {
+        date: "8/4/2026",
+        regionKeywords: ["montana", "mt"],
+        data: { high: 98, low: 70, wind: 52, gusts: 88, condition: "Hot & Strong Winds (MT)" }
+    },
+    {
+        date: "8/5/2026",
+        regionKeywords: ["north dakota", "nd"],
+        data: { high: 92, low: 64, wind: 44, gusts: 80, condition: "Hot & Gusty (ND)" }
+    },
+    {
+        date: "8/6/2026",
+        regionKeywords: ["minnesota", "mn"],
+        data: { high: 70, low: 34, wind: 39, gusts: 87, condition: "High Gusts (Northern MN)" }
+    },
+    {
+        date: "8/7/2026",
+        regionKeywords: ["wisconsin", "wi"],
+        data: { high: 62, low: 40, wind: 55, gusts: 99, condition: "Cool / Severe Winds (WI)" }
+    }
+];
+
+// Helper to check if a searched location matches any state/region keyword
+function findRegionalOverride(dateStr, searchString) {
+    const searchLower = searchString.toLowerCase();
+    for (const event of regionalEvents) {
+        if (event.date === dateStr) {
+            const matchesRegion = event.regionKeywords.some(keyword => {
+                // Check word boundaries to prevent false positives (e.g., 'in' inside 'indiana')
+                const regex = new RegExp(`\\b${keyword}\\b`, 'i');
+                return regex.test(searchLower);
+            });
+            if (matchesRegion) {
+                return event.data;
+            }
+        }
+    }
+    return null;
+}
 
 async function fetchForecast() {
     const query = document.getElementById("searchInput").value.trim();
@@ -144,7 +190,9 @@ async function fetchForecast() {
         const weatherRes = await fetch(weatherUrl);
         const weatherData = await weatherRes.json();
 
-        parseAndRender(weatherData, placeName);
+        // Pass full location context (search query + resolved location name) to check for matches
+        const fullLocationText = `${query} ${placeName}`;
+        parseAndRender(weatherData, fullLocationText);
 
     } catch (err) {
         console.error(err);
@@ -152,7 +200,7 @@ async function fetchForecast() {
     }
 }
 
-function parseAndRender(data, locationName) {
+function parseAndRender(data, locationContext) {
     const daysOfWeek = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
     const daily = data.daily;
     const forecastData = [];
@@ -168,13 +216,14 @@ function parseAndRender(data, locationName) {
         const dateObj = new Date(y, m - 1, d);
         const dayLabel = i === 0 ? "Today" : daysOfWeek[dateObj.getDay()];
 
-        const override = regionalEvents[dateStr];
+        // Check if there is an override specifically matching the searched location
+        const matchedOverride = findRegionalOverride(dateStr, locationContext);
 
-        const high = override ? override.high : Math.round(daily.temperature_2m_max[i] || 72);
-        const low = override ? override.low : Math.round(daily.temperature_2m_min[i] || 52);
-        const wind = override ? override.wind : Math.round(daily.wind_speed_10m_max[i] || 18);
-        const gusts = override ? override.gusts : Math.round(daily.wind_gusts_10m_max[i] || 30);
-        const note = override ? override.condition : "";
+        const high = matchedOverride ? matchedOverride.high : Math.round(daily.temperature_2m_max[i] || 72);
+        const low = matchedOverride ? matchedOverride.low : Math.round(daily.temperature_2m_min[i] || 52);
+        const wind = matchedOverride ? matchedOverride.wind : Math.round(daily.wind_speed_10m_max[i] || 18);
+        const gusts = matchedOverride ? matchedOverride.gusts : Math.round(daily.wind_gusts_10m_max[i] || 30);
+        const note = matchedOverride ? matchedOverride.condition : "";
 
         if (gusts > maxGustInForecast) {
             maxGustInForecast = gusts;
