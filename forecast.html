@@ -244,25 +244,25 @@ function findRegionalOverride(dateStr, searchString, placeName, apiHigh, apiLow,
     const targetWind = Math.max(5, base.wind + windOffset);
     const targetGusts = Math.max(10, base.gusts + gustOffset);
 
-    // Calculate dynamic confidence based on date proximity and time of day
+    // Calculate dynamic confidence based on date proximity down to exact hours, minutes, and seconds
     const now = new Date();
-    const eventDate = new Date(dateStr);
+    const eventDate = new Date(dateStr); // Sets time to midnight 00:00:00 of target date
     
-    // Normalize both dates to midnight for day difference calculation
-    const todayMidnight = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-    const eventMidnight = new Date(eventDate.getFullYear(), eventDate.getMonth(), eventDate.getDate());
-    
-    const diffTime = eventMidnight - todayMidnight;
-    const daysDiff = Math.round(diffTime / (1000 * 60 * 60 * 24));
+    // Difference in days (fractional with high precision)
+    const diffMs = eventDate.getTime() - now.getTime();
+    const daysDiff = diffMs / (1000 * 60 * 60 * 24);
 
     let proximityMultiplier = 1.0;
     if (daysDiff > 0) {
-        // As event is further out in days, confidence gradually scales down
+        // Future date: scales down smoothly based on exact remaining fractional days
         proximityMultiplier = Math.max(0.3, 1.0 - (daysDiff * 0.12));
-    } else if (daysDiff === 0) {
-        // Today: Confidence decays smoothly as hours pass throughout the day (0 to 24)
-        const currentHour = now.getHours() + (now.getMinutes() / 60);
-        proximityMultiplier = Math.max(0.2, 1.0 - (currentHour / 24) * 0.5);
+    } else {
+        // Today or past date: confidence decays continuously based on hours, minutes, seconds elapsed
+        const currentFractionalHour = now.getHours() + 
+                                      (now.getMinutes() / 60) + 
+                                      (now.getSeconds() / 3600) + 
+                                      (now.getMilliseconds() / 3600000);
+        proximityMultiplier = Math.max(0.2, 1.0 - (currentFractionalHour / 24) * 0.5);
     }
 
     const effectiveConfidence = Math.max(0, Math.min(1.0, event.baseConfidence * proximityMultiplier));
