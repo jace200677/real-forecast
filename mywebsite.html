@@ -78,16 +78,13 @@
 
 <script>
 const IS_LIVE_ON_YOUTUBE = false; 
-let cachedAlerts = null;
 
 async function fetchActiveAlerts() {
-    if (cachedAlerts) return cachedAlerts;
     try {
         const response = await fetch("https://api.weather.gov/alerts/active");
         if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
         const data = await response.json();
-        cachedAlerts = data.features || [];
-        return cachedAlerts;
+        return data.features || [];
     } catch (err) {
         console.error("Failed to fetch NWS alerts:", err);
         return null;
@@ -205,23 +202,22 @@ function updateStreamStatus(wisScore) {
     }
 }
 
-// Generates real-time fluctuating values for 7/31/2026
+// Generates dynamic scores based on hours and minutes (no seconds)
 function getDynamicScores73126() {
     const now = new Date();
-    const seconds = now.getSeconds();
     const minutes = now.getMinutes();
     const hours = now.getHours();
 
-    // Fluctuating sine wave based on time (hours, minutes, seconds)
-    const timeFactor = (hours * 3600 + minutes * 60 + seconds);
-    const fluctuation = Math.sin(timeFactor / 10) * 4; // Fluctuate +/- 4 points
+    // Time factor based strictly on hours and minutes
+    const timeFactor = (hours * 60 + minutes);
+    const fluctuation = Math.sin(timeFactor / 15) * 4; 
 
-    // Build towards peak afternoon score of 56
+    // Peak score up to 56
     const basePeak = 52;
     const projectedScore = Math.min(Math.max(Math.round(basePeak + fluctuation), 10), 56);
 
-    // Dynamic stream chance climbing to 100%
-    const streamFluctuation = Math.cos(timeFactor / 8) * 5;
+    // Stream chance up to 100%
+    const streamFluctuation = Math.cos(timeFactor / 12) * 5;
     const baseChance = 95;
     const streamChance = Math.min(Math.max(Math.round(baseChance + streamFluctuation), 0), 100);
 
@@ -263,7 +259,7 @@ async function buildForecast() {
         let projectedScore;
         let streamChance;
         
-        // Specific dynamic calculation for 7/31/2026 (Minnesota Storm Threat)
+        // Dynamic calculation for 7/31/2026 (Minnesota Storm Threat)
         if (year === 2026 && month === 7 && dateNum === 31) {
             const dynamicData = getDynamicScores73126();
             projectedScore = dynamicData.projectedScore;
@@ -376,9 +372,8 @@ function renderForecast(dosForecast) {
     });
 }
 
-// Initial build and 1-second continuous live update tick
+// Run forecast on page load
 buildForecast();
-setInterval(buildForecast, 1000);
 </script>
 
 </body>
