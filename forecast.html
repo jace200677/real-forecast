@@ -75,10 +75,16 @@
 // GitHub repository base path for weather icons
 const ICON_BASE_URL = "https://raw.githubusercontent.com/jace200677/real-forecast/main/weather/";
 
-// Map WMO weather codes to repository icon filenames
-function getWeatherIcon(weatherCode, isWindyOverride) {
-    if (isWindyOverride) {
-        return ICON_BASE_URL + "windy.png";
+// Map WMO weather codes and custom conditions to repository icon filenames
+function getWeatherIcon(weatherCode, conditionText) {
+    if (conditionText) {
+        const lowerCond = conditionText.toLowerCase();
+        if (lowerCond.includes("storm")) {
+            return ICON_BASE_URL + "Thunderstorms.png";
+        }
+        if (lowerCond.includes("windy")) {
+            return ICON_BASE_URL + "windy.png";
+        }
     }
     
     switch (weatherCode) {
@@ -157,7 +163,7 @@ const regionalEvents = [
         date: "7/31/2026",
         regionKeywords: ["minnesota", "mn"],
         baseConfidence: 0.90,
-        data: { high: 82, low: 64, wind: 38, gusts: 75, condition: "Windy / Storms Afternoon" }
+        data: { high: 82, low: 64, wind: 38, gusts: 75, condition: "Storms Afternoon" }
     },
     {
         date: "8/2/2026",
@@ -275,7 +281,8 @@ function findRegionalOverride(dateStr, searchString, placeName, apiHigh, apiLow,
         low: finalLow,
         wind: finalWind,
         gusts: finalGusts,
-        condition: label
+        condition: label,
+        rawCondition: base.condition
     };
 }
 
@@ -353,7 +360,7 @@ function parseAndRender(data, searchQuery, placeName) {
         const gusts = matchedOverride ? matchedOverride.gusts : apiGusts;
         const note = matchedOverride ? matchedOverride.condition : "";
 
-        const iconUrl = getWeatherIcon(apiCode, Boolean(matchedOverride));
+        const iconUrl = getWeatherIcon(apiCode, matchedOverride ? matchedOverride.rawCondition : "");
 
         if (gusts > maxGustInForecast) {
             maxGustInForecast = gusts;
