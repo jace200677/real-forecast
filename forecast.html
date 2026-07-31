@@ -78,7 +78,7 @@
         width: 90%; max-width: 750px; padding: 24px; box-shadow: 0 10px 30px rgba(0,0,0,0.8);
         position: relative;
     }
-    .modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-wrap: wrap; gap: 10px; }
+    .modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; flex-wrap: wrap; gap: 10px; }
     .modal-title { font-size: 20px; font-weight: bold; color: #fff; }
     .modal-close { font-size: 24px; color: #aaa; cursor: pointer; border: none; background: none; }
     .modal-close:hover { color: #fff; }
@@ -87,7 +87,12 @@
         background: #2a2a2a; color: #fff; border: 1px solid #444; padding: 8px 12px;
         border-radius: 6px; font-size: 14px; outline: none; cursor: pointer;
     }
-    .chart-container { position: relative; width: 100%; height: 350px; }
+    .chart-container { position: relative; width: 100%; height: 330px; }
+    .graph-confidence-bar {
+        font-size: 12px; color: #aaa; background: #252525; padding: 8px 12px; border-radius: 6px;
+        margin-bottom: 15px; display: flex; justify-content: space-between; align-items: center; border: 1px solid #333;
+    }
+    .graph-confidence-bar span { color: #00a8cc; font-weight: bold; }
 </style>
 </head>
 <body>
@@ -119,6 +124,9 @@
                 <button class="modal-close" onclick="closeModal()">&times;</button>
             </div>
         </div>
+        <div class="graph-confidence-bar" id="graphConfidenceBar">
+            Live Precision & Dynamic Confidence: <span id="modalConfVal">Calculating...</span>
+        </div>
         <div class="chart-container">
             <canvas id="forecastChart"></canvas>
         </div>
@@ -134,6 +142,7 @@ let currentLon = null;
 let activeHourlyData = null;
 let activeDayDateStr = null;
 let chartInstance = null;
+let liveTimerInterval = null;
 
 // Map WMO weather codes and custom conditions to repository icon filenames
 function getWeatherIcon(weatherCode, conditionText) {
@@ -310,6 +319,26 @@ function getHashOffset(str) {
     return hash;
 }
 
+function calculateEffectiveConfidence(dateStr, baseConfidence) {
+    const now = new Date();
+    const eventDate = new Date(dateStr); 
+    const diffMs = eventDate.getTime() - now.getTime();
+    const daysDiff = diffMs / (1000 * 60 * 60 * 24);
+
+    let proximityMultiplier = 1.0;
+    if (daysDiff > 0) {
+        proximityMultiplier = Math.max(0.3, 1.0 - (daysDiff * 0.12));
+    } else {
+        const currentFractionalHour = now.getHours() + 
+                                      (now.getMinutes() / 60) + 
+                                      (now.getSeconds() / 3600) + 
+                                      (now.getMilliseconds() / 3600000);
+        proximityMultiplier = Math.max(0.2, 1.0 - (currentFractionalHour / 24) * 0.5);
+    }
+
+    return Math.max(0, Math.min(1.0, baseConfidence * proximityMultiplier));
+}
+
 function findRegionalOverride(dateStr, searchString, placeName, apiHigh, apiLow, apiWind, apiGusts) {
     const searchLower = `${searchString} ${placeName}`.toLowerCase();
     
@@ -342,23 +371,7 @@ function findRegionalOverride(dateStr, searchString, placeName, apiHigh, apiLow,
     const targetWind = Math.max(5, base.wind + windOffset);
     const targetGusts = Math.max(10, base.gusts + gustOffset);
 
-    const now = new Date();
-    const eventDate = new Date(dateStr); 
-    const diffMs = eventDate.getTime() - now.getTime();
-    const daysDiff = diffMs / (1000 * 60 * 60 * 24);
-
-    let proximityMultiplier = 1.0;
-    if (daysDiff > 0) {
-        proximityMultiplier = Math.max(0.3, 1.0 - (daysDiff * 0.12));
-    } else {
-        const currentFractionalHour = now.getHours() + 
-                                      (now.getMinutes() / 60) + 
-                                      (now.getSeconds() / 3600) + 
-                                      (now.getMilliseconds() / 3600000);
-        proximityMultiplier = Math.max(0.2, 1.0 - (currentFractionalHour / 24) * 0.5);
-    }
-
-    const effectiveConfidence = Math.max(0, Math.min(1.0, event.baseConfidence * proximityMultiplier));
+    const effectiveConfidence = calculateEffectiveConfidence(dateStr, event.baseConfidence);
 
     const finalHigh = Math.round(targetHigh * effectiveConfidence + apiHigh * (1 - effectiveConfidence));
     const finalLow = Math.round(targetLow * effectiveConfidence + apiLow * (1 - effectiveConfidence));
@@ -449,22 +462,15 @@ function parseAndRender(data, searchQuery, placeName) {
 
         const matchedOverride = findRegionalOverride(dateStr, searchQuery, placeName, apiHigh, apiLow, apiWind, apiGusts);
 
-        // Apply time-weighted blending for hourly sequences if an override matches this date
         if (matchedOverride && activeHourlyData) {
             const [mm, dd, yy] = dateStr.split("/").map(Number);
             const formattedDate = `${yy}-${String(mm).padStart(2, '0')}-${String(dd).padStart(2, '0')}`;
             
             for (let h = 0; h < activeHourlyData.time.length; h++) {
                 if (activeHourlyData.time[h].startsWith(formattedDate)) {
-                    // Extract hour from ISO string (e.g., "2026-07-31T14:00")
                     const hourStr = activeHourlyData.time[h].split("T")[1];
                     const hourNum = parseInt(hourStr.split(":")[0], 10);
 
-                    // Determine blend weight factor based on the requested hourly schedule:
-                    // - Before 1:00 AM (hour < 1): 0.0 weight (pure live Open-Meteo weather)
-                    // - From 1:00 AM to 12:00 PM (1 <= hour <= 12): transition weight ramps up from 0.0 to 1.0 (reaches peak/override value)
-                    // - From 12:00 PM to 4:00 PM (12 < hour <= 16): 1.0 weight (fully at peak override values)
-                    // - After 4:00 PM to 11:59 PM (16 < hour <= 23): transition weight ramps down from 1.0 back to 0.0 (returns to live weather)
                     let blendWeight = 0;
                     if (hourNum < 1) {
                         blendWeight = 0;
@@ -480,7 +486,6 @@ function parseAndRender(data, searchQuery, placeName) {
                     let origWind = activeHourlyData.wind_speed_10m[h];
                     let origGust = activeHourlyData.wind_gusts_10m[h];
 
-                    // Target peak values constructed for this override event
                     let targetTempSeq = matchedOverride.baseEvent.high;
                     let targetWindSeq = matchedOverride.baseEvent.wind;
                     let targetGustSeq = matchedOverride.baseEvent.gusts;
@@ -494,7 +499,6 @@ function parseAndRender(data, searchQuery, placeName) {
             }
         }
 
-        // Recompute daily high/low and max wind/gusts from the updated hourly sequence for accuracy
         let calcHigh = apiHigh;
         let calcLow = apiLow;
         let calcWind = apiWind;
@@ -686,11 +690,66 @@ function openGraphModal(item) {
     document.getElementById("modalTitle").innerText = `${item.day} Hourly Forecast`;
     document.getElementById("modalSubtitle").innerText = `Date: ${item.dateStr}`;
     document.getElementById("chartModal").style.display = "flex";
+    
     updateChartMetric();
+    startLiveTimer();
 }
 
 function closeModal() {
     document.getElementById("chartModal").style.display = "none";
+    if (liveTimerInterval) {
+        clearInterval(liveTimerInterval);
+        liveTimerInterval = null;
+    }
+}
+
+function startLiveTimer() {
+    if (liveTimerInterval) clearInterval(liveTimerInterval);
+
+    updateLiveConfidenceDisplay();
+    liveTimerInterval = setInterval(() => {
+        updateLiveConfidenceDisplay();
+    }, 1000);
+}
+
+function updateLiveConfidenceDisplay() {
+    if (!activeDayDateStr) return;
+    
+    const now = new Date();
+    const [m, d, y] = activeDayDateStr.split("/").map(Number);
+    const eventDate = new Date(y, m - 1, d);
+    
+    const diffMs = eventDate.getTime() - now.getTime();
+    const daysDiff = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+    
+    const hours = String(now.getHours()).padStart(2, '0');
+    const minutes = String(now.getMinutes()).padStart(2, '0');
+    const seconds = String(now.getSeconds()).padStart(2, '0');
+    
+    // Find matching base event confidence if any
+    let baseConf = 0.85;
+    const event = regionalEvents.find(e => e.date === activeDayDateStr);
+    if (event) {
+        baseConf = event.baseConfidence;
+    }
+    
+    const currentEffectiveConf = calculateEffectiveConfidence(activeDayDateStr, baseConf);
+    const confPercent = (currentEffectiveConf * 100).toFixed(1);
+
+    let timeUntilText = "";
+    if (diffMs > 0) {
+        const totalSecs = Math.floor(diffMs / 1000);
+        const dRem = Math.floor(totalSecs / (3600 * 24));
+        const hRem = Math.floor((totalSecs % (3600 * 24)) / 3600);
+        const mRem = Math.floor((totalSecs % 3600) / 60);
+        const sRem = totalSecs % 60;
+        timeUntilText = `${dRem}d ${hRem}h ${mRem}m ${sRem}s away`;
+    } else {
+        timeUntilText = "Event Day / Active Now";
+    }
+
+    document.getElementById("modalConfVal").innerText = 
+        `Live Clock: ${hours}:${minutes}:${seconds} | ${timeUntilText} | Confidence: ${confPercent}%`;
 }
 
 function hexToRgba(hex, alpha) {
@@ -748,8 +807,7 @@ function renderChart(labels, values, segmentColors, labelName, metric) {
         chartInstance.destroy();
     }
 
-    // Create a smooth multi-stop gradient for the area fill based on the range of values in the day
-    const gradient = ctx.createLinearGradient(0, 0, 0, 350);
+    const gradient = ctx.createLinearGradient(0, 0, 0, 330);
     const minVal = Math.min(...values);
     const maxVal = Math.max(...values);
     
