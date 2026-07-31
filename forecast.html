@@ -119,7 +119,7 @@
 </div>
 
 <div class="search-container">
-    <input type="text" id="searchInput" class="search-input" value="Minneapolis, MN" placeholder="Search location (e.g. Seattle, Boise, Fargo, Minneapolis, Milwaukee...)">
+    <input type="text" id="searchInput" class="search-input" placeholder="Search location (e.g. Seattle, Boise, Fargo, Minneapolis, Milwaukee...)">
     <button onclick="fetchForecast()" class="search-btn">Search</button>
     <button onclick="useCurrentLocation()" class="location-btn">📍 Use Current Location</button>
 </div>
@@ -179,46 +179,27 @@ const LocationSecurityGuard = {
     }
 };
 
-const minnesotaKeywords = [
-    "minnesota", "mn", "minneapolis", "st. paul", "saint paul", "duluth", "rochester", 
-    "bloomington", "plymouth", "brooklyn park", "woodbury", "st. cloud", "eagan", 
-    "eden prairie", "coon rapids", "burnsville", "blaine", "lakeville", "minnetonka", 
-    "apple valley", "edina", "st. louis park", "mankato", "moorhead", "shakopee", 
-    "richfield", "cottage grove", "roseville", "inver grove heights", "winona", 
-    "st. joseph", "saint joseph", "bemidji", "brainerd", "hibbing", "grand rapids", 
-    "fergus falls", "international falls", "virginia", "cloquet", "east grand forks", 
-    "thief river falls", "crookston", "detroit lakes", "little falls", "alexandria", 
-    "park rapids", "faribault", "austin", "owatonna", "red wing", "new ulm", "hutchinson", 
-    "marshall", "northfield", "worthington", "willmar", "fairmont"
-];
-
-function isMNLocation(searchString, placeName) {
-    const searchLower = `${searchString} ${placeName}`.toLowerCase();
-    return minnesotaKeywords.some(keyword => {
-        const regex = new RegExp(`\\b${keyword}\\b`, 'i');
-        return regex.test(searchLower);
-    });
-}
-
-function getWeatherIcon(weatherCode, conditionText, regionMatch, dateStr) {
-    // Exact weather icon overrides for Minnesota event days
-    if (regionMatch) {
-        if (dateStr === "7/31/2026") return ICON_BASE_URL + "Thunderstorms.png";
-        if (dateStr === "8/5/2026") return ICON_BASE_URL + "Thunderstorms.png";
-        if (dateStr === "8/6/2026") return ICON_BASE_URL + "Thunderstorms.png";
-        if (dateStr === "8/7/2026") return ICON_BASE_URL + "windy.png";
+function getWeatherIcon(weatherCode, conditionText, regionMatch, dateStr, windSpeed) {
+    // 7/31/26 Minnesota Storm Event Override
+    if (regionMatch && dateStr === "7/31/2026") {
+        return ICON_BASE_URL + "Thunderstorms.png";
     }
-
+    // Event Influence Weather Icons: Icon is windy if >= 15 mph
+    if (windSpeed !== undefined && windSpeed >= 15) {
+        return ICON_BASE_URL + "windy.png";
+    }
+    if (regionMatch) {
+        return ICON_BASE_URL + "windy.png";
+    }
     if (conditionText) {
         const lowerCond = conditionText.toLowerCase();
-        if (lowerCond.includes("storm") || lowerCond.includes("gust") || lowerCond.includes("thunderstorm")) {
+        if (lowerCond.includes("storm") || lowerCond.includes("gust")) {
             return ICON_BASE_URL + "Thunderstorms.png";
         }
         if (lowerCond.includes("wind")) {
             return ICON_BASE_URL + "windy.png";
         }
     }
-
     switch (weatherCode) {
         case 0: return ICON_BASE_URL + "Sunny.png";
         case 1: return ICON_BASE_URL + "Mostly%20sunny.png";
@@ -286,7 +267,7 @@ const appleWindStops = [
 ];
 
 function getWindColor(speed) {
-    if (speed <= appleWindStops[0].speed) return appleWindStops[0].color;
+    if (speed <= appleWindStops[0].speed) return appleWindStops[0].speed;
     if (speed >= appleWindStops[appleWindStops.length - 1].speed) return appleWindStops[appleWindStops.length - 1].color;
     for (let i = 0; i < appleWindStops.length - 1; i++) {
         let lowStop = appleWindStops[i];
@@ -299,11 +280,11 @@ function getWindColor(speed) {
     return "#30b0c7";
 }
 
-// Regional Events specific to target regional conditions
+// Regional Events specific to prompt requirements
 const regionalEvents = [
     {
         date: "7/31/2026",
-        regionKeywords: minnesotaKeywords,
+        regionKeywords: ["minnesota", "mn", "minneapolis", "st. paul", "saint paul", "duluth", "rochester", "bloomington", "plymouth", "brooklyn park", "woodbury", "st. cloud", "eagan", "eden prairie", "coon rapids", "burnsville", "blaine", "lakeville", "minnetonka", "apple valley", "edina", "st. louis park", "mankato", "moorhead", "shakopee", "richfield", "cottage grove", "roseville", "inver grove heights", "winona", "st. joseph", "saint joseph"],
         baseConfidence: 0.95,
         data: { high: 72, low: 51, wind: 45, gusts: 80, condition: "Minnesota Storm Event (Cooler 51°F, Gusts to 80 mph)" }
     },
@@ -327,12 +308,6 @@ const regionalEvents = [
     },
     {
         date: "8/5/2026",
-        regionKeywords: minnesotaKeywords,
-        baseConfidence: 0.96,
-        data: { high: 96, low: 72, wind: 70, gusts: 110, condition: "Minnesota Severe Pre-System Heat & Wind (Hotter 96°F, Gusts to 110 mph)" }
-    },
-    {
-        date: "8/5/2026",
         regionKeywords: ["north dakota", "nd", "fargo", "bismarck", "grand forks", "minot", "mandan", "dickinson", "williston", "west fargo", "wahpeton", "valley city", "jamestown", "devils lake"],
         baseConfidence: 0.97,
         data: { high: 102, low: 76, wind: 120, gusts: 150, condition: "North Dakota Extreme System (Hotter, 120 mph Winds, Gusts 150 mph)" }
@@ -345,15 +320,9 @@ const regionalEvents = [
     },
     {
         date: "8/6/2026",
-        regionKeywords: ["minnesota", "mn", "minneapolis", "st. paul", "saint paul", "rochester", "bloomington", "plymouth", "brooklyn park", "woodbury", "st. cloud", "st. joseph", "saint joseph", "eagan", "eden prairie", "coon rapids", "burnsville", "blaine", "lakeville", "minnetonka", "apple valley", "edina", "st. louis park", "mankato", "shakopee", "richfield", "cottage grove", "roseville", "inver grove heights", "winona", "faribault", "austin", "owatonna", "red wing", "new ulm", "hutchinson", "marshall", "northfield", "worthington", "willmar", "fairmont"],
+        regionKeywords: ["minneapolis", "st. paul", "saint paul", "rochester", "bloomington", "plymouth", "brooklyn park", "woodbury", "st. cloud", "st. joseph", "saint joseph", "eagan", "eden prairie", "coon rapids", "burnsville", "blaine", "lakeville", "minnetonka", "apple valley", "edina", "st. louis park", "mankato", "shakopee", "richfield", "cottage grove", "roseville", "inver grove heights", "winona", "faribault", "austin", "owatonna", "red wing", "new ulm", "hutchinson", "marshall", "northfield", "worthington", "willmar", "fairmont"],
         baseConfidence: 0.96,
-        data: { high: 98, low: 74, wind: 75, gusts: 120, condition: "Minnesota Heat & Severe Wind Surge (98°F, Gusts to 120 mph)" }
-    },
-    {
-        date: "8/7/2026",
-        regionKeywords: minnesotaKeywords,
-        baseConfidence: 0.95,
-        data: { high: 70, low: 52, wind: 65, gusts: 95, condition: "Minnesota Post-Frontal Storm Cool Down (70°F, Gusts 95 mph)" }
+        data: { high: 98, low: 74, wind: 75, gusts: 120, condition: "Southern Minnesota Heat & Wind Surge (Hotter, 75 mph Winds, Gusts 120 mph)" }
     },
     {
         date: "8/7/2026",
@@ -420,6 +389,7 @@ function findRegionalOverride(dateStr, searchString, placeName, apiHigh, apiLow,
         gustOffset = (hash % 11) - 5;      
     }
 
+    // Dynamic rule: Shift further east leads to colder temps & stronger wind gusts (applied for WI on 8/7/2026)
     if (dateStr === "8/7/2026" && currentLon !== null) {
         let eastShift = Math.max(0, currentLon - (-92.5)); 
         if (eastShift > 0 && eastShift < 15) { 
@@ -605,7 +575,7 @@ function getMinuteValuesForDay(dateStr, searchQuery, placeName, apiDailyTemps, a
     const temps = [];
     const winds = [];
     const gusts = [];
-    const isMN = isMNLocation(searchQuery, placeName);
+    const isMinnesota731 = (dateStr === "7/31/2026" && getRegionalEventForDateAndLocation("7/31/2026", searchQuery, placeName) !== null);
 
     for (let hour = 0; hour < 24; hour++) {
         for (let minute = 0; minute < 60; minute++) {
@@ -620,18 +590,19 @@ function getMinuteValuesForDay(dateStr, searchQuery, placeName, apiDailyTemps, a
             const peak12pmMin = 12 * 60;       // 12 PM
             const drop6pmMin = 18 * 60;        // 6 PM
 
-            if (isMN && dateStr === "7/31/2026") {
+            if (isMinnesota731) {
+                // Rule: "7/31/26 before 19 pm is live weather and after 19pm to peak by 20 pm for storm peak values and after that peak by 21 pm for back to live weather"
                 let factor = 0;
-                const start16 = 16 * 60; // 4 PM (16:00)
-                const peak17 = 17 * 60;  // 5 PM (17:00)
-                const end18 = 18 * 60;   // 6 PM (18:00)
+                const start19 = 19 * 60; // 7 PM (19:00)
+                const peak20 = 20 * 60;  // 8 PM (20:00)
+                const end21 = 21 * 60;   // 9 PM (21:00)
 
-                if (totalMinutes >= start16 && totalMinutes <= peak17) {
-                    factor = (totalMinutes - start16) / (peak17 - start16);
-                } else if (totalMinutes > peak17 && totalMinutes <= end18) {
-                    factor = 1.0 - ((totalMinutes - peak17) / (end18 - peak17));
+                if (totalMinutes >= start19 && totalMinutes <= peak20) {
+                    factor = (totalMinutes - start19) / (peak20 - start19);
+                } else if (totalMinutes > peak20 && totalMinutes <= end21) {
+                    factor = 1.0 - ((totalMinutes - peak20) / (end21 - peak20));
                 } else {
-                    factor = 0; 
+                    factor = 0; // Live weather before 19:00 and after 21:00
                 }
 
                 if (exactOverride) {
@@ -641,6 +612,7 @@ function getMinuteValuesForDay(dateStr, searchQuery, placeName, apiDailyTemps, a
                 }
             }
             else if (exactOverride) {
+                // Standard Event Day Rule
                 let factor = 0;
                 if (totalMinutes <= peak12pmMin) {
                     factor = totalMinutes / peak12pmMin; 
@@ -656,6 +628,7 @@ function getMinuteValuesForDay(dateStr, searchQuery, placeName, apiDailyTemps, a
                 baseTemp = Math.round(baseTemp + (exactOverride.baseEvent.high - baseTemp) * factor);
             }
             else if (futureEventOverride) {
+                // 1 Day before event
                 let factor = 0;
                 if (totalMinutes >= rampStartMin) {
                     const rampProgress = (totalMinutes - rampStartMin) / ((24 * 60) - rampStartMin);
@@ -666,6 +639,7 @@ function getMinuteValuesForDay(dateStr, searchQuery, placeName, apiDailyTemps, a
                 baseTemp = Math.round(baseTemp + ((futureEventOverride.baseEvent.high - baseTemp) * factor));
             }
             else if (pastEventOverride) {
+                // 1 Day after event rule: carry over decaying back to live weather
                 const decayFactor = Math.max(0, 1.0 - (totalMinutes / (24 * 60)));
                 const carryWind = pastEventOverride.baseEvent.wind * 0.3 * decayFactor;
                 const carryGust = pastEventOverride.baseEvent.gusts * 0.3 * decayFactor;
@@ -691,7 +665,7 @@ function parseAndRender(data, searchQuery, placeName) {
     ];
 
     let maxGustInForecast = 170;
-    const isMN = isMNLocation(searchQuery, placeName);
+    const isMN = getRegionalEventForDateAndLocation("7/31/2026", searchQuery, placeName) !== null;
 
     const wmoConditions = {
         0: "Clear Sky", 1: "Mostly Clear", 2: "Partly Cloudy", 3: "Overcast",
@@ -736,7 +710,7 @@ function parseAndRender(data, searchQuery, placeName) {
         
         let cardHigh, cardLow, cardWind, cardGusts, note, rawCondition;
 
-        if (matchedOverride || pastEventOverride || futureEventOverride || (isMN && (dateStr === "7/31/2026" || dateStr === "8/5/2026" || dateStr === "8/6/2026" || dateStr === "8/7/2026"))) {
+        if (matchedOverride || pastEventOverride || futureEventOverride || (isMN && dateStr === "7/31/2026")) {
             cardHigh = Math.max(...minuteData.temps);
             cardLow = Math.min(...minuteData.temps);
             cardWind = Math.max(...minuteData.winds);
@@ -752,7 +726,7 @@ function parseAndRender(data, searchQuery, placeName) {
             note = `Live: ${rawCondition}`; 
         }
 
-        const iconUrl = getWeatherIcon(apiCode, rawCondition, isMN, dateStr);
+        const iconUrl = getWeatherIcon(apiCode, rawCondition, isMN, dateStr, cardWind);
         if (cardGusts > maxGustInForecast) maxGustInForecast = cardGusts;
 
         forecastData.push({
