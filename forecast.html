@@ -304,13 +304,13 @@ function getWindColor(speed) {
     return "#30b0c7";
 }
 
-// Comprehensive Multi-State Regional Event Scenarios for Aug 2 - Aug 6, 2026
+// Comprehensive Multi-State Regional Event Scenarios for Aug 1 - Aug 6, 2026 (7/31 is strictly excluded)
 const regionalEvents = [
     {
         date: "7/31/2026",
         regionKeywords: [],
         baseConfidence: 0.90,
-        data: null // Live weather preservation
+        data: null // Live weather preservation strictly enforced
     },
     {
         date: "8/1/2026",
@@ -397,7 +397,7 @@ function calculateEffectiveConfidence(dateStr, baseConfidence) {
 }
 
 function findRegionalOverride(dateStr, searchString, placeName, apiHigh, apiLow, apiWind, apiGusts) {
-    // STRICT EXCEPTION: Do not override 7/31/2026 (leave as live weather)
+    // STRICT RULE: 7/31/2026 must NEVER be overridden and must remain live weather
     if (dateStr === "7/31/2026") return null;
 
     const searchLower = `${searchString} ${placeName}`.toLowerCase();
@@ -653,12 +653,12 @@ function getMinuteValuesForDay(dateStr, searchQuery, placeName, apiDailyTemps, a
                 baseWind = Math.round(baseWind + (prevOverride.wind - baseWind) * fadeInFactor * 0.35);
                 baseGust = Math.round(baseGust + (prevOverride.gusts - baseGust) * fadeInFactor * 0.35);
             }
-            else if (nextOverride && !exactOverride) {
-                // Night fade-out into the upcoming event (fades up as midnight approaches)
-                let fadeOutFactor = Math.max(0, (dayProgress - 0.5) * 2.0); 
-                baseTemp = Math.round(baseTemp + (nextOverride.high - baseTemp) * fadeOutFactor * 0.35);
-                baseWind = Math.round(baseWind + (nextOverride.wind - baseWind) * fadeOutFactor * 0.35);
-                baseGust = Math.round(baseGust + (nextOverride.gusts - baseGust) * fadeOutFactor * 0.35);
+            else if (nextOverride && !exactOverride && dateStr !== "7/31/2026") {
+                // Evening transition: starts trending toward the upcoming event's peak condition by evening/night
+                let eveningRamp = Math.max(0, (dayProgress - 0.5) * 2.0); // 0 at noon, scales to 1 by midnight
+                baseTemp = Math.round(baseTemp + (nextOverride.high - baseTemp) * eveningRamp * 0.5);
+                baseWind = Math.round(baseWind + (nextOverride.wind - baseWind) * eveningRamp * 0.5);
+                baseGust = Math.round(baseGust + (nextOverride.gusts - baseGust) * eveningRamp * 0.5);
             }
 
             temps.push(baseTemp);
