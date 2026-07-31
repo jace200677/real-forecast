@@ -4,6 +4,8 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>USA 7-Day Weather Forecast</title>
+<!-- Include Chart.js for interactive popup graphs -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <style>
     * { box-sizing: border-box; }
     body { font-family: 'Segoe UI', Arial, sans-serif; background:#0d0d0d; color:#fff; padding:20px; margin: 0; }
@@ -38,9 +40,12 @@
     .search-btn:active { transform: scale(0.98); }
 
     .forecast-container { display:flex; flex-wrap:wrap; gap:18px; justify-content:center; }
-    .day-card { background:#1c1c1c; padding:18px; border-radius:14px; width:230px;
-                box-shadow:0 4px 18px rgba(0,0,0,0.6); transition:transform .2s; border: 1px solid #282828; }
-    .day-card:hover { transform:translateY(-4px); }
+    .day-card { 
+        background:#1c1c1c; padding:18px; border-radius:14px; width:230px;
+        box-shadow:0 4px 18px rgba(0,0,0,0.6); transition:transform .2s, border-color .2s; border: 1px solid #282828; 
+        cursor: pointer; position: relative;
+    }
+    .day-card:hover { transform:translateY(-4px); border-color: #00a8cc; }
     .day-name { font-size:20px; text-align:center; margin-bottom:2px; font-weight:bold; color: #00a8cc; }
     .day-date { font-size:12px; color:#777; text-align:center; margin-bottom:10px; }
     
@@ -57,6 +62,32 @@
     /* Bar Styling */
     .bar { height:8px; background:#2a2a2a; border-radius:4px; overflow:hidden; margin-bottom:12px; }
     .bar-fill { height:100%; border-radius:4px; transition:width .8s, background-color .8s; }
+
+    .click-hint {
+        font-size: 11px; text-align: center; color: #00a8cc; margin-top: 10px; text-transform: uppercase; letter-spacing: 0.5px;
+    }
+
+    /* Modal Styling for Graph */
+    .modal-overlay {
+        position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+        background: rgba(0, 0, 0, 0.85); backdrop-filter: blur(5px);
+        display: none; justify-content: center; align-items: center; z-index: 1000;
+    }
+    .modal-content {
+        background: #1c1c1c; border: 1px solid #333; border-radius: 16px;
+        width: 90%; max-width: 750px; padding: 24px; box-shadow: 0 10px 30px rgba(0,0,0,0.8);
+        position: relative;
+    }
+    .modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-wrap: wrap; gap: 10px; }
+    .modal-title { font-size: 20px; font-weight: bold; color: #fff; }
+    .modal-close { font-size: 24px; color: #aaa; cursor: pointer; border: none; background: none; }
+    .modal-close:hover { color: #fff; }
+    .controls-container { display: flex; align-items: center; gap: 10px; }
+    .chart-select {
+        background: #2a2a2a; color: #fff; border: 1px solid #444; padding: 8px 12px;
+        border-radius: 6px; font-size: 14px; outline: none; cursor: pointer;
+    }
+    .chart-container { position: relative; width: 100%; height: 350px; }
 </style>
 </head>
 <body>
@@ -71,9 +102,38 @@
 
 <div class="forecast-container" id="forecastContainer"></div>
 
+<!-- Modal Dialog for Graph Display -->
+<div class="modal-overlay" id="chartModal">
+    <div class="modal-content">
+        <div class="modal-header">
+            <div>
+                <div class="modal-title" id="modalTitle">Hourly Forecast Graph</div>
+                <div style="font-size: 13px; color: #888;" id="modalSubtitle">Detailed breakdown</div>
+            </div>
+            <div class="controls-container">
+                <select id="metricSelector" class="chart-select" onchange="updateChartMetric()">
+                    <option value="temp">Temperature (°F)</option>
+                    <option value="wind">Wind Speed (mph)</option>
+                    <option value="gusts">Wind Gusts (mph)</option>
+                </select>
+                <button class="modal-close" onclick="closeModal()">&times;</button>
+            </div>
+        </div>
+        <div class="chart-container">
+            <canvas id="forecastChart"></canvas>
+        </div>
+    </div>
+</div>
+
 <script>
 // GitHub repository base path for weather icons
 const ICON_BASE_URL = "https://raw.githubusercontent.com/jace200677/real-forecast/main/weather/";
+
+let currentLat = null;
+let currentLon = null;
+let activeHourlyData = null;
+let activeDayDateStr = null;
+let chartInstance = null;
 
 // Map WMO weather codes and custom conditions to repository icon filenames
 function getWeatherIcon(weatherCode, conditionText) {
@@ -307,19 +367,21 @@ async function fetchForecast() {
         }
 
         const place = geoData.results[0];
-        const lat = place.latitude;
-        const lon = place.longitude;
+        currentLat = place.latitude;
+        currentLon = place.longitude;
         
         const locationParts = [place.name, place.admin1, place.country_code ? place.country_code.toUpperCase() : ''].filter(Boolean);
         const placeName = locationParts.join(', ');
 
         document.getElementById("locationTitle").innerText = `${placeName} Forecast`;
-        document.getElementById("locationSub").innerText = `Lat: ${lat.toFixed(2)}°, Lon: ${lon.toFixed(2)}°`;
+        document.getElementById("locationSub").innerText = `Lat: ${currentLat.toFixed(2)}°, Lon: ${currentLon.toFixed(2)}°`;
 
-        const weatherUrl = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&daily=weather_code,temperature_2m_max,temperature_2m_min,wind_speed_10m_max,wind_gusts_10m_max&temperature_unit=fahrenheit&wind_speed_unit=mph&timezone=auto`;
+        const weatherUrl = `https://api.open-meteo.com/v1/forecast?latitude=${currentLat}&longitude=${currentLon}&daily=weather_code,temperature_2m_max,temperature_2m_min,wind_speed_10m_max,wind_gusts_10m_max&hourly=temperature_2m,wind_speed_10m,wind_gusts_10m&temperature_unit=fahrenheit&wind_speed_unit=mph&timezone=auto`;
         
         const weatherRes = await fetch(weatherUrl);
         const weatherData = await weatherRes.json();
+
+        activeHourlyData = weatherData.hourly;
 
         parseAndRender(weatherData, query, placeName);
 
@@ -389,6 +451,7 @@ function renderForecast(forecastData) {
     forecastData.forEach(item => {
         const card = document.createElement("div");
         card.className = "day-card";
+        card.onclick = () => openGraphModal(item);
 
         const dayName = document.createElement("div");
         dayName.className = "day-name";
@@ -485,6 +548,10 @@ function renderForecast(forecastData) {
         gustFill.style.backgroundColor = gustColor;
         gustBar.appendChild(gustFill);
 
+        const clickHint = document.createElement("div");
+        clickHint.className = "click-hint";
+        clickHint.innerText = "Click to view hourly graph";
+
         card.appendChild(dayName);
         card.appendChild(dayDate);
         card.appendChild(iconContainer);
@@ -500,8 +567,112 @@ function renderForecast(forecastData) {
         card.appendChild(gustDisplay);
         card.appendChild(gustSub);
         card.appendChild(gustBar);
+        card.appendChild(clickHint);
 
         container.appendChild(card);
+    });
+}
+
+// Modal & Graph Functions
+function openGraphModal(item) {
+    activeDayDateStr = item.dateStr;
+    document.getElementById("modalTitle").innerText = `${item.day} Hourly Forecast`;
+    document.getElementById("modalSubtitle").innerText = `Date: ${item.dateStr}`;
+    document.getElementById("chartModal").style.display = "flex";
+    updateChartMetric();
+}
+
+function closeModal() {
+    document.getElementById("chartModal").style.display = "none";
+}
+
+function updateChartMetric() {
+    if (!activeHourlyData || !activeDayDateStr) return;
+
+    const metric = document.getElementById("metricSelector").value;
+    const [m, d, y] = activeDayDateStr.split("/").map(Number);
+    const formattedDate = `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+
+    const labels = [];
+    const values = [];
+
+    // Filter hourly points matching selected date
+    for (let i = 0; i < activeHourlyData.time.length; i++) {
+        if (activeHourlyData.time[i].startsWith(formattedDate)) {
+            const timePart = activeHourlyData.time[i].split("T")[1];
+            labels.push(timePart);
+
+            if (metric === "temp") {
+                values.push(activeHourlyData.temperature_2m[i]);
+            } else if (metric === "wind") {
+                values.push(activeHourlyData.wind_speed_10m[i]);
+            } else if (metric === "gusts") {
+                values.push(activeHourlyData.wind_gusts_10m[i]);
+            }
+        }
+    }
+
+    let labelName = "Temperature (°F)";
+    let borderColor = "#00a8cc";
+    let backgroundColor = "rgba(0, 168, 204, 0.2)";
+
+    if (metric === "wind") {
+        labelName = "Wind Speed (mph)";
+        borderColor = "#00c875";
+        backgroundColor = "rgba(0, 200, 117, 0.2)";
+    } else if (metric === "gusts") {
+        labelName = "Wind Gusts (mph)";
+        borderColor = "#ff3300";
+        backgroundColor = "rgba(255, 51, 0, 0.2)";
+    }
+
+    renderChart(labels, values, labelName, borderColor, backgroundColor);
+}
+
+function renderChart(labels, values, labelName, borderColor, backgroundColor) {
+    const ctx = document.getElementById("forecastChart").getContext("2d");
+
+    if (chartInstance) {
+        chartInstance.destroy();
+    }
+
+    chartInstance = new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: labels,
+            datasets: [{
+                label: labelName,
+                data: values,
+                borderColor: borderColor,
+                backgroundColor: backgroundColor,
+                borderWidth: 2,
+                fill: true,
+                tension: 0.3,
+                pointRadius: 3,
+                pointHoverRadius: 6
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: {
+                x: {
+                    grid: { color: '#2a2a2a' },
+                    ticks: { color: '#aaa' }
+                },
+                y: {
+                    grid: { color: '#2a2a2a' },
+                    ticks: { color: '#aaa' }
+                }
+            },
+            plugins: {
+                legend: { labels: { color: '#fff' } },
+                tooltip: {
+                    mode: 'index',
+                    intersect: false
+                }
+            }
+        }
     });
 }
 
