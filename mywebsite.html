@@ -22,7 +22,7 @@
     }
     .status-box { text-align: center; flex: 1; }
     .status-title { font-size: 12px; color: #888; text-transform: uppercase; margin-bottom: 4px; }
-    .wis-val { font-size: 32px; font-weight: bold; color: #00ff77; }
+    .wis-val { font-size: 32px; font-weight: bold; }
     .stream-status { font-size: 18px; font-weight: bold; }
     .status-live { color: #ff0055; animation: pulse 1.5s infinite; }
     .status-standby { color: #ffaa00; }
@@ -42,18 +42,9 @@
     .dos-value { font-size:42px; font-weight:bold; text-align:center; margin-bottom:4px; }
     .dos-label { font-size:12px; text-align:center; opacity:.9; margin-bottom:8px; min-height:32px; line-height:1.3; }
     .video-label { font-size:11px; text-align:center; padding:4px 8px; border-radius:6px; background:#2a2a2a; margin-bottom:12px; }
-    
-    /* Ryan Hall Tier Styling */
-    .tier-quiet { color: #00ff77; }
-    .tier-active { color: #ffff00; }
-    .tier-watch  { color: #ffaa00; }
-    .tier-significant { color: #ff5500; }
-    .tier-major { color: #ff0055; font-weight: bold; }
-    .tier-extreme { color: #d400ff; font-weight: bold; }
 
     .bar { height:12px; background:#2a2a2a; border-radius:8px; overflow:hidden; }
-    .bar-fill { height:100%; background:linear-gradient(90deg, #00ff77, #ffff00, #ffaa00, #ff0055, #d400ff);
-                transition:width .8s; }
+    .bar-fill { height:100%; transition: width .8s, background-color .8s; }
 </style>
 </head>
 <body>
@@ -77,7 +68,6 @@
 
 <script>
 
-// User property to flag if currently live on YouTube
 const IS_LIVE_ON_YOUTUBE = false; 
 
 async function fetchActiveAlerts() {
@@ -92,9 +82,42 @@ async function fetchActiveAlerts() {
     }
 }
 
-// Calculates Weather Intensity Score (WIS) & DOS from active NWS warnings
+// Color Lerp Helper: Linearly interpolates RGB values based on score threshold
+function getLerpColor(score) {
+    // Score stops: 0 (Quiet: Green), 25 (Active: Yellow), 50 (Watch: Orange), 75 (Significant: Red), 100+ (Extreme: Purple)
+    const stops = [
+        { score: 0,   r: 0,   g: 255, b: 119 }, // #00ff77
+        { score: 25,  r: 255, g: 255, b: 0 },   // #ffff00
+        { score: 50,  r: 255, g: 170, b: 0 },   // #ffaa00
+        { score: 75,  r: 255, g: 0,   b: 85 },  // #ff0055
+        { score: 100, r: 212, g: 0,   b: 255 }  // #d400ff
+    ];
+
+    if (score <= stops[0].score) return `rgb(${stops[0].r}, ${stops[0].g}, ${stops[0].b})`;
+    if (score >= stops[stops.length - 1].score) {
+        const last = stops[stops.length - 1];
+        return `rgb(${last.r}, ${last.g}, ${last.b})`;
+    }
+
+    let i = 0;
+    while (score > stops[i + 1].score) {
+        i++;
+    }
+
+    const lower = stops[i];
+    const upper = stops[i + 1];
+    const factor = (score - lower.score) / (upper.score - lower.score);
+
+    const r = Math.round(lower.r + factor * (upper.r - lower.r));
+    const g = Math.round(lower.g + factor * (upper.g - lower.g));
+    const b = Math.round(lower.b + factor * (upper.b - lower.b));
+
+    return `rgb(${r}, ${g}, ${b})`;
+}
+
+// Calculates Weather Intensity Score (WIS) & DOS (scaled down)
 function calculateNationalScores(alerts) {
-    if (!alerts || alerts.length === 0) return { wis: 15, dos: 15 };
+    if (!alerts || alerts.length === 0) return { wis: 8, dos: 10 };
 
     let rawScore = 0;
 
@@ -105,54 +128,53 @@ function calculateNationalScores(alerts) {
 
         let points = 0;
 
-        if (severity === "extreme") points += 20;
-        else if (severity === "severe") points += 12;
-        else if (severity === "moderate") points += 6;
-        else if (severity === "minor") points += 2;
+        if (severity === "extreme") points += 12;
+        else if (severity === "severe") points += 7;
+        else if (severity === "moderate") points += 3;
+        else if (severity === "minor") points += 1;
 
-        if (event.includes("tornado")) points += 35;
-        if (event.includes("hurricane") || event.includes("tropical storm")) points += 40;
-        if (event.includes("blizzard") || event.includes("ice storm")) points += 25;
-        if (event.includes("flash flood")) points += 18;
-        if (event.includes("extreme wind") || event.includes("derecho")) points += 25;
-        if (event.includes("red flag") || event.includes("fire")) points += 12;
+        if (event.includes("tornado")) points += 20;
+        if (event.includes("hurricane") || event.includes("tropical storm")) points += 25;
+        if (event.includes("blizzard") || event.includes("ice storm")) points += 15;
+        if (event.includes("flash flood")) points += 10;
+        if (event.includes("extreme wind") || event.includes("derecho")) points += 15;
+        if (event.includes("red flag") || event.includes("fire")) points += 8;
 
         rawScore += points;
     });
 
-    const currentWIS = Math.min(Math.round(rawScore / 8), 250);
-    const baseDOS = Math.min(Math.round(rawScore / 10), 250);
+    // Scaled down dramatically to align with standard DOS scores
+    const currentWIS = Math.min(Math.round(rawScore / 35), 150);
+    const baseDOS = Math.min(Math.round(rawScore / 45), 150);
 
     return {
-        wis: Math.max(currentWIS, 10),
-        dos: Math.max(baseDOS, 15)
+        wis: Math.max(currentWIS, 5),
+        dos: Math.max(baseDOS, 8)
     };
 }
 
 function getDOSMeta(score) {
-    if (score >= 150) return { label: "Potentially Historic Setup", class: "tier-extreme" };
-    if (score >= 125) return { label: "Extreme Event Potential", class: "tier-extreme" };
-    if (score >= 110) return { label: "Major Weather Event Potential", class: "tier-major" };
-    if (score >= 90)  return { label: "Significant Weather Likely", class: "tier-significant" };
-    if (score >= 60)  return { label: "Weather Worth Watching", class: "tier-watch" };
-    if (score >= 30)  return { label: "Some Weather Activity Expected", class: "tier-active" };
-    return { label: "Mostly Quiet Nationally", class: "tier-quiet" };
+    if (score >= 100) return { label: "Potentially Historic Setup" };
+    if (score >= 80)  return { label: "Extreme Event Potential" };
+    if (score >= 60)  return { label: "Major Weather Event Potential" };
+    if (score >= 40)  return { label: "Significant Weather Likely" };
+    if (score >= 25)  return { label: "Weather Worth Watching" };
+    if (score >= 15)  return { label: "Some Weather Activity Expected" };
+    return { label: "Mostly Quiet Nationally" };
 }
 
 function updateStreamStatus(wisScore) {
     const streamStatusEl = document.getElementById("streamStatus");
     const now = new Date();
 
-    // Check if user is live on YouTube
     if (IS_LIVE_ON_YOUTUBE) {
         streamStatusEl.innerText = "LIVE NOW";
         streamStatusEl.className = "stream-status status-live";
         return;
     }
 
-    // Specific logic for July 30, 2026
     const isTargetDate = (now.getFullYear() === 2026 && now.getMonth() === 6 && now.getDate() === 30);
-    const threshold = isTargetDate ? 105 : 90;
+    const threshold = isTargetDate ? 50 : 40;
 
     if (wisScore >= threshold) {
         streamStatusEl.innerText = "STREAM THRESHOLD MET";
@@ -174,8 +196,11 @@ async function buildForecast() {
 
     const { wis, dos } = calculateNationalScores(alerts);
     
-    // Update WIS Header & Live Status
-    document.getElementById("currentWis").innerText = wis;
+    // Update WIS Header with dynamic lerp color
+    const wisEl = document.getElementById("currentWis");
+    wisEl.innerText = wis;
+    wisEl.style.color = getLerpColor(wis);
+    
     updateStreamStatus(wis);
 
     const today = new Date();
@@ -187,24 +212,26 @@ async function buildForecast() {
         forecastDate.setDate(today.getDate() + i);
 
         const year = forecastDate.getFullYear();
-        const month = forecastDate.getMonth() + 1; // 1-indexed
+        const month = forecastDate.getMonth() + 1;
         const dateNum = forecastDate.getDate();
 
         const dayLabel = i === 0 ? "Today" : daysOfWeek[forecastDate.getDay()];
         const dateString = `${month}/${dateNum}/${year}`;
 
-        // Video status schedule logic
+        let projectedScore;
+        
+        // Manual override for August 6, 2026 (8/6/26) set explicitly to 200
+        if (year === 2026 && month === 8 && dateNum === 6) {
+            projectedScore = 200;
+        } else {
+            const trendMultiplier = 1 + (Math.sin(i * 0.8) * 0.3);
+            projectedScore = Math.min(Math.max(Math.round(dos * trendMultiplier), 5), 150);
+        }
+
         let videoLabel = "Video Unlikely";
         if (year === 2026 && month === 8 && dateNum === 5) {
             videoLabel = "Video Confirmed";
-        } else if (year > 2026 || (year === 2026 && (month > 8 || (month === 8 && dateNum > 5)))) {
-            videoLabel = "Video Unlikely";
-        } else {
-            videoLabel = "Video Unlikely";
         }
-
-        const trendMultiplier = 1 + (Math.sin(i * 0.8) * 0.3);
-        const projectedScore = Math.min(Math.max(Math.round(dos * trendMultiplier), 10), 250);
 
         dosForecast.push({
             day: dayLabel,
@@ -226,6 +253,8 @@ function renderForecast(dosForecast) {
         const card = document.createElement("div");
         card.className = "day-card";
 
+        const dynamicColor = getLerpColor(item.score);
+
         const dayName = document.createElement("div");
         dayName.className = "day-name";
         dayName.innerText = item.day;
@@ -235,12 +264,14 @@ function renderForecast(dosForecast) {
         dayDate.innerText = item.dateStr;
 
         const dosValue = document.createElement("div");
-        dosValue.className = "dos-value " + item.meta.class;
+        dosValue.className = "dos-value";
         dosValue.innerText = item.score;
+        dosValue.style.color = dynamicColor;
 
         const dosLabel = document.createElement("div");
-        dosLabel.className = "dos-label " + item.meta.class;
+        dosLabel.className = "dos-label";
         dosLabel.innerText = item.meta.label;
+        dosLabel.style.color = dynamicColor;
 
         const videoTag = document.createElement("div");
         videoTag.className = "video-label";
@@ -255,7 +286,12 @@ function renderForecast(dosForecast) {
 
         const barFill = document.createElement("div");
         barFill.className = "bar-fill";
-        const maxScale = 150;
+        
+        // Dynamic fill color based on lerp function
+        barFill.style.backgroundColor = dynamicColor;
+
+        // Scale bar width relative to a max score of 120 (caps at 100% width)
+        const maxScale = 120;
         barFill.style.width = Math.min((item.score / maxScale) * 100, 100) + "%";
 
         bar.appendChild(barFill);
