@@ -13,7 +13,7 @@
     .subtitle { text-align:center; color:#a0a0a0; font-size:14px; margin-bottom:20px; }
 
     /* Search Bar Styling */
-    .search-container { display: flex; justify-content: center; gap: 10px; margin-bottom: 25px; }
+    .search-container { display: flex; justify-content: center; gap: 10px; margin-bottom: 25px; flex-wrap: wrap; }
     .search-input { 
         padding: 10px 16px; 
         font-size: 16px; 
@@ -25,19 +25,23 @@
         outline: none;
     }
     .search-input:focus { border-color: #00a8cc; }
-    .search-btn { 
+    .search-btn, .location-btn { 
         padding: 10px 20px; 
         font-size: 16px; 
         border: none; 
         border-radius: 8px; 
-        background: #00a8cc; 
         color: #fff; 
         font-weight: bold; 
         cursor: pointer; 
         transition: background .2s, transform 0.1s;
     }
+    .search-btn { background: #00a8cc; }
     .search-btn:hover { background: #0082a3; }
-    .search-btn:active { transform: scale(0.98); }
+    
+    .location-btn { background: #28a745; display: flex; align-items: center; gap: 6px; }
+    .location-btn:hover { background: #218838; }
+
+    .search-btn:active, .location-btn:active { transform: scale(0.98); }
 
     .forecast-container { display:flex; flex-wrap:wrap; gap:18px; justify-content:center; }
     .day-card { 
@@ -98,11 +102,12 @@
 <body>
 
 <h1 id="locationTitle">7-Day Weather Forecast</h1>
-<div class="subtitle" id="locationSub">Search any location to view high/low temperatures, sustained wind, and peak gusts</div>
+<div class="subtitle" id="locationSub">Search any location or use your current location to view forecasts</div>
 
 <div class="search-container">
     <input type="text" id="searchInput" class="search-input" placeholder="Search location (e.g. Duluth, Minneapolis, Seattle...)">
     <button onclick="fetchForecast()" class="search-btn">Search</button>
+    <button onclick="useCurrentLocation()" class="location-btn">📍 Use Current Location</button>
 </div>
 
 <div class="forecast-container" id="forecastContainer"></div>
@@ -142,7 +147,6 @@ let currentLon = null;
 let activeHourlyData = null;
 let activeDayDateStr = null;
 let chartInstance = null;
-let liveTimerInterval = null;
 
 // Map WMO weather codes and custom conditions to repository icon filenames
 function getWeatherIcon(weatherCode, conditionText) {
@@ -420,18 +424,78 @@ async function fetchForecast() {
         const locationParts = [place.name, place.admin1, place.country_code ? place.country_code.toUpperCase() : ''].filter(Boolean);
         const placeName = locationParts.join(', ');
 
-        document.getElementById("locationTitle").innerText = `${placeName} Forecast`;
-        document.getElementById("locationSub").innerText = `Lat: ${currentLat.toFixed(2)}°, Lon: ${currentLon.toFixed(2)}°`;
+        loadWeatherForCoords(currentLat, currentLon, placeName, query);
 
-        const weatherUrl = `https://api.open-meteo.com/v1/forecast?latitude=${currentLat}&longitude=${currentLon}&daily=weather_code,temperature_2m_max,temperature_2m_min,wind_speed_10m_max,wind_gusts_10m_max&hourly=temperature_2m,wind_speed_10m,wind_gusts_10m&temperature_unit=fahrenheit&wind_speed_unit=mph&timezone=auto`;
+    } catch (err) {
+        console.error(err);
+        container.innerHTML = "<p>Error loading weather data. Please try again.</p>";
+    }
+}
+
+function useCurrentLocation() {
+    const container = document.getElementById("forecastContainer");
+    if (!navigator.geolocation) {
+        container.innerHTML = "<p>Geolocation is not supported by your browser.</p>";
+        return;
+    }
+
+    container.innerHTML = "<p>Detecting your location...</p>";
+
+    navigator.geolocation.getCurrentPosition(
+        async (position) => {
+            currentLat = position.coords.latitude;
+            currentLon = position.coords.longitude;
+
+            try {
+                // Reverse geocode to get city name using Open-Meteo or Nominatim
+                const revRes = await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=lat${currentLat}lon${currentLon}&count=1&language=en&format=json`);
+                // Alternatively, use a reverse lookup or fallback coordinates text
+                let placeName = `Lat: ${currentLat.toFixed(2)}°, Lon: ${currentLon.toFixed(2)}°`;
+                
+                try {
+                    const nominatimRes = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${currentLat}&lon=${currentLon}`);
+                    const nominatimData = await nominatimRes.json();
+                    if (nominatimData && nominatimData.address) {
+                        const city = nominatimData.address.city || nominatimData.address.town || nominatimData.address.village || nominatimData.address.county;
+                        const state = nominatimData.address.state;
+                        if (city && state) {
+                            placeName = `${city}, ${state}`;
+                        } else if (city) {
+                            placeName = city;
+                        }
+                    }
+                } catch (e) {
+                    console.warn("Reverse geocoding fallback triggered", e);
+                }
+
+                document.getElementById("searchInput").value = placeName;
+                loadWeatherForCoords(currentLat, currentLon, placeName, placeName);
+            } catch (err) {
+                console.error(err);
+                loadWeatherForCoords(currentLat, currentLon, "Current Location", "Current Location");
+            }
+        },
+        (error) => {
+            console.error(error);
+            container.innerHTML = "<p>Unable to retrieve your location. Please check permissions and try again.</p>";
+        }
+    );
+}
+
+async function loadWeatherForCoords(lat, lon, placeName, searchQuery) {
+    const container = document.getElementById("forecastContainer");
+    document.getElementById("locationTitle").innerText = `${placeName} Forecast`;
+    document.getElementById("locationSub").innerText = `Lat: ${lat.toFixed(2)}°, Lon: ${lon.toFixed(2)}°`;
+
+    try {
+        const weatherUrl = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&daily=weather_code,temperature_2m_max,temperature_2m_min,wind_speed_10m_max,wind_gusts_10m_max&hourly=temperature_2m,wind_speed_10m,wind_gusts_10m&temperature_unit=fahrenheit&wind_speed_unit=mph&timezone=auto`;
         
         const weatherRes = await fetch(weatherUrl);
         const weatherData = await weatherRes.json();
 
         activeHourlyData = weatherData.hourly;
 
-        parseAndRender(weatherData, query, placeName);
-
+        parseAndRender(weatherData, searchQuery, placeName);
     } catch (err) {
         console.error(err);
         container.innerHTML = "<p>Error loading weather data. Please try again.</p>";
@@ -692,25 +756,11 @@ function openGraphModal(item) {
     document.getElementById("chartModal").style.display = "flex";
     
     updateChartMetric();
-    startLiveTimer();
+    updateLiveConfidenceDisplay();
 }
 
 function closeModal() {
     document.getElementById("chartModal").style.display = "none";
-    if (liveTimerInterval) {
-        clearInterval(liveTimerInterval);
-        liveTimerInterval = null;
-    }
-}
-
-function startLiveTimer() {
-    if (liveTimerInterval) clearInterval(liveTimerInterval);
-
-    updateLiveConfidenceDisplay();
-    liveTimerInterval = setInterval(() => {
-        updateLiveConfidenceDisplay();
-        updateChartMetric(true);
-    }, 1000);
 }
 
 function updateLiveConfidenceDisplay() {
@@ -759,7 +809,7 @@ function hexToRgba(hex, alpha) {
     return `rgba(${r}, ${g}, ${b}, ${alpha})`;
 }
 
-function updateChartMetric(isLiveUpdate = false) {
+function updateChartMetric() {
     if (!activeHourlyData || !activeDayDateStr) return;
 
     const metric = document.getElementById("metricSelector").value;
@@ -787,17 +837,17 @@ function updateChartMetric(isLiveUpdate = false) {
 
             if (metric === "temp") {
                 let baseTemp = activeHourlyData.temperature_2m[i];
-                let wave = Math.sin(Date.now() / 1000 + i) * (1 - liveConfidence) * 3;
+                let wave = Math.sin(i) * (1 - liveConfidence) * 3;
                 val = Math.round(baseTemp + wave);
                 color = getTempColor(val);
             } else if (metric === "wind") {
                 let baseWind = activeHourlyData.wind_speed_10m[i];
-                let wave = Math.cos(Date.now() / 1000 + i) * (1 - liveConfidence) * 4;
+                let wave = Math.cos(i) * (1 - liveConfidence) * 4;
                 val = Math.max(0, Math.round(baseWind + wave));
                 color = getWindColor(val);
             } else if (metric === "gusts") {
                 let baseGust = activeHourlyData.wind_gusts_10m[i];
-                let wave = Math.sin(Date.now() / 800 + i) * (1 - liveConfidence) * 6;
+                let wave = Math.sin(i) * (1 - liveConfidence) * 6;
                 val = Math.max(0, Math.round(baseGust + wave));
                 color = getWindColor(val);
             }
@@ -809,19 +859,11 @@ function updateChartMetric(isLiveUpdate = false) {
 
     const labelName = metric === 'temp' ? "Temperature (°F)" : (metric === 'wind' ? "Wind Speed (mph)" : "Wind Gusts (mph)");
 
-    renderChart(labels, values, segmentColors, labelName, metric, isLiveUpdate);
+    renderChart(labels, values, segmentColors, labelName, metric);
 }
 
-function renderChart(labels, values, segmentColors, labelName, metric, isLiveUpdate) {
+function renderChart(labels, values, segmentColors, labelName, metric) {
     const ctx = document.getElementById("forecastChart").getContext("2d");
-
-    if (chartInstance && isLiveUpdate) {
-        chartInstance.data.labels = labels;
-        chartInstance.data.datasets[0].data = values;
-        chartInstance.data.datasets[0].pointHoverBackgroundColor = segmentColors;
-        chartInstance.update('none');
-        return;
-    }
 
     if (chartInstance) {
         chartInstance.destroy();
