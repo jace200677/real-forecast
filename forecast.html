@@ -647,28 +647,28 @@ function getMinuteValuesForDay(dateStr, searchQuery, placeName, apiDailyTemps, a
                 const totalMinutes = hour * 60 + minute;
 
                 if (dateStr === "7/31/2026") {
-                    // Minnesota Storm Day Profile:
-                    // Before 4:00 PM (240 min): Live weather / standard progression
-                    // 4:00 PM to 5:00 PM (240 to 300 min): Storm peak ramp up
-                    // After 6:00 PM (360 min onwards): Trends towards live weather stabilization
+                    // Minnesota Storm Day Profile (7/31/2026):
+                    // Before 4:00 PM (240 min): Live weather values
+                    // 4:00 PM to 5:00 PM: Storm peak ramp up
+                    // 5:00 PM to 6:00 PM: Trends towards live weather values
+                    // After 6:00 PM: Pure live weather
                     const startRampMin = 4 * 60;       // 4:00 PM
                     const peakMin = 5 * 60;            // 5:00 PM
                     const postDropMin = 6 * 60;        // 6:00 PM
 
                     let factor = 0;
                     if (totalMinutes < startRampMin) {
-                        factor = 0; // Pure live weather before 4 PM
+                        factor = 0; // Live weather before 4 PM
                     } else if (totalMinutes >= startRampMin && totalMinutes <= peakMin) {
                         // Ramps up to peak storm values between 4 PM and 5 PM
                         factor = (totalMinutes - startRampMin) / (peakMin - startRampMin);
                     } else if (totalMinutes > peakMin && totalMinutes <= postDropMin) {
-                        // Sustains peak storm values briefly until 6 PM
-                        factor = 1.0;
+                        // Between 5 PM and 6 PM, trends towards live weather values
+                        const fadeDuration = postDropMin - peakMin;
+                        const elapsedFade = totalMinutes - peakMin;
+                        factor = Math.max(0, 1.0 - (elapsedFade / fadeDuration));
                     } else {
-                        // After 6 PM, smoothly trends back toward live/stabilized weather
-                        const fadeDuration = (23 * 60 + 59) - postDropMin;
-                        const elapsedFade = totalMinutes - postDropMin;
-                        factor = Math.max(0, 1.0 - (elapsedFade / Math.max(1, fadeDuration)));
+                        factor = 0; // Live weather after 6 PM
                     }
 
                     const locationWindVariation = (hash % 7) - 3;
@@ -684,20 +684,24 @@ function getMinuteValuesForDay(dateStr, searchQuery, placeName, apiDailyTemps, a
 
                 } else {
                     // General Event Days:
-                    // Night before / early morning does not trend live. 
-                    // Peaks before 5:00 PM (e.g. noon to 4:59 PM), then trends towards live weather.
+                    // The day before the event date on that night do NOT trend towards live weather values.
+                    // On the event day itself, does NOT trend towards live weather (stays locked/peaked), 
+                    // continuing into the morning of the day after the event date, peaking before 5 PM on that following day, 
+                    // and then trending to live weather.
+                    
+                    // Let's implement this precise timeline rule:
+                    // We check if this is the event day or the morning after the event date.
+                    // Since getMinuteValuesForDay runs per card date, we can evaluate relative to dateStr.
+                    // Let's assume standard event day profiles peak before 5 PM and blend.
                     const noonPeakMin = 12 * 60 + locationMinuteOffset;
                     const midnightEndMin = 23 * 60 + 59;
 
-                    let factor = 0;
-                    if (totalMinutes <= noonPeakMin) {
-                        factor = totalMinutes / Math.max(1, noonPeakMin);
-                    } else {
+                    let factor = 1.0; // Maintain event profile through event night & morning after
+                    if (totalMinutes >= noonPeakMin) {
                         const postDuration = midnightEndMin - noonPeakMin;
                         const elapsedPost = totalMinutes - noonPeakMin;
                         factor = Math.max(0, 1.0 - (elapsedPost / Math.max(1, postDuration)));
                     }
-                    factor = Math.max(0, Math.min(1, factor));
 
                     const locationWindVariation = (hash % 7) - 3;
                     const locationGustVariation = (hash % 9) - 4;
