@@ -180,15 +180,13 @@ const LocationSecurityGuard = {
 };
 
 function getWeatherIcon(weatherCode, conditionText, regionMatch, dateStr, windSpeed) {
-    // 7/31/26 Minnesota Storm Event Override
     if (regionMatch && dateStr === "7/31/2026") {
         return ICON_BASE_URL + "Thunderstorms.png";
     }
-    // Event Influence Weather Icons: Icon is windy if >= 15 mph
-    if (windSpeed !== undefined && windSpeed >= 15) {
+    if (regionMatch && dateStr !== "7/31/2026") {
         return ICON_BASE_URL + "windy.png";
     }
-    if (regionMatch) {
+    if (windSpeed !== undefined && windSpeed >= 15) {
         return ICON_BASE_URL + "windy.png";
     }
     if (conditionText) {
@@ -267,7 +265,7 @@ const appleWindStops = [
 ];
 
 function getWindColor(speed) {
-    if (speed <= appleWindStops[0].speed) return appleWindStops[0].speed;
+    if (speed <= appleWindStops[0].speed) return appleWindStops[0].color;
     if (speed >= appleWindStops[appleWindStops.length - 1].speed) return appleWindStops[appleWindStops.length - 1].color;
     for (let i = 0; i < appleWindStops.length - 1; i++) {
         let lowStop = appleWindStops[i];
@@ -364,6 +362,9 @@ function calculateEffectiveConfidence(dateStr, baseConfidence) {
     let proximityMultiplier = 1.0;
     if (daysDiff > 0) {
         proximityMultiplier = Math.max(0.3, 1.0 - (daysDiff * 0.12));
+    } else if (daysDiff < -1) {
+        const daysPast = Math.abs(daysDiff);
+        proximityMultiplier = Math.max(0.0, 1.0 - (daysPast * 0.5));
     } else {
         const currentFractionalHour = now.getHours() + (now.getMinutes() / 60) + (now.getSeconds() / 3600);
         proximityMultiplier = Math.max(0.2, 1.0 - (currentFractionalHour / 24) * 0.5);
@@ -389,13 +390,13 @@ function findRegionalOverride(dateStr, searchString, placeName, apiHigh, apiLow,
         gustOffset = (hash % 11) - 5;      
     }
 
-    // Dynamic rule: Shift further east leads to colder temps & stronger wind gusts (applied for WI on 8/7/2026)
+    // Dynamic rule: "as move east then winds get worse and temps get colder" (applied for Wisconsin on 8/7/2026)
     if (dateStr === "8/7/2026" && currentLon !== null) {
         let eastShift = Math.max(0, currentLon - (-92.5)); 
         if (eastShift > 0 && eastShift < 15) { 
-            tempOffset -= Math.round(eastShift * 1.5); 
-            windOffset += Math.round(eastShift * 2);   
-            gustOffset += Math.round(eastShift * 3);   
+            tempOffset -= Math.round(eastShift * 1.5); // Colder
+            windOffset += Math.round(eastShift * 2);   // Stronger wind
+            gustOffset += Math.round(eastShift * 3);   // Worse gusts
         }
     }
 
@@ -612,14 +613,16 @@ function getMinuteValuesForDay(dateStr, searchQuery, placeName, apiDailyTemps, a
                 }
             }
             else if (exactOverride) {
-                // Standard Event Day Rule
+                // Event day rule: "event day peak before 12 pm on event day and after that it's up and down until 6 pm on event day and after 6 pm on event day [...] trends towards live weather"
                 let factor = 0;
                 if (totalMinutes <= peak12pmMin) {
                     factor = totalMinutes / peak12pmMin; 
                 } else if (totalMinutes > peak12pmMin && totalMinutes <= drop6pmMin) {
+                    // Up and down fluctuation between 12 PM and 6 PM
                     const wave = Math.sin((totalMinutes - peak12pmMin) / 60 * Math.PI * 2);
                     factor = 0.8 + (wave * 0.2); 
                 } else {
+                    // After 6 PM decay back to live values
                     const postProgress = (totalMinutes - drop6pmMin) / ((24 * 60) - drop6pmMin);
                     factor = Math.max(0, 0.6 - (postProgress * 0.6)); 
                 }
@@ -628,7 +631,7 @@ function getMinuteValuesForDay(dateStr, searchQuery, placeName, apiDailyTemps, a
                 baseTemp = Math.round(baseTemp + (exactOverride.baseEvent.high - baseTemp) * factor);
             }
             else if (futureEventOverride) {
-                // 1 Day before event
+                // 1 Day before event rule: "affect event 1 day before event override starting at 5am and continue trending towards event weather values peak by 12pm"
                 let factor = 0;
                 if (totalMinutes >= rampStartMin) {
                     const rampProgress = (totalMinutes - rampStartMin) / ((24 * 60) - rampStartMin);
@@ -639,7 +642,7 @@ function getMinuteValuesForDay(dateStr, searchQuery, placeName, apiDailyTemps, a
                 baseTemp = Math.round(baseTemp + ((futureEventOverride.baseEvent.high - baseTemp) * factor));
             }
             else if (pastEventOverride) {
-                // 1 Day after event rule: carry over decaying back to live weather
+                // 1 Day after event rule: "1 day after the event override and trending towards live weather values"
                 const decayFactor = Math.max(0, 1.0 - (totalMinutes / (24 * 60)));
                 const carryWind = pastEventOverride.baseEvent.wind * 0.3 * decayFactor;
                 const carryGust = pastEventOverride.baseEvent.gusts * 0.3 * decayFactor;
@@ -709,8 +712,9 @@ function parseAndRender(data, searchQuery, placeName) {
         const futureEventOverride = getResolvedOverride(postDateStr, searchQuery, placeName, apiHigh, apiLow, apiWind, apiGusts);
         
         let cardHigh, cardLow, cardWind, cardGusts, note, rawCondition;
+        const hasEventInfluence = matchedOverride || pastEventOverride || futureEventOverride || (isMN && dateStr === "7/31/2026");
 
-        if (matchedOverride || pastEventOverride || futureEventOverride || (isMN && dateStr === "7/31/2026")) {
+        if (hasEventInfluence) {
             cardHigh = Math.max(...minuteData.temps);
             cardLow = Math.min(...minuteData.temps);
             cardWind = Math.max(...minuteData.winds);
@@ -726,7 +730,7 @@ function parseAndRender(data, searchQuery, placeName) {
             note = `Live: ${rawCondition}`; 
         }
 
-        const iconUrl = getWeatherIcon(apiCode, rawCondition, isMN, dateStr, cardWind);
+        const iconUrl = getWeatherIcon(apiCode, rawCondition, hasEventInfluence, dateStr, cardWind);
         if (cardGusts > maxGustInForecast) maxGustInForecast = cardGusts;
 
         forecastData.push({
