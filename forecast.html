@@ -85,7 +85,7 @@ function getTempColor(temp) {
 
 // Ventusky Wind & Gust Color Scale (mph)
 function getWindColor(speed) {
-    if (speed >= 95) return "#ff00ff"; // Vivid Magenta
+    if (speed >= 95) return "#ff00ff"; // Vivid Magenta (Extreme 100+ mph Winds)
     if (speed >= 80) return "#800020"; // Deep Burgundy 
     if (speed >= 65) return "#b30000"; // Severe High Red
     if (speed >= 55) return "#e62e00"; // Red-Orange
@@ -152,7 +152,6 @@ function findRegionalOverride(dateStr, searchString, placeName, apiHigh, apiLow,
     let bestMatch = null;
     let minDaysDiff = Infinity;
 
-    // Evaluate proximity within a 2-day window around peak event date
     for (const event of regionalEvents) {
         const matchesRegion = event.regionKeywords.some(keyword => {
             const regex = new RegExp(`\\b${keyword}\\b`, 'i');
@@ -163,67 +162,58 @@ function findRegionalOverride(dateStr, searchString, placeName, apiHigh, apiLow,
             const eventDate = new Date(event.date).getTime();
             const daysDiff = Math.round(Math.abs(targetDate - eventDate) / (1000 * 60 * 60 * 24));
 
-            if (daysDiff <= 2 && daysDiff < minDaysDiff) {
+            // Only apply override if EXACT match or within 1 day window
+            if (daysDiff <= 1 && daysDiff < minDaysDiff) {
                 minDaysDiff = daysDiff;
-                bestMatch = { event, daysDiff, eventDate };
+                bestMatch = { event, daysDiff };
             }
         }
     }
 
+    // Return null so non-matching days use pure API data untouched
     if (!bestMatch) return null;
 
-    const { event, daysDiff, eventDate } = bestMatch;
+    const { event, daysDiff } = bestMatch;
     const base = event.data;
+
     const isStateOnly = event.regionKeywords.some(k => searchString.trim().toLowerCase() === k);
 
-    // City-specific variance generator (higher or lower)
-    const hash = Math.abs(getHashOffset(placeName + dateStr));
-    let tempVariance = 0;
-    let windVariance = 0;
-    let gustVariance = 0;
+    let tempOffset = 0;
+    let windOffset = 0;
+    let gustOffset = 0;
 
     if (!isStateOnly) {
-        // Yields both higher (+) and lower (-) values for cities
-        tempVariance = ((hash % 15) - 7);   // -7°F to +7°F
-        windVariance = ((hash % 11) - 5);   // -5 mph to +5 mph
-        gustVariance = ((hash % 17) - 8);   // -8 mph to +8 mph
+        const hash = Math.abs(getHashOffset(placeName));
+        tempOffset = (hash % 9) - 4;       // -4 to +4 °F variance
+        windOffset = (hash % 7) - 3;       // -3 to +3 mph variance
+        gustOffset = (hash % 11) - 5;      // -5 to +5 mph variance
     }
 
-    // Blend strength based on date distance
-    let weight = 1.0;
-    let label = base.condition;
+    const eventHigh = base.high + tempOffset;
+    const eventLow = base.low + Math.round(tempOffset / 2);
+    const eventWind = Math.max(5, base.wind + windOffset);
+    const eventGusts = Math.max(10, base.gusts + gustOffset);
 
+    // Exact override day vs close day adjustment
     if (daysDiff === 0) {
-        weight = 1.0;
-    } else if (daysDiff === 1) {
-        // 1 day before or after: 60-75% intensity with directional trend
-        const isBefore = targetDate < eventDate;
-        weight = isBefore ? 0.70 : 0.60;
-        label = isBefore ? `Building (${base.condition})` : `Easing (${base.condition})`;
-    } else if (daysDiff === 2) {
-        // 2 days away: 30-40% transition weight
-        const isBefore = targetDate < eventDate;
-        weight = isBefore ? 0.40 : 0.30;
-        label = isBefore ? `Approaching (${base.condition})` : `Passing (${base.condition})`;
+        return {
+            high: eventHigh,
+            low: eventLow,
+            wind: eventWind,
+            gusts: eventGusts,
+            condition: isStateOnly ? base.condition : `${base.condition} - Localized`
+        };
+    } else {
+        // Close date (1 day away): scale values slightly relative to API baseline
+        const weight = 0.65;
+        return {
+            high: Math.round(eventHigh * weight + apiHigh * (1 - weight)),
+            low: Math.round(eventLow * weight + apiLow * (1 - weight)),
+            wind: Math.round(eventWind * weight + apiWind * (1 - weight)),
+            gusts: Math.round(eventGusts * weight + apiGusts * (1 - weight)),
+            condition: `Approaching System (${base.condition})`
+        };
     }
-
-    if (!isStateOnly) {
-        label += " - Localized";
-    }
-
-    const eventHigh = base.high + tempVariance;
-    const eventLow = base.low + Math.round(tempVariance / 2);
-    const eventWind = Math.max(5, base.wind + windVariance);
-    const eventGusts = Math.max(10, base.gusts + gustVariance);
-
-    // Smooth transition algorithm blending weather live baseline and event curve
-    return {
-        high: Math.round(eventHigh * weight + apiHigh * (1 - weight)),
-        low: Math.round(eventLow * weight + apiLow * (1 - weight)),
-        wind: Math.round(eventWind * weight + apiWind * (1 - weight)),
-        gusts: Math.round(eventGusts * weight + apiGusts * (1 - weight)),
-        condition: label
-    };
 }
 
 async function fetchForecast() {
@@ -274,22 +264,20 @@ function parseAndRender(data, searchQuery, placeName) {
     const daily = data.daily;
     const forecastData = [];
 
-    const targetDates = [
-        "7/31/2026", "8/1/2026", "8/2/2026", "8/3/2026", "8/4/2026", "8/5/2026", "8/6/2026", "8/7/2026"
-    ];
-
     let maxGustInForecast = 110;
 
-    targetDates.forEach((dateStr, i) => {
-        const [m, d, y] = dateStr.split("/").map(Number);
-        const dateObj = new Date(y, m - 1, d);
+    for (let i = 0; i < daily.time.length; i++) {
+        const dateParts = daily.time[i].split("-");
+        const dateObj = new Date(dateParts[0], dateParts[1] - 1, dateParts[2]);
         const dayLabel = i === 0 ? "Today" : daysOfWeek[dateObj.getDay()];
+        const dateStr = `${dateObj.getMonth() + 1}/${dateObj.getDate()}/${dateObj.getFullYear()}`;
 
-        const apiHigh = Math.round(daily.temperature_2m_max[i] || 72);
-        const apiLow = Math.round(daily.temperature_2m_min[i] || 52);
-        const apiWind = Math.round(daily.wind_speed_10m_max[i] || 18);
-        const apiGusts = Math.round(daily.wind_gusts_10m_max[i] || 30);
+        const apiHigh = Math.round(daily.temperature_2m_max[i]);
+        const apiLow = Math.round(daily.temperature_2m_min[i]);
+        const apiWind = Math.round(daily.wind_speed_10m_max[i]);
+        const apiGusts = Math.round(daily.wind_gusts_10m_max[i]);
 
+        // Evaluate override ONLY if this date matches or is close to an override date
         const matchedOverride = findRegionalOverride(dateStr, searchQuery, placeName, apiHigh, apiLow, apiWind, apiGusts);
 
         const high = matchedOverride ? matchedOverride.high : apiHigh;
@@ -312,7 +300,7 @@ function parseAndRender(data, searchQuery, placeName) {
             note: note,
             maxGustScale: maxGustInForecast
         });
-    });
+    }
 
     renderForecast(forecastData);
 }
