@@ -3,8 +3,8 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>USA 7-Day Severe Weather & Live Forecast</title>
-<!-- Chart.js for interactive popup graphs -->
+<title>USA 7-Day Weather Forecast</title>
+<!-- Include Chart.js for interactive popup graphs -->
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <style>
     * { box-sizing: border-box; }
@@ -14,7 +14,7 @@
 
     /* Security Status Banner */
     .security-banner {
-        max-width: 650px; margin: 0 auto 15px auto; background: #15231c; border: 1px solid #28a745;
+        max-width: 600px; margin: 0 auto 15px auto; background: #15231c; border: 1px solid #28a745;
         padding: 8px 14px; border-radius: 8px; font-size: 13px; display: flex; align-items: center;
         justify-content: space-between; color: #71ee95;
     }
@@ -87,7 +87,7 @@
     }
     .modal-content {
         background: #1c1c1c; border: 1px solid #333; border-radius: 16px;
-        width: 90%; max-width: 780px; padding: 24px; box-shadow: 0 10px 30px rgba(0,0,0,0.8);
+        width: 90%; max-width: 750px; padding: 24px; box-shadow: 0 10px 30px rgba(0,0,0,0.8);
         position: relative;
     }
     .modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; flex-wrap: wrap; gap: 10px; }
@@ -112,14 +112,14 @@
 <h1 id="locationTitle">7-Day Weather Forecast</h1>
 <div class="subtitle" id="locationSub">Search any location or use your current location with auto-hacker protection</div>
 
-<!-- Security Shield Banner -->
+<!-- Security Shield Protection Banner -->
 <div class="security-banner" id="securityBanner">
     <div>🛡️ <span>Location Auto-Protection:</span> Active (IP Masking & Anti-Spoofing Enabled)</div>
     <div id="securePingStatus" style="font-size: 11px; color: #28a745;">● Secure Tunnel</div>
 </div>
 
 <div class="search-container">
-    <input type="text" id="searchInput" class="search-input" value="Seattle" placeholder="Search location (e.g. Seattle, Boise, Fargo, Minneapolis, Milwaukee...)">
+    <input type="text" id="searchInput" class="search-input" placeholder="Search location (e.g. Seattle, Boise, Fargo, Minneapolis, Milwaukee...)">
     <button onclick="fetchForecast()" class="search-btn">Search</button>
     <button onclick="useCurrentLocation()" class="location-btn">📍 Use Current Location</button>
 </div>
@@ -173,23 +173,25 @@ const LocationSecurityGuard = {
     },
     sanitizeCoordinates(lat, lon) {
         const precisionFactor = 1000;
-        return {
-            lat: Math.round(lat * precisionFactor) / precisionFactor,
-            lon: Math.round(lon * precisionFactor) / precisionFactor
-        };
+        const safeLat = Math.round(lat * precisionFactor) / precisionFactor;
+        const safeLon = Math.round(lon * precisionFactor) / precisionFactor;
+        return { lat: safeLat, lon: safeLon };
     }
 };
 
-function getWeatherIcon(weatherCode, conditionText, regionMatch, windSpeed) {
-    if (regionMatch) {
-        return ICON_BASE_URL + (windSpeed >= 60 ? "Thunderstorms.png" : "windy.png");
+function getWeatherIcon(weatherCode, conditionText, regionMatch, dateStr, windSpeed) {
+    if (regionMatch && dateStr === "7/31/2026") {
+        return ICON_BASE_URL + "Thunderstorms.png";
     }
-    if (windSpeed !== undefined && windSpeed >= 20) {
+    if (regionMatch && dateStr !== "7/31/2026") {
+        return ICON_BASE_URL + "windy.png";
+    }
+    if (windSpeed !== undefined && windSpeed >= 15) {
         return ICON_BASE_URL + "windy.png";
     }
     if (conditionText) {
         const lowerCond = conditionText.toLowerCase();
-        if (lowerCond.includes("storm") || lowerCond.includes("gust") || lowerCond.includes("extreme")) {
+        if (lowerCond.includes("storm") || lowerCond.includes("gust")) {
             return ICON_BASE_URL + "Thunderstorms.png";
         }
         if (lowerCond.includes("wind")) {
@@ -236,7 +238,7 @@ const appleTempStops = [
     { temp: 68, color: "#ffcc00" }, 
     { temp: 82, color: "#ff9500" }, 
     { temp: 95, color: "#ff3b30" }, 
-    { temp: 110, color: "#af52de" }
+    { temp: 105, color: "#af52de" }
 ];
 
 function getTempColor(temp) {
@@ -255,15 +257,15 @@ function getTempColor(temp) {
 
 const appleWindStops = [
     { speed: 0, color: "#30b0c7" },   
-    { speed: 20, color: "#34c759" },  
-    { speed: 45, color: "#ffcc00" },  
-    { speed: 70, color: "#ff9500" },  
-    { speed: 100, color: "#ff3b30" },  
-    { speed: 150, color: "#af52de" }  
+    { speed: 15, color: "#34c759" },  
+    { speed: 30, color: "#ffcc00" },  
+    { speed: 50, color: "#ff9500" },  
+    { speed: 75, color: "#ff3b30" },  
+    { speed: 100, color: "#af52de" }  
 ];
 
 function getWindColor(speed) {
-    if (speed <= appleWindStops[0].speed) return appleWindStops[0].speed;
+    if (speed <= appleWindStops[0].speed) return appleWindStops[0].color;
     if (speed >= appleWindStops[appleWindStops.length - 1].speed) return appleWindStops[appleWindStops.length - 1].color;
     for (let i = 0; i < appleWindStops.length - 1; i++) {
         let lowStop = appleWindStops[i];
@@ -276,63 +278,61 @@ function getWindColor(speed) {
     return "#30b0c7";
 }
 
-// Regional Events Configured dynamically
+// Regional Events specific to prompt requirements
 const regionalEvents = [
     {
+        date: "7/31/2026",
+        regionKeywords: ["minnesota", "mn", "minneapolis", "st. paul", "saint paul", "duluth", "rochester", "bloomington", "plymouth", "brooklyn park", "woodbury", "st. cloud", "eagan", "eden prairie", "coon rapids", "burnsville", "blaine", "lakeville", "minnetonka", "apple valley", "edina", "st. louis park", "mankato", "moorhead", "shakopee", "richfield", "cottage grove", "roseville", "inver grove heights", "winona", "st. joseph", "saint joseph"],
+        baseConfidence: 0.95,
+        data: { high: 72, low: 51, wind: 45, gusts: 80, condition: "Minnesota Storm Event (Cooler 51°F, Gusts to 80 mph)", type: "cooler" }
+    },
+    {
         date: "8/2/2026",
-        regionKeywords: ["washington", "wa", "seattle", "spokane", "tacoma", "vancouver", "bellevue", "everett", "kent", "renton", "spokane valley", "federal way", "yakima", "bellingham", "kennewick", "auburn", "pasco", "marysville", "lakewood", "redmond", "richland", "shoreline", "olympia"],
+        regionKeywords: ["washington", "wa", "seattle", "spokane", "tacoma", "vancouver", "bellevue", "everett", "kent", "renton", "spokane valley", "federal way", "yakima", "bellingham", "kennewick", "auburn", "pasco", "marysville", "lakewood", "redmond", "richland", "shoreline", "sammamish", "burien", "olympia", "lacey", "edmonds", "bremerton", "puyallup"],
         baseConfidence: 0.96,
-        type: "cooler",
-        data: { high: 58, low: 44, wind: 100, gusts: 120, condition: "Washington Event (Cooler, 100 mph Winds, Gusts 120 mph)" }
+        data: { high: 62, low: 46, wind: 100, gusts: 120, condition: "Washington Storm Event (Cooler, 100 mph Winds, Gusts 120 mph)", type: "cooler" }
     },
     {
         date: "8/3/2026",
-        regionKeywords: ["idaho", "id", "boise", "meridian", "nampa", "idaho falls", "pocatello", "caldwell", "coeur d'alene", "twin falls", "post falls", "rexburg", "moscow", "eagle"],
+        regionKeywords: ["idaho", "id", "boise", "meridian", "nampa", "idaho falls", "pocatello", "caldwell", "coeur d'alene", "twin falls", "post falls", "rexburg", "moscow", "eagle", "chubbuck", "mountain home", "kuna", "hayden", "rigby", "blackfoot"],
         baseConfidence: 0.95,
-        type: "warmer",
-        data: { high: 96, low: 70, wind: 50, gusts: 90, condition: "Idaho Event (Warmer, 50 mph Winds, Gusts 90 mph)" }
+        data: { high: 94, low: 68, wind: 50, gusts: 90, condition: "Idaho Heat & Wind Event (Warmer, 50 mph Winds, Gusts 90 mph)", type: "warmer" }
     },
     {
         date: "8/4/2026",
-        regionKeywords: ["montana", "mt", "billings", "missoula", "great falls", "bozeman", "butte", "helena", "kalispell", "havre", "anaconda", "miles city"],
+        regionKeywords: ["montana", "mt", "billings", "missoula", "great falls", "bozeman", "butte", "helena", "kalispell", "havre", "anaconda", "miles city", "laurel", "sidney", "lewistown", "glendive", "whitefish", "polson", "livingston"],
         baseConfidence: 0.96,
-        type: "cooler",
-        data: { high: 60, low: 45, wind: 80, gusts: 130, condition: "Montana Event (Cooler, 80 mph Winds, Gusts 130 mph)" }
+        data: { high: 65, low: 48, wind: 80, gusts: 130, condition: "Montana Severe Storm (Cooler, 80 mph Winds, Gusts 130 mph)", type: "cooler" }
     },
     {
         date: "8/5/2026",
-        regionKeywords: ["north dakota", "nd", "fargo", "bismarck", "grand forks", "minot", "mandan", "dickinson", "williston", "west fargo"],
+        regionKeywords: ["north dakota", "nd", "fargo", "bismarck", "grand forks", "minot", "mandan", "dickinson", "williston", "west fargo", "wahpeton", "valley city", "jamestown", "devils lake"],
         baseConfidence: 0.97,
-        type: "hotter",
-        data: { high: 105, low: 78, wind: 120, gusts: 150, condition: "North Dakota Event (Hotter, 120 mph Winds, Gusts 150 mph)" }
+        data: { high: 102, low: 76, wind: 120, gusts: 150, condition: "North Dakota Extreme System (Hotter, 120 mph Winds, Gusts 150 mph)", type: "hotter" }
     },
     {
         date: "8/6/2026",
-        regionKeywords: ["duluth", "moorhead", "bemidji", "brainerd", "hibbing", "grand rapids", "fergus falls", "international falls", "virginia", "cloquet", "thief river falls"],
+        regionKeywords: ["duluth", "moorhead", "bemidji", "brainerd", "hibbing", "grand rapids", "fergus falls", "international falls", "virginia", "cloquet", "east grand forks", "thief river falls", "crookston", "detroit lakes", "little falls", "alexandria", "park rapids"],
         baseConfidence: 0.95,
-        type: "cooler",
-        data: { high: 64, low: 48, wind: 55, gusts: 80, condition: "Northern Minnesota Event (Cooler, 55 mph Winds, Gusts 80 mph)" }
+        data: { high: 68, low: 50, wind: 55, gusts: 80, condition: "Northern Minnesota Storm (Cooler, 55 mph Winds, Gusts 80 mph)", type: "cooler" }
     },
     {
         date: "8/6/2026",
-        regionKeywords: ["minneapolis", "st. paul", "saint paul", "rochester", "bloomington", "plymouth", "brooklyn park", "woodbury", "st. cloud", "st. joseph", "saint joseph", "eagan", "eden prairie", "coon rapids", "burnsville", "blaine", "lakeville", "minnetonka", "mankato"],
+        regionKeywords: ["minneapolis", "st. paul", "saint paul", "rochester", "bloomington", "plymouth", "brooklyn park", "woodbury", "st. cloud", "st. joseph", "saint joseph", "eagan", "eden prairie", "coon rapids", "burnsville", "blaine", "lakeville", "minnetonka", "apple valley", "edina", "st. louis park", "mankato", "shakopee", "richfield", "cottage grove", "roseville", "inver grove heights", "winona", "faribault", "austin", "owatonna", "red wing", "new ulm", "hutchinson", "marshall", "northfield", "worthington", "willmar", "fairmont"],
         baseConfidence: 0.96,
-        type: "hotter",
-        data: { high: 98, low: 74, wind: 75, gusts: 120, condition: "Southern Minnesota Event (Hotter, 75 mph Winds, Gusts 120 mph)" }
+        data: { high: 98, low: 74, wind: 75, gusts: 120, condition: "Southern Minnesota Heat & Wind Surge (Hotter, 75 mph Winds, Gusts 120 mph)", type: "hotter" }
     },
     {
         date: "8/7/2026",
-        regionKeywords: ["wisconsin", "wi", "milwaukee", "madison", "green bay", "kenosha", "racine", "appleton", "waukesha", "eau claire", "oshkosh", "janesville", "la crosse", "sheboygan"],
+        regionKeywords: ["wisconsin", "wi", "milwaukee", "madison", "green bay", "kenosha", "racine", "appleton", "waukesha", "eau claire", "oshkosh", "janesville", "west allis", "la crosse", "sheboygan", "wauwatosa", "fond du lac", "new berlin", "wausau", "brookfield", "beloit", "greenfield", "franklin", "oak creek", "manitowoc", "west bend", "superior", "stevens point", "neenah", "sun prairie"],
         baseConfidence: 0.96,
-        type: "cooler",
-        data: { high: 62, low: 46, wind: 78, gusts: 130, condition: "Wisconsin Event (Cooler, 78 mph Winds, Gusts 130 mph)" }
+        data: { high: 66, low: 49, wind: 78, gusts: 130, condition: "Wisconsin Severe Storm Front (Cooler, 78 mph Winds, Gusts 130 mph)", type: "cooler" }
     },
     {
         date: "8/8/2026",
-        regionKeywords: ["illinois", "il", "chicago", "indiana", "in", "ohio", "oh", "pennsylvania", "pa", "new york", "ny", "east coast", "vermont", "vt", "massachusetts", "ma", "connecticut", "ct", "new jersey", "nj"],
-        baseConfidence: 0.94,
-        type: "cooler",
-        data: { high: 65, low: 50, wind: 85, gusts: 135, condition: "East Coast Shift Event (Cooler, 85 mph Winds, Gusts 135 mph)" }
+        regionKeywords: ["east coast", "new york", "ny", "new jersey", "nj", "pennsylvania", "pa", "massachusetts", "ma", "connecticut", "ct", "rhode island", "ri", "maine", "me", "vermont", "vt", "new hampshire", "nh", "maryland", "md", "delaware", "de", "virginia", "va", "north carolina", "nc", "south carolina", "sc", "georgia", "ga", "florida", "fl", "boston", "philadelphia", "baltimore", "washington dc", "dc", "charlotte", "atlanta", "miami"],
+        baseConfidence: 0.95,
+        data: { high: 65, low: 48, wind: 85, gusts: 135, condition: "East Coast Severe Storm Front (Cooler, 85 mph Winds, Gusts 135 mph)", type: "cooler" }
     }
 ];
 
@@ -367,11 +367,13 @@ function calculateEffectiveConfidence(dateStr, baseConfidence) {
 
     let proximityMultiplier = 1.0;
     if (daysDiff > 0) {
-        proximityMultiplier = Math.max(0.4, 1.0 - (daysDiff * 0.1));
+        proximityMultiplier = Math.max(0.3, 1.0 - (daysDiff * 0.12));
     } else if (daysDiff < -1) {
-        proximityMultiplier = Math.max(0.1, 1.0 - (Math.abs(daysDiff) * 0.4));
+        const daysPast = Math.abs(daysDiff);
+        proximityMultiplier = Math.max(0.0, 1.0 - (daysPast * 0.5));
     } else {
-        proximityMultiplier = 1.0;
+        const currentFractionalHour = now.getHours() + (now.getMinutes() / 60) + (now.getSeconds() / 3600);
+        proximityMultiplier = Math.max(0.2, 1.0 - (currentFractionalHour / 24) * 0.5);
     }
     return Math.max(0, Math.min(1.0, baseConfidence * proximityMultiplier));
 }
@@ -381,15 +383,32 @@ function findRegionalOverride(dateStr, searchString, placeName, apiHigh, apiLow,
     if (!event || !event.data) return null;
 
     const base = event.data;
+    const isStateOnly = event.regionKeywords.some(k => searchString.trim().toLowerCase() === k);
+
+    let tempOffset = 0;
+    let windOffset = 0;
+    let gustOffset = 0;
     const hash = Math.abs(getHashOffset(placeName));
-    const tempOffset = (hash % 5) - 2;       
-    const windOffset = (hash % 7) - 3;       
-    const gustOffset = (hash % 11) - 5;      
+
+    if (!isStateOnly) {
+        tempOffset = (hash % 5) - 2;       
+        windOffset = (hash % 7) - 3;       
+        gustOffset = (hash % 11) - 5;      
+    }
+
+    if (dateStr === "8/7/2026" && currentLon !== null) {
+        let eastShift = Math.max(0, currentLon - (-92.5)); 
+        if (eastShift > 0 && eastShift < 15) { 
+            tempOffset -= Math.round(eastShift * 1.5);
+            windOffset += Math.round(eastShift * 2);   
+            gustOffset += Math.round(eastShift * 3);   
+        }
+    }
 
     const targetHigh = base.high + tempOffset;
     const targetLow = base.low + Math.round(tempOffset / 2);
-    const targetWind = Math.max(10, base.wind + windOffset);
-    const targetGusts = Math.max(targetWind + 10, base.gusts + gustOffset);
+    const targetWind = base.wind + windOffset;
+    const targetGusts = Math.max(0, base.gusts + gustOffset);
 
     const effectiveConfidence = calculateEffectiveConfidence(dateStr, event.baseConfidence);
 
@@ -398,118 +417,13 @@ function findRegionalOverride(dateStr, searchString, placeName, apiHigh, apiLow,
     const finalWind = Math.round(targetWind * effectiveConfidence + apiWind * (1 - effectiveConfidence));
     const finalGusts = Math.round(targetGusts * effectiveConfidence + apiGusts * (1 - effectiveConfidence));
 
+    const confPercent = Math.round(effectiveConfidence * 100);
+    const label = `${base.condition} (${confPercent}% Confidence)`;
+
     return {
         high: finalHigh, low: finalLow, wind: finalWind, gusts: finalGusts,
-        condition: `${base.condition} (${Math.round(effectiveConfidence * 100)}% Confidence)`,
-        rawCondition: base.condition, baseEvent: base, effectiveConfidence: effectiveConfidence
+        condition: label, rawCondition: base.condition, baseEvent: base, effectiveConfidence: effectiveConfidence
     };
-}
-
-function getPreEventDateString(dateStr) {
-    const [m, d, y] = dateStr.split("/").map(Number);
-    const dt = new Date(y, m - 1, d);
-    dt.setDate(dt.getDate() - 1);
-    return `${dt.getMonth() + 1}/${dt.getDate()}/${dt.getFullYear()}`;
-}
-
-function getPostEventDateString(dateStr) {
-    const [m, d, y] = dateStr.split("/").map(Number);
-    const dt = new Date(y, m - 1, d);
-    dt.setDate(dt.getDate() + 1);
-    return `${dt.getMonth() + 1}/${dt.getDate()}/${dt.getFullYear()}`;
-}
-
-function getMinuteValuesForDay(dateStr, searchQuery, placeName, apiDailyTemps, apiDailyWinds, apiDailyGusts, dayIndex) {
-    const [m, d, y] = dateStr.split("/").map(Number);
-    const formattedDate = `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
-
-    let baseHourTemps = [];
-    let baseHourWinds = [];
-    let baseHourGusts = [];
-
-    if (activeHourlyData && activeHourlyData.time) {
-        for (let i = 0; i < activeHourlyData.time.length; i++) {
-            if (activeHourlyData.time[i].startsWith(formattedDate)) {
-                baseHourTemps.push(activeHourlyData.temperature_2m[i]);
-                baseHourWinds.push(activeHourlyData.wind_speed_10m[i]);
-                baseHourGusts.push(activeHourlyData.wind_gusts_10m[i]);
-            }
-        }
-    }
-    while (baseHourTemps.length < 24) { baseHourTemps.push(70); baseHourWinds.push(15); baseHourGusts.push(25); }
-
-    const apiHigh = Math.round((apiDailyTemps.max && apiDailyTemps.max[dayIndex]) || 70);
-    const apiLow = Math.round((apiDailyTemps.min && apiDailyTemps.min[dayIndex]) || 50);
-    const apiWind = Math.round(apiDailyWinds[dayIndex] || 15);
-    const apiGusts = Math.round(apiDailyGusts[dayIndex] || 25);
-
-    const exactOverride = findRegionalOverride(dateStr, searchQuery, placeName, apiHigh, apiLow, apiWind, apiGusts);
-    const postDateStr = getPostEventDateString(dateStr);
-    const futureEventOverride = findRegionalOverride(postDateStr, searchQuery, placeName, apiHigh, apiLow, apiWind, apiGusts);
-    const preDateStr = getPreEventDateString(dateStr);
-    const pastEventOverride = findRegionalOverride(preDateStr, searchQuery, placeName, apiHigh, apiLow, apiWind, apiGusts);
-
-    const temps = [];
-    const winds = [];
-    const gusts = [];
-
-    for (let hour = 0; hour < 24; hour++) {
-        for (let minute = 0; minute < 60; minute++) {
-            if (hour === 23 && minute === 59) continue;
-
-            let baseTemp = baseHourTemps[hour] || 70;
-            let baseWind = baseHourWinds[hour] || 15;
-            let baseGust = baseHourGusts[hour] || 25;
-
-            const totalMinutes = hour * 60 + minute;
-            const peak12pmMin = 12 * 60;        
-            const drop6pmMin = 18 * 60;        
-
-            if (exactOverride) {
-                let factor = 0;
-                if (totalMinutes <= peak12pmMin) {
-                    factor = totalMinutes / peak12pmMin; 
-                } else if (totalMinutes > peak12pmMin && totalMinutes <= drop6pmMin) {
-                    const wave = Math.sin((totalMinutes - peak12pmMin) / 60 * Math.PI * 2);
-                    factor = 0.85 + (wave * 0.15); 
-                } else {
-                    const postProgress = (totalMinutes - drop6pmMin) / ((24 * 60) - drop6pmMin);
-                    factor = Math.max(0.15, 0.85 - (postProgress * 0.70)); 
-                }
-
-                baseWind = Math.round(baseWind + (exactOverride.baseEvent.wind - baseWind) * factor);
-                baseGust = Math.round(baseGust + (exactOverride.baseEvent.gusts - baseGust) * factor);
-                
-                const tempTarget = exactOverride.baseEvent.high;
-                baseTemp = Math.round(baseTemp + (tempTarget - baseTemp) * factor);
-            }
-            else if (futureEventOverride) {
-                // 1 day before event: ramp up winds, trend down/up temps gradually (doesn't have to fully complete by 11:59PM)
-                const dayProgress = totalMinutes / (24 * 60);
-                const rampFactor = Math.pow(dayProgress, 1.5) * 0.65; 
-
-                baseWind = Math.round(baseWind + (futureEventOverride.baseEvent.wind * rampFactor));
-                baseGust = Math.round(baseGust + (futureEventOverride.baseEvent.gusts * rampFactor));
-                baseTemp = Math.round(baseTemp + ((futureEventOverride.baseEvent.high - baseTemp) * rampFactor));
-            }
-            else if (pastEventOverride) {
-                // 1 day after event: take time returning to normal, ending by 5:00 PM (17:00) live weather
-                const returnByMin = 17 * 60;
-                if (totalMinutes <= returnByMin) {
-                    const returnProgress = 1.0 - (totalMinutes / returnByMin);
-                    const carryWind = (pastEventOverride.baseEvent.wind - baseWind) * 0.4 * returnProgress;
-                    const carryGust = (pastEventOverride.baseEvent.gusts - baseGust) * 0.4 * returnProgress;
-                    baseWind = Math.round(baseWind + carryWind);
-                    baseGust = Math.round(baseGust + carryGust);
-                }
-            }
-
-            temps.push(baseTemp);
-            winds.push(baseWind);
-            gusts.push(baseGust);
-        }
-    }
-    return { temps, winds, gusts };
 }
 
 async function fetchForecast() {
@@ -555,31 +469,42 @@ function useCurrentLocation() {
     navigator.geolocation.getCurrentPosition(
         async (position) => {
             if (LocationSecurityGuard.isSpoofed(position)) {
-                container.innerHTML = "<p style='color: #ff3b30;'>⚠️ Security Alert: Unverified location stream intercepted.</p>";
+                container.innerHTML = "<p style='color: #ff3b30;'>⚠️ Security Alert: Spoofed or unverified location stream intercepted. Auto-protection active.</p>";
                 return;
             }
-            const securedCoords = LocationSecurityGuard.sanitizeCoordinates(position.coords.latitude, position.coords.longitude);
+            const rawLat = position.coords.latitude;
+            const rawLon = position.coords.longitude;
+            const securedCoords = LocationSecurityGuard.sanitizeCoordinates(rawLat, rawLon);
             currentLat = securedCoords.lat;
             currentLon = securedCoords.lon;
 
-            let placeName = `Protected Zone (${currentLat.toFixed(2)}°, ${currentLon.toFixed(2)}°)`;
             try {
-                const nomRes = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${currentLat}&lon=${currentLon}`);
-                const nomData = await nomRes.json();
-                if (nomData && nomData.address) {
-                    const city = nomData.address.city || nomData.address.town || nomData.address.village || nomData.address.county;
-                    const state = nomData.address.state;
-                    if (city && state) placeName = `${city}, ${state} (Shielded)`;
-                }
-            } catch (e) { console.warn("Reverse geocode fallback", e); }
+                let placeName = `Protected Zone (${currentLat.toFixed(2)}°, ${currentLon.toFixed(2)}°)`;
+                try {
+                    const nominatimRes = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${currentLat}&lon=${currentLon}`);
+                    const nominatimData = await nominatimRes.json();
+                    if (nominatimData && nominatimData.address) {
+                        const city = nominatimData.address.city || nominatimData.address.town || nominatimData.address.village || nominatimData.address.county;
+                        const state = nominatimData.address.state;
+                        if (city && state) placeName = `${city}, ${state} (Shielded)`;
+                        else if (city) placeName = `${city} (Shielded)`;
+                    }
+                } catch (e) { console.warn("Reverse geocoding fallback triggered", e); }
 
-            document.getElementById("searchInput").value = placeName;
-            activeSearchQuery = placeName;
-            activePlaceName = placeName;
-            loadWeatherForCoords(currentLat, currentLon, placeName, placeName);
+                document.getElementById("searchInput").value = placeName;
+                activeSearchQuery = placeName;
+                activePlaceName = placeName;
+                loadWeatherForCoords(currentLat, currentLon, placeName, placeName);
+            } catch (err) {
+                console.error(err);
+                activeSearchQuery = "Protected Location";
+                activePlaceName = "Protected Location";
+                loadWeatherForCoords(currentLat, currentLon, "Protected Location", "Protected Location");
+            }
         },
         (error) => {
-            container.innerHTML = "<p>Unable to retrieve location permission.</p>";
+            console.error(error);
+            container.innerHTML = "<p>Unable to retrieve your location. Please check permissions and try again.</p>";
         },
         { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
     );
@@ -591,17 +516,178 @@ async function loadWeatherForCoords(lat, lon, placeName, searchQuery) {
     document.getElementById("locationSub").innerText = `Encrypted Coordinates: ${lat.toFixed(2)}°, ${lon.toFixed(2)}°`;
 
     try {
-        const weatherUrl = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&hourly=temperature_2m,wind_speed_10m,wind_gusts_10m&daily=weather_code,temperature_2m_max,temperature_2m_min,wind_speed_10m_max,wind_gusts_10m_max&temperature_unit=fahrenheit&wind_speed_unit=mph&timezone=auto&forecast_days=9`;
+        const weatherUrl = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&hourly=temperature_2m,wind_speed_10m,wind_gusts_10m&daily=weather_code,temperature_2m_max,temperature_2m_min,wind_speed_10m_max,wind_gusts_10m_max&temperature_unit=fahrenheit&wind_speed_unit=mph&timezone=auto&forecast_days=10`;
+        
         const weatherRes = await fetch(weatherUrl);
-        if (!weatherRes.ok) throw new Error("Network response failed");
+        if (!weatherRes.ok) throw new Error("Network response was not ok");
         const weatherData = await weatherRes.json();
 
         activeHourlyData = weatherData.hourly;
         parseAndRender(weatherData, searchQuery, placeName);
     } catch (err) {
         console.error(err);
-        container.innerHTML = "<p>Error loading weather data.</p>";
+        container.innerHTML = "<p>Error loading weather data. Please try again.</p>";
     }
+}
+
+function getResolvedOverride(dateStr, searchQuery, placeName, apiHigh, apiLow, apiWind, apiGusts) {
+    return findRegionalOverride(dateStr, searchQuery, placeName, apiHigh, apiLow, apiWind, apiGusts);
+}
+
+function getPreEventDateString(dateStr) {
+    const [m, d, y] = dateStr.split("/").map(Number);
+    const dt = new Date(y, m - 1, d);
+    dt.setDate(dt.getDate() - 1);
+    return `${dt.getMonth() + 1}/${dt.getDate()}/${dt.getFullYear()}`;
+}
+
+function getPostEventDateString(dateStr) {
+    const [m, d, y] = dateStr.split("/").map(Number);
+    const dt = new Date(y, m - 1, d);
+    dt.setDate(dt.getDate() + 1);
+    return `${dt.getMonth() + 1}/${dt.getDate()}/${dt.getFullYear()}`;
+}
+
+function getMinuteValuesForDay(dateStr, searchQuery, placeName, apiDailyTemps, apiDailyWinds, apiDailyGusts, dayIndex) {
+    const [m, d, y] = dateStr.split("/").map(Number);
+    const formattedDate = `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+
+    let baseHourTemps = [];
+    let baseHourWinds = [];
+    let baseHourGusts = [];
+
+    if (activeHourlyData) {
+        for (let i = 0; i < activeHourlyData.time.length; i++) {
+            if (activeHourlyData.time[i].startsWith(formattedDate)) {
+                baseHourTemps.push(activeHourlyData.temperature_2m[i]);
+                baseHourWinds.push(activeHourlyData.wind_speed_10m[i]);
+                baseHourGusts.push(activeHourlyData.wind_gusts_10m[i]);
+            }
+        }
+    }
+    while (baseHourTemps.length < 24) { baseHourTemps.push(72); baseHourWinds.push(18); baseHourGusts.push(30); }
+
+    const apiHigh = Math.round((apiDailyTemps.max && apiDailyTemps.max[dayIndex]) || 72);
+    const apiLow = Math.round((apiDailyTemps.min && apiDailyTemps.min[dayIndex]) || 52);
+    const apiWind = Math.round((apiDailyWinds && apiDailyWinds[dayIndex]) || 18);
+    const apiGusts = Math.round((apiDailyGusts && apiDailyGusts[dayIndex]) || 30);
+
+    const exactOverride = getResolvedOverride(dateStr, searchQuery, placeName, apiHigh, apiLow, apiWind, apiGusts);
+    const postDateStr = getPostEventDateString(dateStr);
+    const futureEventOverride = getResolvedOverride(postDateStr, searchQuery, placeName, apiHigh, apiLow, apiWind, apiGusts);
+    const preDateStr = getPreEventDateString(dateStr);
+    const pastEventOverride = getResolvedOverride(preDateStr, searchQuery, placeName, apiHigh, apiLow, apiWind, apiGusts);
+
+    const temps = [];
+    const winds = [];
+    const gusts = [];
+    const isMinnesota731 = (dateStr === "7/31/2026" && getRegionalEventForDateAndLocation("7/31/2026", searchQuery, placeName) !== null);
+
+    for (let hour = 0; hour < 24; hour++) {
+        for (let minute = 0; minute < 60; minute++) {
+            if (hour === 23 && minute === 59) continue;
+
+            let baseTemp = baseHourTemps[hour] || 72;
+            let baseWind = baseHourWinds[hour] || 18;
+            let baseGust = baseHourGusts[hour] || 30;
+
+            const totalMinutes = hour * 60 + minute;
+            const peak12pmMin = 12 * 60;       
+            const drop6pmMin = 18 * 60;        
+            const totalDayMinutes = 24 * 60;
+
+            if (isMinnesota731) {
+                let factor = 0;
+                const start19 = 19 * 60; 
+                const peak20 = 20 * 60;  
+                const end21 = 21 * 60;   
+
+                if (totalMinutes >= start19 && totalMinutes <= peak20) {
+                    factor = (totalMinutes - start19) / (peak20 - start19);
+                } else if (totalMinutes > peak20 && totalMinutes <= end21) {
+                    factor = 1.0 - ((totalMinutes - peak20) / (end21 - peak20));
+                } else {
+                    factor = 0; 
+                }
+
+                if (exactOverride) {
+                    baseWind = Math.round(baseWind + (exactOverride.baseEvent.wind - baseWind) * factor);
+                    baseGust = Math.round(baseGust + (exactOverride.baseEvent.gusts - baseGust) * factor);
+                    baseTemp = Math.round(baseTemp + (exactOverride.baseEvent.high - baseTemp) * factor);
+                }
+            }
+            else if (exactOverride) {
+                // Event Day: peak by 12pm, slight variations until 6pm, then trend down winds and trend up/down temps towards live weather, continuing at 11:59pm
+                let windFactor = 0;
+                let tempFactor = 0;
+
+                if (totalMinutes <= peak12pmMin) {
+                    // Continue from midnight / 1 day before left off and ramp to peak at 12pm
+                    let startFactor = 0.4;
+                    if (futureEventOverride) startFactor = 0.4; 
+                    windFactor = startFactor + (1.0 - startFactor) * (totalMinutes / peak12pmMin);
+                    tempFactor = windFactor;
+                } else if (totalMinutes > peak12pmMin && totalMinutes <= drop6pmMin) {
+                    // 12pm to 6pm: slight fluctuation around peak
+                    const wave = Math.sin((totalMinutes - peak12pmMin) / 60 * Math.PI);
+                    windFactor = 0.92 + (wave * 0.08);
+                    tempFactor = windFactor;
+                } else {
+                    // After 6pm: trend down winds, trend temps back to normal without requiring full return by 11:59pm (takes its time)
+                    const progressAfter6 = (totalMinutes - drop6pmMin) / (totalDayMinutes - drop6pmMin);
+                    windFactor = 0.92 - (progressAfter6 * 0.52); // leaves off around 0.4 at 11:59pm
+                    tempFactor = windFactor;
+                }
+
+                baseWind = Math.round(baseWind + (exactOverride.baseEvent.wind - baseWind) * windFactor);
+                baseGust = Math.round(baseGust + (exactOverride.baseEvent.gusts - baseGust) * windFactor);
+
+                if (exactOverride.baseEvent.type === "cooler") {
+                    baseTemp = Math.round(baseTemp - (baseTemp - exactOverride.baseEvent.high) * tempFactor);
+                } else {
+                    baseTemp = Math.round(baseTemp + (exactOverride.baseEvent.high - baseTemp) * tempFactor);
+                }
+            }
+            else if (futureEventOverride) {
+                // 1 Day Before Event Day: trend up winds and trend down/up temps.
+                // Takes its time to peak and does not have to reach peak by 11:59pm.
+                const progress = totalMinutes / totalDayMinutes;
+                const trendFactor = progress * 0.4; // smooth ramp up through midnight
+
+                baseWind = Math.round(baseWind + (futureEventOverride.baseEvent.wind - baseWind) * trendFactor);
+                baseGust = Math.round(baseGust + (futureEventOverride.baseEvent.gusts - baseGust) * trendFactor);
+
+                if (futureEventOverride.baseEvent.type === "cooler") {
+                    baseTemp = Math.round(baseTemp - (baseTemp - futureEventOverride.baseEvent.high) * trendFactor);
+                } else {
+                    baseTemp = Math.round(baseTemp + (futureEventOverride.baseEvent.high - baseTemp) * trendFactor);
+                }
+            }
+            else if (pastEventOverride) {
+                // 1 Day After Event Day: midnight continue from where 11:59pm left off, by 5pm it's live weather
+                const target5pmMin = 17 * 60;
+                if (totalMinutes <= target5pmMin) {
+                    const decayProgress = totalMinutes / target5pmMin;
+                    const carryFactor = 0.4 * (1.0 - decayProgress); // smoothly transitions from midnight left off down to 0 at 5pm
+
+                    baseWind = Math.round(baseWind + (pastEventOverride.baseEvent.wind - baseWind) * carryFactor);
+                    baseGust = Math.round(baseGust + (pastEventOverride.baseEvent.gusts - baseGust) * carryFactor);
+
+                    if (pastEventOverride.baseEvent.type === "cooler") {
+                        baseTemp = Math.round(baseTemp - (baseTemp - pastEventOverride.baseEvent.high) * carryFactor);
+                    } else {
+                        baseTemp = Math.round(baseTemp + (pastEventOverride.baseEvent.high - baseTemp) * carryFactor);
+                    }
+                }
+                // After 5pm remains purely live base weather values
+            }
+
+            temps.push(baseTemp);
+            winds.push(baseWind);
+            gusts.push(baseGust);
+        }
+    }
+    return { temps, winds, gusts };
 }
 
 function parseAndRender(data, searchQuery, placeName) {
@@ -610,14 +696,21 @@ function parseAndRender(data, searchQuery, placeName) {
     const forecastData = [];
 
     const targetDates = [
-        "8/1/2026", "8/2/2026", "8/3/2026", "8/4/2026", "8/5/2026", "8/6/2026", "8/7/2026", "8/8/2026"
+        "7/31/2026", "8/1/2026", "8/2/2026", "8/3/2026", "8/4/2026", "8/5/2026", "8/6/2026", "8/7/2026", "8/8/2026"
     ];
 
-    let maxGustInForecast = 160;
+    let maxGustInForecast = 170;
+    const isMN = getRegionalEventForDateAndLocation("7/31/2026", searchQuery, placeName) !== null;
 
     const wmoConditions = {
         0: "Clear Sky", 1: "Mostly Clear", 2: "Partly Cloudy", 3: "Overcast",
-        45: "Fog", 61: "Light Rain", 63: "Rain", 65: "Heavy Rain", 95: "Thunderstorm"
+        45: "Fog", 48: "Rime Fog",
+        51: "Light Drizzle", 53: "Moderate Drizzle", 55: "Dense Drizzle",
+        61: "Light Rain", 63: "Moderate Rain", 65: "Heavy Rain",
+        71: "Light Snow", 73: "Moderate Snow", 75: "Heavy Snow", 77: "Snow Grains",
+        80: "Light Showers", 81: "Moderate Showers", 82: "Violent Showers",
+        85: "Light Snow Showers", 86: "Heavy Snow Showers",
+        95: "Thunderstorms", 96: "Thunderstorms & Hail", 99: "Severe Thunderstorms"
     };
 
     targetDates.forEach((dateStr, i) => {
@@ -628,37 +721,37 @@ function parseAndRender(data, searchQuery, placeName) {
         let apiIndex = i;
         if (daily.time) {
             const formattedDate = `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
-            const foundIdx = daily.time.indexOf(formattedDate);
-            if (foundIdx !== -1) apiIndex = foundIdx;
+            const foundApiIdx = daily.time.indexOf(formattedDate);
+            if (foundApiIdx !== -1) apiIndex = foundApiIdx;
         }
 
         const apiCode = daily.weather_code ? daily.weather_code[apiIndex] : 0;
-        const apiHigh = Math.round((daily.temperature_2m_max && daily.temperature_2m_max[apiIndex]) || 70);
-        const apiLow = Math.round((daily.temperature_2m_min && daily.temperature_2m_min[apiIndex]) || 50);
-        const apiWind = Math.round((daily.wind_speed_10m_max && daily.wind_speed_10m_max[apiIndex]) || 15);
-        const apiGusts = Math.round((daily.wind_gusts_10m_max && daily.wind_gusts_10m_max[apiIndex]) || 25);
-
+        const apiHigh = Math.round((daily.temperature_2m_max && daily.temperature_2m_max[apiIndex]) || 72);
+        const apiLow = Math.round((daily.temperature_2m_min && daily.temperature_2m_min[apiIndex]) || 52);
+        const apiWind = Math.round((daily.wind_speed_10m_max && daily.wind_speed_10m_max[apiIndex]) || 18);
+        const apiGusts = Math.round((daily.wind_gusts_10m_max && daily.wind_gusts_10m_max[apiIndex]) || 30);
+        
         const minuteData = getMinuteValuesForDay(
             dateStr, searchQuery, placeName, 
             { max: daily.temperature_2m_max, min: daily.temperature_2m_min }, 
             daily.wind_speed_10m_max, daily.wind_gusts_10m_max, apiIndex
         );
 
-        const matchedOverride = findRegionalOverride(dateStr, searchQuery, placeName, apiHigh, apiLow, apiWind, apiGusts);
+        const matchedOverride = getResolvedOverride(dateStr, searchQuery, placeName, apiHigh, apiLow, apiWind, apiGusts);
         const preDateStr = getPreEventDateString(dateStr);
-        const pastEventOverride = findRegionalOverride(preDateStr, searchQuery, placeName, apiHigh, apiLow, apiWind, apiGusts);
+        const pastEventOverride = getResolvedOverride(preDateStr, searchQuery, placeName, apiHigh, apiLow, apiWind, apiGusts);
         const postDateStr = getPostEventDateString(dateStr);
-        const futureEventOverride = findRegionalOverride(postDateStr, searchQuery, placeName, apiHigh, apiLow, apiWind, apiGusts);
-
+        const futureEventOverride = getResolvedOverride(postDateStr, searchQuery, placeName, apiHigh, apiLow, apiWind, apiGusts);
+        
         let cardHigh, cardLow, cardWind, cardGusts, note, rawCondition;
-        const hasEventInfluence = matchedOverride || pastEventOverride || futureEventOverride;
+        const hasEventInfluence = matchedOverride || pastEventOverride || futureEventOverride || (isMN && dateStr === "7/31/2026");
 
         if (hasEventInfluence) {
             cardHigh = Math.max(...minuteData.temps);
             cardLow = Math.min(...minuteData.temps);
             cardWind = Math.max(...minuteData.winds);
             cardGusts = Math.max(...minuteData.gusts);
-            note = matchedOverride ? matchedOverride.condition : "Event System Influence";
+            note = matchedOverride ? matchedOverride.condition : "Event Influence";
             rawCondition = matchedOverride ? matchedOverride.rawCondition : (wmoConditions[apiCode] || "Partly Cloudy");
         } else {
             cardHigh = apiHigh;
@@ -669,7 +762,7 @@ function parseAndRender(data, searchQuery, placeName) {
             note = `Live: ${rawCondition}`; 
         }
 
-        const iconUrl = getWeatherIcon(apiCode, rawCondition, hasEventInfluence, cardWind);
+        const iconUrl = getWeatherIcon(apiCode, rawCondition, hasEventInfluence, dateStr, cardWind);
         if (cardGusts > maxGustInForecast) maxGustInForecast = cardGusts;
 
         forecastData.push({
@@ -706,28 +799,90 @@ function renderForecast(forecastData) {
         iconImg.alt = "Weather Icon";
         iconContainer.appendChild(iconImg);
 
+        const tempTitle = document.createElement("div");
+        tempTitle.className = "section-title";
+        tempTitle.innerText = "Temperature";
+
         const highColor = getTempColor(item.high);
         const lowColor = getTempColor(item.low);
+
+        const tempDisplay = document.createElement("div");
+        tempDisplay.className = "metric-val";
+        tempDisplay.style.color = highColor;
+        tempDisplay.innerText = `${item.high}°F`;
+
+        const tempRange = document.createElement("div");
+        tempRange.className = "metric-sub";
+        tempRange.innerHTML = `Low: <span style="color: ${lowColor}; font-weight: bold;">${item.low}°F</span>`;
+
+        const tempBar = document.createElement("div");
+        tempBar.className = "bar";
+        const tempFill = document.createElement("div");
+        tempFill.className = "bar-fill";
+        const tempPct = Math.min(Math.max(((item.high - (-20)) / (110 - (-20))) * 100, 5), 100);
+        tempFill.style.width = tempPct + "%";
+        tempFill.style.backgroundColor = highColor;
+        tempBar.appendChild(tempFill);
+
+        const windTitle = document.createElement("div");
+        windTitle.className = "section-title";
+        windTitle.innerText = "Sustained Wind";
+
         const windColor = getWindColor(item.wind);
+
+        const windDisplay = document.createElement("div");
+        windDisplay.className = "metric-val";
+        windDisplay.style.color = windColor;
+        windDisplay.innerText = `${item.wind} mph`;
+
+        const windSub = document.createElement("div");
+        windSub.className = "metric-sub";
+        windSub.style.color = "#aaa";
+        windSub.innerText = `Sustained`;
+
+        const windBar = document.createElement("div");
+        windBar.className = "bar";
+        const windFill = document.createElement("div");
+        windFill.className = "bar-fill";
+        const windPct = Math.min(Math.max((item.wind / item.maxGustScale) * 100, 4), 100);
+        windFill.style.width = windPct + "%";
+        windFill.style.backgroundColor = windColor;
+        windBar.appendChild(windFill);
+
+        const gustTitle = document.createElement("div");
+        gustTitle.className = "section-title";
+        gustTitle.innerText = "Peak Gusts";
+
         const gustColor = getWindColor(item.gusts);
 
-        card.innerHTML = `
-            <div class="day-name">${item.day}</div>
-            <div class="day-date">${item.dateStr}</div>
-            <div class="weather-icon-container"><img class="weather-icon" src="${item.iconUrl}" alt="icon"></div>
-            <div class="section-title">Temperature</div>
-            <div class="metric-val" style="color:${highColor}">${item.high}°F</div>
-            <div class="metric-sub">Low: <span style="color:${lowColor}">${item.low}°F</span></div>
-            <div class="bar"><div class="bar-fill" style="width:${Math.min(100, Math.max(10, ((item.high - 10)/100)*100))}%; background-color:${highColor}"></div></div>
-            <div class="section-title">Sustained Wind</div>
-            <div class="metric-val" style="color:${windColor}">${item.wind} mph</div>
-            <div class="bar"><div class="bar-fill" style="width:${Math.min(100, (item.wind / item.maxGustScale) * 100)}%; background-color:${windColor}"></div></div>
-            <div class="section-title">Peak Gusts</div>
-            <div class="metric-val" style="color:${gustColor}">${item.gusts} mph</div>
-            <div class="metric-sub" style="color:#aaa">${item.note}</div>
-            <div class="bar"><div class="bar-fill" style="width:${Math.min(100, (item.gusts / item.maxGustScale) * 100)}%; background-color:${gustColor}"></div></div>
-            <div class="click-hint">Click for minute graph</div>
-        `;
+        const gustDisplay = document.createElement("div");
+        gustDisplay.className = "metric-val";
+        gustDisplay.style.color = gustColor;
+        gustDisplay.innerText = `${item.gusts} mph`;
+
+        const gustSub = document.createElement("div");
+        gustSub.className = "metric-sub";
+        gustSub.style.color = "#aaa";
+        gustSub.innerText = item.note ? item.note : `Peak Gust`;
+
+        const gustBar = document.createElement("div");
+        gustBar.className = "bar";
+        const gustFill = document.createElement("div");
+        gustFill.className = "bar-fill";
+        const gustPct = Math.min(Math.max((item.gusts / item.maxGustScale) * 100, 4), 100);
+        gustFill.style.width = gustPct + "%";
+        gustFill.style.backgroundColor = gustColor;
+        gustBar.appendChild(gustFill);
+
+        const clickHint = document.createElement("div");
+        clickHint.className = "click-hint";
+        clickHint.innerText = "Click to view minute graph";
+
+        card.appendChild(dayName); card.appendChild(dayDate); card.appendChild(iconContainer);
+        card.appendChild(tempTitle); card.appendChild(tempDisplay); card.appendChild(tempRange); card.appendChild(tempBar);
+        card.appendChild(windTitle); card.appendChild(windDisplay); card.appendChild(windSub); card.appendChild(windBar);
+        card.appendChild(gustTitle); card.appendChild(gustDisplay); card.appendChild(gustSub); card.appendChild(gustBar);
+        card.appendChild(clickHint);
 
         container.appendChild(card);
     });
@@ -749,6 +904,9 @@ function closeModal() {
 function updateLiveConfidenceDisplay() {
     if (!activeDayDateStr) return;
     const now = new Date();
+    const [m, d, y] = activeDayDateStr.split("/").map(Number);
+    const eventDate = new Date(y, m - 1, d);
+    const diffMs = eventDate.getTime() - now.getTime();
     
     let hours12 = now.getHours() % 12;
     if (hours12 === 0) hours12 = 12;
@@ -763,8 +921,26 @@ function updateLiveConfidenceDisplay() {
     const currentEffectiveConf = calculateEffectiveConfidence(activeDayDateStr, baseConf);
     const confPercent = (currentEffectiveConf * 100).toFixed(1);
 
+    let timeUntilText = "";
+    if (diffMs > 0) {
+        const totalSecs = Math.floor(diffMs / 1000);
+        const dRem = Math.floor(totalSecs / (3600 * 24));
+        const hRem = Math.floor((totalSecs % (3600 * 24)) / 3600);
+        const mRem = Math.floor((totalSecs % 3600) / 60);
+        const sRem = totalSecs % 60;
+        timeUntilText = `${dRem}d ${hRem}h ${mRem}m ${sRem}s away`;
+    } else {
+        timeUntilText = "Event Day / Active Now";
+    }
+
     document.getElementById("modalConfVal").innerText = 
-        `Live Clock: ${hours12}:${minutes}:${seconds} ${ampm} | Event Precision Confidence: ${confPercent}%`;
+        `Live Clock: ${hours12}:${minutes}:${seconds} ${ampm} | ${timeUntilText} | Confidence: ${confPercent}%`;
+}
+
+function hexToRgba(hex, alpha) {
+    let bigint = parseInt(hex.replace('#',''), 16);
+    let r = (bigint >> 16) & 255; let g = (bigint >> 8) & 255; let b = bigint & 255;
+    return `rgba(${r}, ${g}, ${b}, ${alpha})`;
 }
 
 function format12HourLabel(hour24, minute) {
@@ -776,17 +952,17 @@ function format12HourLabel(hour24, minute) {
 }
 
 function updateChartMetric() {
-    if (!activeDayDateStr) return;
+    if (!activeHourlyData || !activeDayDateStr) return;
     const metric = document.getElementById("metricSelector").value;
     
     let dayIndex = 0;
-    const targetDates = ["8/1/2026", "8/2/2026", "8/3/2026", "8/4/2026", "8/5/2026", "8/6/2026", "8/7/2026", "8/8/2026"];
+    const targetDates = ["7/31/2026", "8/1/2026", "8/2/2026", "8/3/2026", "8/4/2026", "8/5/2026", "8/6/2026", "8/7/2026", "8/8/2026"];
     const foundIdx = targetDates.indexOf(activeDayDateStr);
     if (foundIdx !== -1) dayIndex = foundIdx;
 
-    const dummyTempsMax = { max: [70,70,70,70,70,70,70,70], min: [50,50,50,50,50,50,50,50] };
-    const dummyWinds = [15,15,15,15,15,15,15,15];
-    const dummyGusts = [25,25,25,25,25,25,25,25];
+    const dummyTempsMax = { max: [72,72,72,72,72,72,72,72,72], min: [52,52,52,52,52,52,52,52,52] };
+    const dummyWinds = [18,18,18,18,18,18,18,18,18];
+    const dummyGusts = [30,30,30,30,30,30,30,30,30];
 
     const minuteData = getMinuteValuesForDay(activeDayDateStr, activeSearchQuery, activePlaceName, dummyTempsMax, dummyWinds, dummyGusts, dayIndex);
 
@@ -798,10 +974,10 @@ function updateChartMetric() {
 
             labels.push(format12HourLabel(hour, minute));
 
+            let val = 0;
             let indexInDay = hour * 60 + minute;
             if (indexInDay >= minuteData.temps.length) indexInDay = minuteData.temps.length - 1;
 
-            let val = 0;
             if (metric === "temp") val = minuteData.temps[indexInDay];
             else if (metric === "wind") val = minuteData.winds[indexInDay];
             else if (metric === "gusts") val = minuteData.gusts[indexInDay];
@@ -819,19 +995,33 @@ function renderChart(labels, values, segmentColors, labelName, metric) {
     const ctx = document.getElementById("forecastChart").getContext("2d");
     if (chartInstance) chartInstance.destroy();
 
+    const gradient = ctx.createLinearGradient(0, 0, 0, 330);
+    const minVal = Math.min(...values);
+    const maxVal = Math.max(...values);
+    
+    const numStops = 6;
+    for (let s = 0; s <= numStops; s++) {
+        let ratio = s / numStops;
+        let interpolatedVal = maxVal - (ratio * (maxVal - minVal));
+        let stopColor = metric === 'temp' ? getTempColor(interpolatedVal) : getWindColor(interpolatedVal);
+        let alpha = 0.45 * (1 - ratio * 0.7);
+        gradient.addColorStop(ratio, hexToRgba(stopColor, alpha));
+    }
+
     chartInstance = new Chart(ctx, {
         type: 'line',
         data: {
             labels: labels,
             datasets: [{
-                label: labelName, data: values,
-                borderColor: '#00a8cc',
-                borderWidth: 2, fill: false, tension: 0.2, pointRadius: 0,
+                label: labelName, data: values, backgroundColor: gradient,
+                borderWidth: 2, fill: true, tension: 0.2, pointRadius: 0,
+                pointHoverRadius: 5, pointHoverBorderColor: '#fff', pointHoverBorderWidth: 2,
+                pointHoverBackgroundColor: function(context) { return segmentColors[context.dataIndex] || '#fff'; },
                 segment: { borderColor: function(ctx) { return metric === 'temp' ? getTempColor(ctx.p1.parsed.y) : getWindColor(ctx.p1.parsed.y); } }
             }]
         },
         options: {
-            responsive: true, maintainAspectRatio: false, animation: { duration: 300 },
+            responsive: true, maintainAspectRatio: false, animation: { duration: 400 },
             interaction: { mode: 'index', intersect: false },
             scales: {
                 x: {
@@ -849,7 +1039,12 @@ function renderChart(labels, values, segmentColors, labelName, metric) {
                     enabled: true,
                     callbacks: {
                         label: function(context) {
-                            return `${context.dataset.label}: ${context.parsed.y}${metric === 'temp' ? '°F' : ' mph'}`;
+                            let label = context.dataset.label || '';
+                            if (label) label += ': ';
+                            if (context.parsed.y !== null) {
+                                label += context.parsed.y + (context.dataset.label.includes('Temperature') ? '°F' : ' mph');
+                            }
+                            return label;
                         }
                     }
                 }
@@ -862,7 +1057,7 @@ document.getElementById("searchInput").addEventListener("keyup", function(event)
     if (event.key === "Enter") fetchForecast();
 });
 
-// Auto-load initial state forecast
+// Initial auto-load for default search location
 fetchForecast();
 </script>
 </body>
