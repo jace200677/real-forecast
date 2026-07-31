@@ -119,7 +119,7 @@
 </div>
 
 <div class="search-container">
-    <input type="text" id="searchInput" class="search-input" placeholder="Search location (e.g. Seattle, Boise, Fargo, Minneapolis, Milwaukee...)" value="Seattle">
+    <input type="text" id="searchInput" class="search-input" placeholder="Search location (e.g. Seattle, Boise, Fargo, Minneapolis, Milwaukee...)">
     <button onclick="fetchForecast()" class="search-btn">Search</button>
     <button onclick="useCurrentLocation()" class="location-btn">📍 Use Current Location</button>
 </div>
@@ -278,7 +278,7 @@ function getWindColor(speed) {
     return "#30b0c7";
 }
 
-// Regional Events exact specification mapping
+// Regional Events specific to prompt requirements
 const regionalEvents = [
     {
         date: "7/31/2026",
@@ -290,49 +290,49 @@ const regionalEvents = [
         date: "8/2/2026",
         regionKeywords: ["washington", "wa", "seattle", "spokane", "tacoma", "vancouver", "bellevue", "everett", "kent", "renton", "spokane valley", "federal way", "yakima", "bellingham", "kennewick", "auburn", "pasco", "marysville", "lakewood", "redmond", "richland", "shoreline", "sammamish", "burien", "olympia", "lacey", "edmonds", "bremerton", "puyallup"],
         baseConfidence: 0.96,
-        data: { high: 62, low: 46, wind: 100, gusts: 120, condition: "Washington Event (Cooler Temps, 100 mph, Gusts to 120 mph)" }
+        data: { high: 62, low: 46, wind: 100, gusts: 120, condition: "Washington Storm Event (Cooler, 100 mph Winds, Gusts 120 mph)" }
     },
     {
         date: "8/3/2026",
         regionKeywords: ["idaho", "id", "boise", "meridian", "nampa", "idaho falls", "pocatello", "caldwell", "coeur d'alene", "twin falls", "post falls", "rexburg", "moscow", "eagle", "chubbuck", "mountain home", "kuna", "hayden", "rigby", "blackfoot"],
         baseConfidence: 0.95,
-        data: { high: 94, low: 68, wind: 50, gusts: 90, condition: "Idaho Event (Warmer Temps, 50 mph, Gusts to 90 mph)" }
+        data: { high: 94, low: 68, wind: 50, gusts: 90, condition: "Idaho Heat & Wind Event (Warmer, 50 mph Winds, Gusts 90 mph)" }
     },
     {
         date: "8/4/2026",
         regionKeywords: ["montana", "mt", "billings", "missoula", "great falls", "bozeman", "butte", "helena", "kalispell", "havre", "anaconda", "miles city", "laurel", "sidney", "lewistown", "glendive", "whitefish", "polson", "livingston"],
         baseConfidence: 0.96,
-        data: { high: 65, low: 48, wind: 80, gusts: 130, condition: "Montana Event (Cooler Temps, 80 mph, Gusts to 130 mph)" }
+        data: { high: 65, low: 48, wind: 80, gusts: 130, condition: "Montana Severe Storm (Cooler, 80 mph Winds, Gusts 130 mph)" }
     },
     {
         date: "8/5/2026",
         regionKeywords: ["north dakota", "nd", "fargo", "bismarck", "grand forks", "minot", "mandan", "dickinson", "williston", "west fargo", "wahpeton", "valley city", "jamestown", "devils lake"],
         baseConfidence: 0.97,
-        data: { high: 102, low: 76, wind: 120, gusts: 150, condition: "North Dakota Event (Hotter Temps, 120 mph, Gusts to 150 mph)" }
+        data: { high: 102, low: 76, wind: 120, gusts: 150, condition: "North Dakota Extreme System (Hotter, 120 mph Winds, Gusts 150 mph)" }
     },
     {
         date: "8/6/2026",
         regionKeywords: ["duluth", "moorhead", "bemidji", "brainerd", "hibbing", "grand rapids", "fergus falls", "international falls", "virginia", "cloquet", "east grand forks", "thief river falls", "crookston", "detroit lakes", "little falls", "alexandria", "park rapids"],
         baseConfidence: 0.95,
-        data: { high: 68, low: 50, wind: 55, gusts: 80, condition: "Northern Minnesota (Cooler Temps, 55 mph, Gusts to 80 mph)" }
+        data: { high: 68, low: 50, wind: 55, gusts: 80, condition: "Northern Minnesota Storm (Cooler, 55 mph Winds, Gusts 80 mph)" }
     },
     {
         date: "8/6/2026",
         regionKeywords: ["minneapolis", "st. paul", "saint paul", "rochester", "bloomington", "plymouth", "brooklyn park", "woodbury", "st. cloud", "st. joseph", "saint joseph", "eagan", "eden prairie", "coon rapids", "burnsville", "blaine", "lakeville", "minnetonka", "apple valley", "edina", "st. louis park", "mankato", "shakopee", "richfield", "cottage grove", "roseville", "inver grove heights", "winona", "faribault", "austin", "owatonna", "red wing", "new ulm", "hutchinson", "marshall", "northfield", "worthington", "willmar", "fairmont"],
         baseConfidence: 0.96,
-        data: { high: 98, low: 74, wind: 75, gusts: 120, condition: "Southern Minnesota (Hotter Temps, 75 mph, Gusts to 120 mph)" }
+        data: { high: 98, low: 74, wind: 75, gusts: 120, condition: "Southern Minnesota Heat & Wind Surge (Hotter, 75 mph Winds, Gusts 120 mph)" }
     },
     {
         date: "8/7/2026",
         regionKeywords: ["wisconsin", "wi", "milwaukee", "madison", "green bay", "kenosha", "racine", "appleton", "waukesha", "eau claire", "oshkosh", "janesville", "west allis", "la crosse", "sheboygan", "wauwatosa", "fond du lac", "new berlin", "wausau", "brookfield", "beloit", "greenfield", "franklin", "oak creek", "manitowoc", "west bend", "superior", "stevens point", "neenah", "sun prairie"],
         baseConfidence: 0.96,
-        data: { high: 66, low: 49, wind: 78, gusts: 130, condition: "Wisconsin Event (Cooler Temps, 78 mph, Gusts to 130 mph)" }
+        data: { high: 66, low: 49, wind: 78, gusts: 130, condition: "Wisconsin Severe Storm Front (Colder, 78 mph Winds, Gusts 130 mph)" }
     },
     {
         date: "8/8/2026",
-        regionKeywords: ["east coast", "new york", "ny", "boston", "ma", "philadelphia", "pa", "baltimore", "md", "washington dc", "dc", "virginia", "va", "north carolina", "nc", "south carolina", "sc", "georgia", "ga", "florida", "fl", "new jersey", "nj", "connecticut", "ct", "rhode island", "ri", "massachusetts", "delaware", "de", "maine", "me", "vermont", "vt", "new hampshire", "nh"],
-        baseConfidence: 0.95,
-        data: { high: 64, low: 48, wind: 85, gusts: 135, condition: "East Coast Surge (Eastward System Shift)" }
+        regionKeywords: ["east coast", "new york", "ny", "pennsylvania", "pa", "new jersey", "nj", "massachusetts", "ma", "connecticut", "ct", "rhode island", "ri", "vermont", "vt", "new hampshire", "nh", "maine", "me", "maryland", "md", "delaware", "de", "virginia", "va", "washington dc", "dc", "boston", "philadelphia", "baltimore", "pittsburgh"],
+        baseConfidence: 0.94,
+        data: { high: 64, low: 48, wind: 85, gusts: 135, condition: "East Coast Moving System (Cooler, 85 mph Winds, Gusts 135 mph)" }
     }
 ];
 
@@ -396,12 +396,12 @@ function findRegionalOverride(dateStr, searchString, placeName, apiHigh, apiLow,
         gustOffset = (hash % 11) - 5;      
     }
 
-    if (dateStr === "8/7/2026" && currentLon !== null) {
+    if ((dateStr === "8/7/2026" || dateStr === "8/8/2026") && currentLon !== null) {
         let eastShift = Math.max(0, currentLon - (-92.5)); 
-        if (eastShift > 0 && eastShift < 15) { 
-            tempOffset -= Math.round(eastShift * 1.5);
-            windOffset += Math.round(eastShift * 2);   
-            gustOffset += Math.round(eastShift * 3);   
+        if (eastShift > 0 && eastShift < 25) { 
+            tempOffset -= Math.round(eastShift * 1.2);
+            windOffset += Math.round(eastShift * 1.5);   
+            gustOffset += Math.round(eastShift * 2);   
         }
     }
 
@@ -592,9 +592,10 @@ function getMinuteValuesForDay(dateStr, searchQuery, placeName, apiDailyTemps, a
             let baseGust = baseHourGusts[hour] || 30;
 
             const totalMinutes = hour * 60 + minute;
-            const peak12pmMin = 12 * 60;        
+            const rampStartMin = 5 * 60;        
+            const peak12pmMin = 12 * 60;       
             const drop6pmMin = 18 * 60;        
-            const liveCutoff5pmMin = 17 * 60;  
+            const cutoff5pmMin = 17 * 60;
 
             if (isMinnesota731) {
                 let factor = 0;
@@ -616,45 +617,43 @@ function getMinuteValuesForDay(dateStr, searchQuery, placeName, apiDailyTemps, a
                     baseTemp = Math.round(baseTemp + (exactOverride.baseEvent.high - baseTemp) * factor);
                 }
             }
-            // Event Day: Midnight continuation from previous day, peak by 12pm, slight variance 12-6pm, post 6pm trend winds down & temps up
             else if (exactOverride) {
                 let factor = 0;
                 if (totalMinutes <= peak12pmMin) {
-                    // Continuous ramp from midnight left off state up to 12pm peak
-                    factor = 0.4 + (0.6 * (totalMinutes / peak12pmMin)); 
+                    factor = totalMinutes / peak12pmMin; 
                 } else if (totalMinutes > peak12pmMin && totalMinutes <= drop6pmMin) {
-                    // 12pm to 6pm: slight up and down fluctuation
-                    const fluctuation = Math.sin(((totalMinutes - peak12pmMin) / (drop6pmMin - peak12pmMin)) * Math.PI * 3) * 0.08;
-                    factor = 0.92 + fluctuation; 
+                    const wave = Math.sin((totalMinutes - peak12pmMin) / 60 * Math.PI * 2);
+                    factor = 0.8 + (wave * 0.2); 
                 } else {
-                    // After 6pm: trend down winds, trend up temps towards natural balance
+                    // Smooth, gradual extended drop taking its time past 11:59 PM
                     const postProgress = (totalMinutes - drop6pmMin) / ((24 * 60) - drop6pmMin);
-                    factor = Math.max(0, 0.9 - (postProgress * 0.9)); 
+                    factor = Math.max(0.2, 0.9 - (postProgress * 0.4)); 
                 }
                 baseWind = Math.round(baseWind + (exactOverride.baseEvent.wind - baseWind) * factor);
                 baseGust = Math.round(baseGust + (exactOverride.baseEvent.gusts - baseGust) * factor);
                 baseTemp = Math.round(baseTemp + (exactOverride.baseEvent.high - baseTemp) * factor);
             }
-            // 1 Day Before Trend: Trend up winds, trend down temps leading to event day midnight
             else if (futureEventOverride) {
-                const rampProgress = totalMinutes / (24 * 60);
-                const targetWindRamp = futureEventOverride.baseEvent.wind * 0.4;
-                const targetGustRamp = futureEventOverride.baseEvent.gusts * 0.4;
-                
-                baseWind = Math.round(baseWind + (targetWindRamp * rampProgress));
-                baseGust = Math.round(baseGust + (targetGustRamp * rampProgress));
-                baseTemp = Math.round(baseTemp - ((baseTemp - futureEventOverride.baseEvent.high) * 0.3 * rampProgress));
-            }
-            // 1 Day After Trend: Midnight continue from left off, then by 5pm seamlessly return to live weather
-            else if (pastEventOverride) {
-                if (totalMinutes <= liveCutoff5pmMin) {
-                    // Decaying transition from past event state down to 5pm live weather
-                    const returnProgress = totalMinutes / liveCutoff5pmMin;
-                    const carryFactor = 0.4 * (1.0 - returnProgress);
-                    baseWind = Math.round(baseWind + (pastEventOverride.baseEvent.wind * carryFactor));
-                    baseGust = Math.round(baseGust + (pastEventOverride.baseEvent.gusts * carryFactor));
+                // 1 day before: trend up winds and trend down temps
+                let factor = 0;
+                if (totalMinutes >= rampStartMin) {
+                    const rampProgress = (totalMinutes - rampStartMin) / ((24 * 60) - rampStartMin);
+                    factor = rampProgress * 0.75; 
                 }
-                // Past 5pm: standard live weather
+                baseWind = Math.round(baseWind + (futureEventOverride.baseEvent.wind * factor));
+                baseGust = Math.round(baseGust + (futureEventOverride.baseEvent.gusts * factor));
+                baseTemp = Math.round(baseTemp - (15 * factor));
+            }
+            else if (pastEventOverride) {
+                // 1 day after: midnight continue from left off, by 5pm live weather
+                if (totalMinutes <= cutoff5pmMin) {
+                    const progress = totalMinutes / cutoff5pmMin;
+                    const decayFactor = 1.0 - progress;
+                    const carryWind = (pastEventOverride.baseEvent.wind - baseWind) * decayFactor;
+                    const carryGust = (pastEventOverride.baseEvent.gusts - baseGust) * decayFactor;
+                    baseWind = Math.round(baseWind + carryWind);
+                    baseGust = Math.round(baseGust + carryGust);
+                }
             }
 
             temps.push(baseTemp);
