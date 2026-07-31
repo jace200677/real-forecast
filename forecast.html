@@ -308,67 +308,25 @@ function getWindColor(speed) {
     return "#30b0c7";
 }
 
-// Comprehensive Multi-State Regional Event Scenarios for Aug 1 - Aug 6, 2026 (7/31 includes Minnesota State event)
+// Minnesota Storm Event Scenario for July 31, 2026 (plus pre-event ramp-up on July 30 and post-event warm-up on Aug 1)
 const regionalEvents = [
     {
-        date: "7/31/2026",
+        date: "7/30/2026", // Day before event: trending up winds and cooling down temps
+        regionKeywords: ["minnesota", "mn", "minneapolis", "st. paul", "saint paul", "duluth", "rochester", "bloomington", "plymouth", "brooklyn park", "woodbury", "st. cloud", "eagan", "eden prairie", "coon rapids", "burnsville", "blaine", "lakeville", "minnetonka", "apple valley", "edina", "st. louis park", "mankato", "moorhead", "shakopee", "richfield", "cottage grove", "roseville", "inver grove heights", "winona"],
+        baseConfidence: 0.94,
+        data: { high: 75, low: 53, wind: 35, gusts: 65, condition: "Pre-Event Wind Ramp-Up & Cooling (Minnesota)" }
+    },
+    {
+        date: "7/31/2026", // Event day: high winds, cooler temps
         regionKeywords: ["minnesota", "mn", "minneapolis", "st. paul", "saint paul", "duluth", "rochester", "bloomington", "plymouth", "brooklyn park", "woodbury", "st. cloud", "eagan", "eden prairie", "coon rapids", "burnsville", "blaine", "lakeville", "minnetonka", "apple valley", "edina", "st. louis park", "mankato", "moorhead", "shakopee", "richfield", "cottage grove", "roseville", "inver grove heights", "winona"],
         baseConfidence: 0.95,
-        data: { high: 72, low: 51, wind: 45, gusts: 80, condition: "Minnesota Wind Event (Cooler 51°F, Gusts to 80 mph)" }
+        data: { high: 72, low: 51, wind: 45, gusts: 80, condition: "Minnesota Storm Event (Cooler 51°F, Gusts to 80 mph)" }
     },
     {
-        date: "8/1/2026",
-        regionKeywords: ["washington", "idaho", "montana", "north dakota", "minnesota", "wisconsin", "wa", "id", "mt", "nd", "mn", "wi"],
-        baseConfidence: 0.88,
-        data: { high: 76, low: 55, wind: 30, gusts: 60, condition: "Transitioning System / Frontal Winds" }
-    },
-    {
-        date: "8/2/2026",
-        regionKeywords: ["washington", "wa", "seattle", "spokane", "tacoma", "vancouver", "olympia", "bellevue"],
-        baseConfidence: 0.94,
-        data: { high: 62, low: 44, wind: 100, gusts: 120, condition: "Cooler / Severe Winds & Gusts (Washington)" }
-    },
-    {
-        date: "8/3/2026",
-        regionKeywords: ["idaho", "id", "boise", "meridian", "nampa", "idaho falls", "pocatello"],
-        baseConfidence: 0.92,
-        data: { high: 96, low: 70, wind: 50, gusts: 90, condition: "Hotter / High Winds & Gusts (Idaho)" }
-    },
-    {
-        date: "8/4/2026",
-        regionKeywords: ["montana", "mt", "helena", "billings", "missoula", "great falls", "bozeman"],
+        date: "8/1/2026", // Day after event: trending down winds, warming up by 5 PM
+        regionKeywords: ["minnesota", "mn", "minneapolis", "st. paul", "saint paul", "duluth", "rochester", "bloomington", "plymouth", "brooklyn park", "woodbury", "st. cloud", "eagan", "eden prairie", "coon rapids", "burnsville", "blaine", "lakeville", "minnetonka", "apple valley", "edina", "st. louis park", "mankato", "moorhead", "shakopee", "richfield", "cottage grove", "roseville", "inver grove heights", "winona"],
         baseConfidence: 0.93,
-        data: { high: 60, low: 42, wind: 70, gusts: 120, condition: "Cooler / High Winds & Gusts (Montana)" }
-    },
-    {
-        date: "8/5/2026",
-        regionKeywords: ["north dakota", "nd", "bismarck", "fargo", "grand forks", "minot"],
-        baseConfidence: 0.95,
-        data: { high: 98, low: 74, wind: 80, gusts: 150, condition: "Hotter / Extreme Winds & Gusts (North Dakota)" }
-    },
-    {
-        date: "8/6/2026",
-        regionKeywords: ["southern minnesota", "southern mn", "rochester", "mankato", "winona", "albert lea", "worthington"],
-        baseConfidence: 0.93,
-        data: { high: 94, low: 70, wind: 65, gusts: 120, condition: "Hotter / High Winds & Gusts (Southern MN)" }
-    },
-    {
-        date: "8/6/2026",
-        regionKeywords: ["minnesota", "mn", "northern minnesota", "duluth", "minneapolis", "st. paul", "saint paul", "st. cloud", "brainerd", "bemidji", "hibbing"],
-        baseConfidence: 0.92,
-        data: { high: 66, low: 45, wind: 55, gusts: 90, condition: "Colder / High Winds & Gusts (Northern MN)" }
-    },
-    {
-        date: "8/6/2026",
-        regionKeywords: ["wisconsin", "wi", "milwaukee", "madison", "green bay", "kenosha", "racine", "eau claire", "appleton"],
-        baseConfidence: 0.95,
-        data: { high: 96, low: 72, wind: 75, gusts: 170, condition: "Hotter / Destructive Winds & Gusts (Wisconsin)" }
-    },
-    {
-        date: "8/7/2026",
-        regionKeywords: ["washington", "idaho", "montana", "north dakota", "minnesota", "wisconsin", "wa", "id", "mt", "nd", "mn", "wi"],
-        baseConfidence: 0.85,
-        data: { high: 74, low: 52, wind: 40, gusts: 75, condition: "Post-Event Stabilization / Moderate Winds" }
+        data: { high: 82, low: 58, wind: 20, gusts: 35, condition: "Post-Event Wind Decrease & Warm-Up by 5 PM (Minnesota)" }
     }
 ];
 
@@ -578,7 +536,8 @@ async function loadWeatherForCoords(lat, lon, placeName, searchQuery) {
     document.getElementById("locationSub").innerText = `Encrypted Coordinates: ${lat.toFixed(2)}°, ${lon.toFixed(2)}°`;
 
     try {
-        const weatherUrl = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&hourly=temperature_2m,wind_speed_10m,wind_gusts_10m&daily=weather_code,temperature_2m_max,temperature_2m_min,wind_speed_10m_max,wind_gusts_10m_max&temperature_unit=fahrenheit&wind_speed_unit=mph&timezone=auto&forecast_days=7`;
+        // Request 8 days to include 7/30/2026 through 8/6/2026
+        const weatherUrl = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&hourly=temperature_2m,wind_speed_10m,wind_gusts_10m&daily=weather_code,temperature_2m_max,temperature_2m_min,wind_speed_10m_max,wind_gusts_10m_max&temperature_unit=fahrenheit&wind_speed_unit=mph&timezone=auto&forecast_days=8`;
         
         const weatherRes = await fetch(weatherUrl);
         if (!weatherRes.ok) throw new Error("Network response was not ok");
@@ -645,67 +604,60 @@ function getMinuteValuesForDay(dateStr, searchQuery, placeName, apiDailyTemps, a
 
             if (exactOverride) {
                 const totalMinutes = hour * 60 + minute;
+                const locationWindVariation = (hash % 7) - 3;
+                const locationGustVariation = (hash % 9) - 4;
+                const targetW = exactOverride.baseEvent.wind + locationWindVariation;
+                const targetG = exactOverride.baseEvent.gusts + locationGustVariation;
+                const targetL = exactOverride.baseEvent.low;
+                const targetH = exactOverride.baseEvent.high;
 
-                if (dateStr === "7/31/2026") {
-                    // Minnesota Storm Day Profile (7/31/2026) - Begins in PM:
-                    // Before 12:00 PM (720 min): Live/normal weather values (AM is stable)
-                    // 12:00 PM to 4:00 PM: Initial buildup phase
-                    // 4:00 PM to 5:00 PM: Storm peak ramp up
-                    // 5:00 PM to 6:00 PM: Trends towards standard weather values
-                    // After 6:00 PM: Pure live weather
-                    const startRampMin = 16 * 60;      // 4:00 PM (16:00)
-                    const peakMin = 17 * 60;           // 5:00 PM (17:00)
-                    const postDropMin = 18 * 60;       // 6:00 PM (18:00)
+                if (dateStr === "7/30/2026") {
+                    // Day before: ramp up winds, cool down temps gradually through the day
+                    let factor = totalMinutes / (24 * 60);
+                    baseWind = Math.round(baseWind + (targetW - baseWind) * factor);
+                    baseGust = Math.round(baseGust + (targetG - baseGust) * factor);
+                    baseTemp = Math.round(baseTemp + (targetL - baseTemp) * factor);
+                } 
+                else if (dateStr === "7/31/2026") {
+                    // Event day storm spike
+                    const startRampMin = 4 * 60;       
+                    const peakMin = 5 * 60;            
+                    const postDropMin = 6 * 60;        
 
                     let factor = 0;
                     if (totalMinutes < startRampMin) {
-                        factor = 0; // Live weather / calm AM and early PM
+                        factor = 0; 
                     } else if (totalMinutes >= startRampMin && totalMinutes <= peakMin) {
-                        // Ramps up to peak storm values between 4 PM and 5 PM
                         factor = (totalMinutes - startRampMin) / (peakMin - startRampMin);
                     } else if (totalMinutes > peakMin && totalMinutes <= postDropMin) {
-                        // Between 5 PM and 6 PM, trends towards live weather values
                         const fadeDuration = postDropMin - peakMin;
                         const elapsedFade = totalMinutes - peakMin;
                         factor = Math.max(0, 1.0 - (elapsedFade / fadeDuration));
                     } else {
-                        factor = 0; // Live weather after 6 PM
+                        factor = 0; 
                     }
-
-                    const locationWindVariation = (hash % 7) - 3;
-                    const locationGustVariation = (hash % 9) - 4;
-
-                    const targetW = exactOverride.baseEvent.wind + locationWindVariation;
-                    const targetG = exactOverride.baseEvent.gusts + locationGustVariation;
-                    const targetL = exactOverride.baseEvent.low;
 
                     baseWind = Math.round(baseWind + (targetW - baseWind) * factor);
                     baseGust = Math.round(baseGust + (targetG - baseGust) * factor);
                     baseTemp = Math.round(baseTemp + (targetL - baseTemp) * factor);
-
-                } else {
-                    const targetPeakMin = 17 * 60 + locationMinuteOffset; // 5:00 PM peak
-                    const midnightEndMin = 23 * 60 + 59;
-
-                    let factor = 1.0; 
-                    if (dayIndex >= 2) { 
-                        if (totalMinutes >= targetPeakMin) {
-                            const postDuration = midnightEndMin - targetPeakMin;
-                            const elapsedPost = totalMinutes - targetPeakMin;
-                            factor = Math.max(0, 1.0 - (elapsedPost / Math.max(1, postDuration)));
-                        }
+                } 
+                else if (dateStr === "8/1/2026") {
+                    // Day after: trend down winds, warm up by 5 PM (17:00)
+                    const warmUpTargetMin = 17 * 60; // 5:00 PM
+                    let factor = 0;
+                    if (totalMinutes <= warmUpTargetMin) {
+                        factor = totalMinutes / warmUpTargetMin;
+                    } else {
+                        factor = 1.0;
                     }
 
-                    const locationWindVariation = (hash % 7) - 3;
-                    const locationGustVariation = (hash % 9) - 4;
-
-                    const targetW = exactOverride.baseEvent.wind + locationWindVariation;
-                    const targetG = exactOverride.baseEvent.gusts + locationGustVariation;
-                    const targetL = exactOverride.baseEvent.low;
-
-                    baseWind = Math.round(baseWind + (targetW - baseWind) * factor);
-                    baseGust = Math.round(baseGust + (targetG - baseGust) * factor);
-                    baseTemp = Math.round(baseTemp + (targetL - baseTemp) * factor);
+                    // Winds trend down as day progresses
+                    let windFactor = Math.max(0, 1.0 - (totalMinutes / (24 * 60)));
+                    baseWind = Math.round(baseWind + (targetW - baseWind) * windFactor);
+                    baseGust = Math.round(baseGust + (targetG - baseGust) * windFactor);
+                    
+                    // Temps warm up to target high by 5 PM
+                    baseTemp = Math.round(baseTemp + (targetH - baseTemp) * factor);
                 }
             }
 
@@ -723,6 +675,7 @@ function parseAndRender(data, searchQuery, placeName) {
     const daily = data.daily;
     const forecastData = [];
 
+    // Target 7 days starting from 7/31/2026 through 8/6/2026 (or adjust if needed)
     const targetDates = [
         "7/31/2026", "8/1/2026", "8/2/2026", "8/3/2026", "8/4/2026", "8/5/2026", "8/6/2026"
     ];
@@ -735,7 +688,15 @@ function parseAndRender(data, searchQuery, placeName) {
         const dateObj = new Date(y, m - 1, d);
         const dayLabel = i === 0 ? "Today" : daysOfWeek[dateObj.getDay()];
 
-        const apiCode = daily.weather_code ? daily.weather_code[i] : 0;
+        // Find correct daily index from API data
+        let apiIndex = i;
+        if (daily.time) {
+            const formattedDate = `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+            const foundApiIdx = daily.time.indexOf(formattedDate);
+            if (foundApiIdx !== -1) apiIndex = foundApiIdx;
+        }
+
+        const apiCode = daily.weather_code ? daily.weather_code[apiIndex] : 0;
         
         const minuteData = getMinuteValuesForDay(
             dateStr, 
@@ -744,7 +705,7 @@ function parseAndRender(data, searchQuery, placeName) {
             { max: daily.temperature_2m_max, min: daily.temperature_2m_min }, 
             daily.wind_speed_10m_max, 
             daily.wind_gusts_10m_max, 
-            i
+            apiIndex
         );
 
         const cardLow = Math.min(...minuteData.temps);
@@ -752,7 +713,7 @@ function parseAndRender(data, searchQuery, placeName) {
         const cardWind = Math.max(...minuteData.winds);
         const cardGusts = Math.max(...minuteData.gusts);
 
-        const matchedOverride = getResolvedOverride(dateStr, searchQuery, placeName, daily.temperature_2m_max[i], daily.temperature_2m_min[i], daily.wind_speed_10m_max[i], daily.wind_gusts_10m_max[i]);
+        const matchedOverride = getResolvedOverride(dateStr, searchQuery, placeName, daily.temperature_2m_max[apiIndex], daily.temperature_2m_min[apiIndex], daily.wind_speed_10m_max[apiIndex], daily.wind_gusts_10m_max[apiIndex]);
         const note = matchedOverride ? matchedOverride.condition : "";
         const iconUrl = getWeatherIcon(apiCode, matchedOverride ? matchedOverride.rawCondition : "", isMN, dateStr);
 
