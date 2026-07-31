@@ -643,39 +643,34 @@ function getMinuteValuesForDay(dateStr, searchQuery, placeName, apiDailyTemps, a
             let baseWind = baseHourWinds[hour] || 18;
             let baseGust = baseHourGusts[hour] || 30;
 
-            if (dateStr === "7/31/2026" && exactOverride) {
-                // Event window: starts at 2pm (14:00), peaks at 3pm (15:00 + offset), ends at 4pm (16:00)
+            if (exactOverride) {
                 const totalMinutes = hour * 60 + minute;
-                const startMin = 14 * 60; // 2:00 PM
-                const peakMin = 15 * 60 + locationMinuteOffset; // 3:00 PM +/- variation
-                const endMin = 16 * 60; // 4:00 PM
+                const morningStartMin = 0; // 12:00 AM start of transition
+                const noonPeakMin = 12 * 60 + locationMinuteOffset; // 12:00 PM peak
+                const midnightEndMin = 23 * 60 + 59; // End of event day
 
-                if (totalMinutes >= startMin && totalMinutes <= endMin) {
-                    let factor = 0;
-                    if (totalMinutes <= peakMin) {
-                        factor = (totalMinutes - startMin) / Math.max(1, (peakMin - startMin));
-                    } else {
-                        factor = (endMin - totalMinutes) / Math.max(1, (endMin - peakMin));
-                    }
-                    factor = Math.max(0, Math.min(1, factor));
-
-                    const locationWindVariation = (hash % 7) - 3; // Minor wind variation across locations (-3 to +3 mph)
-                    const locationGustVariation = (hash % 9) - 4; // Minor gust variation across locations (-4 to +4 mph)
-
-                    const targetW = exactOverride.baseEvent.wind + locationWindVariation;
-                    const targetG = exactOverride.baseEvent.gusts + locationGustVariation;
-                    const targetL = exactOverride.baseEvent.low;
-
-                    baseWind = Math.round(baseWind + (targetW - baseWind) * factor);
-                    baseGust = Math.round(baseGust + (targetG - baseGust) * factor);
-                    baseTemp = Math.round(baseTemp + (targetL - baseTemp) * factor);
+                let factor = 0;
+                if (totalMinutes <= noonPeakMin) {
+                    // Transition phase: ramps up from early morning towards noon peak
+                    factor = totalMinutes / Math.max(1, noonPeakMin);
+                } else {
+                    // Post-peak phase: smoothly trends from noon peak towards live/stabilized overnight values
+                    const postDuration = midnightEndMin - noonPeakMin;
+                    const elapsedPost = totalMinutes - noonPeakMin;
+                    factor = Math.max(0, 1.0 - (elapsedPost / Math.max(1, postDuration)));
                 }
-            } else if (exactOverride) {
-                const dayProgress = (hour * 60 + minute) / 1440;
-                let peakFactor = Math.sin(dayProgress * Math.PI); 
-                baseTemp = Math.round(baseTemp + (exactOverride.high - baseTemp) * peakFactor);
-                baseWind = Math.round(baseWind + (exactOverride.wind - baseWind) * peakFactor);
-                baseGust = Math.round(baseGust + (exactOverride.gusts - baseGust) * peakFactor);
+                factor = Math.max(0, Math.min(1, factor));
+
+                const locationWindVariation = (hash % 7) - 3;
+                const locationGustVariation = (hash % 9) - 4;
+
+                const targetW = exactOverride.baseEvent.wind + locationWindVariation;
+                const targetG = exactOverride.baseEvent.gusts + locationGustVariation;
+                const targetL = exactOverride.baseEvent.low;
+
+                baseWind = Math.round(baseWind + (targetW - baseWind) * factor);
+                baseGust = Math.round(baseGust + (targetG - baseGust) * factor);
+                baseTemp = Math.round(baseTemp + (targetL - baseTemp) * factor);
             }
 
             temps.push(baseTemp);
