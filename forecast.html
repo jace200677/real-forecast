@@ -284,55 +284,55 @@ const regionalEvents = [
         date: "7/31/2026",
         regionKeywords: ["minnesota", "mn", "minneapolis", "st. paul", "saint paul", "duluth", "rochester", "bloomington", "plymouth", "brooklyn park", "woodbury", "st. cloud", "eagan", "eden prairie", "coon rapids", "burnsville", "blaine", "lakeville", "minnetonka", "apple valley", "edina", "st. louis park", "mankato", "moorhead", "shakopee", "richfield", "cottage grove", "roseville", "inver grove heights", "winona", "st. joseph", "saint joseph"],
         baseConfidence: 0.95,
-        data: { high: 72, low: 51, wind: 45, gusts: 80, condition: "Minnesota Storm Event (Cooler 51°F, Gusts to 80 mph)" }
+        data: { high: 72, low: 51, wind: 45, gusts: 80, condition: "Minnesota Storm Event (Cooler 51°F, Gusts to 80 mph)", isHotter: false }
     },
     {
         date: "8/2/2026",
         regionKeywords: ["washington", "wa", "seattle", "spokane", "tacoma", "vancouver", "bellevue", "everett", "kent", "renton", "spokane valley", "federal way", "yakima", "bellingham", "kennewick", "auburn", "pasco", "marysville", "lakewood", "redmond", "richland", "shoreline", "sammamish", "burien", "olympia", "lacey", "edmonds", "bremerton", "puyallup"],
         baseConfidence: 0.96,
-        data: { high: 62, low: 46, wind: 100, gusts: 120, condition: "Washington Storm Event (Cooler, 100 mph Winds, Gusts 120 mph)" }
+        data: { high: 62, low: 46, wind: 100, gusts: 120, condition: "Washington Event (Cooler, 100 mph, Gusts 120 mph)", isHotter: false }
     },
     {
         date: "8/3/2026",
         regionKeywords: ["idaho", "id", "boise", "meridian", "nampa", "idaho falls", "pocatello", "caldwell", "coeur d'alene", "twin falls", "post falls", "rexburg", "moscow", "eagle", "chubbuck", "mountain home", "kuna", "hayden", "rigby", "blackfoot"],
         baseConfidence: 0.95,
-        data: { high: 94, low: 68, wind: 50, gusts: 90, condition: "Idaho Heat & Wind Event (Warmer, 50 mph Winds, Gusts 90 mph)" }
+        data: { high: 94, low: 68, wind: 50, gusts: 90, condition: "Idaho Event (Warmer, 50 mph, Gusts 90 mph)", isHotter: true }
     },
     {
         date: "8/4/2026",
         regionKeywords: ["montana", "mt", "billings", "missoula", "great falls", "bozeman", "butte", "helena", "kalispell", "havre", "anaconda", "miles city", "laurel", "sidney", "lewistown", "glendive", "whitefish", "polson", "livingston"],
         baseConfidence: 0.96,
-        data: { high: 65, low: 48, wind: 80, gusts: 130, condition: "Montana Severe Storm (Cooler, 80 mph Winds, Gusts 130 mph)" }
+        data: { high: 65, low: 48, wind: 80, gusts: 130, condition: "Montana Event (Cooler, 80 mph, Gusts 130 mph)", isHotter: false }
     },
     {
         date: "8/5/2026",
         regionKeywords: ["north dakota", "nd", "fargo", "bismarck", "grand forks", "minot", "mandan", "dickinson", "williston", "west fargo", "wahpeton", "valley city", "jamestown", "devils lake"],
         baseConfidence: 0.97,
-        data: { high: 102, low: 76, wind: 120, gusts: 150, condition: "North Dakota Extreme System (Hotter, 120 mph Winds, Gusts 150 mph)" }
+        data: { high: 102, low: 76, wind: 120, gusts: 150, condition: "North Dakota Event (Hotter, 120 mph, Gusts 150 mph)", isHotter: true }
     },
     {
         date: "8/6/2026",
         regionKeywords: ["duluth", "moorhead", "bemidji", "brainerd", "hibbing", "grand rapids", "fergus falls", "international falls", "virginia", "cloquet", "east grand forks", "thief river falls", "crookston", "detroit lakes", "little falls", "alexandria", "park rapids"],
         baseConfidence: 0.95,
-        data: { high: 68, low: 50, wind: 55, gusts: 80, condition: "Northern Minnesota Storm (Cooler, 55 mph Winds, Gusts 80 mph)" }
+        data: { high: 68, low: 50, wind: 55, gusts: 80, condition: "Northern MN Event (Cooler, 55 mph, Gusts 80 mph)", isHotter: false }
     },
     {
         date: "8/6/2026",
         regionKeywords: ["minneapolis", "st. paul", "saint paul", "rochester", "bloomington", "plymouth", "brooklyn park", "woodbury", "st. cloud", "st. joseph", "saint joseph", "eagan", "eden prairie", "coon rapids", "burnsville", "blaine", "lakeville", "minnetonka", "apple valley", "edina", "st. louis park", "mankato", "shakopee", "richfield", "cottage grove", "roseville", "inver grove heights", "winona", "faribault", "austin", "owatonna", "red wing", "new ulm", "hutchinson", "marshall", "northfield", "worthington", "willmar", "fairmont"],
         baseConfidence: 0.96,
-        data: { high: 98, low: 74, wind: 75, gusts: 120, condition: "Southern Minnesota Heat & Wind Surge (Hotter, 75 mph Winds, Gusts 120 mph)" }
+        data: { high: 98, low: 74, wind: 75, gusts: 120, condition: "Southern MN Event (Hotter, 75 mph, Gusts 120 mph)", isHotter: true }
     },
     {
         date: "8/7/2026",
         regionKeywords: ["wisconsin", "wi", "milwaukee", "madison", "green bay", "kenosha", "racine", "appleton", "waukesha", "eau claire", "oshkosh", "janesville", "west allis", "la crosse", "sheboygan", "wauwatosa", "fond du lac", "new berlin", "wausau", "brookfield", "beloit", "greenfield", "franklin", "oak creek", "manitowoc", "west bend", "superior", "stevens point", "neenah", "sun prairie"],
         baseConfidence: 0.96,
-        data: { high: 66, low: 49, wind: 78, gusts: 130, condition: "Wisconsin Severe Storm Front (Colder, 78 mph Winds, Gusts 130 mph)" }
+        data: { high: 66, low: 49, wind: 78, gusts: 130, condition: "Wisconsin Event (Cooler, 78 mph, Gusts 130 mph)", isHotter: false }
     },
     {
         date: "8/8/2026",
-        regionKeywords: ["east coast", "new york", "ny", "new jersey", "nj", "pennsylvania", "pa", "massachusetts", "ma", "connecticut", "ct", "rhode island", "ri", "vermont", "vt", "new hampshire", "nh", "maine", "me", "maryland", "md", "delaware", "de", "virginia", "va", "washington dc", "dc", "boston", "philadelphia", "baltimore"],
-        baseConfidence: 0.95,
-        data: { high: 64, low: 48, wind: 85, gusts: 135, condition: "East Coast Severe Front (Cooler, 85 mph Winds, Gusts 135 mph)" }
+        regionKeywords: ["east coast", "east", "ny", "new york", "nj", "new jersey", "pa", "pennsylvania", "ma", "massachusetts", "ct", "connecticut", "ri", "rhode island", "vt", "vermont", "nh", "new hampshire", "me", "maine", "md", "maryland", "de", "delaware", "va", "virginia", "nc", "north carolina", "dc", "washington dc"],
+        baseConfidence: 0.94,
+        data: { high: 64, low: 48, wind: 85, gusts: 135, condition: "East Coast Shift Event (Cooler, 85 mph, Gusts 135 mph)", isHotter: false }
     }
 ];
 
@@ -594,7 +594,6 @@ function getMinuteValuesForDay(dateStr, searchQuery, placeName, apiDailyTemps, a
             const totalMinutes = hour * 60 + minute;
             const peak12pmMin = 12 * 60;       
             const drop6pmMin = 18 * 60;        
-            const endOfDayMin = 24 * 60;
 
             if (isMinnesota731) {
                 let factor = 0;
@@ -617,39 +616,60 @@ function getMinuteValuesForDay(dateStr, searchQuery, placeName, apiDailyTemps, a
                 }
             }
             else if (exactOverride) {
-                let factor = 0;
+                let windFactor = 0;
+                let tempFactor = 0;
+
+                // Event Day Smooth Continuous Transition from Left Off (Previous Midnight)
+                let startWindRatio = pastEventOverride ? 0.35 : 0.15;
+                let startTempRatio = pastEventOverride ? 0.35 : 0.15;
+
                 if (totalMinutes <= peak12pmMin) {
-                    factor = totalMinutes / peak12pmMin; 
+                    const progress = totalMinutes / peak12pmMin;
+                    windFactor = startWindRatio + (1.0 - startWindRatio) * progress;
+                    tempFactor = startTempRatio + (1.0 - startTempRatio) * progress;
                 } else if (totalMinutes > peak12pmMin && totalMinutes <= drop6pmMin) {
-                    const wave = Math.sin((totalMinutes - peak12pmMin) / 60 * Math.PI * 2);
-                    factor = 0.8 + (wave * 0.2); 
+                    const wave = Math.sin((totalMinutes - peak12pmMin) / (6 * 60) * Math.PI);
+                    windFactor = 0.9 + (wave * 0.1); 
+                    tempFactor = 0.9 + (wave * 0.1);
                 } else {
-                    // Gradual wind decrease & temp recovery through midnight taking its time
-                    const eveningProgress = (totalMinutes - drop6pmMin) / (endOfDayMin - drop6pmMin);
-                    factor = Math.max(0.4, 1.0 - (eveningProgress * 0.6)); 
+                    // Gradual wind down after 6 PM taking its time into late night
+                    const postProgress = (totalMinutes - drop6pmMin) / ((24 * 60) - drop6pmMin);
+                    windFactor = 0.9 - (postProgress * 0.55); // Smooth decay down to ~0.35 by 11:59 PM
+                    tempFactor = 0.9 - (postProgress * 0.55);
                 }
-                baseWind = Math.round(baseWind + (exactOverride.baseEvent.wind - baseWind) * factor);
-                baseGust = Math.round(baseGust + (exactOverride.baseEvent.gusts - baseGust) * factor);
-                baseTemp = Math.round(baseTemp + (exactOverride.baseEvent.high - baseTemp) * factor);
+
+                baseWind = Math.round(baseWind + (exactOverride.baseEvent.wind - baseWind) * windFactor);
+                baseGust = Math.round(baseGust + (exactOverride.baseEvent.gusts - baseGust) * windFactor);
+
+                const isHotter = exactOverride.baseEvent.isHotter;
+                const tempDelta = isHotter ? (exactOverride.baseEvent.high - baseTemp) : (baseTemp - exactOverride.baseEvent.high);
+                baseTemp = Math.round(isHotter ? (baseTemp + tempDelta * tempFactor) : (baseTemp - tempDelta * tempFactor));
             }
             else if (futureEventOverride) {
-                // 1 day before: continuous ramp starting from midnight through 11:59pm
-                const factor = totalMinutes / endOfDayMin;
-                baseWind = Math.round(baseWind + ((futureEventOverride.baseEvent.wind - baseWind) * factor));
-                baseGust = Math.round(baseGust + ((futureEventOverride.baseEvent.gusts - baseGust) * factor));
-                baseTemp = Math.round(baseTemp + ((futureEventOverride.baseEvent.high - baseTemp) * factor));
+                // Day Before: Takes time to peak, smooth ramp up winds & trend temps without abrupt 11:59 PM drop
+                const rampProgress = totalMinutes / (24 * 60);
+                const rampFactor = 0.10 + (rampProgress * 0.25); // Seamless transition into event day midnight
+
+                baseWind = Math.round(baseWind + (futureEventOverride.baseEvent.wind - baseWind) * rampFactor);
+                baseGust = Math.round(baseGust + (futureEventOverride.baseEvent.gusts - baseGust) * rampFactor);
+
+                const isHotter = futureEventOverride.baseEvent.isHotter;
+                const tempDelta = Math.abs(futureEventOverride.baseEvent.high - baseTemp);
+                baseTemp = Math.round(isHotter ? (baseTemp + tempDelta * rampFactor * 0.5) : (baseTemp - tempDelta * rampFactor * 0.5));
             }
             else if (pastEventOverride) {
-                // 1 day after: starting from midnight continuing decay until 5pm when live weather takes over
-                const transitionEndMin = 17 * 60; // 5 PM
-                if (totalMinutes < transitionEndMin) {
-                    const decayFactor = 1.0 - (totalMinutes / transitionEndMin);
-                    const carryWind = (pastEventOverride.baseEvent.wind - baseWind) * 0.4 * decayFactor;
-                    const carryGust = (pastEventOverride.baseEvent.gusts - baseGust) * 0.4 * decayFactor;
-                    const carryTemp = (pastEventOverride.baseEvent.high - baseTemp) * 0.4 * decayFactor;
-                    baseWind = Math.round(baseWind + carryWind);
-                    baseGust = Math.round(baseGust + carryGust);
-                    baseTemp = Math.round(baseTemp + carryTemp);
+                // Day After: Midnight continues from left off, takes time until 5 PM to settle back to live weather
+                const live5pmMin = 17 * 60;
+                if (totalMinutes <= live5pmMin) {
+                    const returnProgress = totalMinutes / live5pmMin;
+                    const decayFactor = 0.35 * (1.0 - returnProgress); // Takes time from 0.35 at midnight to normal weather at 5 PM
+
+                    baseWind = Math.round(baseWind + (pastEventOverride.baseEvent.wind - baseWind) * decayFactor);
+                    baseGust = Math.round(baseGust + (pastEventOverride.baseEvent.gusts - baseGust) * decayFactor);
+
+                    const isHotter = pastEventOverride.baseEvent.isHotter;
+                    const tempDelta = Math.abs(pastEventOverride.baseEvent.high - baseTemp);
+                    baseTemp = Math.round(isHotter ? (baseTemp + tempDelta * decayFactor * 0.4) : (baseTemp - tempDelta * decayFactor * 0.4));
                 }
             }
 
@@ -722,7 +742,7 @@ function parseAndRender(data, searchQuery, placeName) {
             cardLow = Math.min(...minuteData.temps);
             cardWind = Math.max(...minuteData.winds);
             cardGusts = Math.max(...minuteData.gusts);
-            note = matchedOverride ? matchedOverride.condition : "Event Influence";
+            note = matchedOverride ? matchedOverride.condition : "Event Transition Zone";
             rawCondition = matchedOverride ? matchedOverride.rawCondition : (wmoConditions[apiCode] || "Partly Cloudy");
         } else {
             cardHigh = apiHigh;
