@@ -204,42 +204,31 @@ function getWeatherIcon(weatherCode, conditionText, regionMatch, dateStr) {
     }
     
     switch (weatherCode) {
-        case 0:
-            return ICON_BASE_URL + "Sunny.png";
-        case 1:
-            return ICON_BASE_URL + "Mostly%20sunny.png";
-        case 2:
-            return ICON_BASE_URL + "Partly%20Cloudy.png";
-        case 3:
-            return ICON_BASE_URL + "Cloudy.png";
+        case 0: return ICON_BASE_URL + "Sunny.png";
+        case 1: return ICON_BASE_URL + "Mostly%20sunny.png";
+        case 2: return ICON_BASE_URL + "Partly%20Cloudy.png";
+        case 3: return ICON_BASE_URL + "Cloudy.png";
         case 45:
-        case 48:
-            return ICON_BASE_URL + "foggy.png";
+        case 48: return ICON_BASE_URL + "foggy.png";
         case 51:
         case 53:
         case 55:
         case 61:
-        case 63:
-            return ICON_BASE_URL + "Light%20Rain.png";
+        case 63: return ICON_BASE_URL + "Light%20Rain.png";
         case 65:
         case 80:
         case 81:
-        case 82:
-            return ICON_BASE_URL + "Rainy.png";
+        case 82: return ICON_BASE_URL + "Rainy.png";
         case 71:
         case 73:
-        case 85:
-            return ICON_BASE_URL + "Light%20snow.png";
+        case 85: return ICON_BASE_URL + "Light%20snow.png";
         case 75:
         case 77:
-        case 86:
-            return ICON_BASE_URL + "Snowy.png";
+        case 86: return ICON_BASE_URL + "Snowy.png";
         case 95:
         case 96:
-        case 99:
-            return ICON_BASE_URL + "Thunderstorms.png";
-        default:
-            return ICON_BASE_URL + "Mostly%20cloudy.png";
+        case 99: return ICON_BASE_URL + "Thunderstorms.png";
+        default: return ICON_BASE_URL + "Mostly%20cloudy.png";
     }
 }
 
@@ -287,7 +276,6 @@ function getTempColor(temp) {
     return "#007aff";
 }
 
-// Apple Weather Smooth Wind & Gust Color Scale Lerp (mph)
 const appleWindStops = [
     { speed: 0, color: "#30b0c7" },   
     { speed: 15, color: "#34c759" },  
@@ -312,7 +300,7 @@ function getWindColor(speed) {
     return "#30b0c7";
 }
 
-// Regional Event Scenarios
+// Regional Event Scenarios matching all user-specified state parameters
 const regionalEvents = [
     {
         date: "7/30/2026",
@@ -346,19 +334,19 @@ const regionalEvents = [
     },
     {
         date: "8/4/2026",
-        regionKeywords: ["montana", "mt", "billings", "missoula", "great falls", "bozeman", "butte", "helena", "kalispell", "havre", "anaconda", "miles city", "laurel", "sidney", "lewistown", "glendive", "whitefish", "polson", "livingston", "laurel"],
+        regionKeywords: ["montana", "mt", "billings", "missoula", "great falls", "bozeman", "butte", "helena", "kalispell", "havre", "anaconda", "miles city", "laurel", "sidney", "lewistown", "glendive", "whitefish", "polson", "livingston"],
         baseConfidence: 0.96,
         data: { high: 65, low: 48, wind: 80, gusts: 130, condition: "Montana Severe Storm (Cooler, 80 mph Winds, Gusts 130 mph)" }
     },
     {
         date: "8/5/2026",
-        regionKeywords: ["north dakota", "nd", "fargo", "bismarck", "grand forks", "minot", "mandan", "dickinson", "williston", "west fargo", "wahpeton", "valley city", "jamestown", "devils lake", "beulah", "rugd", "grafton", "lincoln", "horace"],
+        regionKeywords: ["north dakota", "nd", "fargo", "bismarck", "grand forks", "minot", "mandan", "dickinson", "williston", "west fargo", "wahpeton", "valley city", "jamestown", "devils lake"],
         baseConfidence: 0.97,
         data: { high: 102, low: 76, wind: 120, gusts: 150, condition: "North Dakota Extreme System (Hotter, 120 mph Winds, Gusts 150 mph)" }
     },
     {
         date: "8/6/2026",
-        regionKeywords: ["duluth", "moorhead", "bemidji", "brainerd", "hibbing", "grand rapids", "moorhead", "fergus falls", "international falls", "virginia", "clouqet", "east grand forks", "thief river falls", "crookston", "detroit lakes", "little falls", "alexandria", "park rapids", "grand rapids"],
+        regionKeywords: ["duluth", "moorhead", "bemidji", "brainerd", "hibbing", "grand rapids", "fergus falls", "international falls", "virginia", "cloquet", "east grand forks", "thief river falls", "crookston", "detroit lakes", "little falls", "alexandria", "park rapids"],
         baseConfidence: 0.95,
         data: { high: 68, low: 50, wind: 55, gusts: 80, condition: "Northern Minnesota Storm (Cooler, 55 mph Winds, Gusts 80 mph)" }
     },
