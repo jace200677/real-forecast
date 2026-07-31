@@ -646,6 +646,8 @@ function getMinuteValuesForDay(dateStr, searchQuery, placeName, apiDailyTemps, a
     const winds = [];
     const gusts = [];
 
+    const isMinnesota731 = (dateStr === "7/31/2026" && getRegionalEventForDateAndLocation("7/31/2026", searchQuery, placeName) !== null);
+
     for (let hour = 0; hour < 24; hour++) {
         for (let minute = 0; minute < 60; minute++) {
             if (hour === 23 && minute === 59) continue;
@@ -655,20 +657,40 @@ function getMinuteValuesForDay(dateStr, searchQuery, placeName, apiDailyTemps, a
             let baseGust = baseHourGusts[hour] || 30;
 
             const totalMinutes = hour * 60 + minute;
-            const peak12pmMin = 12 * 60; // 12:00 PM peak
-            const drop6pmMin = 18 * 60;   // 6:00 PM baseline mark
+            const rampStartMin = 5 * 60;        // 5:00 AM start for 1 day before override
+            const peak12pmMin = 12 * 60;       // 12:00 PM peak
+            const drop6pmMin = 18 * 60;        // 6:00 PM settlement mark
 
+            // Special Rule for 7/31/2026 Minnesota Storm: live weather before 16:00 (4 PM), peak at 17:00 (5 PM), live weather again after 18:00 (6 PM)
+            if (isMinnesota731) {
+                let factor = 0;
+                const start16 = 16 * 60;
+                const peak17 = 17 * 60;
+                const end18 = 18 * 60;
+
+                if (totalMinutes >= start16 && totalMinutes <= peak17) {
+                    factor = (totalMinutes - start16) / (peak17 - start16);
+                } else if (totalMinutes > peak17 && totalMinutes <= end18) {
+                    factor = 1.0 - ((totalMinutes - peak17) / (end18 - peak17));
+                } else {
+                    factor = 0;
+                }
+
+                if (exactOverride) {
+                    baseWind = Math.round(baseWind + (exactOverride.baseEvent.wind - baseWind) * factor);
+                    baseGust = Math.round(baseGust + (exactOverride.baseEvent.gusts - baseGust) * factor);
+                    baseTemp = Math.round(baseTemp + (exactOverride.baseEvent.high - baseTemp) * factor);
+                }
+            }
             // 1. Exact Event Day Override (Peaks before 12 PM, fluctuates until 6 PM, settles after 6 PM)
-            if (exactOverride) {
+            else if (exactOverride) {
                 let factor = 0;
                 if (totalMinutes <= peak12pmMin) {
                     factor = totalMinutes / peak12pmMin;
                 } else if (totalMinutes > peak12pmMin && totalMinutes <= drop6pmMin) {
-                    // Fluctuation phase between 12 PM and 6 PM
                     const wave = Math.sin((totalMinutes - peak12pmMin) / 60 * Math.PI * 2);
                     factor = 0.8 + (wave * 0.2);
                 } else {
-                    // After 6 PM winding down smoothly
                     const postProgress = (totalMinutes - drop6pmMin) / ((24 * 60) - drop6pmMin);
                     factor = Math.max(0.1, 0.6 - (postProgress * 0.5));
                 }
@@ -677,13 +699,12 @@ function getMinuteValuesForDay(dateStr, searchQuery, placeName, apiDailyTemps, a
                 baseGust = Math.round(baseGust + (exactOverride.baseEvent.gusts - baseGust) * factor);
                 baseTemp = Math.round(baseTemp + (exactOverride.baseEvent.high - baseTemp) * factor);
             }
-            // 2. 1 Day Before Event (Ramping up continuously towards the upcoming peak)
+            // 2. 1 Day Before Event (Ramping up starting at 5:00 AM towards the upcoming peak)
             else if (futureEventOverride) {
                 let factor = 0;
-                if (totalMinutes <= peak12pmMin) {
-                    factor = (totalMinutes / peak12pmMin) * 0.75;
-                } else {
-                    factor = 0.75 - (((totalMinutes - peak12pmMin) / (12 * 60)) * 0.15);
+                if (totalMinutes >= rampStartMin) {
+                    const rampProgress = (totalMinutes - rampStartMin) / ((24 * 60) - rampStartMin);
+                    factor = rampProgress * 0.75;
                 }
 
                 baseWind = Math.round(baseWind + (futureEventOverride.baseEvent.wind * factor));
