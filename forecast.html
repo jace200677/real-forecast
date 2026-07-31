@@ -300,25 +300,13 @@ function getWindColor(speed) {
     return "#30b0c7";
 }
 
-// Regional Event Scenarios matching all user-specified state parameters & Eastward intensification rule
+// Regional Event Scenarios matching user parameters
 const regionalEvents = [
-    {
-        date: "7/30/2026",
-        regionKeywords: ["minnesota", "mn", "minneapolis", "st. paul", "saint paul", "duluth", "rochester", "bloomington", "plymouth", "brooklyn park", "woodbury", "st. cloud", "eagan", "eden prairie", "coon rapids", "burnsville", "blaine", "lakeville", "minnetonka", "apple valley", "edina", "st. louis park", "mankato", "moorhead", "shakopee", "richfield", "cottage grove", "roseville", "inver grove heights", "winona"],
-        baseConfidence: 0.94,
-        data: { high: 75, low: 53, wind: 35, gusts: 65, condition: "Pre-Event Wind Ramp-Up & Cooling (Minnesota)" }
-    },
     {
         date: "7/31/2026",
         regionKeywords: ["minnesota", "mn", "minneapolis", "st. paul", "saint paul", "duluth", "rochester", "bloomington", "plymouth", "brooklyn park", "woodbury", "st. cloud", "eagan", "eden prairie", "coon rapids", "burnsville", "blaine", "lakeville", "minnetonka", "apple valley", "edina", "st. louis park", "mankato", "moorhead", "shakopee", "richfield", "cottage grove", "roseville", "inver grove heights", "winona"],
         baseConfidence: 0.95,
         data: { high: 72, low: 51, wind: 45, gusts: 80, condition: "Minnesota Storm Event (Cooler 51°F, Gusts to 80 mph)" }
-    },
-    {
-        date: "8/1/2026",
-        regionKeywords: ["minnesota", "mn", "minneapolis", "st. paul", "saint paul", "duluth", "rochester", "bloomington", "plymouth", "brooklyn park", "woodbury", "st. cloud", "eagan", "eden prairie", "coon rapids", "burnsville", "blaine", "lakeville", "minnetonka", "apple valley", "edina", "st. louis park", "mankato", "moorhead", "shakopee", "richfield", "cottage grove", "roseville", "inver grove heights", "winona"],
-        baseConfidence: 0.93,
-        data: { high: 82, low: 58, wind: 20, gusts: 35, condition: "Post-Event Wind Decrease & Warm-Up by 5 PM (Minnesota)" }
     },
     {
         date: "8/2/2026",
@@ -649,7 +637,7 @@ function getMinuteValuesForDay(dateStr, searchQuery, placeName, apiDailyTemps, a
             const peak12pmMin = 12 * 60;       // 12:00 PM peak
             const drop6pmMin = 18 * 60;        // 6:00 PM settlement mark
 
-            // Special Rule for 7/31/2026 Minnesota Storm: live weather before 16:00 (4 PM), peak at 17:00 (5 PM), live weather again after 18:00 (6 PM)
+            // Special rule for 7/31/2026 Minnesota Storm: live weather before 16:00 (4 PM), peak at 17:00 (5 PM), live weather again after 18:00 (6 PM)
             if (isMinnesota731) {
                 let factor = 0;
                 const start16 = 16 * 60;
