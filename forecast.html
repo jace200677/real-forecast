@@ -119,7 +119,7 @@
 </div>
 
 <div class="search-container">
-    <input type="text" id="searchInput" class="search-input" placeholder="Search location (e.g. Seattle, Boise, Helena, Bismarck, Minneapolis, Madison...)">
+    <input type="text" id="searchInput" class="search-input" placeholder="Search location (e.g. Minneapolis, St. Paul, Duluth, Rochester...)">
     <button onclick="fetchForecast()" class="search-btn">Search</button>
     <button onclick="useCurrentLocation()" class="location-btn">📍 Use Current Location</button>
 </div>
@@ -304,14 +304,22 @@ function getWindColor(speed) {
     return "#30b0c7";
 }
 
-// Comprehensive Multi-State Regional Event Scenarios for Aug 1 - Aug 6, 2026 (7/31 is strictly excluded)
+// Helper to check if location query or place name matches Minnesota (MN)
+function isMinnesotaLocation(searchString, placeName) {
+    const combined = `${searchString} ${placeName}`.toLowerCase();
+    const mnKeywords = [
+        "minnesota", ", mn", " mn ", "minneapolis", "st. paul", "saint paul", 
+        "duluth", "rochester", "bloomington", "brooklyn park", "plymouth", 
+        "maple grove", "woodbury", "st. cloud", "eagan", "eden prairie", 
+        "coon rapids", "burnsville", "blaine", "lakeville", "minnetonka", 
+        "apple valley", "edina", "st. louis park", "mankato", "moorhead", 
+        "shakopee", "richfield", "cottage grove", "roseville", "winona"
+    ];
+    return mnKeywords.some(kw => combined.includes(kw));
+}
+
+// Comprehensive Multi-State Regional Event Scenarios for Aug 1 - Aug 6, 2026
 const regionalEvents = [
-    {
-        date: "7/31/2026",
-        regionKeywords: [],
-        baseConfidence: 0.90,
-        data: null // Live weather preservation strictly enforced
-    },
     {
         date: "8/1/2026",
         regionKeywords: ["washington", "idaho", "montana", "north dakota", "minnesota", "wisconsin", "wa", "id", "mt", "nd", "mn", "wi"],
@@ -397,11 +405,32 @@ function calculateEffectiveConfidence(dateStr, baseConfidence) {
 }
 
 function findRegionalOverride(dateStr, searchString, placeName, apiHigh, apiLow, apiWind, apiGusts) {
-    // STRICT RULE: 7/31/2026 must NEVER be overridden and must remain live weather
-    if (dateStr === "7/31/2026") return null;
+    // Check for 7/31/2026 Minnesota Storms Special Override
+    if (dateStr === "7/31/2026") {
+        if (isMinnesotaLocation(searchString, placeName)) {
+            const hash = Math.abs(getHashOffset(placeName));
+            // Varies across locations in MN: wind varies 35-41 mph, gusts varies 75-85 mph
+            const locWindOffset = (hash % 7) - 3; // -3 to +3 -> 35 to 41 mph
+            const locGustOffset = (hash % 11) - 5; // -5 to +5 -> 75 to 85 mph
+            
+            const finalWind = 38 + locWindOffset;
+            const finalGusts = 80 + locGustOffset;
+            
+            return {
+                high: 76,
+                low: 57,
+                wind: finalWind,
+                gusts: finalGusts,
+                condition: `MN Thunderstorms & Severe Winds (${finalWind} mph, Gusts ${finalGusts} mph)`,
+                rawCondition: "Thunderstorms",
+                baseEvent: { high: 76, low: 57, wind: finalWind, gusts: finalGusts },
+                effectiveConfidence: 0.95
+            };
+        }
+        return null;
+    }
 
     const searchLower = `${searchString} ${placeName}`.toLowerCase();
-    
     const matchingEvents = regionalEvents.filter(e => e.date === dateStr);
     
     let event = null;
@@ -583,7 +612,6 @@ async function loadWeatherForCoords(lat, lon, placeName, searchQuery) {
 }
 
 function getResolvedOverride(dateStr, searchQuery, placeName, apiHigh, apiLow, apiWind, apiGusts) {
-    if (dateStr === "7/31/2026") return null; // Excluded completely
     return findRegionalOverride(dateStr, searchQuery, placeName, apiHigh, apiLow, apiWind, apiGusts);
 }
 
@@ -629,6 +657,8 @@ function getMinuteValuesForDay(dateStr, searchQuery, placeName, apiDailyTemps, a
     const winds = [];
     const gusts = [];
 
+    const isMN731 = (dateStr === "7/31/2026" && isMinnesotaLocation(searchString, placeName) && exactOverride);
+
     for (let hour = 0; hour < 24; hour++) {
         for (let minute = 0; minute < 60; minute++) {
             if (hour === 23 && minute === 59) continue;
@@ -639,23 +669,42 @@ function getMinuteValuesForDay(dateStr, searchQuery, placeName, apiDailyTemps, a
 
             const dayProgress = (hour * 60 + minute) / 1440; // 0 to 1 across the day
 
-            if (exactOverride) {
-                // Peak precisely at noon (sinusoidal peak where sin(0.5 * PI) = 1 at hour 12, min at 0 and 24)
+            if (isMN731) {
+                // Specific timing for 7/31 MN storms: starts after 2 PM (14:00), peaks precisely at 3 PM (15:00), lasts until 4 PM (16:00)
+                const totalMins = hour * 60 + minute;
+                const startMins = 14 * 60; // 2:00 PM
+                const peakMins = 15 * 60;  // 3:00 PM
+                const endMins = 16 * 60;   // 4:00 PM
+
+                let stormFactor = 0;
+                if (totalMins >= startMins && totalMins <= endMins) {
+                    if (totalMins <= peakMins) {
+                        // Ramps up from 2:00 PM to peak at 3:00 PM
+                        stormFactor = (totalMins - startMins) / (peakMins - startMins);
+                    } else {
+                        // Ramps down from peak at 3:00 PM to 4:00 PM
+                        stormFactor = 1.0 - ((totalMins - peakMins) / (endMins - peakMins));
+                    }
+                }
+
+                baseWind = Math.round(baseWind + (exactOverride.wind - baseWind) * stormFactor);
+                baseGust = Math.round(baseGust + (exactOverride.gusts - baseGust) * stormFactor);
+                baseTemp = Math.round(76 - (stormFactor * 4)); // slight dip during heavy storm at 3 PM
+            }
+            else if (exactOverride) {
                 let peakFactor = Math.sin(dayProgress * Math.PI); 
                 baseTemp = Math.round(baseTemp + (exactOverride.high - baseTemp) * peakFactor);
                 baseWind = Math.round(baseWind + (exactOverride.wind - baseWind) * peakFactor);
                 baseGust = Math.round(baseGust + (exactOverride.gusts - baseGust) * peakFactor);
             } 
-            else if (prevOverride && !exactOverride && dateStr !== "7/31/2026") {
-                // Early morning fade-in from previous day's event fading out (fades smoothly to baseline toward midday/evening)
+            else if (prevOverride && !exactOverride) {
                 let fadeInFactor = Math.max(0, 1.0 - (dayProgress * 2.0)); 
                 baseTemp = Math.round(baseTemp + (prevOverride.high - baseTemp) * fadeInFactor * 0.35);
                 baseWind = Math.round(baseWind + (prevOverride.wind - baseWind) * fadeInFactor * 0.35);
                 baseGust = Math.round(baseGust + (prevOverride.gusts - baseGust) * fadeInFactor * 0.35);
             }
-            else if (nextOverride && !exactOverride && dateStr !== "7/31/2026") {
-                // Evening transition: starts trending toward the upcoming event's peak condition by evening/night
-                let eveningRamp = Math.max(0, (dayProgress - 0.5) * 2.0); // 0 at noon, scales to 1 by midnight
+            else if (nextOverride && !exactOverride) {
+                let eveningRamp = Math.max(0, (dayProgress - 0.5) * 2.0);
                 baseTemp = Math.round(baseTemp + (nextOverride.high - baseTemp) * eveningRamp * 0.5);
                 baseWind = Math.round(baseWind + (nextOverride.wind - baseWind) * eveningRamp * 0.5);
                 baseGust = Math.round(baseGust + (nextOverride.gusts - baseGust) * eveningRamp * 0.5);
@@ -887,6 +936,7 @@ function updateLiveConfidenceDisplay() {
     if (event) {
         baseConf = event.baseConfidence;
     }
+    if (activeDayDateStr === "7/31/2026") baseConf = 0.95;
     
     const currentEffectiveConf = calculateEffectiveConfidence(activeDayDateStr, baseConf);
     const confPercent = (currentEffectiveConf * 100).toFixed(1);
