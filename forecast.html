@@ -657,6 +657,7 @@ function updateChartMetric() {
 
     const labels = [];
     const values = [];
+    const segmentColors = [];
 
     for (let i = 0; i < activeHourlyData.time.length; i++) {
         if (activeHourlyData.time[i].startsWith(formattedDate)) {
@@ -664,32 +665,51 @@ function updateChartMetric() {
             labels.push(timePart);
 
             let val = 0;
-            if (metric === "temp") val = activeHourlyData.temperature_2m[i];
-            else if (metric === "wind") val = activeHourlyData.wind_speed_10m[i];
-            else if (metric === "gusts") val = activeHourlyData.wind_gusts_10m[i];
+            let color = "#007aff";
+
+            if (metric === "temp") {
+                val = activeHourlyData.temperature_2m[i];
+                color = getTempColor(val);
+            } else if (metric === "wind") {
+                val = activeHourlyData.wind_speed_10m[i];
+                color = getWindColor(val);
+            } else if (metric === "gusts") {
+                val = activeHourlyData.wind_gusts_10m[i];
+                color = getWindColor(val);
+            }
 
             values.push(val);
+            segmentColors.push(color);
         }
     }
 
-    const avgVal = values.reduce((a,b)=>a+b,0)/values.length || (metric === 'temp' ? 70 : 20);
-    const themeColor = metric === 'temp' ? getTempColor(avgVal) : getWindColor(avgVal);
     const labelName = metric === 'temp' ? "Temperature (°F)" : (metric === 'wind' ? "Wind Speed (mph)" : "Wind Gusts (mph)");
 
-    renderChart(labels, values, labelName, themeColor);
+    renderChart(labels, values, segmentColors, labelName, metric);
 }
 
-function renderChart(labels, values, labelName, themeColor) {
+function renderChart(labels, values, segmentColors, labelName, metric) {
     const ctx = document.getElementById("forecastChart").getContext("2d");
 
     if (chartInstance) {
         chartInstance.destroy();
     }
 
-    // Create Apple Weather style vertical gradient fill fading from themeColor down to transparent
+    // Create a smooth multi-stop gradient for the area fill based on the range of values in the day
     const gradient = ctx.createLinearGradient(0, 0, 0, 350);
-    gradient.addColorStop(0, hexToRgba(themeColor, 0.45));
-    gradient.addColorStop(1, hexToRgba(themeColor, 0.0));
+    const minVal = Math.min(...values);
+    const maxVal = Math.max(...values);
+    
+    // Sample colors from bottom to top of the chart height to mirror Apple Weather's value-based fill
+    const numStops = 6;
+    for (let s = 0; s <= numStops; s++) {
+        let ratio = s / numStops;
+        // Invert ratio because canvas y=0 is top, y=350 is bottom
+        let interpolatedVal = maxVal - (ratio * (maxVal - minVal));
+        let stopColor = metric === 'temp' ? getTempColor(interpolatedVal) : getWindColor(interpolatedVal);
+        let alpha = 0.45 * (1 - ratio * 0.7); // fade out towards bottom
+        gradient.addColorStop(ratio, hexToRgba(stopColor, alpha));
+    }
 
     chartInstance = new Chart(ctx, {
         type: 'line',
@@ -698,16 +718,25 @@ function renderChart(labels, values, labelName, themeColor) {
             datasets: [{
                 label: labelName,
                 data: values,
-                borderColor: themeColor,
                 backgroundColor: gradient,
                 borderWidth: 3,
                 fill: true,
                 tension: 0.35,
-                pointRadius: 0,          /* No dots on the line */
-                pointHoverRadius: 6,     /* Exactly one dot appears on hover / drag */
-                pointHoverBackgroundColor: themeColor,
+                pointRadius: 0,          /* No dots normally */
+                pointHoverRadius: 6,     /* Single dot appears on hover/drag */
+                pointHoverBackgroundColor: function(context) {
+                    let index = context.dataIndex;
+                    return segmentColors[index] || '#fff';
+                },
                 pointHoverBorderColor: '#fff',
-                pointHoverBorderWidth: 2
+                pointHoverBorderWidth: 2,
+                segment: {
+                    borderColor: function(ctx) {
+                        // Dynamically color line segments between points based on values
+                        let val = ctx.p1.parsed.y;
+                        return metric === 'temp' ? getTempColor(val) : getWindColor(val);
+                    }
+                }
             }]
         },
         options: {
