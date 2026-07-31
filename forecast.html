@@ -117,8 +117,8 @@
     <div class="modal-content">
         <div class="modal-header">
             <div>
-                <div class="modal-title" id="modalTitle">Hourly Forecast Graph</div>
-                <div style="font-size: 13px; color: #888;" id="modalSubtitle">Detailed breakdown</div>
+                <div class="modal-title" id="modalTitle">Minute-by-Minute Forecast Graph</div>
+                <div style="font-size: 13px; color: #888;" id="modalSubtitle">Detailed breakdown (0 to 24 Hours)</div>
             </div>
             <div class="controls-container">
                 <select id="metricSelector" class="chart-select" onchange="updateChartMetric()">
@@ -146,6 +146,8 @@ let currentLat = null;
 let currentLon = null;
 let activeHourlyData = null;
 let activeDayDateStr = null;
+let activeSearchQuery = "";
+let activePlaceName = "";
 let chartInstance = null;
 
 // Map WMO weather codes and custom conditions to repository icon filenames
@@ -424,6 +426,9 @@ async function fetchForecast() {
         const locationParts = [place.name, place.admin1, place.country_code ? place.country_code.toUpperCase() : ''].filter(Boolean);
         const placeName = locationParts.join(', ');
 
+        activeSearchQuery = query;
+        activePlaceName = placeName;
+
         loadWeatherForCoords(currentLat, currentLon, placeName, query);
 
     } catch (err) {
@@ -447,9 +452,6 @@ function useCurrentLocation() {
             currentLon = position.coords.longitude;
 
             try {
-                // Reverse geocode to get city name using Open-Meteo or Nominatim
-                const revRes = await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=lat${currentLat}lon${currentLon}&count=1&language=en&format=json`);
-                // Alternatively, use a reverse lookup or fallback coordinates text
                 let placeName = `Lat: ${currentLat.toFixed(2)}°, Lon: ${currentLon.toFixed(2)}°`;
                 
                 try {
@@ -469,9 +471,13 @@ function useCurrentLocation() {
                 }
 
                 document.getElementById("searchInput").value = placeName;
+                activeSearchQuery = placeName;
+                activePlaceName = placeName;
                 loadWeatherForCoords(currentLat, currentLon, placeName, placeName);
             } catch (err) {
                 console.error(err);
+                activeSearchQuery = "Current Location";
+                activePlaceName = "Current Location";
                 loadWeatherForCoords(currentLat, currentLon, "Current Location", "Current Location");
             }
         },
@@ -526,7 +532,7 @@ function parseAndRender(data, searchQuery, placeName) {
 
         const matchedOverride = findRegionalOverride(dateStr, searchQuery, placeName, apiHigh, apiLow, apiWind, apiGusts);
 
-        if (matchedOverride && activeHourlyData) {
+        if (matchedOverride && activeHourlyData && dateStr === "7/31/2026") {
             const [mm, dd, yy] = dateStr.split("/").map(Number);
             const formattedDate = `${yy}-${String(mm).padStart(2, '0')}-${String(dd).padStart(2, '0')}`;
             
@@ -535,30 +541,30 @@ function parseAndRender(data, searchQuery, placeName) {
                     const hourStr = activeHourlyData.time[h].split("T")[1];
                     const hourNum = parseInt(hourStr.split(":")[0], 10);
 
-                    let blendWeight = 0;
-                    if (hourNum < 1) {
-                        blendWeight = 0;
-                    } else if (hourNum >= 1 && hourNum <= 12) {
-                        blendWeight = (hourNum - 1) / (12 - 1);
-                    } else if (hourNum > 12 && hourNum <= 16) {
-                        blendWeight = 1.0;
-                    } else if (hourNum > 16 && hourNum <= 23) {
-                        blendWeight = 1.0 - ((hourNum - 16) / (23 - 16));
-                    }
-
                     let origTemp = activeHourlyData.temperature_2m[h];
                     let origWind = activeHourlyData.wind_speed_10m[h];
                     let origGust = activeHourlyData.wind_gusts_10m[h];
 
-                    let targetTempSeq = matchedOverride.baseEvent.high;
-                    let targetWindSeq = matchedOverride.baseEvent.wind;
-                    let targetGustSeq = matchedOverride.baseEvent.gusts;
+                    let targetTemp = matchedOverride.baseEvent.high;
+                    let targetWind = matchedOverride.baseEvent.wind;
+                    let targetGust = matchedOverride.baseEvent.gusts;
+
+                    let blendWeight = 0;
+                    if (hourNum < 14) {
+                        blendWeight = 0.0;
+                    } else if (hourNum === 14 || hourNum === 15) {
+                        blendWeight = 1.0;
+                    } else if (hourNum === 16) {
+                        blendWeight = 0.0;
+                    } else {
+                        blendWeight = 0.0;
+                    }
 
                     let finalWeight = blendWeight * matchedOverride.effectiveConfidence;
 
-                    activeHourlyData.temperature_2m[h] = Math.round(targetTempSeq * finalWeight + origTemp * (1 - finalWeight));
-                    activeHourlyData.wind_speed_10m[h] = Math.round(targetWindSeq * finalWeight + origWind * (1 - finalWeight));
-                    activeHourlyData.wind_gusts_10m[h] = Math.round(targetGustSeq * finalWeight + origGust * (1 - finalWeight));
+                    activeHourlyData.temperature_2m[h] = Math.round(targetTemp * finalWeight + origTemp * (1 - finalWeight));
+                    activeHourlyData.wind_speed_10m[h] = Math.round(targetWind * finalWeight + origWind * (1 - finalWeight));
+                    activeHourlyData.wind_gusts_10m[h] = Math.round(targetGust * finalWeight + origGust * (1 - finalWeight));
                 }
             }
         }
@@ -636,7 +642,6 @@ function renderForecast(forecastData) {
         dayDate.className = "day-date";
         dayDate.innerText = item.dateStr;
 
-        // Weather Icon Section
         const iconContainer = document.createElement("div");
         iconContainer.className = "weather-icon-container";
         const iconImg = document.createElement("img");
@@ -645,7 +650,6 @@ function renderForecast(forecastData) {
         iconImg.alt = "Weather Icon";
         iconContainer.appendChild(iconImg);
 
-        // Temperature Section
         const tempTitle = document.createElement("div");
         tempTitle.className = "section-title";
         tempTitle.innerText = "Temperature";
@@ -671,7 +675,6 @@ function renderForecast(forecastData) {
         tempFill.style.backgroundColor = highColor;
         tempBar.appendChild(tempFill);
 
-        // Sustained Wind Section
         const windTitle = document.createElement("div");
         windTitle.className = "section-title";
         windTitle.innerText = "Sustained Wind";
@@ -697,7 +700,6 @@ function renderForecast(forecastData) {
         windFill.style.backgroundColor = windColor;
         windBar.appendChild(windFill);
 
-        // Peak Gusts Section
         const gustTitle = document.createElement("div");
         gustTitle.className = "section-title";
         gustTitle.innerText = "Peak Gusts";
@@ -725,7 +727,7 @@ function renderForecast(forecastData) {
 
         const clickHint = document.createElement("div");
         clickHint.className = "click-hint";
-        clickHint.innerText = "Click to view hourly graph";
+        clickHint.innerText = "Click to view minute graph";
 
         card.appendChild(dayName);
         card.appendChild(dayDate);
@@ -751,8 +753,8 @@ function renderForecast(forecastData) {
 // Modal & Graph Functions
 function openGraphModal(item) {
     activeDayDateStr = item.dateStr;
-    document.getElementById("modalTitle").innerText = `${item.day} Hourly Forecast`;
-    document.getElementById("modalSubtitle").innerText = `Date: ${item.dateStr}`;
+    document.getElementById("modalTitle").innerText = `${item.day} Minute-by-Minute Forecast Graph`;
+    document.getElementById("modalSubtitle").innerText = `Date: ${item.dateStr} (0 to 24 Hours, 12-Hour Format)`;
     document.getElementById("chartModal").style.display = "flex";
     
     updateChartMetric();
@@ -772,7 +774,9 @@ function updateLiveConfidenceDisplay() {
     
     const diffMs = eventDate.getTime() - now.getTime();
     
-    const hours = String(now.getHours()).padStart(2, '0');
+    let hours12 = now.getHours() % 12;
+    if (hours12 === 0) hours12 = 12;
+    const ampm = now.getHours() >= 12 ? 'PM' : 'AM';
     const minutes = String(now.getMinutes()).padStart(2, '0');
     const seconds = String(now.getSeconds()).padStart(2, '0');
     
@@ -798,7 +802,7 @@ function updateLiveConfidenceDisplay() {
     }
 
     document.getElementById("modalConfVal").innerText = 
-        `Live Clock: ${hours}:${minutes}:${seconds} | ${timeUntilText} | Confidence: ${confPercent}%`;
+        `Live Clock: ${hours12}:${minutes}:${seconds} ${ampm} | ${timeUntilText} | Confidence: ${confPercent}%`;
 }
 
 function hexToRgba(hex, alpha) {
@@ -809,6 +813,14 @@ function hexToRgba(hex, alpha) {
     return `rgba(${r}, ${g}, ${b}, ${alpha})`;
 }
 
+function format12HourLabel(hour24, minute) {
+    let h12 = hour24 % 12;
+    if (h12 === 0) h12 = 12;
+    const ampm = hour24 >= 12 ? 'PM' : 'AM';
+    const minStr = String(minute).padStart(2, '0');
+    return `${h12}:${minStr} ${ampm}`;
+}
+
 function updateChartMetric() {
     if (!activeHourlyData || !activeDayDateStr) return;
 
@@ -816,39 +828,91 @@ function updateChartMetric() {
     const [m, d, y] = activeDayDateStr.split("/").map(Number);
     const formattedDate = `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
 
+    let baseHourTemps = [];
+    let baseHourWinds = [];
+    let baseHourGusts = [];
+
+    for (let i = 0; i < activeHourlyData.time.length; i++) {
+        if (activeHourlyData.time[i].startsWith(formattedDate)) {
+            baseHourTemps.push(activeHourlyData.temperature_2m[i]);
+            baseHourWinds.push(activeHourlyData.wind_speed_10m[i]);
+            baseHourGusts.push(activeHourlyData.wind_gusts_10m[i]);
+        }
+    }
+
+    // Fallback if missing hourly elements
+    while (baseHourTemps.length < 24) {
+        baseHourTemps.push(72);
+        baseHourWinds.push(18);
+        baseHourGusts.push(30);
+    }
+
+    let isMnStormEvent = false;
+    let matchedOverride = null;
+    if (activeDayDateStr === "7/31/2026") {
+        matchedOverride = findRegionalOverride("7/31/2026", activeSearchQuery, activePlaceName, 72, 52, 18, 30);
+        if (matchedOverride) {
+            isMnStormEvent = true;
+        }
+    }
+
     const labels = [];
     const values = [];
     const segmentColors = [];
 
-    let baseConf = 0.85;
-    const event = regionalEvents.find(e => e.date === activeDayDateStr);
-    if (event) {
-        baseConf = event.baseConfidence;
-    }
-    const liveConfidence = calculateEffectiveConfidence(activeDayDateStr, baseConf);
+    // Generate minute-by-minute points from hour 0 to 24 (step size = 1 minute)
+    for (let hour = 0; hour < 24; hour++) {
+        for (let minute = 0; minute < 60; minute++) {
+            // Skip 24:00 (end boundary)
+            if (hour === 23 && minute === 59) continue;
 
-    for (let i = 0; i < activeHourlyData.time.length; i++) {
-        if (activeHourlyData.time[i].startsWith(formattedDate)) {
-            const timePart = activeHourlyData.time[i].split("T")[1];
-            labels.push(timePart);
+            const timeLabel = format12HourLabel(hour, minute);
+            labels.push(timeLabel);
 
             let val = 0;
             let color = "#007aff";
 
+            let baseVal = 0;
+            let targetPeak = 0;
+
             if (metric === "temp") {
-                let baseTemp = activeHourlyData.temperature_2m[i];
-                let wave = Math.sin(i) * (1 - liveConfidence) * 3;
-                val = Math.round(baseTemp + wave);
-                color = getTempColor(val);
+                baseVal = baseHourTemps[hour] || 72;
+                if (matchedOverride) targetPeak = matchedOverride.baseEvent.high;
             } else if (metric === "wind") {
-                let baseWind = activeHourlyData.wind_speed_10m[i];
-                let wave = Math.cos(i) * (1 - liveConfidence) * 4;
-                val = Math.max(0, Math.round(baseWind + wave));
-                color = getWindColor(val);
+                baseVal = baseHourWinds[hour] || 18;
+                if (matchedOverride) targetPeak = matchedOverride.baseEvent.wind;
             } else if (metric === "gusts") {
-                let baseGust = activeHourlyData.wind_gusts_10m[i];
-                let wave = Math.sin(i) * (1 - liveConfidence) * 6;
-                val = Math.max(0, Math.round(baseGust + wave));
+                baseVal = baseHourGusts[hour] || 30;
+                if (matchedOverride) targetPeak = matchedOverride.baseEvent.gusts;
+            }
+
+            if (isMnStormEvent) {
+                // Before 2 PM (14:00): Live weather (baseVal)
+                // Rise to peak values by 3 PM (15:00)
+                // Afterwards by 4 PM (16:00): goes back down to live weather
+                const totalMinutes = hour * 60 + minute;
+                const startRise = 14 * 60;     // 2:00 PM
+                const peakTime = 15 * 60;      // 3:00 PM
+                const endDrop = 16 * 60;       // 4:00 PM
+
+                if (totalMinutes < startRise) {
+                    val = baseVal;
+                } else if (totalMinutes >= startRise && totalMinutes <= peakTime) {
+                    let progress = (totalMinutes - startRise) / (peakTime - startRise);
+                    val = Math.round(baseVal + (targetPeak - baseVal) * progress);
+                } else if (totalMinutes > peakTime && totalMinutes <= endDrop) {
+                    let progress = (totalMinutes - peakTime) / (endDrop - peakTime);
+                    val = Math.round(targetPeak + (baseVal - targetPeak) * progress);
+                } else {
+                    val = baseVal;
+                }
+            } else {
+                val = baseVal;
+            }
+
+            if (metric === "temp") {
+                color = getTempColor(val);
+            } else {
                 color = getWindColor(val);
             }
 
@@ -890,11 +954,11 @@ function renderChart(labels, values, segmentColors, labelName, metric) {
                 label: labelName,
                 data: values,
                 backgroundColor: gradient,
-                borderWidth: 3,
+                borderWidth: 2,
                 fill: true,
-                tension: 0.35,
+                tension: 0.2,
                 pointRadius: 0,
-                pointHoverRadius: 6,
+                pointHoverRadius: 5,
                 pointHoverBackgroundColor: function(context) {
                     let index = context.dataIndex;
                     return segmentColors[index] || '#fff';
@@ -922,7 +986,14 @@ function renderChart(labels, values, segmentColors, labelName, metric) {
             scales: {
                 x: {
                     grid: { color: '#2a2a2a' },
-                    ticks: { color: '#aaa' }
+                    ticks: {
+                        color: '#aaa',
+                        maxTicksLimit: 12,
+                        callback: function(val, index) {
+                            // Show tick labels every 2 hours (every 120 minutes) for clean readability
+                            return index % 120 === 0 ? this.getLabelForValue(index) : '';
+                        }
+                    }
                 },
                 y: {
                     grid: { color: '#2a2a2a' },
