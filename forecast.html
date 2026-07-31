@@ -647,18 +647,19 @@ function getMinuteValuesForDay(dateStr, searchQuery, placeName, apiDailyTemps, a
                 const totalMinutes = hour * 60 + minute;
 
                 if (dateStr === "7/31/2026") {
-                    // Minnesota Storm Day Profile (7/31/2026):
-                    // Before 4:00 PM (240 min): Live weather values
+                    // Minnesota Storm Day Profile (7/31/2026) - Begins in PM:
+                    // Before 12:00 PM (720 min): Live/normal weather values (AM is stable)
+                    // 12:00 PM to 4:00 PM: Initial buildup phase
                     // 4:00 PM to 5:00 PM: Storm peak ramp up
-                    // 5:00 PM to 6:00 PM: Trends towards live weather values
+                    // 5:00 PM to 6:00 PM: Trends towards standard weather values
                     // After 6:00 PM: Pure live weather
-                    const startRampMin = 4 * 60;       // 4:00 PM
-                    const peakMin = 5 * 60;            // 5:00 PM
-                    const postDropMin = 6 * 60;        // 6:00 PM
+                    const startRampMin = 16 * 60;      // 4:00 PM (16:00)
+                    const peakMin = 17 * 60;           // 5:00 PM (17:00)
+                    const postDropMin = 18 * 60;       // 6:00 PM (18:00)
 
                     let factor = 0;
                     if (totalMinutes < startRampMin) {
-                        factor = 0; // Live weather before 4 PM
+                        factor = 0; // Live weather / calm AM and early PM
                     } else if (totalMinutes >= startRampMin && totalMinutes <= peakMin) {
                         // Ramps up to peak storm values between 4 PM and 5 PM
                         factor = (totalMinutes - startRampMin) / (peakMin - startRampMin);
@@ -683,26 +684,11 @@ function getMinuteValuesForDay(dateStr, searchQuery, placeName, apiDailyTemps, a
                     baseTemp = Math.round(baseTemp + (targetL - baseTemp) * factor);
 
                 } else {
-                    // Rule Implementation:
-                    // - The day before the event date on that night do NOT trend down for winds and do NOT trend up for temperatures towards live weather values.
-                    // - On the event day itself, does NOT trend down for winds and do NOT trend up for temperatures towards live weather.
-                    // - Continues into the morning of the day after the event date, and peaks before 5 PM on that following day for trends to live weather.
-                    
-                    const eventDateObj = new Date(dateStr);
-                    const targetDatesArray = ["7/31/2026", "8/1/2026", "8/2/2026", "8/3/2026", "8/4/2026", "8/5/2026", "8/6/2026"];
-                    
-                    // We can inspect whether dayIndex corresponds to day-before, event-day, or day-after.
-                    // Let's identify event index dynamically or check relative position.
-                    // Instead of strict date matching alone, let's apply the exact mathematical constraint requested:
-                    // Night before & event day & morning after: maintain peak/event values without premature blending.
-                    // Only after 5 PM (17:00) on the day *after* the event date do we blend back down to live weather.
-                    
                     const targetPeakMin = 17 * 60 + locationMinuteOffset; // 5:00 PM peak
                     const midnightEndMin = 23 * 60 + 59;
 
                     let factor = 1.0; 
                     if (dayIndex >= 2) { 
-                        // For day after or subsequent fade phases, start blending after 5 PM peak
                         if (totalMinutes >= targetPeakMin) {
                             const postDuration = midnightEndMin - targetPeakMin;
                             const elapsedPost = totalMinutes - targetPeakMin;
