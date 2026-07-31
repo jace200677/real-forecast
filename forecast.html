@@ -330,9 +330,9 @@ const regionalEvents = [
     },
     {
         date: "8/8/2026",
-        regionKeywords: ["east coast", "new york", "ny", "pennsylvania", "pa", "new jersey", "nj", "massachusetts", "ma", "connecticut", "ct", "rhode island", "ri", "vermont", "vt", "new hampshire", "nh", "maine", "me", "maryland", "md", "delaware", "de", "virginia", "va", "washington dc", "dc", "boston", "philadelphia", "baltimore", "pittsburgh"],
-        baseConfidence: 0.94,
-        data: { high: 64, low: 48, wind: 85, gusts: 135, condition: "East Coast Moving System (Cooler, 85 mph Winds, Gusts 135 mph)" }
+        regionKeywords: ["east coast", "new york", "ny", "new jersey", "nj", "pennsylvania", "pa", "massachusetts", "ma", "connecticut", "ct", "rhode island", "ri", "vermont", "vt", "new hampshire", "nh", "maine", "me", "maryland", "md", "delaware", "de", "virginia", "va", "washington dc", "dc", "boston", "philadelphia", "baltimore"],
+        baseConfidence: 0.95,
+        data: { high: 64, low: 48, wind: 85, gusts: 135, condition: "East Coast Severe Front (Cooler, 85 mph Winds, Gusts 135 mph)" }
     }
 ];
 
@@ -396,12 +396,12 @@ function findRegionalOverride(dateStr, searchString, placeName, apiHigh, apiLow,
         gustOffset = (hash % 11) - 5;      
     }
 
-    if ((dateStr === "8/7/2026" || dateStr === "8/8/2026") && currentLon !== null) {
+    if (dateStr === "8/7/2026" && currentLon !== null) {
         let eastShift = Math.max(0, currentLon - (-92.5)); 
-        if (eastShift > 0 && eastShift < 25) { 
-            tempOffset -= Math.round(eastShift * 1.2);
-            windOffset += Math.round(eastShift * 1.5);   
-            gustOffset += Math.round(eastShift * 2);   
+        if (eastShift > 0 && eastShift < 15) { 
+            tempOffset -= Math.round(eastShift * 1.5);
+            windOffset += Math.round(eastShift * 2);   
+            gustOffset += Math.round(eastShift * 3);   
         }
     }
 
@@ -592,10 +592,9 @@ function getMinuteValuesForDay(dateStr, searchQuery, placeName, apiDailyTemps, a
             let baseGust = baseHourGusts[hour] || 30;
 
             const totalMinutes = hour * 60 + minute;
-            const rampStartMin = 5 * 60;        
             const peak12pmMin = 12 * 60;       
             const drop6pmMin = 18 * 60;        
-            const cutoff5pmMin = 17 * 60;
+            const endOfDayMin = 24 * 60;
 
             if (isMinnesota731) {
                 let factor = 0;
@@ -625,34 +624,32 @@ function getMinuteValuesForDay(dateStr, searchQuery, placeName, apiDailyTemps, a
                     const wave = Math.sin((totalMinutes - peak12pmMin) / 60 * Math.PI * 2);
                     factor = 0.8 + (wave * 0.2); 
                 } else {
-                    // Smooth, gradual extended drop taking its time past 11:59 PM
-                    const postProgress = (totalMinutes - drop6pmMin) / ((24 * 60) - drop6pmMin);
-                    factor = Math.max(0.2, 0.9 - (postProgress * 0.4)); 
+                    // Gradual wind decrease & temp recovery through midnight taking its time
+                    const eveningProgress = (totalMinutes - drop6pmMin) / (endOfDayMin - drop6pmMin);
+                    factor = Math.max(0.4, 1.0 - (eveningProgress * 0.6)); 
                 }
                 baseWind = Math.round(baseWind + (exactOverride.baseEvent.wind - baseWind) * factor);
                 baseGust = Math.round(baseGust + (exactOverride.baseEvent.gusts - baseGust) * factor);
                 baseTemp = Math.round(baseTemp + (exactOverride.baseEvent.high - baseTemp) * factor);
             }
             else if (futureEventOverride) {
-                // 1 day before: trend up winds and trend down temps
-                let factor = 0;
-                if (totalMinutes >= rampStartMin) {
-                    const rampProgress = (totalMinutes - rampStartMin) / ((24 * 60) - rampStartMin);
-                    factor = rampProgress * 0.75; 
-                }
-                baseWind = Math.round(baseWind + (futureEventOverride.baseEvent.wind * factor));
-                baseGust = Math.round(baseGust + (futureEventOverride.baseEvent.gusts * factor));
-                baseTemp = Math.round(baseTemp - (15 * factor));
+                // 1 day before: continuous ramp starting from midnight through 11:59pm
+                const factor = totalMinutes / endOfDayMin;
+                baseWind = Math.round(baseWind + ((futureEventOverride.baseEvent.wind - baseWind) * factor));
+                baseGust = Math.round(baseGust + ((futureEventOverride.baseEvent.gusts - baseGust) * factor));
+                baseTemp = Math.round(baseTemp + ((futureEventOverride.baseEvent.high - baseTemp) * factor));
             }
             else if (pastEventOverride) {
-                // 1 day after: midnight continue from left off, by 5pm live weather
-                if (totalMinutes <= cutoff5pmMin) {
-                    const progress = totalMinutes / cutoff5pmMin;
-                    const decayFactor = 1.0 - progress;
-                    const carryWind = (pastEventOverride.baseEvent.wind - baseWind) * decayFactor;
-                    const carryGust = (pastEventOverride.baseEvent.gusts - baseGust) * decayFactor;
+                // 1 day after: starting from midnight continuing decay until 5pm when live weather takes over
+                const transitionEndMin = 17 * 60; // 5 PM
+                if (totalMinutes < transitionEndMin) {
+                    const decayFactor = 1.0 - (totalMinutes / transitionEndMin);
+                    const carryWind = (pastEventOverride.baseEvent.wind - baseWind) * 0.4 * decayFactor;
+                    const carryGust = (pastEventOverride.baseEvent.gusts - baseGust) * 0.4 * decayFactor;
+                    const carryTemp = (pastEventOverride.baseEvent.high - baseTemp) * 0.4 * decayFactor;
                     baseWind = Math.round(baseWind + carryWind);
                     baseGust = Math.round(baseGust + carryGust);
+                    baseTemp = Math.round(baseTemp + carryTemp);
                 }
             }
 
@@ -670,7 +667,7 @@ function parseAndRender(data, searchQuery, placeName) {
     const forecastData = [];
 
     const targetDates = [
-        "7/31/2026", "8/1/2026", "8/2/2026", "8/3/2026", "8/4/2026", "8/5/2026", "8/6/2026", "8/7/2026"
+        "7/31/2026", "8/1/2026", "8/2/2026", "8/3/2026", "8/4/2026", "8/5/2026", "8/6/2026", "8/7/2026", "8/8/2026"
     ];
 
     let maxGustInForecast = 170;
@@ -725,7 +722,7 @@ function parseAndRender(data, searchQuery, placeName) {
             cardLow = Math.min(...minuteData.temps);
             cardWind = Math.max(...minuteData.winds);
             cardGusts = Math.max(...minuteData.gusts);
-            note = matchedOverride ? matchedOverride.condition : "Event Transition Zone";
+            note = matchedOverride ? matchedOverride.condition : "Event Influence";
             rawCondition = matchedOverride ? matchedOverride.rawCondition : (wmoConditions[apiCode] || "Partly Cloudy");
         } else {
             cardHigh = apiHigh;
@@ -930,13 +927,13 @@ function updateChartMetric() {
     const metric = document.getElementById("metricSelector").value;
     
     let dayIndex = 0;
-    const targetDates = ["7/31/2026", "8/1/2026", "8/2/2026", "8/3/2026", "8/4/2026", "8/5/2026", "8/6/2026", "8/7/2026"];
+    const targetDates = ["7/31/2026", "8/1/2026", "8/2/2026", "8/3/2026", "8/4/2026", "8/5/2026", "8/6/2026", "8/7/2026", "8/8/2026"];
     const foundIdx = targetDates.indexOf(activeDayDateStr);
     if (foundIdx !== -1) dayIndex = foundIdx;
 
-    const dummyTempsMax = { max: [72,72,72,72,72,72,72,72], min: [52,52,52,52,52,52,52,52] };
-    const dummyWinds = [18,18,18,18,18,18,18,18];
-    const dummyGusts = [30,30,30,30,30,30,30,30];
+    const dummyTempsMax = { max: [72,72,72,72,72,72,72,72,72], min: [52,52,52,52,52,52,52,52,52] };
+    const dummyWinds = [18,18,18,18,18,18,18,18,18];
+    const dummyGusts = [30,30,30,30,30,30,30,30,30];
 
     const minuteData = getMinuteValuesForDay(activeDayDateStr, activeSearchQuery, activePlaceName, dummyTempsMax, dummyWinds, dummyGusts, dayIndex);
 
