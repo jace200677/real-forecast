@@ -42,8 +42,12 @@
                 box-shadow:0 4px 18px rgba(0,0,0,0.6); transition:transform .2s; border: 1px solid #282828; }
     .day-card:hover { transform:translateY(-4px); }
     .day-name { font-size:20px; text-align:center; margin-bottom:2px; font-weight:bold; color: #00a8cc; }
-    .day-date { font-size:12px; color:#777; text-align:center; margin-bottom:14px; }
+    .day-date { font-size:12px; color:#777; text-align:center; margin-bottom:10px; }
     
+    /* Weather Icon Styling */
+    .weather-icon-container { text-align: center; margin-bottom: 12px; }
+    .weather-icon { width: 56px; height: 56px; object-fit: contain; }
+
     .section-title { font-size:11px; text-transform:uppercase; letter-spacing:1px; color:#777; margin-bottom:4px; }
 
     /* Values & Labels */
@@ -68,6 +72,55 @@
 <div class="forecast-container" id="forecastContainer"></div>
 
 <script>
+// GitHub repository base path for weather icons
+const ICON_BASE_URL = "https://raw.githubusercontent.com/jace200677/real-forecast/main/weather/";
+
+// Map WMO weather codes to repository icon filenames
+function getWeatherIcon(weatherCode, isWindyOverride) {
+    if (isWindyOverride) {
+        return ICON_BASE_URL + "windy.png";
+    }
+    
+    switch (weatherCode) {
+        case 0:
+            return ICON_BASE_URL + "Sunny.png";
+        case 1:
+            return ICON_BASE_URL + "Mostly%20sunny.png";
+        case 2:
+            return ICON_BASE_URL + "Partly%20Cloudy.png";
+        case 3:
+            return ICON_BASE_URL + "Cloudy.png";
+        case 45:
+        case 48:
+            return ICON_BASE_URL + "foggy.png";
+        case 51:
+        case 53:
+        case 55:
+        case 61:
+        case 63:
+            return ICON_BASE_URL + "Light%20Rain.png";
+        case 65:
+        case 80:
+        case 81:
+        case 82:
+            return ICON_BASE_URL + "Rainy.png";
+        case 71:
+        case 73:
+        case 85:
+            return ICON_BASE_URL + "Light%20snow.png";
+        case 75:
+        case 77:
+        case 86:
+            return ICON_BASE_URL + "Snowy.png";
+        case 95:
+        case 96:
+        case 99:
+            return ICON_BASE_URL + "Thunderstorms.png";
+        default:
+            return ICON_BASE_URL + "Mostly%20cloudy.png";
+    }
+}
+
 // Ventusky Temperature Color Scale (°F)
 function getTempColor(temp) {
     if (temp >= 110) return "#7b003a";
@@ -104,43 +157,43 @@ const regionalEvents = [
         date: "7/31/2026",
         regionKeywords: ["minnesota", "mn"],
         baseConfidence: 0.90,
-        data: { high: 82, low: 64, wind: 38, gusts: 75, condition: "Storms Afternoon" }
+        data: { high: 82, low: 64, wind: 38, gusts: 75, condition: "Windy / Storms Afternoon" }
     },
     {
         date: "8/2/2026",
         regionKeywords: ["washington", "wa"],
         baseConfidence: 0.85,
-        data: { high: 50, low: 38, wind: 68, gusts: 105, condition: "High Winds >100mph" }
+        data: { high: 50, low: 38, wind: 68, gusts: 105, condition: "Windy / High Winds >100mph" }
     },
     {
         date: "8/3/2026",
         regionKeywords: ["idaho", "id"],
         baseConfidence: 0.70,
-        data: { high: 72, low: 48, wind: 20, gusts: 35, condition: "Moderate Winds" }
+        data: { high: 72, low: 48, wind: 20, gusts: 35, condition: "Windy / Moderate Winds" }
     },
     {
         date: "8/4/2026",
         regionKeywords: ["montana", "mt"],
         baseConfidence: 0.95,
-        data: { high: 98, low: 70, wind: 52, gusts: 88, condition: "Hot & Strong Winds" }
+        data: { high: 98, low: 70, wind: 52, gusts: 88, condition: "Windy / Hot & Strong Winds" }
     },
     {
         date: "8/5/2026",
         regionKeywords: ["north dakota", "nd"],
         baseConfidence: 0.80,
-        data: { high: 92, low: 64, wind: 44, gusts: 80, condition: "Hot & Gusty" }
+        data: { high: 92, low: 64, wind: 44, gusts: 80, condition: "Windy / Hot & Gusty" }
     },
     {
         date: "8/6/2026",
         regionKeywords: ["minnesota", "mn"],
         baseConfidence: 0.92,
-        data: { high: 70, low: 34, wind: 39, gusts: 87, condition: "High Gusts (Northern MN)" }
+        data: { high: 70, low: 34, wind: 39, gusts: 87, condition: "Windy / High Gusts (Northern MN)" }
     },
     {
         date: "8/7/2026",
         regionKeywords: ["wisconsin", "wi"],
         baseConfidence: 0.75,
-        data: { high: 62, low: 40, wind: 55, gusts: 99, condition: "Cool / Severe Winds" }
+        data: { high: 62, low: 40, wind: 55, gusts: 99, condition: "Windy / Cool & Severe Winds" }
     }
 ];
 
@@ -256,7 +309,7 @@ async function fetchForecast() {
         document.getElementById("locationTitle").innerText = `${placeName} Forecast`;
         document.getElementById("locationSub").innerText = `Lat: ${lat.toFixed(2)}°, Lon: ${lon.toFixed(2)}°`;
 
-        const weatherUrl = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&daily=temperature_2m_max,temperature_2m_min,wind_speed_10m_max,wind_gusts_10m_max&temperature_unit=fahrenheit&wind_speed_unit=mph&timezone=auto`;
+        const weatherUrl = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&daily=weather_code,temperature_2m_max,temperature_2m_min,wind_speed_10m_max,wind_gusts_10m_max&temperature_unit=fahrenheit&wind_speed_unit=mph&timezone=auto`;
         
         const weatherRes = await fetch(weatherUrl);
         const weatherData = await weatherRes.json();
@@ -285,6 +338,7 @@ function parseAndRender(data, searchQuery, placeName) {
         const dateObj = new Date(y, m - 1, d);
         const dayLabel = i === 0 ? "Today" : daysOfWeek[dateObj.getDay()];
 
+        const apiCode = daily.weather_code ? daily.weather_code[i] : 0;
         const apiHigh = Math.round(daily.temperature_2m_max[i] || 72);
         const apiLow = Math.round(daily.temperature_2m_min[i] || 52);
         const apiWind = Math.round(daily.wind_speed_10m_max[i] || 18);
@@ -299,6 +353,8 @@ function parseAndRender(data, searchQuery, placeName) {
         const gusts = matchedOverride ? matchedOverride.gusts : apiGusts;
         const note = matchedOverride ? matchedOverride.condition : "";
 
+        const iconUrl = getWeatherIcon(apiCode, Boolean(matchedOverride));
+
         if (gusts > maxGustInForecast) {
             maxGustInForecast = gusts;
         }
@@ -311,6 +367,7 @@ function parseAndRender(data, searchQuery, placeName) {
             wind: wind,
             gusts: gusts,
             note: note,
+            iconUrl: iconUrl,
             maxGustScale: maxGustInForecast
         });
     });
@@ -333,6 +390,15 @@ function renderForecast(forecastData) {
         const dayDate = document.createElement("div");
         dayDate.className = "day-date";
         dayDate.innerText = item.dateStr;
+
+        // Weather Icon Section
+        const iconContainer = document.createElement("div");
+        iconContainer.className = "weather-icon-container";
+        const iconImg = document.createElement("img");
+        iconImg.className = "weather-icon";
+        iconImg.src = item.iconUrl;
+        iconImg.alt = "Weather Icon";
+        iconContainer.appendChild(iconImg);
 
         // Temperature Section
         const tempTitle = document.createElement("div");
@@ -414,6 +480,7 @@ function renderForecast(forecastData) {
 
         card.appendChild(dayName);
         card.appendChild(dayDate);
+        card.appendChild(iconContainer);
         card.appendChild(tempTitle);
         card.appendChild(tempDisplay);
         card.appendChild(tempRange);
