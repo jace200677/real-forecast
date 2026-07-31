@@ -304,7 +304,7 @@ function getWindColor(speed) {
     return "#30b0c7";
 }
 
-// Comprehensive Multi-State Regional Event Scenarios for Aug 1 - Aug 6, 2026 (7/31 is strictly excluded)
+// Comprehensive Multi-State Regional Event Scenarios for Aug 1 - Aug 6, 2026 (7/31 is strictly preserved as live weather)
 const regionalEvents = [
     {
         date: "7/31/2026",
@@ -619,12 +619,6 @@ function getMinuteValuesForDay(dateStr, searchQuery, placeName, apiDailyTemps, a
 
     const exactOverride = getResolvedOverride(dateStr, searchQuery, placeName, apiHigh, apiLow, apiWind, apiGusts);
 
-    let prevDateStr = dayIndex > 0 ? targetDates[dayIndex - 1] : null;
-    let nextDateStr = dayIndex < targetDates.length - 1 ? targetDates[dayIndex + 1] : null;
-
-    let prevOverride = prevDateStr ? getResolvedOverride(prevDateStr, searchQuery, placeName, apiHigh, apiLow, apiWind, apiGusts) : null;
-    let nextOverride = nextDateStr ? getResolvedOverride(nextDateStr, searchQuery, placeName, apiHigh, apiLow, apiWind, apiGusts) : null;
-
     const temps = [];
     const winds = [];
     const gusts = [];
@@ -644,18 +638,6 @@ function getMinuteValuesForDay(dateStr, searchQuery, placeName, apiDailyTemps, a
                 baseTemp = Math.round(baseTemp + (exactOverride.high - baseTemp) * peakFactor);
                 baseWind = Math.round(baseWind + (exactOverride.wind - baseWind) * peakFactor);
                 baseGust = Math.round(baseGust + (exactOverride.gusts - baseGust) * peakFactor);
-            } 
-            else if (prevOverride && !exactOverride && dateStr !== "7/31/2026") {
-                let fadeInFactor = Math.max(0, 1.0 - (dayProgress * 2.0)); 
-                baseTemp = Math.round(baseTemp + (prevOverride.high - baseTemp) * fadeInFactor * 0.35);
-                baseWind = Math.round(baseWind + (prevOverride.wind - baseWind) * fadeInFactor * 0.35);
-                baseGust = Math.round(baseGust + (prevOverride.gusts - baseGust) * fadeInFactor * 0.35);
-            }
-            else if (nextOverride && !exactOverride && dateStr !== "7/31/2026") {
-                let eveningRamp = Math.max(0, (dayProgress - 0.5) * 2.0);
-                baseTemp = Math.round(baseTemp + (nextOverride.high - baseTemp) * eveningRamp * 0.5);
-                baseWind = Math.round(baseWind + (nextOverride.wind - baseWind) * eveningRamp * 0.5);
-                baseGust = Math.round(baseGust + (nextOverride.gusts - baseGust) * eveningRamp * 0.5);
             }
 
             temps.push(baseTemp);
