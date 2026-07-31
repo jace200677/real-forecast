@@ -98,48 +98,48 @@ function getWindColor(speed) {
     return "#5a2a9e";                  // Calm
 }
 
-// Regional Weather Event Scenarios with Confidence Ratings (0.0 to 1.0)
+// Regional Weather Event Scenarios with Base Confidence Ratings (0.0 to 1.0)
 const regionalEvents = [
     {
         date: "7/31/2026",
         regionKeywords: ["minnesota", "mn"],
-        confidence: 0.90, // High confidence (90% intensity target)
+        baseConfidence: 0.90,
         data: { high: 82, low: 64, wind: 38, gusts: 75, condition: "Storms Afternoon" }
     },
     {
         date: "8/2/2026",
         regionKeywords: ["washington", "wa"],
-        confidence: 0.85, // High confidence
+        baseConfidence: 0.85,
         data: { high: 50, low: 38, wind: 68, gusts: 105, condition: "High Winds >100mph" }
     },
     {
         date: "8/3/2026",
         regionKeywords: ["idaho", "id"],
-        confidence: 0.70, // Moderate-high confidence
+        baseConfidence: 0.70,
         data: { high: 72, low: 48, wind: 20, gusts: 35, condition: "Moderate Winds" }
     },
     {
         date: "8/4/2026",
         regionKeywords: ["montana", "mt"],
-        confidence: 0.95, // Very high confidence
+        baseConfidence: 0.95,
         data: { high: 98, low: 70, wind: 52, gusts: 88, condition: "Hot & Strong Winds" }
     },
     {
         date: "8/5/2026",
         regionKeywords: ["north dakota", "nd"],
-        confidence: 0.80, // Moderate confidence
+        baseConfidence: 0.80,
         data: { high: 92, low: 64, wind: 44, gusts: 80, condition: "Hot & Gusty" }
     },
     {
         date: "8/6/2026",
         regionKeywords: ["minnesota", "mn"],
-        confidence: 0.92, // High confidence
+        baseConfidence: 0.92,
         data: { high: 70, low: 34, wind: 39, gusts: 87, condition: "High Gusts (Northern MN)" }
     },
     {
         date: "8/7/2026",
         regionKeywords: ["wisconsin", "wi"],
-        confidence: 0.75, // Moderate confidence
+        baseConfidence: 0.75,
         data: { high: 62, low: 40, wind: 55, gusts: 99, condition: "Cool / Severe Winds" }
     }
 ];
@@ -185,15 +185,36 @@ function findRegionalOverride(dateStr, searchString, placeName, apiHigh, apiLow,
     const targetWind = Math.max(5, base.wind + windOffset);
     const targetGusts = Math.max(10, base.gusts + gustOffset);
 
-    // Apply confidence rating to adjust intensity on the specific override date
-    const c = Math.max(0, Math.min(1.0, event.confidence)); 
+    // Calculate dynamic confidence based on date proximity and time of day
+    const now = new Date();
+    const eventDate = new Date(dateStr);
+    
+    // Normalize both dates to midnight for day difference calculation
+    const todayMidnight = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const eventMidnight = new Date(eventDate.getFullYear(), eventDate.getMonth(), eventDate.getDate());
+    
+    const diffTime = eventMidnight - todayMidnight;
+    const daysDiff = Math.round(diffTime / (1000 * 60 * 60 * 24));
 
-    const finalHigh = Math.round(targetHigh * c + apiHigh * (1 - c));
-    const finalLow = Math.round(targetLow * c + apiLow * (1 - c));
-    const finalWind = Math.round(targetWind * c + apiWind * (1 - c));
-    const finalGusts = Math.round(targetGusts * c + apiGusts * (1 - c));
+    let proximityMultiplier = 1.0;
+    if (daysDiff > 0) {
+        // As event is further out in days, confidence gradually scales down
+        proximityMultiplier = Math.max(0.3, 1.0 - (daysDiff * 0.12));
+    } else if (daysDiff === 0) {
+        // Today: Confidence decays smoothly as hours pass throughout the day (0 to 24)
+        const currentHour = now.getHours() + (now.getMinutes() / 60);
+        proximityMultiplier = Math.max(0.2, 1.0 - (currentHour / 24) * 0.5);
+    }
 
-    const confPercent = Math.round(c * 100);
+    const effectiveConfidence = Math.max(0, Math.min(1.0, event.baseConfidence * proximityMultiplier));
+
+    // Calculate values blended by confidence
+    const finalHigh = Math.round(targetHigh * effectiveConfidence + apiHigh * (1 - effectiveConfidence));
+    const finalLow = Math.round(targetLow * effectiveConfidence + apiLow * (1 - effectiveConfidence));
+    const finalWind = Math.round(targetWind * effectiveConfidence + apiWind * (1 - effectiveConfidence));
+    const finalGusts = Math.round(targetGusts * effectiveConfidence + apiGusts * (1 - effectiveConfidence));
+
+    const confPercent = Math.round(effectiveConfidence * 100);
     const label = `${base.condition} (${confPercent}% Confidence)`;
 
     return {
