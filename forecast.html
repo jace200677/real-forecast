@@ -390,13 +390,12 @@ function findRegionalOverride(dateStr, searchString, placeName, apiHigh, apiLow,
         gustOffset = (hash % 11) - 5;      
     }
 
-    // Dynamic rule: "as move east then winds get worse and temps get colder" (applied for Wisconsin on 8/7/2026)
     if (dateStr === "8/7/2026" && currentLon !== null) {
         let eastShift = Math.max(0, currentLon - (-92.5)); 
         if (eastShift > 0 && eastShift < 15) { 
-            tempOffset -= Math.round(eastShift * 1.5); // Colder
-            windOffset += Math.round(eastShift * 2);   // Stronger wind
-            gustOffset += Math.round(eastShift * 3);   // Worse gusts
+            tempOffset -= Math.round(eastShift * 1.5);
+            windOffset += Math.round(eastShift * 2);   
+            gustOffset += Math.round(eastShift * 3);   
         }
     }
 
@@ -587,23 +586,22 @@ function getMinuteValuesForDay(dateStr, searchQuery, placeName, apiDailyTemps, a
             let baseGust = baseHourGusts[hour] || 30;
 
             const totalMinutes = hour * 60 + minute;
-            const rampStartMin = 5 * 60;        // 5 AM
-            const peak12pmMin = 12 * 60;       // 12 PM
-            const drop6pmMin = 18 * 60;        // 6 PM
+            const rampStartMin = 5 * 60;        
+            const peak12pmMin = 12 * 60;       
+            const drop6pmMin = 18 * 60;        
 
             if (isMinnesota731) {
-                // Rule: "7/31/26 before 19 pm is live weather and after 19pm to peak by 20 pm for storm peak values and after that peak by 21 pm for back to live weather"
                 let factor = 0;
-                const start19 = 19 * 60; // 7 PM (19:00)
-                const peak20 = 20 * 60;  // 8 PM (20:00)
-                const end21 = 21 * 60;   // 9 PM (21:00)
+                const start19 = 19 * 60; 
+                const peak20 = 20 * 60;  
+                const end21 = 21 * 60;   
 
                 if (totalMinutes >= start19 && totalMinutes <= peak20) {
                     factor = (totalMinutes - start19) / (peak20 - start19);
                 } else if (totalMinutes > peak20 && totalMinutes <= end21) {
                     factor = 1.0 - ((totalMinutes - peak20) / (end21 - peak20));
                 } else {
-                    factor = 0; // Live weather before 19:00 and after 21:00
+                    factor = 0; 
                 }
 
                 if (exactOverride) {
@@ -613,16 +611,13 @@ function getMinuteValuesForDay(dateStr, searchQuery, placeName, apiDailyTemps, a
                 }
             }
             else if (exactOverride) {
-                // Event day rule: "event day peak before 12 pm on event day and after that it's up and down until 6 pm on event day and after 6 pm on event day [...] trends towards live weather"
                 let factor = 0;
                 if (totalMinutes <= peak12pmMin) {
                     factor = totalMinutes / peak12pmMin; 
                 } else if (totalMinutes > peak12pmMin && totalMinutes <= drop6pmMin) {
-                    // Up and down fluctuation between 12 PM and 6 PM
                     const wave = Math.sin((totalMinutes - peak12pmMin) / 60 * Math.PI * 2);
                     factor = 0.8 + (wave * 0.2); 
                 } else {
-                    // After 6 PM decay back to live values
                     const postProgress = (totalMinutes - drop6pmMin) / ((24 * 60) - drop6pmMin);
                     factor = Math.max(0, 0.6 - (postProgress * 0.6)); 
                 }
@@ -631,7 +626,6 @@ function getMinuteValuesForDay(dateStr, searchQuery, placeName, apiDailyTemps, a
                 baseTemp = Math.round(baseTemp + (exactOverride.baseEvent.high - baseTemp) * factor);
             }
             else if (futureEventOverride) {
-                // 1 Day before event rule: "affect event 1 day before event override starting at 5am and continue trending towards event weather values peak by 12pm"
                 let factor = 0;
                 if (totalMinutes >= rampStartMin) {
                     const rampProgress = (totalMinutes - rampStartMin) / ((24 * 60) - rampStartMin);
@@ -642,7 +636,6 @@ function getMinuteValuesForDay(dateStr, searchQuery, placeName, apiDailyTemps, a
                 baseTemp = Math.round(baseTemp + ((futureEventOverride.baseEvent.high - baseTemp) * factor));
             }
             else if (pastEventOverride) {
-                // 1 Day after event rule: "1 day after the event override and trending towards live weather values"
                 const decayFactor = Math.max(0, 1.0 - (totalMinutes / (24 * 60)));
                 const carryWind = pastEventOverride.baseEvent.wind * 0.3 * decayFactor;
                 const carryGust = pastEventOverride.baseEvent.gusts * 0.3 * decayFactor;
