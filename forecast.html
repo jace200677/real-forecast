@@ -416,6 +416,17 @@ function findRegionalOverride(dateStr, searchString, placeName, apiHigh, apiLow,
         gustOffset = (hash % 11) - 5;      
     }
 
+    // specific rule for Wisconsin 8/7/2026: as move east, winds worse, temps colder
+    if (dateStr === "8/7/2026" && currentLon !== null) {
+        // Approximate WI bounding box logic: more positive longitude means further east
+        let eastShift = Math.max(0, currentLon - (-92.5)); 
+        if (eastShift > 0 && eastShift < 15) { 
+            tempOffset -= Math.round(eastShift * 1.5); // Colder
+            windOffset += Math.round(eastShift * 2);   // Worse winds
+            gustOffset += Math.round(eastShift * 3);   // Worse gusts
+        }
+    }
+
     const targetHigh = base.high + tempOffset;
     const targetLow = base.low + Math.round(tempOffset / 2);
     const targetWind = base.wind + windOffset;
@@ -658,17 +669,17 @@ function getMinuteValuesForDay(dateStr, searchQuery, placeName, apiDailyTemps, a
                     baseTemp = Math.round(baseTemp + (exactOverride.baseEvent.high - baseTemp) * factor);
                 }
             }
-            // 1. Exact Event Day Override (Peaks before 12 PM, fluctuates until 6 PM, settles after 6 PM)
+            // 1. Exact Event Day Override (Peaks before 12 PM, fluctuates until 6 PM, settles after 6 PM to trend towards live weather)
             else if (exactOverride) {
                 let factor = 0;
                 if (totalMinutes <= peak12pmMin) {
-                    factor = totalMinutes / peak12pmMin;
+                    factor = totalMinutes / peak12pmMin; // Ramp up to peak at 12 PM
                 } else if (totalMinutes > peak12pmMin && totalMinutes <= drop6pmMin) {
                     const wave = Math.sin((totalMinutes - peak12pmMin) / 60 * Math.PI * 2);
-                    factor = 0.8 + (wave * 0.2);
+                    factor = 0.8 + (wave * 0.2); // Fluctuate up and down until 6 PM
                 } else {
                     const postProgress = (totalMinutes - drop6pmMin) / ((24 * 60) - drop6pmMin);
-                    factor = Math.max(0.1, 0.6 - (postProgress * 0.5));
+                    factor = Math.max(0, 0.6 - (postProgress * 0.6)); // Trend towards live weather after 6 PM
                 }
 
                 baseWind = Math.round(baseWind + (exactOverride.baseEvent.wind - baseWind) * factor);
@@ -680,14 +691,14 @@ function getMinuteValuesForDay(dateStr, searchQuery, placeName, apiDailyTemps, a
                 let factor = 0;
                 if (totalMinutes >= rampStartMin) {
                     const rampProgress = (totalMinutes - rampStartMin) / ((24 * 60) - rampStartMin);
-                    factor = rampProgress * 0.75;
+                    factor = rampProgress * 0.75; // Trend towards event values
                 }
 
                 baseWind = Math.round(baseWind + (futureEventOverride.baseEvent.wind * factor));
                 baseGust = Math.round(baseGust + (futureEventOverride.baseEvent.gusts * factor));
                 baseTemp = Math.round(baseTemp + ((futureEventOverride.baseEvent.high - baseTemp) * factor));
             }
-            // 3. 1 Day After Event (Carrying over previous tail, transitioning to Open-Meteo live weather)
+            // 3. 1 Day After Event (Carrying over previous tail, trending to Open-Meteo live weather)
             else if (pastEventOverride) {
                 const decayFactor = Math.max(0, 1.0 - (totalMinutes / (24 * 60)));
                 const carryWind = pastEventOverride.baseEvent.wind * 0.3 * decayFactor;
@@ -718,6 +729,18 @@ function parseAndRender(data, searchQuery, placeName) {
     let maxGustInForecast = 170;
     const isMN = getRegionalEventForDateAndLocation("7/31/2026", searchQuery, placeName) !== null;
 
+    // Map Standard Open-Meteo WMO Codes to Live Weather Conditions
+    const wmoConditions = {
+        0: "Clear Sky", 1: "Mostly Clear", 2: "Partly Cloudy", 3: "Overcast",
+        45: "Fog", 48: "Rime Fog",
+        51: "Light Drizzle", 53: "Moderate Drizzle", 55: "Dense Drizzle",
+        61: "Light Rain", 63: "Moderate Rain", 65: "Heavy Rain",
+        71: "Light Snow", 73: "Moderate Snow", 75: "Heavy Snow", 77: "Snow Grains",
+        80: "Light Showers", 81: "Moderate Showers", 82: "Violent Showers",
+        85: "Light Snow Showers", 86: "Heavy Snow Showers",
+        95: "Thunderstorms", 96: "Thunderstorms & Hail", 99: "Severe Thunderstorms"
+    };
+
     targetDates.forEach((dateStr, i) => {
         const [m, d, y] = dateStr.split("/").map(Number);
         const dateObj = new Date(y, m - 1, d);
@@ -731,6 +754,10 @@ function parseAndRender(data, searchQuery, placeName) {
         }
 
         const apiCode = daily.weather_code ? daily.weather_code[apiIndex] : 0;
+        const apiHigh = Math.round(daily.temperature_2m_max[apiIndex] || 72);
+        const apiLow = Math.round(daily.temperature_2m_min[apiIndex] || 52);
+        const apiWind = Math.round(daily.wind_speed_10m_max[apiIndex] || 18);
+        const apiGusts = Math.round(daily.wind_gusts_10m_max[apiIndex] || 30);
         
         const minuteData = getMinuteValuesForDay(
             dateStr, 
@@ -742,14 +769,33 @@ function parseAndRender(data, searchQuery, placeName) {
             apiIndex
         );
 
-        const cardLow = Math.min(...minuteData.temps);
-        const cardHigh = Math.max(...minuteData.temps);
-        const cardWind = Math.max(...minuteData.winds);
-        const cardGusts = Math.max(...minuteData.gusts);
+        const matchedOverride = getResolvedOverride(dateStr, searchQuery, placeName, apiHigh, apiLow, apiWind, apiGusts);
+        const preDateStr = getPreEventDateString(dateStr);
+        const pastEventOverride = getResolvedOverride(preDateStr, searchQuery, placeName, apiHigh, apiLow, apiWind, apiGusts);
+        const postDateStr = getPostEventDateString(dateStr);
+        const futureEventOverride = getResolvedOverride(postDateStr, searchQuery, placeName, apiHigh, apiLow, apiWind, apiGusts);
+        
+        let cardHigh, cardLow, cardWind, cardGusts, note, rawCondition;
 
-        const matchedOverride = getResolvedOverride(dateStr, searchQuery, placeName, daily.temperature_2m_max[apiIndex], daily.temperature_2m_min[apiIndex], daily.wind_speed_10m_max[apiIndex], daily.wind_gusts_10m_max[apiIndex]);
-        const note = matchedOverride ? matchedOverride.condition : "";
-        const iconUrl = getWeatherIcon(apiCode, matchedOverride ? matchedOverride.rawCondition : "", isMN, dateStr);
+        // Determine if we use simulated event data (event day or 1-day before/after overrides) or strict API live data
+        if (matchedOverride || pastEventOverride || futureEventOverride || (isMN && dateStr === "7/31/2026")) {
+            cardHigh = Math.max(...minuteData.temps);
+            cardLow = Math.min(...minuteData.temps);
+            cardWind = Math.max(...minuteData.winds);
+            cardGusts = Math.max(...minuteData.gusts);
+            note = matchedOverride ? matchedOverride.condition : "Event Influence";
+            rawCondition = matchedOverride ? matchedOverride.rawCondition : (wmoConditions[apiCode] || "Partly Cloudy");
+        } else {
+            // Apply Live API Weather Data for entirely untouched days
+            cardHigh = apiHigh;
+            cardLow = apiLow;
+            cardWind = apiWind;
+            cardGusts = apiGusts;
+            rawCondition = wmoConditions[apiCode] || "Partly Cloudy";
+            note = `Live: ${rawCondition}`; 
+        }
+
+        const iconUrl = getWeatherIcon(apiCode, rawCondition, isMN, dateStr);
 
         if (cardGusts > maxGustInForecast) {
             maxGustInForecast = cardGusts;
