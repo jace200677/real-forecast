@@ -189,6 +189,10 @@ function getWeatherIcon(weatherCode, conditionText, regionMatch, dateStr) {
         return ICON_BASE_URL + "Thunderstorms.png";
     }
 
+    if (regionMatch) {
+        return ICON_BASE_URL + "windy.png";
+    }
+
     if (conditionText) {
         const lowerCond = conditionText.toLowerCase();
         if (lowerCond.includes("storm") || lowerCond.includes("gust")) {
@@ -308,7 +312,7 @@ function getWindColor(speed) {
     return "#30b0c7";
 }
 
-// Regional Event Scenarios (including multi-state progression moving east)
+// Regional Event Scenarios
 const regionalEvents = [
     {
         date: "7/30/2026",
@@ -328,49 +332,42 @@ const regionalEvents = [
         baseConfidence: 0.93,
         data: { high: 82, low: 58, wind: 20, gusts: 35, condition: "Post-Event Wind Decrease & Warm-Up by 5 PM (Minnesota)" }
     },
-    // 8/2/2026: Washington state (cooler temps, 100 mph wind, gusts 120 mph)
     {
         date: "8/2/2026",
         regionKeywords: ["washington", "wa", "seattle", "spokane", "tacoma", "vancouver", "bellevue", "everett", "kent", "renton", "spokane valley", "federal way", "yakima", "bellingham", "kennewick", "auburn", "pasco", "marysville", "lakewood", "redmond", "richland", "shoreline", "sammamish", "burien", "olympia", "lacey", "edmonds", "bremerton", "puyallup"],
         baseConfidence: 0.96,
         data: { high: 62, low: 46, wind: 100, gusts: 120, condition: "Washington Storm Event (Cooler, 100 mph Winds, Gusts 120 mph)" }
     },
-    // 8/3/2026: Idaho state (warmer temps, 50 mph wind, gusts 90 mph)
     {
         date: "8/3/2026",
         regionKeywords: ["idaho", "id", "boise", "meridian", "nampa", "idaho falls", "pocatello", "caldwell", "coeur d'alene", "twin falls", "post falls", "rexburg", "moscow", "eagle", "chubbuck", "mountain home", "kuna", "hayden", "rigby", "blackfoot"],
         baseConfidence: 0.95,
         data: { high: 94, low: 68, wind: 50, gusts: 90, condition: "Idaho Heat & Wind Event (Warmer, 50 mph Winds, Gusts 90 mph)" }
     },
-    // 8/4/2026: Montana state (cooler temps, 80 mph wind, gusts 130 mph)
     {
         date: "8/4/2026",
         regionKeywords: ["montana", "mt", "billings", "missoula", "great falls", "bozeman", "butte", "helena", "kalispell", "havre", "anaconda", "miles city", "laurel", "sidney", "lewistown", "glendive", "whitefish", "polson", "livingston", "laurel"],
         baseConfidence: 0.96,
         data: { high: 65, low: 48, wind: 80, gusts: 130, condition: "Montana Severe Storm (Cooler, 80 mph Winds, Gusts 130 mph)" }
     },
-    // 8/5/2026: North Dakota state (hotter temps, 120 mph wind, gusts 150 mph)
     {
         date: "8/5/2026",
         regionKeywords: ["north dakota", "nd", "fargo", "bismarck", "grand forks", "minot", "mandan", "dickinson", "williston", "west fargo", "wahpeton", "valley city", "jamestown", "devils lake", "beulah", "rugd", "grafton", "lincoln", "horace"],
         baseConfidence: 0.97,
         data: { high: 102, low: 76, wind: 120, gusts: 150, condition: "North Dakota Extreme System (Hotter, 120 mph Winds, Gusts 150 mph)" }
     },
-    // 8/6/2026: Northern Minnesota part (cooler temps, 55 mph wind, gusts 80 mph)
     {
         date: "8/6/2026",
         regionKeywords: ["duluth", "moorhead", "bemidji", "brainerd", "hibbing", "grand rapids", "moorhead", "fergus falls", "international falls", "virginia", "clouqet", "east grand forks", "thief river falls", "crookston", "detroit lakes", "little falls", "alexandria", "park rapids", "grand rapids"],
         baseConfidence: 0.95,
         data: { high: 68, low: 50, wind: 55, gusts: 80, condition: "Northern Minnesota Storm (Cooler, 55 mph Winds, Gusts 80 mph)" }
     },
-    // 8/6/2026: Southern Minnesota part (hotter temps, 75 mph wind, gusts 120 mph)
     {
         date: "8/6/2026",
         regionKeywords: ["minneapolis", "st. paul", "saint paul", "rochester", "bloomington", "plymouth", "brooklyn park", "woodbury", "st. cloud", "eagan", "eden prairie", "coon rapids", "burnsville", "blaine", "lakeville", "minnetonka", "apple valley", "edina", "st. louis park", "mankato", "shakopee", "richfield", "cottage grove", "roseville", "inver grove heights", "winona", "faribault", "austin", "owatonna", "red wing", "new ulm", "hutchinson", "marshall", "northfield", "worthington", "willmar", "fairmont"],
         baseConfidence: 0.96,
         data: { high: 98, low: 74, wind: 75, gusts: 120, condition: "Southern Minnesota Heat & Wind Surge (Hotter, 75 mph Winds, Gusts 120 mph)" }
     },
-    // 8/7/2026: Wisconsin state (cooler temps, 78 mph wind, gusts 130 mph)
     {
         date: "8/7/2026",
         regionKeywords: ["wisconsin", "wi", "milwaukee", "madison", "green bay", "kenosha", "racine", "appleton", "waukesha", "eau claire", "oshkosh", "janesville", "west allis", "la crosse", "sheboygan", "wauwatosa", "fond du lac", "new berlin", "wausau", "brookfield", "beloit", "greenfield", "franklin", "oak creek", "manitowoc", "west bend", "superior", "stevens point", "neenah", "sun prairie"],
@@ -577,7 +574,6 @@ async function loadWeatherForCoords(lat, lon, placeName, searchQuery) {
     document.getElementById("locationSub").innerText = `Encrypted Coordinates: ${lat.toFixed(2)}°, ${lon.toFixed(2)}°`;
 
     try {
-        // Request 9 days to include 7/30/2026 through 8/7/2026
         const weatherUrl = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&hourly=temperature_2m,wind_speed_10m,wind_gusts_10m&daily=weather_code,temperature_2m_max,temperature_2m_min,wind_speed_10m_max,wind_gusts_10m_max&temperature_unit=fahrenheit&wind_speed_unit=mph&timezone=auto&forecast_days=9`;
         
         const weatherRes = await fetch(weatherUrl);
@@ -641,20 +637,14 @@ function getMinuteValuesForDay(dateStr, searchQuery, placeName, apiDailyTemps, a
     const apiGusts = Math.round(apiDailyGusts[dayIndex] || 30);
 
     const exactOverride = getResolvedOverride(dateStr, searchQuery, placeName, apiHigh, apiLow, apiWind, apiGusts);
-
-    // Check if this date is a 1-day-before date for any regional event
     const postDateStr = getPostEventDateString(dateStr);
     const futureEventOverride = getResolvedOverride(postDateStr, searchQuery, placeName, apiHigh, apiLow, apiWind, apiGusts);
-
-    // Check if this date is a 1-day-after date for any regional event
     const preDateStr = getPreEventDateString(dateStr);
     const pastEventOverride = getResolvedOverride(preDateStr, searchQuery, placeName, apiHigh, apiLow, apiWind, apiGusts);
 
     const temps = [];
     const winds = [];
     const gusts = [];
-
-    const hash = Math.abs(getHashOffset(placeName));
 
     for (let hour = 0; hour < 24; hour++) {
         for (let minute = 0; minute < 60; minute++) {
@@ -665,80 +655,49 @@ function getMinuteValuesForDay(dateStr, searchQuery, placeName, apiDailyTemps, a
             let baseGust = baseHourGusts[hour] || 30;
 
             const totalMinutes = hour * 60 + minute;
+            const peak12pmMin = 12 * 60; // 12:00 PM peak
+            const drop6pmMin = 18 * 60;   // 6:00 PM baseline mark
 
-            // 1. Exact Event Day Override
+            // 1. Exact Event Day Override (Peaks before 12 PM, fluctuates until 6 PM, settles after 6 PM)
             if (exactOverride) {
-                if (dateStr === "7/31/2026") {
-                    // Minnesota 7/31 storm specific timing rule (untouched core structure)
-                    const startRampMin = 4 * 60;       
-                    const peakMin = 5 * 60;            
-                    const postDropMin = 6 * 60;        
-
-                    let factor = 0;
-                    if (totalMinutes < startRampMin) {
-                        factor = 0; 
-                    } else if (totalMinutes >= startRampMin && totalMinutes <= peakMin) {
-                        factor = (totalMinutes - startRampMin) / (peakMin - startRampMin);
-                    } else if (totalMinutes > peakMin && totalMinutes <= postDropMin) {
-                        const fadeDuration = postDropMin - peakMin;
-                        const elapsedFade = totalMinutes - peakMin;
-                        factor = Math.max(0, 1.0 - (elapsedFade / fadeDuration));
-                    } else {
-                        factor = 0; 
-                    }
-
-                    const targetW = exactOverride.baseEvent.wind;
-                    const targetG = exactOverride.baseEvent.gusts;
-                    const targetL = exactOverride.baseEvent.low;
-                    baseWind = Math.round(baseWind + (targetW - baseWind) * factor);
-                    baseGust = Math.round(baseGust + (targetG - baseGust) * factor);
-                    baseTemp = Math.round(baseTemp + (targetL - baseTemp) * factor);
-                } else {
-                    // Standard event day peak at 12 PM (noon = 12 * 60)
-                    const peakMin = 12 * 60;
-                    let factor = 0;
-                    if (totalMinutes <= peakMin) {
-                        factor = totalMinutes / peakMin;
-                    } else {
-                        factor = Math.max(0, 1.0 - ((totalMinutes - peakMin) / (12 * 60)));
-                    }
-
-                    const targetW = exactOverride.baseEvent.wind;
-                    const targetG = exactOverride.baseEvent.gusts;
-                    const targetH = exactOverride.baseEvent.high;
-                    baseWind = Math.round(baseWind + (targetW - baseWind) * factor);
-                    baseGust = Math.round(baseGust + (targetG - baseGust) * factor);
-                    baseTemp = Math.round(baseTemp + (targetH - baseTemp) * factor);
-                }
-            }
-            // 2. 1 Day Before Event Override (starting at 5 AM = 5 * 60, peaking at 12 PM = 12 * 60, then trending toward event weather)
-            else if (futureEventOverride) {
-                const startRampMin = 5 * 60; // 5 AM
-                const peakMin = 12 * 60;      // 12 PM
-
                 let factor = 0;
-                if (totalMinutes >= startRampMin && totalMinutes <= peakMin) {
-                    factor = (totalMinutes - startRampMin) / (peakMin - startRampMin);
-                } else if (totalMinutes > peakMin) {
-                    factor = Math.max(0.3, 1.0 - ((totalMinutes - peakMin) / (12 * 60)) * 0.4);
+                if (totalMinutes <= peak12pmMin) {
+                    factor = totalMinutes / peak12pmMin;
+                } else if (totalMinutes > peak12pmMin && totalMinutes <= drop6pmMin) {
+                    // Fluctuation phase between 12 PM and 6 PM
+                    const wave = Math.sin((totalMinutes - peak12pmMin) / 60 * Math.PI * 2);
+                    factor = 0.8 + (wave * 0.2);
+                } else {
+                    // After 6 PM winding down smoothly
+                    const postProgress = (totalMinutes - drop6pmMin) / ((24 * 60) - drop6pmMin);
+                    factor = Math.max(0.1, 0.6 - (postProgress * 0.5));
                 }
 
-                const targetW = futureEventOverride.baseEvent.wind * 0.75;
-                const targetG = futureEventOverride.baseEvent.gusts * 0.75;
-                const targetT = futureEventOverride.baseEvent.high;
-
-                baseWind = Math.round(baseWind + (targetW - baseWind) * factor);
-                baseGust = Math.round(baseGust + (targetG - baseGust) * factor);
-                baseTemp = Math.round(baseTemp + (targetT - baseTemp) * factor);
+                baseWind = Math.round(baseWind + (exactOverride.baseEvent.wind - baseWind) * factor);
+                baseGust = Math.round(baseGust + (exactOverride.baseEvent.gusts - baseGust) * factor);
+                baseTemp = Math.round(baseTemp + (exactOverride.baseEvent.high - baseTemp) * factor);
             }
-            // 3. 1 Day After Event Override (trending towards live weather values)
-            else if (pastEventOverride) {
-                const dayProgressFactor = Math.max(0, 1.0 - (totalMinutes / (24 * 60)));
-                const targetW = pastEventOverride.baseEvent.wind * 0.4;
-                const targetG = pastEventOverride.baseEvent.gusts * 0.4;
+            // 2. 1 Day Before Event (Ramping up continuously towards the upcoming peak)
+            else if (futureEventOverride) {
+                let factor = 0;
+                if (totalMinutes <= peak12pmMin) {
+                    factor = (totalMinutes / peak12pmMin) * 0.75;
+                } else {
+                    factor = 0.75 - (((totalMinutes - peak12pmMin) / (12 * 60)) * 0.15);
+                }
 
-                baseWind = Math.round(baseWind + (targetW - baseWind) * dayProgressFactor);
-                baseGust = Math.round(baseGust + (targetG - baseGust) * dayProgressFactor);
+                baseWind = Math.round(baseWind + (futureEventOverride.baseEvent.wind * factor));
+                baseGust = Math.round(baseGust + (futureEventOverride.baseEvent.gusts * factor));
+                baseTemp = Math.round(baseTemp + ((futureEventOverride.baseEvent.high - baseTemp) * factor));
+            }
+            // 3. 1 Day After Event (Carrying over previous tail, transitioning to Open-Meteo live weather)
+            else if (pastEventOverride) {
+                const decayFactor = Math.max(0, 1.0 - (totalMinutes / (24 * 60)));
+                const carryWind = pastEventOverride.baseEvent.wind * 0.3 * decayFactor;
+                const carryGust = pastEventOverride.baseEvent.gusts * 0.3 * decayFactor;
+
+                baseWind = Math.round(baseWind + carryWind);
+                baseGust = Math.round(baseGust + carryGust);
             }
 
             temps.push(baseTemp);
@@ -755,7 +714,6 @@ function parseAndRender(data, searchQuery, placeName) {
     const daily = data.daily;
     const forecastData = [];
 
-    // Target 7 days starting from 7/31/2026 through 8/7/2026 (or 7/31 to 8/6 depending on range)
     const targetDates = [
         "7/31/2026", "8/1/2026", "8/2/2026", "8/3/2026", "8/4/2026", "8/5/2026", "8/6/2026", "8/7/2026"
     ];
