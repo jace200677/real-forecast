@@ -34,17 +34,26 @@
     }
 
     .forecast-container { display:flex; flex-wrap:wrap; gap:18px; justify-content:center; }
-    .day-card { background:#1c1c1c; padding:18px; border-radius:14px; width:200px;
+    .day-card { background:#1c1c1c; padding:18px; border-radius:14px; width:210px;
                 box-shadow:0 0 18px rgba(0,0,0,0.6); transition:transform .2s; }
     .day-card:hover { transform:scale(1.05); }
-    .day-name { font-size:20px; text-align:center; margin-bottom:4px; font-weight:bold; }
+    .day-name { font-size:20px; text-align:center; margin-bottom:2px; font-weight:bold; }
     .day-date { font-size:12px; color:#777; text-align:center; margin-bottom:8px; }
-    .dos-value { font-size:42px; font-weight:bold; text-align:center; margin-bottom:4px; }
-    .dos-label { font-size:12px; text-align:center; opacity:.9; margin-bottom:8px; min-height:32px; line-height:1.3; }
-    .video-label { font-size:11px; text-align:center; padding:4px 8px; border-radius:6px; background:#2a2a2a; margin-bottom:12px; }
+    .dos-value { font-size:38px; font-weight:bold; text-align:center; margin-bottom:2px; }
+    .dos-label { font-size:11px; text-align:center; opacity:.9; margin-bottom:8px; min-height:28px; line-height:1.2; }
+    
+    .video-label { font-size:11px; text-align:center; padding:3px 6px; border-radius:6px; background:#2a2a2a; margin-bottom:8px; }
+    
+    /* Live Stream Chance Section */
+    .stream-chance-container { margin-top: 10px; font-size: 11px; text-align: center; }
+    .stream-chance-title { color: #aaa; text-transform: uppercase; letter-spacing: 0.5px; font-size: 10px; }
+    .stream-chance-val { font-size: 14px; font-weight: bold; color: #0088ff; margin-bottom: 4px; }
 
-    .bar { height:12px; background:#2a2a2a; border-radius:8px; overflow:hidden; }
+    /* Progress Bars */
+    .bar-label { font-size: 9px; color: #666; text-transform: uppercase; margin-bottom: 2px; }
+    .bar { height:8px; background:#2a2a2a; border-radius:6px; overflow:hidden; margin-bottom: 8px; }
     .bar-fill { height:100%; transition: width .8s, background-color .8s; }
+    .bar-fill-stream { height:100%; background: #0088ff; transition: width .8s; }
 </style>
 </head>
 <body>
@@ -82,15 +91,14 @@ async function fetchActiveAlerts() {
     }
 }
 
-// Color Lerp Helper: Linearly interpolates RGB values based on official RHY score stops
+// Color Lerp Helper: Interpolates RGB values based on score thresholds
 function getLerpColor(score) {
-    // Score stops: 0 (Quiet: Green), 30 (Active: Yellow), 60 (Watch: Orange), 90 (Significant: Red), 120+ (Extreme: Purple)
     const stops = [
-        { score: 0,   r: 0,   g: 255, b: 119 }, // #00ff77
-        { score: 30,  r: 255, g: 255, b: 0 },   // #ffff00
-        { score: 60,  r: 255, g: 170, b: 0 },   // #ffaa00
-        { score: 90,  r: 255, g: 0,   b: 85 },  // #ff0055
-        { score: 120, r: 212, g: 0,   b: 255 }  // #d400ff
+        { score: 0,   r: 0,   g: 255, b: 119 }, // #00ff77 Green
+        { score: 30,  r: 255, g: 255, b: 0 },   // #ffff00 Yellow
+        { score: 60,  r: 255, g: 170, b: 0 },   // #ffaa00 Orange
+        { score: 90,  r: 255, g: 0,   b: 85 },  // #ff0055 Red
+        { score: 120, r: 212, g: 0,   b: 255 }  // #d400ff Purple
     ];
 
     if (score <= stops[0].score) return `rgb(${stops[0].r}, ${stops[0].g}, ${stops[0].b})`;
@@ -115,9 +123,9 @@ function getLerpColor(score) {
     return `rgb(${r}, ${g}, ${b})`;
 }
 
-// Calculates Weather Intensity Score (WIS) & DOS (lowered baseline matching RHY scale)
+// Further reduced national score calculation
 function calculateNationalScores(alerts) {
-    if (!alerts || alerts.length === 0) return { wis: 5, dos: 6 };
+    if (!alerts || alerts.length === 0) return { wis: 3, dos: 4 };
 
     let rawScore = 0;
 
@@ -128,28 +136,28 @@ function calculateNationalScores(alerts) {
 
         let points = 0;
 
-        if (severity === "extreme") points += 5;
-        else if (severity === "severe") points += 2.5;
-        else if (severity === "moderate") points += 1;
-        else if (severity === "minor") points += 0.2;
+        if (severity === "extreme") points += 3;
+        else if (severity === "severe") points += 1.5;
+        else if (severity === "moderate") points += 0.5;
+        else if (severity === "minor") points += 0.1;
 
-        if (event.includes("tornado")) points += 8;
-        if (event.includes("hurricane") || event.includes("tropical storm")) points += 10;
-        if (event.includes("blizzard") || event.includes("ice storm")) points += 5;
-        if (event.includes("flash flood")) points += 3;
-        if (event.includes("extreme wind") || event.includes("derecho")) points += 5;
-        if (event.includes("red flag") || event.includes("fire")) points += 2;
+        if (event.includes("tornado")) points += 5;
+        if (event.includes("hurricane") || event.includes("tropical storm")) points += 6;
+        if (event.includes("blizzard") || event.includes("ice storm")) points += 3;
+        if (event.includes("flash flood")) points += 2;
+        if (event.includes("extreme wind") || event.includes("derecho")) points += 3;
+        if (event.includes("red flag") || event.includes("fire")) points += 1;
 
         rawScore += points;
     });
 
-    // Scaled down significantly so typical days sit around 5–25 range
-    const currentWIS = Math.min(Math.round(rawScore / 30), 250);
-    const baseDOS = Math.min(Math.round(rawScore / 35), 250);
+    // Scaled down significantly so typical quiet days sit around 2–15 range
+    const currentWIS = Math.min(Math.round(rawScore / 45), 250);
+    const baseDOS = Math.min(Math.round(rawScore / 55), 250);
 
     return {
-        wis: Math.max(currentWIS, 4),
-        dos: Math.max(baseDOS, 5)
+        wis: Math.max(currentWIS, 2),
+        dos: Math.max(baseDOS, 3)
     };
 }
 
@@ -165,7 +173,6 @@ function getDOSMeta(score) {
 
 function updateStreamStatus(wisScore) {
     const streamStatusEl = document.getElementById("streamStatus");
-    const now = new Date();
 
     if (IS_LIVE_ON_YOUTUBE) {
         streamStatusEl.innerText = "LIVE NOW";
@@ -173,10 +180,7 @@ function updateStreamStatus(wisScore) {
         return;
     }
 
-    const isTargetDate = (now.getFullYear() === 2026 && now.getMonth() === 6 && now.getDate() === 30);
-    const threshold = isTargetDate ? 70 : 60;
-
-    if (wisScore >= threshold) {
+    if (wisScore >= 50) {
         streamStatusEl.innerText = "STREAM THRESHOLD MET";
         streamStatusEl.className = "stream-status status-live";
     } else {
@@ -219,24 +223,29 @@ async function buildForecast() {
         const dateString = `${month}/${dateNum}/${year}`;
 
         let projectedScore;
+        let streamChance;
         
-        // Explicit 200 override for 8/6/26
+        // Explicit logic for 8/6/26
         if (year === 2026 && month === 8 && dateNum === 6) {
             projectedScore = 200;
+            streamChance = 100; // 100% live stream chance on 8/6/26
         } else {
-            const trendMultiplier = 1 + (Math.sin(i * 0.8) * 0.25);
-            projectedScore = Math.min(Math.max(Math.round(dos * trendMultiplier), 3), 150);
+            const trendMultiplier = 1 + (Math.sin(i * 0.8) * 0.2);
+            projectedScore = Math.min(Math.max(Math.round(dos * trendMultiplier), 2), 150);
+            
+            // Calculate proportional live stream chance (capped for lower score days)
+            streamChance = Math.min(Math.round((projectedScore / 90) * 100), 85);
+            if (streamChance < 5) streamChance = 0;
         }
 
+        // Video status logic: 8/5/26 set to Video Unlikely
         let videoLabel = "Video Unlikely";
-        if (year === 2026 && month === 8 && dateNum === 5) {
-            videoLabel = "Video Confirmed";
-        }
 
         dosForecast.push({
             day: dayLabel,
             dateStr: dateString,
             score: projectedScore,
+            streamChance: streamChance,
             videoStatus: videoLabel,
             meta: getDOSMeta(projectedScore)
         });
@@ -276,30 +285,55 @@ function renderForecast(dosForecast) {
         const videoTag = document.createElement("div");
         videoTag.className = "video-label";
         videoTag.innerText = item.videoStatus;
-        if (item.videoStatus === "Video Confirmed") {
-            videoTag.style.background = "#005522"
-            videoTag.style.color = "#00ff77";
-        }
+
+        // DOS Bar
+        const barLabel = document.createElement("div");
+        barLabel.className = "bar-label";
+        barLabel.innerText = "DOS Score Bar";
 
         const bar = document.createElement("div");
         bar.className = "bar";
 
         const barFill = document.createElement("div");
         barFill.className = "bar-fill";
-        
         barFill.style.backgroundColor = dynamicColor;
-
-        // Scale bar width relative to max expected score scale (120)
         const maxScale = 120;
         barFill.style.width = Math.min((item.score / maxScale) * 100, 100) + "%";
-
         bar.appendChild(barFill);
+
+        // Live Stream Chance Section
+        const streamContainer = document.createElement("div");
+        streamContainer.className = "stream-chance-container";
+
+        const streamTitle = document.createElement("div");
+        streamTitle.className = "stream-chance-title";
+        streamTitle.innerText = "Live Stream Chance";
+
+        const streamVal = document.createElement("div");
+        streamVal.className = "stream-chance-val";
+        streamVal.innerText = item.streamChance + "%";
+
+        const streamBar = document.createElement("div");
+        streamBar.className = "bar";
+
+        const streamBarFill = document.createElement("div");
+        streamBarFill.className = "bar-fill-stream";
+        streamBarFill.style.width = item.streamChance + "%";
+
+        streamBar.appendChild(streamBarFill);
+        streamContainer.appendChild(streamTitle);
+        streamContainer.appendChild(streamVal);
+        streamContainer.appendChild(streamBar);
+
+        // Assemble Card
         card.appendChild(dayName);
         card.appendChild(dayDate);
         card.appendChild(dosValue);
         card.appendChild(dosLabel);
         card.appendChild(videoTag);
+        card.appendChild(barLabel);
         card.appendChild(bar);
+        card.appendChild(streamContainer);
 
         container.appendChild(card);
     });
