@@ -313,43 +313,43 @@ function getWindColor(speed) {
     return "#30b0c7";
 }
 
-// Regional Weather Event Scenarios strictly restricted to their designated dates
+// Regional Weather Event Scenarios restricted strictly to Minnesota and specified dates
 const regionalEvents = [
     {
         date: "7/31/2026",
-        regionKeywords: ["minnesota", "mn", "duluth", "minneapolis", "united states", "usa", "national", "east coast", "washington", "idaho", "montana", "north dakota", "wisconsin"],
+        regionKeywords: ["minnesota", "mn", "duluth", "minneapolis", "rochester", "mankato", "st. paul", "saint paul", "bloomington", "plymouth", "maple grove", "woodbury", "st. cloud", "moorhead", "brainerd", "bemidji", "hibbing", "virginia", "international falls", "grand rapids", "red wing", "winona", "albert lea", "austin", "worthington", "marshall", "willmar", "fergus falls", "alexandria", "grand marais", "two harbors", "silver bay", "ely", "grand portage", "silver bay", "babbitt"],
         baseConfidence: 0.90,
         data: { high: 84, low: 66, wind: 30, gusts: 62, condition: "Severe Thunderstorms / Heavy Winds" }
     },
     {
         date: "8/1/2026",
-        regionKeywords: ["united states", "usa", "national", "east coast", "washington", "idaho", "montana", "north dakota", "minnesota", "wisconsin"],
+        regionKeywords: ["minnesota", "mn", "duluth", "minneapolis", "rochester", "mankato", "st. paul", "saint paul"],
         baseConfidence: 0.88,
         data: { high: 78, low: 58, wind: 35, gusts: 70, condition: "Transitioning System / High Winds" }
     },
     {
         date: "8/2/2026",
-        regionKeywords: ["washington", "wa"],
+        regionKeywords: ["minnesota", "mn", "duluth", "minneapolis", "rochester", "mankato", "st. paul", "saint paul"],
         baseConfidence: 0.85,
-        data: { high: 38, low: 26, wind: 70, gusts: 110, condition: "Colder / High Winds & Severe Gusts" }
+        data: { high: 68, low: 48, wind: 40, gusts: 80, condition: "Cooler / High Winds & Severe Gusts" }
     },
     {
         date: "8/3/2026",
-        regionKeywords: ["idaho", "id"],
+        regionKeywords: ["minnesota", "mn", "duluth", "minneapolis", "rochester", "mankato", "st. paul", "saint paul"],
         baseConfidence: 0.70,
         data: { high: 76, low: 52, wind: 30, gusts: 62, condition: "Warmer / Moderate Winds & Gusts" }
     },
     {
         date: "8/4/2026",
-        regionKeywords: ["montana", "mt"],
+        regionKeywords: ["minnesota", "mn", "duluth", "minneapolis", "rochester", "mankato", "st. paul", "saint paul"],
         baseConfidence: 0.95,
-        data: { high: 88, low: 60, wind: 60, gusts: 100, condition: "Warmer / Strong Winds & Extreme Gusts" }
+        data: { high: 88, low: 60, wind: 50, gusts: 90, condition: "Warmer / Strong Winds & Extreme Gusts" }
     },
     {
         date: "8/5/2026",
-        regionKeywords: ["north dakota", "nd"],
+        regionKeywords: ["minnesota", "mn", "duluth", "minneapolis", "rochester", "mankato", "st. paul", "saint paul"],
         baseConfidence: 0.80,
-        data: { high: 90, low: 62, wind: 63, gusts: 130, condition: "Warmer / Severe High Winds & Extreme Gusts" }
+        data: { high: 90, low: 62, wind: 55, gusts: 100, condition: "Warmer / Severe High Winds & Extreme Gusts" }
     },
     {
         date: "8/6/2026",
@@ -366,21 +366,21 @@ const regionalEvents = [
     },
     {
         date: "8/6/2026",
-        regionKeywords: ["minnesota", "mn", "northern minnesota"],
+        regionKeywords: ["minnesota", "mn", "northern minnesota", "duluth", "minneapolis", "st. paul", "saint paul"],
         baseConfidence: 0.92,
         data: { high: 74, low: 48, wind: 55, gusts: 100, condition: "Warmer / High Sustained Winds & Severe Gusts" }
     },
     {
         date: "8/7/2026",
-        regionKeywords: ["wisconsin", "wi"],
+        regionKeywords: ["minnesota", "mn", "duluth", "minneapolis", "rochester", "mankato", "st. paul", "saint paul"],
         baseConfidence: 0.75,
-        data: { high: 50, low: 32, wind: 67, gusts: 120, condition: "Cooler / Severe Winds & Destructive Gusts" }
+        data: { high: 70, low: 48, wind: 45, gusts: 85, condition: "Cooler / Severe Winds & Gusts" }
     },
     {
         date: "8/8/2026",
-        regionKeywords: ["united states", "usa", "national", "east coast"],
+        regionKeywords: ["minnesota", "mn", "duluth", "minneapolis", "rochester", "mankato", "st. paul", "saint paul"],
         baseConfidence: 0.88,
-        data: { high: 46, low: 30, wind: 75, gusts: 125, condition: "Cooler / Moving to East Coast / Severe Winds" }
+        data: { high: 72, low: 50, wind: 40, gusts: 75, condition: "Stable / Moderate Winds" }
     }
 ];
 
@@ -415,8 +415,14 @@ function calculateEffectiveConfidence(dateStr, baseConfidence) {
 function findRegionalOverride(dateStr, searchString, placeName, apiHigh, apiLow, apiWind, apiGusts) {
     const searchLower = `${searchString} ${placeName}`.toLowerCase();
     
-    // STRICT CHECK: Only search for events that match EXACTLY the provided dateStr. 
-    // This guarantees other dates are never overridden by events on different days.
+    // STRICT CHECK: Only trigger override if the location is in Minnesota
+    const isMinnesota = regionalEvents[0].regionKeywords.some(keyword => {
+        const regex = new RegExp(`\\b${keyword}\\b`, 'i');
+        return regex.test(searchLower);
+    });
+
+    if (!isMinnesota) return null;
+
     const matchingEvents = regionalEvents.filter(e => e.date === dateStr);
     
     let event = null;
