@@ -61,7 +61,7 @@
 <div class="subtitle" id="locationSub">Search any location to view high/low temperatures, sustained wind, and peak gusts</div>
 
 <div class="search-container">
-    <input type="text" id="searchInput" class="search-input" placeholder="Search location (e.g. Washington, Minnesota...)">
+    <input type="text" id="searchInput" class="search-input" placeholder="Search location (e.g. Duluth, Minneapolis, Seattle...)">
     <button onclick="fetchForecast()" class="search-btn">Search</button>
 </div>
 
@@ -98,7 +98,7 @@ function getWindColor(speed) {
     return "#5a2a9e";                  // Calm
 }
 
-// Regional Weather Event Scenarios tagged by State/Location keywords
+// Base Regional Weather Event Scenarios
 const regionalEvents = [
     {
         date: "7/31/2026",
@@ -137,18 +137,48 @@ const regionalEvents = [
     }
 ];
 
-// Helper to check if a searched location matches any state/region keyword
-function findRegionalOverride(dateStr, searchString) {
-    const searchLower = searchString.toLowerCase();
+// Generates deterministic local variations based on city/place names
+function getHashOffset(str) {
+    let hash = 0;
+    for (let i = 0; i < str.length; i++) {
+        hash = str.charCodeAt(i) + ((hash << 5) - hash);
+    }
+    return hash;
+}
+
+function findRegionalOverride(dateStr, searchString, placeName) {
+    const searchLower = `${searchString} ${placeName}`.toLowerCase();
+    
     for (const event of regionalEvents) {
         if (event.date === dateStr) {
             const matchesRegion = event.regionKeywords.some(keyword => {
-                // Check word boundaries to prevent false positives (e.g., 'in' inside 'indiana')
                 const regex = new RegExp(`\\b${keyword}\\b`, 'i');
                 return regex.test(searchLower);
             });
+
             if (matchesRegion) {
-                return event.data;
+                const base = event.data;
+
+                // Check if search target is a specific city vs state name
+                const isStateOnly = event.regionKeywords.some(k => searchString.trim().toLowerCase() === k);
+
+                if (isStateOnly) {
+                    return base;
+                }
+
+                // Vary conditions dynamically across different cities/locations
+                const hash = Math.abs(getHashOffset(placeName));
+                const tempOffset = (hash % 9) - 4;       // -4 to +4 °F variance
+                const windOffset = (hash % 7) - 3;       // -3 to +3 mph variance
+                const gustOffset = (hash % 11) - 5;      // -5 to +5 mph variance
+
+                return {
+                    high: base.high + tempOffset,
+                    low: base.low + Math.round(tempOffset / 2),
+                    wind: Math.max(5, base.wind + windOffset),
+                    gusts: Math.max(10, base.gusts + gustOffset),
+                    condition: `${base.condition} - Localized`
+                };
             }
         }
     }
@@ -190,9 +220,7 @@ async function fetchForecast() {
         const weatherRes = await fetch(weatherUrl);
         const weatherData = await weatherRes.json();
 
-        // Pass full location context (search query + resolved location name) to check for matches
-        const fullLocationText = `${query} ${placeName}`;
-        parseAndRender(weatherData, fullLocationText);
+        parseAndRender(weatherData, query, placeName);
 
     } catch (err) {
         console.error(err);
@@ -200,7 +228,7 @@ async function fetchForecast() {
     }
 }
 
-function parseAndRender(data, locationContext) {
+function parseAndRender(data, searchQuery, placeName) {
     const daysOfWeek = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
     const daily = data.daily;
     const forecastData = [];
@@ -216,8 +244,8 @@ function parseAndRender(data, locationContext) {
         const dateObj = new Date(y, m - 1, d);
         const dayLabel = i === 0 ? "Today" : daysOfWeek[dateObj.getDay()];
 
-        // Check if there is an override specifically matching the searched location
-        const matchedOverride = findRegionalOverride(dateStr, locationContext);
+        // Check for specific override for searched city/state
+        const matchedOverride = findRegionalOverride(dateStr, searchQuery, placeName);
 
         const high = matchedOverride ? matchedOverride.high : Math.round(daily.temperature_2m_max[i] || 72);
         const low = matchedOverride ? matchedOverride.low : Math.round(daily.temperature_2m_min[i] || 52);
