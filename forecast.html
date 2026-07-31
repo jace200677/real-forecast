@@ -640,22 +640,25 @@ function getMinuteValuesForDay(dateStr, searchQuery, placeName, apiDailyTemps, a
             const dayProgress = (hour * 60 + minute) / 1440; // 0 to 1 across the day
 
             if (exactOverride) {
+                // Peak precisely at noon (sinusoidal peak where sin(0.5 * PI) = 1 at hour 12, min at 0 and 24)
                 let peakFactor = Math.sin(dayProgress * Math.PI); 
                 baseTemp = Math.round(baseTemp + (exactOverride.high - baseTemp) * peakFactor);
                 baseWind = Math.round(baseWind + (exactOverride.wind - baseWind) * peakFactor);
                 baseGust = Math.round(baseGust + (exactOverride.gusts - baseGust) * peakFactor);
             } 
             else if (prevOverride && !exactOverride && dateStr !== "7/31/2026") {
-                let decayFactor = 1.0 - (dayProgress * 0.7); 
-                baseTemp = Math.round(baseTemp + (prevOverride.high - baseTemp) * decayFactor * 0.4);
-                baseWind = Math.round(baseWind + (prevOverride.wind - baseWind) * decayFactor * 0.4);
-                baseGust = Math.round(baseGust + (prevOverride.gusts - baseGust) * decayFactor * 0.4);
+                // Early morning fade-in from previous day's event fading out (fades smoothly to baseline toward midday/evening)
+                let fadeInFactor = Math.max(0, 1.0 - (dayProgress * 2.0)); 
+                baseTemp = Math.round(baseTemp + (prevOverride.high - baseTemp) * fadeInFactor * 0.35);
+                baseWind = Math.round(baseWind + (prevOverride.wind - baseWind) * fadeInFactor * 0.35);
+                baseGust = Math.round(baseGust + (prevOverride.gusts - baseGust) * fadeInFactor * 0.35);
             }
             else if (nextOverride && !exactOverride) {
-                let rampFactor = dayProgress * 0.8; 
-                baseTemp = Math.round(baseTemp + (nextOverride.high - baseTemp) * rampFactor * 0.5);
-                baseWind = Math.round(baseWind + (nextOverride.wind - baseWind) * rampFactor * 0.5);
-                baseGust = Math.round(baseGust + (nextOverride.gusts - baseGust) * rampFactor * 0.5);
+                // Night fade-out into the upcoming event (fades up as midnight approaches)
+                let fadeOutFactor = Math.max(0, (dayProgress - 0.5) * 2.0); 
+                baseTemp = Math.round(baseTemp + (nextOverride.high - baseTemp) * fadeOutFactor * 0.35);
+                baseWind = Math.round(baseWind + (nextOverride.wind - baseWind) * fadeOutFactor * 0.35);
+                baseGust = Math.round(baseGust + (nextOverride.gusts - baseGust) * fadeOutFactor * 0.35);
             }
 
             temps.push(baseTemp);
