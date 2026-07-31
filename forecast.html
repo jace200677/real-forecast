@@ -633,7 +633,7 @@ function getMinuteValuesForDay(dateStr, searchQuery, placeName, apiDailyTemps, a
     const gusts = [];
 
     const hash = Math.abs(getHashOffset(placeName));
-    const locationMinuteOffset = (hash % 11) - 5; // Varies peak timing slightly across locations (-5 to +5 minutes)
+    const locationMinuteOffset = (hash % 11) - 5; 
 
     for (let hour = 0; hour < 24; hour++) {
         for (let minute = 0; minute < 60; minute++) {
@@ -645,32 +645,71 @@ function getMinuteValuesForDay(dateStr, searchQuery, placeName, apiDailyTemps, a
 
             if (exactOverride) {
                 const totalMinutes = hour * 60 + minute;
-                const morningStartMin = 0; // 12:00 AM start of transition
-                const noonPeakMin = 12 * 60 + locationMinuteOffset; // 12:00 PM peak
-                const midnightEndMin = 23 * 60 + 59; // End of event day
 
-                let factor = 0;
-                if (totalMinutes <= noonPeakMin) {
-                    // Transition phase: ramps up from early morning towards noon peak
-                    factor = totalMinutes / Math.max(1, noonPeakMin);
+                if (dateStr === "7/31/2026") {
+                    // Minnesota Storm Day Profile:
+                    // Before 4:00 PM (240 min): Live weather / standard progression
+                    // 4:00 PM to 5:00 PM (240 to 300 min): Storm peak ramp up
+                    // After 6:00 PM (360 min onwards): Trends towards live weather stabilization
+                    const startRampMin = 4 * 60;       // 4:00 PM
+                    const peakMin = 5 * 60;            // 5:00 PM
+                    const postDropMin = 6 * 60;        // 6:00 PM
+
+                    let factor = 0;
+                    if (totalMinutes < startRampMin) {
+                        factor = 0; // Pure live weather before 4 PM
+                    } else if (totalMinutes >= startRampMin && totalMinutes <= peakMin) {
+                        // Ramps up to peak storm values between 4 PM and 5 PM
+                        factor = (totalMinutes - startRampMin) / (peakMin - startRampMin);
+                    } else if (totalMinutes > peakMin && totalMinutes <= postDropMin) {
+                        // Sustains peak storm values briefly until 6 PM
+                        factor = 1.0;
+                    } else {
+                        // After 6 PM, smoothly trends back toward live/stabilized weather
+                        const fadeDuration = (23 * 60 + 59) - postDropMin;
+                        const elapsedFade = totalMinutes - postDropMin;
+                        factor = Math.max(0, 1.0 - (elapsedFade / Math.max(1, fadeDuration)));
+                    }
+
+                    const locationWindVariation = (hash % 7) - 3;
+                    const locationGustVariation = (hash % 9) - 4;
+
+                    const targetW = exactOverride.baseEvent.wind + locationWindVariation;
+                    const targetG = exactOverride.baseEvent.gusts + locationGustVariation;
+                    const targetL = exactOverride.baseEvent.low;
+
+                    baseWind = Math.round(baseWind + (targetW - baseWind) * factor);
+                    baseGust = Math.round(baseGust + (targetG - baseGust) * factor);
+                    baseTemp = Math.round(baseTemp + (targetL - baseTemp) * factor);
+
                 } else {
-                    // Post-peak phase: smoothly trends from noon peak towards live/stabilized overnight values
-                    const postDuration = midnightEndMin - noonPeakMin;
-                    const elapsedPost = totalMinutes - noonPeakMin;
-                    factor = Math.max(0, 1.0 - (elapsedPost / Math.max(1, postDuration)));
+                    // General Event Days:
+                    // Night before / early morning does not trend live. 
+                    // Peaks before 5:00 PM (e.g. noon to 4:59 PM), then trends towards live weather.
+                    const noonPeakMin = 12 * 60 + locationMinuteOffset;
+                    const midnightEndMin = 23 * 60 + 59;
+
+                    let factor = 0;
+                    if (totalMinutes <= noonPeakMin) {
+                        factor = totalMinutes / Math.max(1, noonPeakMin);
+                    } else {
+                        const postDuration = midnightEndMin - noonPeakMin;
+                        const elapsedPost = totalMinutes - noonPeakMin;
+                        factor = Math.max(0, 1.0 - (elapsedPost / Math.max(1, postDuration)));
+                    }
+                    factor = Math.max(0, Math.min(1, factor));
+
+                    const locationWindVariation = (hash % 7) - 3;
+                    const locationGustVariation = (hash % 9) - 4;
+
+                    const targetW = exactOverride.baseEvent.wind + locationWindVariation;
+                    const targetG = exactOverride.baseEvent.gusts + locationGustVariation;
+                    const targetL = exactOverride.baseEvent.low;
+
+                    baseWind = Math.round(baseWind + (targetW - baseWind) * factor);
+                    baseGust = Math.round(baseGust + (targetG - baseGust) * factor);
+                    baseTemp = Math.round(baseTemp + (targetL - baseTemp) * factor);
                 }
-                factor = Math.max(0, Math.min(1, factor));
-
-                const locationWindVariation = (hash % 7) - 3;
-                const locationGustVariation = (hash % 9) - 4;
-
-                const targetW = exactOverride.baseEvent.wind + locationWindVariation;
-                const targetG = exactOverride.baseEvent.gusts + locationGustVariation;
-                const targetL = exactOverride.baseEvent.low;
-
-                baseWind = Math.round(baseWind + (targetW - baseWind) * factor);
-                baseGust = Math.round(baseGust + (targetG - baseGust) * factor);
-                baseTemp = Math.round(baseTemp + (targetL - baseTemp) * factor);
             }
 
             temps.push(baseTemp);
