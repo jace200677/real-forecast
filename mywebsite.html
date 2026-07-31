@@ -53,8 +53,8 @@
     /* Progress Bars */
     .bar-label { font-size: 9px; color: #666; text-transform: uppercase; margin-bottom: 2px; }
     .bar { height:8px; background:#2a2a2a; border-radius:6px; overflow:hidden; margin-bottom: 8px; }
-    .bar-fill { height:100%; transition: width .8s, background-color .8s; }
-    .bar-fill-stream { height:100%; background: #0088ff; transition: width .8s; }
+    .bar-fill { height:100%; transition: width .5s, background-color .5s; }
+    .bar-fill-stream { height:100%; background: #0088ff; transition: width .5s; }
 </style>
 </head>
 <body>
@@ -77,29 +77,30 @@
 <div class="forecast-container" id="forecastContainer">Loading live NOAA hazard data...</div>
 
 <script>
-
 const IS_LIVE_ON_YOUTUBE = false; 
+let cachedAlerts = null;
 
 async function fetchActiveAlerts() {
+    if (cachedAlerts) return cachedAlerts;
     try {
         const response = await fetch("https://api.weather.gov/alerts/active");
         if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
         const data = await response.json();
-        return data.features || [];
+        cachedAlerts = data.features || [];
+        return cachedAlerts;
     } catch (err) {
         console.error("Failed to fetch NWS alerts:", err);
         return null;
     }
 }
 
-// Color Lerp Helper: Interpolates RGB values based on score thresholds
 function getLerpColor(score) {
     const stops = [
-        { score: 0,   r: 0,   g: 255, b: 119 }, // #00ff77 Green
-        { score: 30,  r: 255, g: 255, b: 0 },   // #ffff00 Yellow
-        { score: 60,  r: 255, g: 170, b: 0 },   // #ffaa00 Orange
-        { score: 90,  r: 255, g: 0,   b: 85 },  // #ff0055 Red
-        { score: 120, r: 212, g: 0,   b: 255 }  // #d400ff Purple
+        { score: 0,   r: 0,   g: 255, b: 119 },
+        { score: 30,  r: 255, g: 255, b: 0 },
+        { score: 60,  r: 255, g: 170, b: 0 },
+        { score: 90,  r: 255, g: 0,   b: 85 },
+        { score: 120, r: 212, g: 0,   b: 255 }
     ];
 
     if (score <= stops[0].score) return `rgb(${stops[0].r}, ${stops[0].g}, ${stops[0].b})`;
@@ -109,9 +110,7 @@ function getLerpColor(score) {
     }
 
     let i = 0;
-    while (score > stops[i + 1].score) {
-        i++;
-    }
+    while (score > stops[i + 1].score) i++;
 
     const lower = stops[i];
     const upper = stops[i + 1];
@@ -124,19 +123,16 @@ function getLerpColor(score) {
     return `rgb(${r}, ${g}, ${b})`;
 }
 
-// Reduced national score calculation
 function calculateNationalScores(alerts) {
     if (!alerts || alerts.length === 0) return { wis: 3, dos: 4 };
 
     let rawScore = 0;
-
     alerts.forEach(alert => {
         const props = alert.properties || {};
         const event = (props.event || "").toLowerCase();
         const severity = (props.severity || "").toLowerCase();
 
         let points = 0;
-
         if (severity === "extreme") points += 3;
         else if (severity === "severe") points += 1.5;
         else if (severity === "moderate") points += 0.5;
@@ -180,7 +176,6 @@ function updateStreamStatus(wisScore) {
         return;
     }
 
-    // Convert current time to CDT (UTC-5)
     const now = new Date();
     const cdtOptions = { timeZone: 'America/Chicago', year: 'numeric', month: 'numeric', day: 'numeric', hour: 'numeric', minute: 'numeric', hour12: false };
     const cdtParts = new Intl.DateTimeFormat('en-US', cdtOptions).formatToParts(now);
@@ -193,15 +188,14 @@ function updateStreamStatus(wisScore) {
         if (part.type === 'hour') hour = parseInt(part.value, 10);
     });
 
-    // August 6, 2026 dynamic status
-    if (year === 2026 && month === 8 && day === 6) {
-        if (hour >= 18 && hour < 22) { // 6:00 PM (18:00) to 10:00 PM (22:00) CDT
+    if (year === 2026 && month === 7 && day === 31) {
+        if (hour >= 13 && hour < 21) {
             streamStatusEl.innerText = "LIVE NOW";
             streamStatusEl.className = "stream-status status-live";
-        } else if (hour < 18) { // Before 6:00 PM CDT
-            streamStatusEl.innerText = "Standing by until 6pm CDT";
+        } else if (hour < 13) {
+            streamStatusEl.innerText = "Standing by for MN Storms";
             streamStatusEl.className = "stream-status status-standby";
-        } else { // After 10:00 PM CDT
+        } else {
             streamStatusEl.innerText = "NOT STREAMING";
             streamStatusEl.className = "stream-status status-off";
         }
@@ -209,6 +203,29 @@ function updateStreamStatus(wisScore) {
         streamStatusEl.innerText = "NOT STREAMING";
         streamStatusEl.className = "stream-status status-off";
     }
+}
+
+// Generates real-time fluctuating values for 7/31/2026
+function getDynamicScores73126() {
+    const now = new Date();
+    const seconds = now.getSeconds();
+    const minutes = now.getMinutes();
+    const hours = now.getHours();
+
+    // Fluctuating sine wave based on time (hours, minutes, seconds)
+    const timeFactor = (hours * 3600 + minutes * 60 + seconds);
+    const fluctuation = Math.sin(timeFactor / 10) * 4; // Fluctuate +/- 4 points
+
+    // Build towards peak afternoon score of 56
+    const basePeak = 52;
+    const projectedScore = Math.min(Math.max(Math.round(basePeak + fluctuation), 10), 56);
+
+    // Dynamic stream chance climbing to 100%
+    const streamFluctuation = Math.cos(timeFactor / 8) * 5;
+    const baseChance = 95;
+    const streamChance = Math.min(Math.max(Math.round(baseChance + streamFluctuation), 0), 100);
+
+    return { projectedScore, streamChance };
 }
 
 async function buildForecast() {
@@ -222,7 +239,6 @@ async function buildForecast() {
 
     const { wis, dos } = calculateNationalScores(alerts);
     
-    // Update WIS Header with lerp color
     const wisEl = document.getElementById("currentWis");
     wisEl.innerText = wis;
     wisEl.style.color = getLerpColor(wis);
@@ -247,8 +263,12 @@ async function buildForecast() {
         let projectedScore;
         let streamChance;
         
-        // Explicit logic for 8/6/26
-        if (year === 2026 && month === 8 && dateNum === 6) {
+        // Specific dynamic calculation for 7/31/2026 (Minnesota Storm Threat)
+        if (year === 2026 && month === 7 && dateNum === 31) {
+            const dynamicData = getDynamicScores73126();
+            projectedScore = dynamicData.projectedScore;
+            streamChance = dynamicData.streamChance;
+        } else if (year === 2026 && month === 8 && dateNum === 6) {
             projectedScore = 200;
             streamChance = 100;
         } else {
@@ -306,7 +326,6 @@ function renderForecast(dosForecast) {
         videoTag.className = "video-label";
         videoTag.innerText = item.videoStatus;
 
-        // DOS Bar
         const barLabel = document.createElement("div");
         barLabel.className = "bar-label";
         barLabel.innerText = "DOS Score Bar";
@@ -321,7 +340,6 @@ function renderForecast(dosForecast) {
         barFill.style.width = Math.min((item.score / maxScale) * 100, 100) + "%";
         bar.appendChild(barFill);
 
-        // Live Stream Chance Section
         const streamContainer = document.createElement("div");
         streamContainer.className = "stream-chance-container";
 
@@ -345,7 +363,6 @@ function renderForecast(dosForecast) {
         streamContainer.appendChild(streamVal);
         streamContainer.appendChild(streamBar);
 
-        // Assemble Card
         card.appendChild(dayName);
         card.appendChild(dayDate);
         card.appendChild(dosValue);
@@ -359,7 +376,9 @@ function renderForecast(dosForecast) {
     });
 }
 
+// Initial build and 1-second continuous live update tick
 buildForecast();
+setInterval(buildForecast, 1000);
 </script>
 
 </body>
