@@ -2,15 +2,16 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>USA 7-Day Weather Forecast</title>
 <style>
-    body { font-family: 'Segoe UI', Arial, sans-serif; background:#0d0d0d; color:#fff; padding:20px; }
-    h1 { text-align:center; margin-bottom:5px; font-size:32px; }
-    .subtitle { text-align:center; color:#888; font-size:14px; margin-bottom:20px; }
+    * { box-sizing: border-box; }
+    body { font-family: 'Segoe UI', Arial, sans-serif; background:#0d0d0d; color:#fff; padding:20px; margin: 0; }
+    h1 { text-align:center; margin-bottom:5px; font-size:32px; color: #f0f0f0; }
+    .subtitle { text-align:center; color:#a0a0a0; font-size:14px; margin-bottom:20px; }
 
-    /* Search Bar & Environment Controls Styling */
-    .controls-container { display: flex; flex-direction: column; align-items: center; gap: 12px; margin-bottom: 25px; }
-    .search-container { display: flex; justify-content: center; gap: 10px; }
+    /* Search Bar Styling */
+    .search-container { display: flex; justify-content: center; gap: 10px; margin-bottom: 25px; }
     .search-input { 
         padding: 10px 16px; 
         font-size: 16px; 
@@ -18,33 +19,29 @@
         border: 1px solid #333; 
         background: #1c1c1c; 
         color: #fff; 
-        width: 280px; 
+        width: 320px; 
         outline: none;
     }
     .search-input:focus { border-color: #00a8cc; }
-    .btn { 
-        padding: 10px 18px; 
-        font-size: 14px; 
+    .search-btn { 
+        padding: 10px 20px; 
+        font-size: 16px; 
         border: none; 
         border-radius: 8px; 
-        background: #2a2a2a; 
+        background: #00a8cc; 
         color: #fff; 
         font-weight: bold; 
         cursor: pointer; 
-        transition: all .2s;
+        transition: background .2s, transform 0.1s;
     }
-    .search-btn { background: #00a8cc; }
     .search-btn:hover { background: #0082a3; }
-
-    .env-toggle { display: flex; gap: 8px; align-items: center; background: #1c1c1c; padding: 6px 12px; border-radius: 10px; border: 1px solid #333; }
-    .env-label { font-size: 12px; text-transform: uppercase; letter-spacing: 1px; color: #888; margin-right: 4px; }
-    .env-btn.active { background: #00a8cc; color: #fff; }
+    .search-btn:active { transform: scale(0.98); }
 
     .forecast-container { display:flex; flex-wrap:wrap; gap:18px; justify-content:center; }
-    .day-card { background:#1c1c1c; padding:18px; border-radius:14px; width:220px;
-                box-shadow:0 0 18px rgba(0,0,0,0.6); transition:transform .2s; }
-    .day-card:hover { transform:scale(1.05); }
-    .day-name { font-size:20px; text-align:center; margin-bottom:2px; font-weight:bold; }
+    .day-card { background:#1c1c1c; padding:18px; border-radius:14px; width:230px;
+                box-shadow:0 4px 18px rgba(0,0,0,0.6); transition:transform .2s; border: 1px solid #282828; }
+    .day-card:hover { transform:translateY(-4px); }
+    .day-name { font-size:20px; text-align:center; margin-bottom:2px; font-weight:bold; color: #00a8cc; }
     .day-date { font-size:12px; color:#777; text-align:center; margin-bottom:14px; }
     
     .section-title { font-size:11px; text-transform:uppercase; letter-spacing:1px; color:#777; margin-bottom:4px; }
@@ -54,36 +51,24 @@
     .metric-sub { font-size:13px; font-weight: 500; margin-bottom:6px; }
 
     /* Bar Styling */
-    .bar { height:10px; background:#2a2a2a; border-radius:5px; overflow:hidden; margin-bottom:12px; }
-    .bar-fill { height:100%; border-radius:5px; transition:width .8s, background-color .8s; }
+    .bar { height:8px; background:#2a2a2a; border-radius:4px; overflow:hidden; margin-bottom:12px; }
+    .bar-fill { height:100%; border-radius:4px; transition:width .8s, background-color .8s; }
 </style>
 </head>
 <body>
 
-<h1 id="locationTitle">Babbitt, MN 7-Day Forecast</h1>
-<div class="subtitle" id="locationSub">Daily temperature and wind trends with terrain surface adjustments</div>
+<h1 id="locationTitle">7-Day Weather Forecast</h1>
+<div class="subtitle" id="locationSub">Search any location to view high/low temperatures, sustained wind, and peak gusts</div>
 
-<div class="controls-container">
-    <div class="search-container">
-        <input type="text" id="searchInput" class="search-input" placeholder="e.g., Babbitt, MN" value="Babbitt, MN">
-        <button onclick="fetchForecast()" class="btn search-btn">Search</button>
-    </div>
-
-    <div class="env-toggle">
-        <span class="env-label">Terrain Impact:</span>
-        <button class="btn env-btn" id="treeBtn" onclick="setTerrain('forest')">🌲 Forest / Trees (-20%)</button>
-        <button class="btn env-btn active" id="normalBtn" onclick="setTerrain('normal')">Standard</button>
-        <button class="btn env-btn" id="fieldBtn" onclick="setTerrain('field')">🌾 Open Field (+15%)</button>
-    </div>
+<div class="search-container">
+    <input type="text" id="searchInput" class="search-input" placeholder="e.g., Babbitt, MN" value="Babbitt, MN">
+    <button onclick="fetchForecast()" class="search-btn">Search</button>
 </div>
 
 <div class="forecast-container" id="forecastContainer">Loading forecast data...</div>
 
 <script>
-let currentTerrain = 'normal'; // Options: 'forest', 'normal', 'field'
-let rawForecastData = [];
-
-// Color scale mappings
+// Ventusky-inspired Temperature Color Scale (°F)
 function getTempColor(temp) {
     if (temp >= 110) return "#7b003a";
     if (temp >= 95)  return "#bd0042";
@@ -98,30 +83,18 @@ function getTempColor(temp) {
     return "#330044";
 }
 
+// Ventusky-inspired Wind & Gust Scale Colors (mph)
 function getWindColor(speed) {
-    if (speed >= 90) return "#5e0024";
-    if (speed >= 80) return "#990000";
-    if (speed >= 70) return "#cc0000";
-    if (speed >= 60) return "#e62e00";
-    if (speed >= 50) return "#f54e00";
-    if (speed >= 45) return "#f57c00";
-    if (speed >= 40) return "#f5ab00";
-    if (speed >= 35) return "#f0e100";
-    if (speed >= 30) return "#a3e000";
-    if (speed >= 25) return "#45db00";
-    if (speed >= 20) return "#00c875";
-    if (speed >= 15) return "#00a8cc";
-    if (speed >= 10) return "#2b5cbf";
-    if (speed >= 5)  return "#5a2a9e";
-    return "#2d0a4e";
-}
-
-function setTerrain(type) {
-    currentTerrain = type;
-    document.getElementById("treeBtn").classList.toggle("active", type === 'forest');
-    document.getElementById("normalBtn").classList.toggle("active", type === 'normal');
-    document.getElementById("fieldBtn").classList.toggle("active", type === 'field');
-    renderForecast();
+    if (speed >= 80) return "#800020"; // Deep Burgundy (Extreme)
+    if (speed >= 70) return "#b30000"; // Deep Red (Severe Gusts)
+    if (speed >= 60) return "#e62e00"; // Red-Orange
+    if (speed >= 50) return "#f54e00"; // High Wind
+    if (speed >= 40) return "#f5ab00"; // Moderate High
+    if (speed >= 30) return "#f0e100"; // Brik Wind / High Gusts
+    if (speed >= 20) return "#00c875"; // Moderate
+    if (speed >= 10) return "#00a8cc"; // Light-Moderate
+    if (speed >= 5)  return "#2b5cbf"; // Light
+    return "#5a2a9e";                  // Calm
 }
 
 async function fetchForecast() {
@@ -130,91 +103,74 @@ async function fetchForecast() {
 
     if (!query) return;
 
-    container.innerHTML = "Searching location...";
+    container.innerHTML = "<p>Searching location...</p>";
 
     try {
         const geoRes = await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(query)}&count=1&language=en&format=json`);
         const geoData = await geoRes.json();
 
         if (!geoData.results || geoData.results.length === 0) {
-            container.innerHTML = "Location not found. Please try another search.";
+            container.innerHTML = "<p>Location not found. Please try another search.</p>";
             return;
         }
 
         const place = geoData.results[0];
         const lat = place.latitude;
         const lon = place.longitude;
-        const placeName = `${place.name}${place.admin1 ? ', ' + place.admin1 : ''}`;
+        
+        // Location formatting across cities / states / countries
+        const locationParts = [place.name, place.admin1, place.country_code ? place.country_code.toUpperCase() : ''].filter(Boolean);
+        const placeName = locationParts.join(', ');
 
-        document.getElementById("locationTitle").innerText = `${placeName} 7-Day Forecast`;
+        document.getElementById("locationTitle").innerText = `${placeName} Forecast`;
+        document.getElementById("locationSub").innerText = `Lat: ${lat.toFixed(2)}°, Lon: ${lon.toFixed(2)}°`;
 
-        container.innerHTML = "Loading weather data...";
+        container.innerHTML = "<p>Loading weather data...</p>";
         const weatherUrl = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&daily=temperature_2m_max,temperature_2m_min,wind_speed_10m_max,wind_gusts_10m_max&temperature_unit=fahrenheit&wind_speed_unit=mph&timezone=auto`;
         
         const weatherRes = await fetch(weatherUrl);
         const weatherData = await weatherRes.json();
 
-        parseAndStore(weatherData);
+        parseAndRender(weatherData);
 
     } catch (err) {
         console.error(err);
-        container.innerHTML = "Error loading weather data. Fetching hardcoded fallback.";
-        loadFallbackData();
+        container.innerHTML = "<p>Error loading weather data. Please try again.</p>";
     }
 }
 
-function parseAndStore(data) {
+function parseAndRender(data) {
     const daysOfWeek = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
     const daily = data.daily;
-    rawForecastData = [];
+    const forecastData = [];
+
+    // Calculate dynamic max gust in forecast for proportional bar width scaling (min baseline 80 mph scale)
+    let maxGustInForecast = Math.max(...daily.wind_gusts_10m_max, 80);
 
     for (let i = 0; i < daily.time.length; i++) {
         const dateObj = new Date(daily.time[i] + "T00:00:00");
         const dayLabel = i === 0 ? "Today" : daysOfWeek[dateObj.getDay()];
         const dateString = `${dateObj.getMonth() + 1}/${dateObj.getDate()}/${dateObj.getFullYear()}`;
 
-        // Inject specified values for 8/6/2026 if matching date
-        let high = Math.round(daily.temperature_2m_max[i]);
-        let low = Math.round(daily.temperature_2m_min[i]);
-        let wind = Math.round(daily.wind_speed_10m_max[i]);
-        let gusts = Math.round(daily.wind_gusts_10m_max[i]);
-
-        if (dateString === "8/6/2026") {
-            high = 70;
-            low = 34;
-            wind = 33;
-            gusts = 70;
-        }
-
-        rawForecastData.push({ day: dayLabel, dateStr: dateString, high, low, wind, gusts });
+        forecastData.push({
+            day: dayLabel,
+            dateStr: dateString,
+            high: Math.round(daily.temperature_2m_max[i]),
+            low: Math.round(daily.temperature_2m_min[i]),
+            wind: Math.round(daily.wind_speed_10m_max[i]),
+            gusts: Math.round(daily.wind_gusts_10m_max[i]),
+            maxGustScale: maxGustInForecast
+        });
     }
 
-    renderForecast();
+    renderForecast(forecastData);
 }
 
-function loadFallbackData() {
-    rawForecastData = [
-        { day: "Thu", dateStr: "8/6/2026", high: 70, low: 34, wind: 33, gusts: 70 },
-        { day: "Fri", dateStr: "8/7/2026", high: 72, low: 40, wind: 15, gusts: 25 },
-        { day: "Sat", dateStr: "8/8/2026", high: 75, low: 45, wind: 10, gusts: 18 },
-        { day: "Sun", dateStr: "8/9/2026", high: 78, low: 48, wind: 8,  gusts: 14 },
-        { day: "Mon", dateStr: "8/10/2026", high: 74, low: 42, wind: 12, gusts: 20 },
-        { day: "Tue", dateStr: "8/11/2026", high: 69, low: 38, wind: 18, gusts: 30 },
-        { day: "Wed", dateStr: "8/12/2026", high: 66, low: 35, wind: 22, gusts: 40 }
-    ];
-    renderForecast();
-}
-
-function renderForecast() {
+function renderForecast(forecastData) {
     const container = document.getElementById("forecastContainer");
     container.innerHTML = "";
 
-    // Friction factor for surface terrain
-    let windMult = 1.0;
-    if (currentTerrain === 'forest') windMult = 0.80; // Trees slow down wind (~20% reduction)
-    if (currentTerrain === 'field')  windMult = 1.15; // Open fields increase wind (~15% boost)
-
-    rawForecastData.forEach(item => {
+    forecastData.forEach(item => {
         const card = document.createElement("div");
         card.className = "day-card";
 
@@ -225,10 +181,6 @@ function renderForecast() {
         const dayDate = document.createElement("div");
         dayDate.className = "day-date";
         dayDate.innerText = item.dateStr;
-
-        // Apply surface friction modifier
-        const adjWind = Math.round(item.wind * windMult);
-        const adjGusts = Math.round(item.gusts * windMult);
 
         // --- 1. Temperature Section ---
         const tempTitle = document.createElement("div");
@@ -251,21 +203,23 @@ function renderForecast() {
         tempBar.className = "bar";
         const tempFill = document.createElement("div");
         tempFill.className = "bar-fill";
-        tempFill.style.width = Math.min(Math.max(((item.high - (-40)) / (120 - (-40))) * 100, 5), 100) + "%";
+        // Proportional temperature bar logic (-20°F to 110°F scale range)
+        const tempPct = Math.min(Math.max(((item.high - (-20)) / (110 - (-20))) * 100, 5), 100);
+        tempFill.style.width = tempPct + "%";
         tempFill.style.backgroundColor = highColor;
         tempBar.appendChild(tempFill);
 
         // --- 2. Sustained Wind Section ---
         const windTitle = document.createElement("div");
         windTitle.className = "section-title";
-        windTitle.innerText = "Wind Speed";
+        windTitle.innerText = "Sustained Wind";
 
-        const windColor = getWindColor(adjWind);
+        const windColor = getWindColor(item.wind);
 
         const windDisplay = document.createElement("div");
         windDisplay.className = "metric-val";
         windDisplay.style.color = windColor;
-        windDisplay.innerText = `${adjWind} mph`;
+        windDisplay.innerText = `${item.wind} mph`;
 
         const windSub = document.createElement("div");
         windSub.className = "metric-sub";
@@ -276,7 +230,8 @@ function renderForecast() {
         windBar.className = "bar";
         const windFill = document.createElement("div");
         windFill.className = "bar-fill";
-        windFill.style.width = Math.min(Math.max((adjWind / 90) * 100, 5), 100) + "%";
+        const windPct = Math.min(Math.max((item.wind / item.maxGustScale) * 100, 5), 100);
+        windFill.style.width = windPct + "%";
         windFill.style.backgroundColor = windColor;
         windBar.appendChild(windFill);
 
@@ -285,23 +240,24 @@ function renderForecast() {
         gustTitle.className = "section-title";
         gustTitle.innerText = "Peak Gusts";
 
-        const gustColor = getWindColor(adjGusts);
+        const gustColor = getWindColor(item.gusts);
 
         const gustDisplay = document.createElement("div");
         gustDisplay.className = "metric-val";
         gustDisplay.style.color = gustColor;
-        gustDisplay.innerText = `${adjGusts} mph`;
+        gustDisplay.innerText = `${item.gusts} mph`;
 
         const gustSub = document.createElement("div");
         gustSub.className = "metric-sub";
         gustSub.style.color = "#aaa";
-        gustSub.innerText = `Max Gusts`;
+        gustSub.innerText = `Peak Gust`;
 
         const gustBar = document.createElement("div");
         gustBar.className = "bar";
         const gustFill = document.createElement("div");
         gustFill.className = "bar-fill";
-        gustFill.style.width = Math.min(Math.max((adjGusts / 90) * 100, 5), 100) + "%";
+        const gustPct = Math.min(Math.max((item.gusts / item.maxGustScale) * 100, 5), 100);
+        gustFill.style.width = gustPct + "%";
         gustFill.style.backgroundColor = gustColor;
         gustBar.appendChild(gustFill);
 
