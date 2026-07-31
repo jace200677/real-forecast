@@ -317,9 +317,9 @@ function getWindColor(speed) {
 const regionalEvents = [
     {
         date: "7/31/2026",
-        regionKeywords: ["minnesota", "mn"],
+        regionKeywords: ["minnesota", "mn", "duluth", "minneapolis"],
         baseConfidence: 0.90,
-        data: { high: 82, low: 64, wind: 38, gusts: 75, condition: "Storms Afternoon" }
+        data: { high: 84, low: 66, wind: 45, gusts: 82, condition: "Severe Thunderstorms / Heavy Winds" }
     },
     {
         date: "8/2/2026",
@@ -587,17 +587,16 @@ function getMinuteValuesForDay(dateStr, searchQuery, placeName, apiDailyTemps, a
         baseHourGusts.push(30);
     }
 
-    let isMnStormEvent = false;
+    let isOverrideEvent = false;
     let matchedOverride = null;
-    if (dateStr === "7/31/2026") {
-        const apiHigh = Math.round(apiDailyTemps.max[dayIndex] || 72);
-        const apiLow = Math.round(apiDailyTemps.min[dayIndex] || 52);
-        const apiWind = Math.round(apiDailyWinds[dayIndex] || 18);
-        const apiGusts = Math.round(apiDailyGusts[dayIndex] || 30);
-        matchedOverride = findRegionalOverride("7/31/2026", searchQuery, placeName, apiHigh, apiLow, apiWind, apiGusts);
-        if (matchedOverride) {
-            isMnStormEvent = true;
-        }
+    const apiHigh = Math.round(apiDailyTemps.max[dayIndex] || 72);
+    const apiLow = Math.round(apiDailyTemps.min[dayIndex] || 52);
+    const apiWind = Math.round(apiDailyWinds[dayIndex] || 18);
+    const apiGusts = Math.round(apiDailyGusts[dayIndex] || 30);
+    
+    matchedOverride = findRegionalOverride(dateStr, searchQuery, placeName, apiHigh, apiLow, apiWind, apiGusts);
+    if (matchedOverride) {
+        isOverrideEvent = true;
     }
 
     const temps = [];
@@ -612,7 +611,7 @@ function getMinuteValuesForDay(dateStr, searchQuery, placeName, apiDailyTemps, a
             let baseWind = baseHourWinds[hour] || 18;
             let baseGust = baseHourGusts[hour] || 30;
 
-            if (isMnStormEvent && matchedOverride) {
+            if (isOverrideEvent && matchedOverride) {
                 const totalMinutes = hour * 60 + minute;
                 const startRise = 14 * 60;
                 const peakTime = 15 * 60;
