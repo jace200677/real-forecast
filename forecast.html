@@ -88,24 +88,11 @@
         border-radius: 6px; font-size: 14px; outline: none; cursor: pointer;
     }
     .chart-container { position: relative; width: 100%; height: 330px; }
-    
     .graph-confidence-bar {
         font-size: 12px; color: #aaa; background: #252525; padding: 8px 12px; border-radius: 6px;
         margin-bottom: 15px; display: flex; justify-content: space-between; align-items: center; border: 1px solid #333;
-        flex-wrap: wrap; gap: 10px;
     }
     .graph-confidence-bar span { color: #00a8cc; font-weight: bold; }
-    
-    /* Interactive Value Adjuster Controls inside Modal */
-    .adjuster-group { display: flex; align-items: center; gap: 6px; }
-    .adjuster-btn {
-        background: #00a8cc; color: #fff; border: none; width: 26px; height: 26px;
-        border-radius: 4px; font-weight: bold; cursor: pointer; display: flex; align-items: center; justify-content: center;
-        transition: background 0.2s, transform 0.1s;
-    }
-    .adjuster-btn:hover { background: #0082a3; }
-    .adjuster-btn:active { transform: scale(0.95); }
-    .offset-indicator { font-size: 12px; color: #ffcc00; font-weight: bold; min-width: 45px; text-align: center; }
 </style>
 </head>
 <body>
@@ -137,17 +124,9 @@
                 <button class="modal-close" onclick="closeModal()">&times;</button>
             </div>
         </div>
-        
         <div class="graph-confidence-bar" id="graphConfidenceBar">
-            <div>Live Precision & Dynamic Confidence: <span id="modalConfVal">Calculating...</span></div>
-            <div class="adjuster-group">
-                <span style="font-size: 11px; color: #ccc;">Tune Values:</span>
-                <button class="adjuster-btn" onclick="adjustGraphValues(-1)" title="Decrease graph values">-</button>
-                <span class="offset-indicator" id="offsetIndicator">0</span>
-                <button class="adjuster-btn" onclick="adjustGraphValues(1)" title="Increase graph values">+</button>
-            </div>
+            Live Precision & Dynamic Confidence: <span id="modalConfVal">Calculating...</span>
         </div>
-
         <div class="chart-container">
             <canvas id="forecastChart"></canvas>
         </div>
@@ -164,9 +143,6 @@ let activeHourlyData = null;
 let activeDayDateStr = null;
 let chartInstance = null;
 let liveTimerInterval = null;
-
-// Track manual graph adjustments per date+metric (e.g., {"7/31/2026_temp": +2})
-let manualGraphOffsets = {};
 
 // Map WMO weather codes and custom conditions to repository icon filenames
 function getWeatherIcon(weatherCode, conditionText) {
@@ -715,7 +691,6 @@ function openGraphModal(item) {
     document.getElementById("modalSubtitle").innerText = `Date: ${item.dateStr}`;
     document.getElementById("chartModal").style.display = "flex";
     
-    updateOffsetIndicator();
     updateChartMetric();
     startLiveTimer();
 }
@@ -728,38 +703,13 @@ function closeModal() {
     }
 }
 
-function adjustGraphValues(amount) {
-    if (!activeDayDateStr) return;
-    const metric = document.getElementById("metricSelector").value;
-    const key = `${activeDayDateStr}_${metric}`;
-    
-    if (!manualGraphOffsets[key]) {
-        manualGraphOffsets[key] = 0;
-    }
-    
-    manualGraphOffsets[key] += amount;
-    updateOffsetIndicator();
-    updateChartMetric();
-}
-
-function updateOffsetIndicator() {
-    if (!activeDayDateStr) return;
-    const metric = document.getElementById("metricSelector").value;
-    const key = `${activeDayDateStr}_${metric}`;
-    const offset = manualGraphOffsets[key] || 0;
-    
-    const indicator = document.getElementById("offsetIndicator");
-    if (indicator) {
-        indicator.innerText = (offset > 0 ? `+${offset}` : offset);
-    }
-}
-
 function startLiveTimer() {
     if (liveTimerInterval) clearInterval(liveTimerInterval);
 
     updateLiveConfidenceDisplay();
     liveTimerInterval = setInterval(() => {
         updateLiveConfidenceDisplay();
+        updateChartMetric(true);
     }, 1000);
 }
 
@@ -809,21 +759,23 @@ function hexToRgba(hex, alpha) {
     return `rgba(${r}, ${g}, ${b}, ${alpha})`;
 }
 
-function updateChartMetric() {
+function updateChartMetric(isLiveUpdate = false) {
     if (!activeHourlyData || !activeDayDateStr) return;
 
     const metric = document.getElementById("metricSelector").value;
-    updateOffsetIndicator();
-
     const [m, d, y] = activeDayDateStr.split("/").map(Number);
     const formattedDate = `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
-
-    const key = `${activeDayDateStr}_${metric}`;
-    const manualOffset = manualGraphOffsets[key] || 0;
 
     const labels = [];
     const values = [];
     const segmentColors = [];
+
+    let baseConf = 0.85;
+    const event = regionalEvents.find(e => e.date === activeDayDateStr);
+    if (event) {
+        baseConf = event.baseConfidence;
+    }
+    const liveConfidence = calculateEffectiveConfidence(activeDayDateStr, baseConf);
 
     for (let i = 0; i < activeHourlyData.time.length; i++) {
         if (activeHourlyData.time[i].startsWith(formattedDate)) {
@@ -834,13 +786,19 @@ function updateChartMetric() {
             let color = "#007aff";
 
             if (metric === "temp") {
-                val = activeHourlyData.temperature_2m[i] + manualOffset;
+                let baseTemp = activeHourlyData.temperature_2m[i];
+                let wave = Math.sin(Date.now() / 1000 + i) * (1 - liveConfidence) * 3;
+                val = Math.round(baseTemp + wave);
                 color = getTempColor(val);
             } else if (metric === "wind") {
-                val = Math.max(0, activeHourlyData.wind_speed_10m[i] + manualOffset);
+                let baseWind = activeHourlyData.wind_speed_10m[i];
+                let wave = Math.cos(Date.now() / 1000 + i) * (1 - liveConfidence) * 4;
+                val = Math.max(0, Math.round(baseWind + wave));
                 color = getWindColor(val);
             } else if (metric === "gusts") {
-                val = Math.max(0, activeHourlyData.wind_gusts_10m[i] + manualOffset);
+                let baseGust = activeHourlyData.wind_gusts_10m[i];
+                let wave = Math.sin(Date.now() / 800 + i) * (1 - liveConfidence) * 6;
+                val = Math.max(0, Math.round(baseGust + wave));
                 color = getWindColor(val);
             }
 
@@ -851,11 +809,19 @@ function updateChartMetric() {
 
     const labelName = metric === 'temp' ? "Temperature (°F)" : (metric === 'wind' ? "Wind Speed (mph)" : "Wind Gusts (mph)");
 
-    renderChart(labels, values, segmentColors, labelName, metric);
+    renderChart(labels, values, segmentColors, labelName, metric, isLiveUpdate);
 }
 
-function renderChart(labels, values, segmentColors, labelName, metric) {
+function renderChart(labels, values, segmentColors, labelName, metric, isLiveUpdate) {
     const ctx = document.getElementById("forecastChart").getContext("2d");
+
+    if (chartInstance && isLiveUpdate) {
+        chartInstance.data.labels = labels;
+        chartInstance.data.datasets[0].data = values;
+        chartInstance.data.datasets[0].pointHoverBackgroundColor = segmentColors;
+        chartInstance.update('none');
+        return;
+    }
 
     if (chartInstance) {
         chartInstance.destroy();
@@ -904,6 +870,9 @@ function renderChart(labels, values, segmentColors, labelName, metric) {
         options: {
             responsive: true,
             maintainAspectRatio: false,
+            animation: {
+                duration: 400
+            },
             interaction: {
                 mode: 'index',
                 intersect: false
