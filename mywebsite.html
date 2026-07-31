@@ -26,6 +26,7 @@
     .stream-status { font-size: 18px; font-weight: bold; }
     .status-live { color: #ff0055; animation: pulse 1.5s infinite; }
     .status-standby { color: #ffaa00; }
+    .status-off { color: #888888; }
     
     @keyframes pulse {
         0% { opacity: 1; }
@@ -123,7 +124,7 @@ function getLerpColor(score) {
     return `rgb(${r}, ${g}, ${b})`;
 }
 
-// Further reduced national score calculation
+// Reduced national score calculation
 function calculateNationalScores(alerts) {
     if (!alerts || alerts.length === 0) return { wis: 3, dos: 4 };
 
@@ -151,7 +152,6 @@ function calculateNationalScores(alerts) {
         rawScore += points;
     });
 
-    // Scaled down significantly so typical quiet days sit around 2–15 range
     const currentWIS = Math.min(Math.round(rawScore / 45), 250);
     const baseDOS = Math.min(Math.round(rawScore / 55), 250);
 
@@ -180,12 +180,34 @@ function updateStreamStatus(wisScore) {
         return;
     }
 
-    if (wisScore >= 50) {
-        streamStatusEl.innerText = "STREAM THRESHOLD MET";
-        streamStatusEl.className = "stream-status status-live";
+    // Convert current time to CDT (UTC-5)
+    const now = new Date();
+    const cdtOptions = { timeZone: 'America/Chicago', year: 'numeric', month: 'numeric', day: 'numeric', hour: 'numeric', minute: 'numeric', hour12: false };
+    const cdtParts = new Intl.DateTimeFormat('en-US', cdtOptions).formatToParts(now);
+    
+    let year, month, day, hour;
+    cdtParts.forEach(part => {
+        if (part.type === 'year') year = parseInt(part.value, 10);
+        if (part.type === 'month') month = parseInt(part.value, 10);
+        if (part.type === 'day') day = parseInt(part.value, 10);
+        if (part.type === 'hour') hour = parseInt(part.value, 10);
+    });
+
+    // August 6, 2026 dynamic status
+    if (year === 2026 && month === 8 && day === 6) {
+        if (hour >= 18 && hour < 22) { // 6:00 PM (18:00) to 10:00 PM (22:00) CDT
+            streamStatusEl.innerText = "LIVE NOW";
+            streamStatusEl.className = "stream-status status-live";
+        } else if (hour < 18) { // Before 6:00 PM CDT
+            streamStatusEl.innerText = "Standing by until 6pm CDT";
+            streamStatusEl.className = "stream-status status-standby";
+        } else { // After 10:00 PM CDT
+            streamStatusEl.innerText = "NOT STREAMING";
+            streamStatusEl.className = "stream-status status-off";
+        }
     } else {
-        streamStatusEl.innerText = "Standing by until 5pm CDT";
-        streamStatusEl.className = "stream-status status-standby";
+        streamStatusEl.innerText = "NOT STREAMING";
+        streamStatusEl.className = "stream-status status-off";
     }
 }
 
@@ -228,17 +250,15 @@ async function buildForecast() {
         // Explicit logic for 8/6/26
         if (year === 2026 && month === 8 && dateNum === 6) {
             projectedScore = 200;
-            streamChance = 100; // 100% live stream chance on 8/6/26
+            streamChance = 100;
         } else {
             const trendMultiplier = 1 + (Math.sin(i * 0.8) * 0.2);
             projectedScore = Math.min(Math.max(Math.round(dos * trendMultiplier), 2), 150);
             
-            // Calculate proportional live stream chance (capped for lower score days)
             streamChance = Math.min(Math.round((projectedScore / 90) * 100), 85);
             if (streamChance < 5) streamChance = 0;
         }
 
-        // Video status logic: 8/5/26 set to Video Unlikely
         let videoLabel = "Video Unlikely";
 
         dosForecast.push({
