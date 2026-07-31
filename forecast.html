@@ -313,11 +313,11 @@ function getWindColor(speed) {
     return "#30b0c7";
 }
 
-// Updated Regional Weather Event Scenarios with Custom Baselines & East Coast Movement
+// Regional Weather Event Scenarios strictly restricted to their designated dates
 const regionalEvents = [
     {
         date: "7/31/2026",
-        regionKeywords: ["minnesota", "mn", "duluth", "minneapolis"],
+        regionKeywords: ["minnesota", "mn", "duluth", "minneapolis", "united states", "usa", "national", "east coast", "washington", "idaho", "montana", "north dakota", "wisconsin"],
         baseConfidence: 0.90,
         data: { high: 84, low: 66, wind: 30, gusts: 62, condition: "Severe Thunderstorms / Heavy Winds" }
     },
@@ -350,6 +350,19 @@ const regionalEvents = [
         regionKeywords: ["north dakota", "nd"],
         baseConfidence: 0.80,
         data: { high: 90, low: 62, wind: 63, gusts: 130, condition: "Warmer / Severe High Winds & Extreme Gusts" }
+    },
+    {
+        date: "8/6/2026",
+        regionKeywords: ["southern minnesota", "southern mn", "rochester", "mankato", "worthington", "winona", "albert lea"],
+        baseConfidence: 0.93,
+        data: { 
+            high: 80, 
+            low: 55, 
+            wind: 78, 
+            gusts: 110, 
+            condition: "Severe Winds & Destructive Gusts (Southern MN)",
+            dependsOnLocation: true 
+        }
     },
     {
         date: "8/6/2026",
@@ -402,15 +415,23 @@ function calculateEffectiveConfidence(dateStr, baseConfidence) {
 function findRegionalOverride(dateStr, searchString, placeName, apiHigh, apiLow, apiWind, apiGusts) {
     const searchLower = `${searchString} ${placeName}`.toLowerCase();
     
-    const event = regionalEvents.find(e => e.date === dateStr);
+    // STRICT CHECK: Only search for events that match EXACTLY the provided dateStr. 
+    // This guarantees other dates are never overridden by events on different days.
+    const matchingEvents = regionalEvents.filter(e => e.date === dateStr);
+    
+    let event = null;
+    for (const ev of matchingEvents) {
+        const matchesRegion = ev.regionKeywords.some(keyword => {
+            const regex = new RegExp(`\\b${keyword}\\b`, 'i');
+            return regex.test(searchLower);
+        });
+        if (matchesRegion) {
+            event = ev;
+            break;
+        }
+    }
+
     if (!event) return null;
-
-    const matchesRegion = event.regionKeywords.some(keyword => {
-        const regex = new RegExp(`\\b${keyword}\\b`, 'i');
-        return regex.test(searchLower);
-    });
-
-    if (!matchesRegion) return null;
 
     const base = event.data;
     const isStateOnly = event.regionKeywords.some(k => searchString.trim().toLowerCase() === k);
@@ -419,16 +440,23 @@ function findRegionalOverride(dateStr, searchString, placeName, apiHigh, apiLow,
     let windOffset = 0;
     let gustOffset = 0;
 
+    const hash = Math.abs(getHashOffset(placeName));
+
     if (!isStateOnly) {
-        const hash = Math.abs(getHashOffset(placeName));
         tempOffset = (hash % 9) - 4;       
         windOffset = (hash % 7) - 3;       
         gustOffset = (hash % 11) - 5;      
     }
 
-    const targetHigh = base.high + tempOffset;
+    if (base.dependsOnLocation) {
+        const locationVarianceFactor = ((hash % 15) - 7); 
+        windOffset += locationVarianceFactor;
+        gustOffset += (locationVarianceFactor * 1.5);
+    }
+
+    const targetHigh = dateStr === "7/31/2026" ? 55 : (base.high + tempOffset);
     const targetLow = base.low + Math.round(tempOffset / 2);
-    const targetWind = Math.max(5, base.wind + windOffset);
+    const targetWind = base.wind + windOffset;
     const targetGusts = Math.max(0, base.gusts + gustOffset);
 
     const effectiveConfidence = calculateEffectiveConfidence(dateStr, event.baseConfidence);
@@ -439,7 +467,8 @@ function findRegionalOverride(dateStr, searchString, placeName, apiHigh, apiLow,
     const finalGusts = Math.round(targetGusts * effectiveConfidence + apiGusts * (1 - effectiveConfidence));
 
     const confPercent = Math.round(effectiveConfidence * 100);
-    const label = `${base.condition} (${confPercent}% Confidence)`;
+    const locationNote = base.dependsOnLocation ? ` (Intensity Varies by Exact Location)` : "";
+    const label = `${base.condition}${locationNote} (${confPercent}% Confidence)`;
 
     return {
         high: finalHigh,
@@ -574,7 +603,6 @@ async function loadWeatherForCoords(lat, lon, placeName, searchQuery) {
     }
 }
 
-// Helper to calculate exact minute-by-minute graph array values for a specific day
 function getMinuteValuesForDay(dateStr, searchQuery, placeName, apiDailyTemps, apiDailyWinds, apiDailyGusts, dayIndex) {
     const [m, d, y] = dateStr.split("/").map(Number);
     const formattedDate = `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
@@ -623,26 +651,79 @@ function getMinuteValuesForDay(dateStr, searchQuery, placeName, apiDailyTemps, a
             let baseWind = baseHourWinds[hour] || 18;
             let baseGust = baseHourGusts[hour] || 30;
 
-            if (isOverrideEvent && matchedOverride) {
+            if (isOverrideEvent && matchedOverride && dateStr === "7/31/2026") {
                 const totalMinutes = hour * 60 + minute;
-                const startRise = 14 * 60;
-                const peakTime = 15 * 60;
-                const endDrop = 16 * 60;
+                const liveEndMinutes = 14 * 60;       // 2:00 PM
+                const peakMinutes = 15 * 60;          // 3:00 PM
+                const windShiftMinutes = 16 * 60;     // 4:00 PM
+                const tempRecoveryMinutes = 20 * 60;  // 8:00 PM
+
+                const targetPeakWind = matchedOverride.wind;
+                const targetPeakGust = matchedOverride.gusts;
+
+                if (totalMinutes > liveEndMinutes && totalMinutes <= peakMinutes) {
+                    let progress = (totalMinutes - liveEndMinutes) / (peakMinutes - liveEndMinutes);
+                    baseWind = Math.round(baseWind + (targetPeakWind - baseWind) * progress);
+                    baseGust = Math.round(baseGust + (targetPeakGust - baseGust) * progress);
+                    baseTemp = Math.round(baseTemp + (55 - baseTemp) * progress);
+                } 
+                else if (totalMinutes > peakMinutes && totalMinutes <= windShiftMinutes) {
+                    let progress = (totalMinutes - peakMinutes) / (windShiftMinutes - peakMinutes);
+                    baseWind = Math.round(targetPeakWind + ((baseHourWinds[hour] || 18) - targetPeakWind) * progress);
+                    baseGust = Math.round(targetPeakGust + ((baseHourGusts[hour] || 30) - targetPeakGust) * progress);
+                    baseTemp = 55;
+                }
+                else if (totalMinutes > windShiftMinutes && totalMinutes <= tempRecoveryMinutes) {
+                    let progress = (totalMinutes - windShiftMinutes) / (tempRecoveryMinutes - windShiftMinutes);
+                    baseWind = baseHourWinds[hour] || 18;
+                    baseGust = baseHourGusts[hour] || 30;
+                    baseTemp = Math.round(55 + ((baseHourTemps[hour] || 72) - 55) * progress);
+                }
+                else if (totalMinutes > tempRecoveryMinutes) {
+                    baseWind = baseHourWinds[hour] || 18;
+                    baseGust = baseHourGusts[hour] || 30;
+                    baseTemp = baseHourTemps[hour] || 72;
+                }
+            } 
+            else if (isOverrideEvent && matchedOverride && dateStr !== "7/31/2026") {
+                const totalMinutes = hour * 60 + minute;
+                const liveEndMinutes = 1 * 60;        // 1:00 AM
+                const peakMinutes = 12 * 60;          // 12:00 PM (Noon)
+                const midDropMinutes = 18 * 60;       // 6:00 PM
+                const endMidnightMinutes = 24 * 60;   // 11:59 PM
 
                 const targetPeakTemp = matchedOverride.baseEvent.high;
-                const targetPeakWind = matchedOverride.baseEvent.wind;
-                const targetPeakGust = matchedOverride.baseEvent.gusts;
+                const targetPeakWind = matchedOverride.wind;
+                const targetPeakGust = matchedOverride.gusts;
 
-                if (totalMinutes >= startRise && totalMinutes <= peakTime) {
-                    let progress = (totalMinutes - startRise) / (peakTime - startRise);
+                if (totalMinutes > liveEndMinutes && totalMinutes <= peakMinutes) {
+                    // From 1:00 AM to 12:00 PM: Rises/goes towards peak value
+                    let progress = (totalMinutes - liveEndMinutes) / (peakMinutes - liveEndMinutes);
                     baseTemp = Math.round(baseTemp + (targetPeakTemp - baseTemp) * progress);
                     baseWind = Math.round(baseWind + (targetPeakWind - baseWind) * progress);
                     baseGust = Math.round(baseGust + (targetPeakGust - baseGust) * progress);
-                } else if (totalMinutes > peakTime && totalMinutes <= endDrop) {
-                    let progress = (totalMinutes - peakTime) / (endDrop - peakTime);
-                    baseTemp = Math.round(targetPeakTemp + (baseTemp - targetPeakTemp) * progress);
-                    baseWind = Math.round(targetPeakWind + (baseWind - targetPeakWind) * progress);
-                    baseGust = Math.round(targetPeakGust + (baseGust - targetPeakGust) * progress);
+                } 
+                else if (totalMinutes > peakMinutes && totalMinutes <= midDropMinutes) {
+                    // From 12:00 PM to 6:00 PM: Goes up or down (transitioning from peak)
+                    let progress = (totalMinutes - peakMinutes) / (midDropMinutes - peakMinutes);
+                    let midTargetTemp = (targetPeakTemp + baseHourTemps[hour]) / 2;
+                    let midTargetWind = (targetPeakWind + baseHourWinds[hour]) / 2;
+                    let midTargetGust = (targetPeakGust + baseHourGusts[hour]) / 2;
+
+                    baseTemp = Math.round(targetPeakTemp + (midTargetTemp - targetPeakTemp) * progress);
+                    baseWind = Math.round(targetPeakWind + (midTargetWind - targetPeakWind) * progress);
+                    baseGust = Math.round(targetPeakGust + (midTargetGust - targetPeakGust) * progress);
+                }
+                else if (totalMinutes > midDropMinutes && totalMinutes <= endMidnightMinutes) {
+                    // From 6:00 PM to 11:59 PM: Goes slowly towards live weather
+                    let progress = (totalMinutes - midDropMinutes) / (endMidnightMinutes - midDropMinutes);
+                    let midTargetTemp = (targetPeakTemp + baseHourTemps[hour]) / 2;
+                    let midTargetWind = (targetPeakWind + baseHourWinds[hour]) / 2;
+                    let midTargetGust = (targetPeakGust + baseHourGusts[hour]) / 2;
+
+                    baseTemp = Math.round(midTargetTemp + ((baseHourTemps[hour] || 72) - midTargetTemp) * progress);
+                    baseWind = Math.round(midTargetWind + ((baseHourWinds[hour] || 18) - midTargetWind) * progress);
+                    baseGust = Math.round(midTargetGust + ((baseHourGusts[hour] || 30) - midTargetGust) * progress);
                 }
             }
 
@@ -673,7 +754,6 @@ function parseAndRender(data, searchQuery, placeName) {
 
         const apiCode = daily.weather_code ? daily.weather_code[i] : 0;
         
-        // Retrieve minute-by-minute derived arrays to compute exact graph min/max
         const minuteData = getMinuteValuesForDay(
             dateStr, 
             searchQuery, 
@@ -684,14 +764,9 @@ function parseAndRender(data, searchQuery, placeName) {
             i
         );
 
-        // Low temp of lowest temp on graph, High temp of highest temp on graph
         const cardLow = Math.min(...minuteData.temps);
         const cardHigh = Math.max(...minuteData.temps);
-
-        // High wind of highest wind speed on graph
         const cardWind = Math.max(...minuteData.winds);
-
-        // High gust of highest gust speed on graph
         const cardGusts = Math.max(...minuteData.gusts);
 
         const matchedOverride = findRegionalOverride(dateStr, searchQuery, placeName, daily.temperature_2m_max[i], daily.temperature_2m_min[i], daily.wind_speed_10m_max[i], daily.wind_gusts_10m_max[i]);
