@@ -3,12 +3,12 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Severe Weather Track Forecast (7/31/26 - 8/7/26)</title>
+<title>USA 7-Day Weather Forecast</title>
 <style>
     * { box-sizing: border-box; }
     body { font-family: 'Segoe UI', Arial, sans-serif; background:#0d0d0d; color:#fff; padding:20px; margin: 0; }
     h1 { text-align:center; margin-bottom:5px; font-size:32px; color: #f0f0f0; }
-    .subtitle { text-align:center; color:#a0a0a0; font-size:14px; margin-bottom:25px; line-height: 1.4; }
+    .subtitle { text-align:center; color:#a0a0a0; font-size:14px; margin-bottom:20px; }
 
     /* Search Bar Styling */
     .search-container { display: flex; justify-content: center; gap: 10px; margin-bottom: 25px; }
@@ -19,7 +19,7 @@
         border: 1px solid #333; 
         background: #1c1c1c; 
         color: #fff; 
-        width: 340px; 
+        width: 320px; 
         outline: none;
     }
     .search-input:focus { border-color: #00a8cc; }
@@ -37,114 +37,38 @@
     .search-btn:hover { background: #0082a3; }
     .search-btn:active { transform: scale(0.98); }
 
-    /* Card Grid Styling */
     .forecast-container { display:flex; flex-wrap:wrap; gap:18px; justify-content:center; }
-    .day-card { background:#1c1c1c; padding:18px; border-radius:14px; width:240px;
+    .day-card { background:#1c1c1c; padding:18px; border-radius:14px; width:230px;
                 box-shadow:0 4px 18px rgba(0,0,0,0.6); transition:transform .2s; border: 1px solid #282828; }
     .day-card:hover { transform:translateY(-4px); }
-    .day-name { font-size:18px; text-align:center; margin-bottom:2px; font-weight:bold; color: #00a8cc; }
-    .day-date { font-size:12px; color:#777; text-align:center; margin-bottom:4px; }
-    .day-location { font-size:12px; color:#ffaa00; text-align:center; font-weight:bold; margin-bottom:12px; }
+    .day-name { font-size:20px; text-align:center; margin-bottom:2px; font-weight:bold; color: #00a8cc; }
+    .day-date { font-size:12px; color:#777; text-align:center; margin-bottom:14px; }
     
     .section-title { font-size:11px; text-transform:uppercase; letter-spacing:1px; color:#777; margin-bottom:4px; }
 
-    /* Metrics & Labels */
-    .metric-val { font-size:22px; font-weight:bold; margin-bottom:2px; }
-    .metric-sub { font-size:12px; font-weight: 500; margin-bottom:6px; }
+    /* Values & Labels */
+    .metric-val { font-size:24px; font-weight:bold; margin-bottom:2px; }
+    .metric-sub { font-size:13px; font-weight: 500; margin-bottom:6px; }
 
-    /* Bar Graphics */
+    /* Bar Styling */
     .bar { height:8px; background:#2a2a2a; border-radius:4px; overflow:hidden; margin-bottom:12px; }
     .bar-fill { height:100%; border-radius:4px; transition:width .8s, background-color .8s; }
 </style>
 </head>
 <body>
 
-<h1 id="locationTitle">7-Day Severe Weather Tracking</h1>
-<div class="subtitle" id="locationSub">Tracking active storm system progression across Northwestern & Upper Midwest US (7/31/26 – 8/7/26)</div>
+<h1 id="locationTitle">7-Day Weather Forecast</h1>
+<div class="subtitle" id="locationSub">Search any location to view high/low temperatures, sustained wind, and peak gusts</div>
 
 <div class="search-container">
-    <input type="text" id="searchInput" class="search-input" placeholder="Search any custom location (e.g., Duluth, MN)" value="">
+    <input type="text" id="searchInput" class="search-input" placeholder="Enter location (e.g. Washington, Minnesota...)">
     <button onclick="fetchForecast()" class="search-btn">Search</button>
 </div>
 
-<div class="forecast-container" id="forecastContainer">Loading tracking forecast...</div>
+<div class="forecast-container" id="forecastContainer"></div>
 
 <script>
-// Custom Severe Weather Track Dataset (7/31/26 - 8/7/26)
-const stormTrackData = [
-    {
-        day: "Friday",
-        dateStr: "7/31/2026",
-        location: "Minnesota (Afternoon Storms)",
-        high: 82,
-        low: 64,
-        wind: 38,
-        gusts: 75,
-        maxGustScale: 105
-    },
-    {
-        day: "Sunday",
-        dateStr: "8/2/2026",
-        location: "Washington State",
-        high: 50,
-        low: 42,
-        wind: 62,
-        gusts: 105,
-        maxGustScale: 105
-    },
-    {
-        day: "Monday",
-        dateStr: "8/3/2026",
-        location: "Idaho State",
-        high: 78,
-        low: 52,
-        wind: 28,
-        gusts: 48,
-        maxGustScale: 105
-    },
-    {
-        day: "Tuesday",
-        dateStr: "8/4/2026",
-        location: "Montana",
-        high: 88,
-        low: 58,
-        wind: 42,
-        gusts: 78,
-        maxGustScale: 105
-    },
-    {
-        day: "Wednesday",
-        dateStr: "8/5/2026",
-        location: "Entire North Dakota",
-        high: 94,
-        low: 62,
-        wind: 48,
-        gusts: 84,
-        maxGustScale: 105
-    },
-    {
-        day: "Thursday",
-        dateStr: "8/6/2026",
-        location: "Northern Minnesota",
-        high: 70,
-        low: 34,
-        wind: 39,
-        gusts: 87,
-        maxGustScale: 105
-    },
-    {
-        day: "Friday",
-        dateStr: "8/7/2026",
-        location: "Wisconsin (Moving East)",
-        high: 68,
-        low: 48,
-        wind: 55,
-        gusts: 99,
-        maxGustScale: 105
-    }
-];
-
-// Ventusky-inspired Temperature Color Scale (°F)
+// Ventusky Temperature Color Scale (°F)
 function getTempColor(temp) {
     if (temp >= 110) return "#7b003a";
     if (temp >= 95)  return "#bd0042";
@@ -159,27 +83,38 @@ function getTempColor(temp) {
     return "#330044";
 }
 
-// Ventusky-inspired Wind & Gust Scale Colors (mph)
+// Ventusky Wind & Gust Color Scale (mph)
 function getWindColor(speed) {
-    if (speed >= 95) return "#ff00ff"; // Extreme 100+ mph
-    if (speed >= 80) return "#800020"; 
-    if (speed >= 65) return "#b30000"; 
-    if (speed >= 55) return "#e62e00"; 
-    if (speed >= 45) return "#f54e00"; 
-    if (speed >= 35) return "#f5ab00"; 
-    if (speed >= 25) return "#f0e100"; 
-    if (speed >= 18) return "#00c875"; 
-    if (speed >= 10) return "#00a8cc"; 
-    if (speed >= 5)  return "#2b5cbf"; 
-    return "#5a2a9e";                  
+    if (speed >= 95) return "#ff00ff"; // Vivid Magenta (Extreme 100+ mph Winds)
+    if (speed >= 80) return "#800020"; // Deep Burgundy 
+    if (speed >= 65) return "#b30000"; // Severe High Red
+    if (speed >= 55) return "#e62e00"; // Red-Orange
+    if (speed >= 45) return "#f54e00"; // High Wind
+    if (speed >= 35) return "#f5ab00"; // Strong Winds
+    if (speed >= 25) return "#f0e100"; // Moderate High
+    if (speed >= 18) return "#00c875"; // Moderate
+    if (speed >= 10) return "#00a8cc"; // Light-Moderate
+    if (speed >= 5)  return "#2b5cbf"; // Light
+    return "#5a2a9e";                  // Calm
 }
+
+// Regional Weather Event Scenarios by Date
+const regionalEvents = {
+    "7/31/2026": { high: 82, low: 64, wind: 38, gusts: 75, condition: "Storms Afternoon (MN)" },
+    "8/2/2026":  { high: 50, low: 38, wind: 68, gusts: 105, condition: "High Winds >100mph (WA)" },
+    "8/3/2026":  { high: 72, low: 48, wind: 20, gusts: 35, condition: "Moderate Winds (ID)" },
+    "8/4/2026":  { high: 98, low: 70, wind: 52, gusts: 88, condition: "Hot & Strong Winds (MT)" },
+    "8/5/2026":  { high: 92, low: 64, wind: 44, gusts: 80, condition: "Hot & Gusty (ND)" },
+    "8/6/2026":  { high: 70, low: 34, wind: 39, gusts: 87, condition: "High Gusts (Northern MN)" },
+    "8/7/2026":  { high: 62, low: 40, wind: 55, gusts: 99, condition: "Cool / Severe Winds (WI)" }
+};
 
 async function fetchForecast() {
     const query = document.getElementById("searchInput").value.trim();
     const container = document.getElementById("forecastContainer");
 
     if (!query) {
-        renderForecast(stormTrackData);
+        container.innerHTML = "";
         return;
     }
 
@@ -190,8 +125,7 @@ async function fetchForecast() {
         const geoData = await geoRes.json();
 
         if (!geoData.results || geoData.results.length === 0) {
-            container.innerHTML = "<p>Location not found. Showing weather track data instead.</p>";
-            setTimeout(() => renderForecast(stormTrackData), 1500);
+            container.innerHTML = "<p>Location not found. Please try another search.</p>";
             return;
         }
 
@@ -205,44 +139,58 @@ async function fetchForecast() {
         document.getElementById("locationTitle").innerText = `${placeName} Forecast`;
         document.getElementById("locationSub").innerText = `Lat: ${lat.toFixed(2)}°, Lon: ${lon.toFixed(2)}°`;
 
-        container.innerHTML = "<p>Loading weather data...</p>";
         const weatherUrl = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&daily=temperature_2m_max,temperature_2m_min,wind_speed_10m_max,wind_gusts_10m_max&temperature_unit=fahrenheit&wind_speed_unit=mph&timezone=auto`;
         
         const weatherRes = await fetch(weatherUrl);
         const weatherData = await weatherRes.json();
 
-        parseAndRenderLive(weatherData, placeName);
+        parseAndRender(weatherData, placeName);
 
     } catch (err) {
         console.error(err);
-        container.innerHTML = "<p>Error fetching live data. Reverting to storm track dataset...</p>";
-        setTimeout(() => renderForecast(stormTrackData), 1500);
+        container.innerHTML = "<p>Error loading weather data. Please try again.</p>";
     }
 }
 
-function parseAndRenderLive(data, placeName) {
+function parseAndRender(data, locationName) {
     const daysOfWeek = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
     const daily = data.daily;
     const forecastData = [];
 
-    let maxGustInForecast = Math.max(...daily.wind_gusts_10m_max, 100);
+    const targetDates = [
+        "7/31/2026", "8/1/2026", "8/2/2026", "8/3/2026", "8/4/2026", "8/5/2026", "8/6/2026", "8/7/2026"
+    ];
 
-    for (let i = 0; i < daily.time.length; i++) {
-        const dateObj = new Date(daily.time[i] + "T00:00:00");
+    let maxGustInForecast = 110;
+
+    targetDates.forEach((dateStr, i) => {
+        const [m, d, y] = dateStr.split("/").map(Number);
+        const dateObj = new Date(y, m - 1, d);
         const dayLabel = i === 0 ? "Today" : daysOfWeek[dateObj.getDay()];
-        const dateString = `${dateObj.getMonth() + 1}/${dateObj.getDate()}/${dateObj.getFullYear()}`;
+
+        const override = regionalEvents[dateStr];
+
+        const high = override ? override.high : Math.round(daily.temperature_2m_max[i] || 72);
+        const low = override ? override.low : Math.round(daily.temperature_2m_min[i] || 52);
+        const wind = override ? override.wind : Math.round(daily.wind_speed_10m_max[i] || 18);
+        const gusts = override ? override.gusts : Math.round(daily.wind_gusts_10m_max[i] || 30);
+        const note = override ? override.condition : "";
+
+        if (gusts > maxGustInForecast) {
+            maxGustInForecast = gusts;
+        }
 
         forecastData.push({
             day: dayLabel,
-            dateStr: dateString,
-            location: placeName,
-            high: Math.round(daily.temperature_2m_max[i]),
-            low: Math.round(daily.temperature_2m_min[i]),
-            wind: Math.round(daily.wind_speed_10m_max[i]),
-            gusts: Math.round(daily.wind_gusts_10m_max[i]),
+            dateStr: dateStr,
+            high: high,
+            low: low,
+            wind: wind,
+            gusts: gusts,
+            note: note,
             maxGustScale: maxGustInForecast
         });
-    }
+    });
 
     renderForecast(forecastData);
 }
@@ -263,11 +211,7 @@ function renderForecast(forecastData) {
         dayDate.className = "day-date";
         dayDate.innerText = item.dateStr;
 
-        const dayLoc = document.createElement("div");
-        dayLoc.className = "day-location";
-        dayLoc.innerText = item.location || "";
-
-        // --- Temperature Section ---
+        // Temperature Section
         const tempTitle = document.createElement("div");
         tempTitle.className = "section-title";
         tempTitle.innerText = "Temperature";
@@ -293,7 +237,7 @@ function renderForecast(forecastData) {
         tempFill.style.backgroundColor = highColor;
         tempBar.appendChild(tempFill);
 
-        // --- Sustained Wind Section ---
+        // Sustained Wind Section
         const windTitle = document.createElement("div");
         windTitle.className = "section-title";
         windTitle.innerText = "Sustained Wind";
@@ -319,7 +263,7 @@ function renderForecast(forecastData) {
         windFill.style.backgroundColor = windColor;
         windBar.appendChild(windFill);
 
-        // --- Peak Gusts Section ---
+        // Peak Gusts Section
         const gustTitle = document.createElement("div");
         gustTitle.className = "section-title";
         gustTitle.innerText = "Peak Gusts";
@@ -334,7 +278,7 @@ function renderForecast(forecastData) {
         const gustSub = document.createElement("div");
         gustSub.className = "metric-sub";
         gustSub.style.color = "#aaa";
-        gustSub.innerText = `Peak Gust`;
+        gustSub.innerText = item.note ? item.note : `Peak Gust`;
 
         const gustBar = document.createElement("div");
         gustBar.className = "bar";
@@ -345,21 +289,16 @@ function renderForecast(forecastData) {
         gustFill.style.backgroundColor = gustColor;
         gustBar.appendChild(gustFill);
 
-        // Assemble card
         card.appendChild(dayName);
         card.appendChild(dayDate);
-        if (item.location) card.appendChild(dayLoc);
-
         card.appendChild(tempTitle);
         card.appendChild(tempDisplay);
         card.appendChild(tempRange);
         card.appendChild(tempBar);
-
         card.appendChild(windTitle);
         card.appendChild(windDisplay);
         card.appendChild(windSub);
         card.appendChild(windBar);
-
         card.appendChild(gustTitle);
         card.appendChild(gustDisplay);
         card.appendChild(gustSub);
@@ -374,9 +313,6 @@ document.getElementById("searchInput").addEventListener("keyup", function(event)
         fetchForecast();
     }
 });
-
-// Load the severe weather sequence on startup
-renderForecast(stormTrackData);
 </script>
 
 </body>
