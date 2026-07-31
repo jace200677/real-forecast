@@ -119,7 +119,7 @@
 </div>
 
 <div class="search-container">
-    <input type="text" id="searchInput" class="search-input" placeholder="Search location (e.g. Duluth, Minneapolis, Seattle...)">
+    <input type="text" id="searchInput" class="search-input" placeholder="Search location (e.g. Seattle, Boise, Helena, Bismarck, Minneapolis, Madison...)">
     <button onclick="fetchForecast()" class="search-btn">Search</button>
     <button onclick="useCurrentLocation()" class="location-btn">📍 Use Current Location</button>
 </div>
@@ -181,15 +181,6 @@ const LocationSecurityGuard = {
         const safeLat = Math.round(lat * precisionFactor) / precisionFactor;
         const safeLon = Math.round(lon * precisionFactor) / precisionFactor;
         return { lat: safeLat, lon: safeLon };
-    },
-
-    encryptTelemetryPayload(data) {
-        try {
-            const tokenString = JSON.stringify(data);
-            return btoa(encodeURIComponent(tokenString).replace(/%([0-9A-F]{2})/g, (match, p1) => String.fromCharCode('0x' + p1)));
-        } catch (e) {
-            return null;
-        }
     }
 };
 
@@ -199,7 +190,7 @@ function getWeatherIcon(weatherCode, conditionText) {
         if (lowerCond.includes("storm")) {
             return ICON_BASE_URL + "Thunderstorms.png";
         }
-        if (lowerCond.includes("windy")) {
+        if (lowerCond.includes("wind")) {
             return ICON_BASE_URL + "windy.png";
         }
     }
@@ -313,74 +304,67 @@ function getWindColor(speed) {
     return "#30b0c7";
 }
 
-// Regional Weather Event Scenarios restricted strictly to Minnesota and specified dates
+// Comprehensive Multi-State Regional Event Scenarios for Aug 2 - Aug 6, 2026
 const regionalEvents = [
     {
         date: "7/31/2026",
-        regionKeywords: ["minnesota", "mn", "duluth", "minneapolis", "rochester", "mankato", "st. paul", "saint paul", "bloomington", "plymouth", "maple grove", "woodbury", "st. cloud", "moorhead", "brainerd", "bemidji", "hibbing", "virginia", "international falls", "grand rapids", "red wing", "winona", "albert lea", "austin", "worthington", "marshall", "willmar", "fergus falls", "alexandria", "grand marais", "two harbors", "silver bay", "ely", "grand portage", "babbitt"],
+        regionKeywords: [],
         baseConfidence: 0.90,
-        data: { high: 84, low: 66, wind: 30, gusts: 62, condition: "Severe Thunderstorms / Heavy Winds" }
+        data: null // Live weather preservation
     },
     {
         date: "8/1/2026",
-        regionKeywords: ["minnesota", "mn", "duluth", "minneapolis", "rochester", "mankato", "st. paul", "saint paul"],
+        regionKeywords: ["washington", "idaho", "montana", "north dakota", "minnesota", "wisconsin", "wa", "id", "mt", "nd", "mn", "wi"],
         baseConfidence: 0.88,
-        data: { high: 78, low: 58, wind: 35, gusts: 70, condition: "Transitioning System / High Winds" }
+        data: { high: 76, low: 55, wind: 30, gusts: 60, condition: "Transitioning System / Frontal Winds" }
     },
     {
         date: "8/2/2026",
-        regionKeywords: ["minnesota", "mn", "duluth", "minneapolis", "rochester", "mankato", "st. paul", "saint paul"],
-        baseConfidence: 0.85,
-        data: { high: 68, low: 48, wind: 40, gusts: 80, condition: "Cooler / High Winds & Severe Gusts" }
+        regionKeywords: ["washington", "wa", "seattle", "spokane", "tacoma", "vancouver", "olympia", "bellevue"],
+        baseConfidence: 0.94,
+        data: { high: 62, low: 44, wind: 100, gusts: 120, condition: "Cooler / Severe Winds & Gusts (Washington)" }
     },
     {
         date: "8/3/2026",
-        regionKeywords: ["minnesota", "mn", "duluth", "minneapolis", "rochester", "mankato", "st. paul", "saint paul"],
-        baseConfidence: 0.70,
-        data: { high: 76, low: 52, wind: 30, gusts: 62, condition: "Warmer / Moderate Winds & Gusts" }
+        regionKeywords: ["idaho", "id", "boise", "meridian", "nampa", "idaho falls", "pocatello"],
+        baseConfidence: 0.92,
+        data: { high: 96, low: 70, wind: 50, gusts: 90, condition: "Hotter / High Winds & Gusts (Idaho)" }
     },
     {
         date: "8/4/2026",
-        regionKeywords: ["minnesota", "mn", "duluth", "minneapolis", "rochester", "mankato", "st. paul", "saint paul"],
-        baseConfidence: 0.95,
-        data: { high: 88, low: 60, wind: 50, gusts: 90, condition: "Warmer / Strong Winds & Extreme Gusts" }
+        regionKeywords: ["montana", "mt", "helena", "billings", "missoula", "great falls", "bozeman"],
+        baseConfidence: 0.93,
+        data: { high: 60, low: 42, wind: 70, gusts: 120, condition: "Cooler / High Winds & Gusts (Montana)" }
     },
     {
         date: "8/5/2026",
-        regionKeywords: ["minnesota", "mn", "duluth", "minneapolis", "rochester", "mankato", "st. paul", "saint paul"],
-        baseConfidence: 0.80,
-        data: { high: 90, low: 62, wind: 55, gusts: 100, condition: "Warmer / Severe High Winds & Extreme Gusts" }
+        regionKeywords: ["north dakota", "nd", "bismarck", "fargo", "grand forks", "minot"],
+        baseConfidence: 0.95,
+        data: { high: 98, low: 74, wind: 80, gusts: 150, condition: "Hotter / Extreme Winds & Gusts (North Dakota)" }
     },
     {
         date: "8/6/2026",
-        regionKeywords: ["southern minnesota", "southern mn", "rochester", "mankato", "worthington", "winona", "albert lea"],
+        regionKeywords: ["southern minnesota", "southern mn", "rochester", "mankato", "winona", "albert lea", "worthington"],
         baseConfidence: 0.93,
-        data: { 
-            high: 80, 
-            low: 55, 
-            wind: 78, 
-            gusts: 110, 
-            condition: "Severe Winds & Destructive Gusts (Southern MN)",
-            dependsOnLocation: true 
-        }
+        data: { high: 94, low: 70, wind: 65, gusts: 120, condition: "Hotter / High Winds & Gusts (Southern MN)" }
     },
     {
         date: "8/6/2026",
-        regionKeywords: ["minnesota", "mn", "northern minnesota", "duluth", "minneapolis", "st. paul", "saint paul"],
+        regionKeywords: ["minnesota", "mn", "northern minnesota", "duluth", "minneapolis", "st. paul", "saint paul", "st. cloud", "brainerd", "bemidji", "hibbing"],
         baseConfidence: 0.92,
-        data: { high: 74, low: 48, wind: 55, gusts: 100, condition: "Warmer / High Sustained Winds & Severe Gusts" }
+        data: { high: 66, low: 45, wind: 55, gusts: 90, condition: "Colder / High Winds & Gusts (Northern MN)" }
+    },
+    {
+        date: "8/6/2026",
+        regionKeywords: ["wisconsin", "wi", "milwaukee", "madison", "green bay", "kenosha", "racine", "eau claire", "appleton"],
+        baseConfidence: 0.95,
+        data: { high: 96, low: 72, wind: 75, gusts: 170, condition: "Hotter / Destructive Winds & Gusts (Wisconsin)" }
     },
     {
         date: "8/7/2026",
-        regionKeywords: ["minnesota", "mn", "duluth", "minneapolis", "rochester", "mankato", "st. paul", "saint paul"],
-        baseConfidence: 0.75,
-        data: { high: 70, low: 48, wind: 45, gusts: 85, condition: "Cooler / Severe Winds & Gusts" }
-    },
-    {
-        date: "8/8/2026",
-        regionKeywords: ["minnesota", "mn", "duluth", "minneapolis", "rochester", "mankato", "st. paul", "saint paul"],
-        baseConfidence: 0.88,
-        data: { high: 72, low: 50, wind: 40, gusts: 75, condition: "Stable / Moderate Winds" }
+        regionKeywords: ["washington", "idaho", "montana", "north dakota", "minnesota", "wisconsin", "wa", "id", "mt", "nd", "mn", "wi"],
+        baseConfidence: 0.85,
+        data: { high: 74, low: 52, wind: 40, gusts: 75, condition: "Post-Event Stabilization / Moderate Winds" }
     }
 ];
 
@@ -418,18 +402,11 @@ function findRegionalOverride(dateStr, searchString, placeName, apiHigh, apiLow,
 
     const searchLower = `${searchString} ${placeName}`.toLowerCase();
     
-    // STRICT CHECK: Only trigger override if the location is in Minnesota
-    const isMinnesota = regionalEvents[0].regionKeywords.some(keyword => {
-        const regex = new RegExp(`\\b${keyword}\\b`, 'i');
-        return regex.test(searchLower);
-    });
-
-    if (!isMinnesota) return null;
-
     const matchingEvents = regionalEvents.filter(e => e.date === dateStr);
     
     let event = null;
     for (const ev of matchingEvents) {
+        if (!ev.regionKeywords || ev.regionKeywords.length === 0) continue;
         const matchesRegion = ev.regionKeywords.some(keyword => {
             const regex = new RegExp(`\\b${keyword}\\b`, 'i');
             return regex.test(searchLower);
@@ -440,7 +417,7 @@ function findRegionalOverride(dateStr, searchString, placeName, apiHigh, apiLow,
         }
     }
 
-    if (!event) return null;
+    if (!event || !event.data) return null;
 
     const base = event.data;
     const isStateOnly = event.regionKeywords.some(k => searchString.trim().toLowerCase() === k);
@@ -452,15 +429,9 @@ function findRegionalOverride(dateStr, searchString, placeName, apiHigh, apiLow,
     const hash = Math.abs(getHashOffset(placeName));
 
     if (!isStateOnly) {
-        tempOffset = (hash % 9) - 4;       
-        windOffset = (hash % 7) - 3;       
-        gustOffset = (hash % 11) - 5;      
-    }
-
-    if (base.dependsOnLocation) {
-        const locationVarianceFactor = ((hash % 15) - 7); 
-        windOffset += locationVarianceFactor;
-        gustOffset += (locationVarianceFactor * 1.5);
+        tempOffset = (hash % 7) - 3;       
+        windOffset = (hash % 5) - 2;       
+        gustOffset = (hash % 9) - 4;      
     }
 
     const targetHigh = base.high + tempOffset;
@@ -476,8 +447,7 @@ function findRegionalOverride(dateStr, searchString, placeName, apiHigh, apiLow,
     const finalGusts = Math.round(targetGusts * effectiveConfidence + apiGusts * (1 - effectiveConfidence));
 
     const confPercent = Math.round(effectiveConfidence * 100);
-    const locationNote = base.dependsOnLocation ? ` (Intensity Varies by Exact Location)` : "";
-    const label = `${base.condition}${locationNote} (${confPercent}% Confidence)`;
+    const label = `${base.condition} (${confPercent}% Confidence)`;
 
     return {
         high: finalHigh,
@@ -670,23 +640,18 @@ function getMinuteValuesForDay(dateStr, searchQuery, placeName, apiDailyTemps, a
             const dayProgress = (hour * 60 + minute) / 1440; // 0 to 1 across the day
 
             if (exactOverride) {
-                // EXPLICIT EVENT DAY: Peak at midday (progress 0.5)
-                let peakFactor = Math.sin(dayProgress * Math.PI); // 0 at start/end, 1 at midpoint
+                let peakFactor = Math.sin(dayProgress * Math.PI); 
                 baseTemp = Math.round(baseTemp + (exactOverride.high - baseTemp) * peakFactor);
                 baseWind = Math.round(baseWind + (exactOverride.wind - baseWind) * peakFactor);
                 baseGust = Math.round(baseGust + (exactOverride.gusts - baseGust) * peakFactor);
             } 
             else if (prevOverride && !exactOverride && dateStr !== "7/31/2026") {
-                // DAY AFTER THE EVENT: Slowly goes towards live weather values
-                // Starts near the previous event peak and decays towards live base weather
                 let decayFactor = 1.0 - (dayProgress * 0.7); 
                 baseTemp = Math.round(baseTemp + (prevOverride.high - baseTemp) * decayFactor * 0.4);
                 baseWind = Math.round(baseWind + (prevOverride.wind - baseWind) * decayFactor * 0.4);
                 baseGust = Math.round(baseGust + (prevOverride.gusts - baseGust) * decayFactor * 0.4);
             }
             else if (nextOverride && !exactOverride) {
-                // 1 DAY BEFORE THE EVENT: Values slowly go towards its peak values
-                // Starts at live weather and gradually ramps up towards the upcoming event peak
                 let rampFactor = dayProgress * 0.8; 
                 baseTemp = Math.round(baseTemp + (nextOverride.high - baseTemp) * rampFactor * 0.5);
                 baseWind = Math.round(baseWind + (nextOverride.wind - baseWind) * rampFactor * 0.5);
@@ -711,7 +676,7 @@ function parseAndRender(data, searchQuery, placeName) {
         "7/31/2026", "8/1/2026", "8/2/2026", "8/3/2026", "8/4/2026", "8/5/2026", "8/6/2026"
     ];
 
-    let maxGustInForecast = 130;
+    let maxGustInForecast = 170;
 
     targetDates.forEach((dateStr, i) => {
         const [m, d, y] = dateStr.split("/").map(Number);
