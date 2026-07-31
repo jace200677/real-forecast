@@ -389,12 +389,15 @@ function findRegionalOverride(dateStr, searchString, placeName, apiHigh, apiLow,
     if (!event || !event.data) return null;
 
     const base = event.data;
-    const hash = Math.abs(getHashOffset(placeName));
     
-    // Vary strictly based on location search input
-    const tempVar = (hash % 5) - 2; 
-    const windVar = (hash % 7) - 3; 
-    const gustVar = (hash % 11) - 5; 
+    // Combine searchString and placeName to create a location-specific seed
+    const locationSeed = `${searchString.toLowerCase().trim()}_${placeName.toLowerCase().trim()}`;
+    const hash = Math.abs(getHashOffset(locationSeed));
+    
+    // Vary values dynamically across different searched input locations
+    const tempVar = (hash % 7) - 3;    // Variations from -3 to +3 °F
+    const windVar = (hash % 9) - 4;    // Variations from -4 to +4 mph
+    const gustVar = (hash % 13) - 6;   // Variations from -6 to +6 mph
 
     let targetHigh = apiHigh + base.tempDelta + tempVar;
     let targetWind = base.wind + windVar;
@@ -411,8 +414,19 @@ function findRegionalOverride(dateStr, searchString, placeName, apiHigh, apiLow,
     const label = `${base.condition} (${confPercent}% Confidence)`;
 
     return {
-        high: finalHigh, low: finalLow, wind: finalWind, gusts: finalGusts,
-        condition: label, rawCondition: base.condition, baseEvent: base, effectiveConfidence: effectiveConfidence,
+        high: finalHigh, 
+        low: finalLow, 
+        wind: finalWind, 
+        gusts: finalGusts,
+        condition: label, 
+        rawCondition: base.condition, 
+        baseEvent: {
+            ...base,
+            tempDelta: base.tempDelta + tempVar,
+            wind: base.wind + windVar,
+            gusts: base.gusts + gustVar
+        }, 
+        effectiveConfidence: effectiveConfidence,
         type: event.type
     };
 }
