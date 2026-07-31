@@ -413,6 +413,9 @@ function calculateEffectiveConfidence(dateStr, baseConfidence) {
 }
 
 function findRegionalOverride(dateStr, searchString, placeName, apiHigh, apiLow, apiWind, apiGusts) {
+    // STRICT EXCEPTION: Do not override 7/31/2026 (leave as live weather)
+    if (dateStr === "7/31/2026") return null;
+
     const searchLower = `${searchString} ${placeName}`.toLowerCase();
     
     // STRICT CHECK: Only trigger override if the location is in Minnesota
@@ -460,7 +463,7 @@ function findRegionalOverride(dateStr, searchString, placeName, apiHigh, apiLow,
         gustOffset += (locationVarianceFactor * 1.5);
     }
 
-    const targetHigh = dateStr === "7/31/2026" ? 55 : (base.high + tempOffset);
+    const targetHigh = base.high + tempOffset;
     const targetLow = base.low + Math.round(tempOffset / 2);
     const targetWind = base.wind + windOffset;
     const targetGusts = Math.max(0, base.gusts + gustOffset);
@@ -609,7 +612,6 @@ async function loadWeatherForCoords(lat, lon, placeName, searchQuery) {
     }
 }
 
-// Helper to find override for any date with fallback to neighboring days for transition blending
 function getResolvedOverride(dateStr, searchQuery, placeName, apiHigh, apiLow, apiWind, apiGusts) {
     if (dateStr === "7/31/2026") return null; // Excluded completely
     return findRegionalOverride(dateStr, searchQuery, placeName, apiHigh, apiLow, apiWind, apiGusts);
@@ -647,8 +649,6 @@ function getMinuteValuesForDay(dateStr, searchQuery, placeName, apiDailyTemps, a
 
     const exactOverride = getResolvedOverride(dateStr, searchQuery, placeName, apiHigh, apiLow, apiWind, apiGusts);
 
-    // Check adjacent days for the transition blending requirement:
-    // "1 day before the event the values slowly goes towards it peak values on event day and a day after the event then slowly goes towards live weather values"
     let prevDateStr = dayIndex > 0 ? targetDates[dayIndex - 1] : null;
     let nextDateStr = dayIndex < targetDates.length - 1 ? targetDates[dayIndex + 1] : null;
 
@@ -676,16 +676,18 @@ function getMinuteValuesForDay(dateStr, searchQuery, placeName, apiDailyTemps, a
                 baseWind = Math.round(baseWind + (exactOverride.wind - baseWind) * peakFactor);
                 baseGust = Math.round(baseGust + (exactOverride.gusts - baseGust) * peakFactor);
             } 
-            else if (prevOverride && !exactOverride) {
-                // DAY AFTER EVENT (Transitioning from event peak back to live weather)
-                let decayFactor = 1.0 - dayProgress; // Starts high, slowly goes towards live weather
-                baseTemp = Math.round(baseTemp + (prevOverride.high - baseTemp) * decayFactor * 0.6);
-                baseWind = Math.round(baseWind + (prevOverride.wind - baseWind) * decayFactor * 0.6);
-                baseGust = Math.round(baseGust + (prevOverride.gusts - baseGust) * decayFactor * 0.6);
+            else if (prevOverride && !exactOverride && dateStr !== "7/31/2026") {
+                // DAY AFTER THE EVENT: Slowly goes towards live weather values
+                // Starts near the previous event peak and decays towards live base weather
+                let decayFactor = 1.0 - (dayProgress * 0.7); 
+                baseTemp = Math.round(baseTemp + (prevOverride.high - baseTemp) * decayFactor * 0.4);
+                baseWind = Math.round(baseWind + (prevOverride.wind - baseWind) * decayFactor * 0.4);
+                baseGust = Math.round(baseGust + (prevOverride.gusts - baseGust) * decayFactor * 0.4);
             }
             else if (nextOverride && !exactOverride) {
-                // 1 DAY BEFORE EVENT (Slowly ramping up towards event day peak values)
-                let rampFactor = dayProgress; // Starts live weather, slowly climbs towards event peaks
+                // 1 DAY BEFORE THE EVENT: Values slowly go towards its peak values
+                // Starts at live weather and gradually ramps up towards the upcoming event peak
+                let rampFactor = dayProgress * 0.8; 
                 baseTemp = Math.round(baseTemp + (nextOverride.high - baseTemp) * rampFactor * 0.5);
                 baseWind = Math.round(baseWind + (nextOverride.wind - baseWind) * rampFactor * 0.5);
                 baseGust = Math.round(baseGust + (nextOverride.gusts - baseGust) * rampFactor * 0.5);
