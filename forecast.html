@@ -207,13 +207,13 @@ function interpolateColor(color1, color2, factor) {
 }
 
 const appleTempStops = [
-    { temp: 10, color: "#1c3d5a" }, // Deep Frost Blue
-    { temp: 32, color: "#007aff" }, // Apple Ice Blue
-    { temp: 50, color: "#34c759" }, // Fresh Green
-    { temp: 68, color: "#ffcc00" }, // Warm Yellow
-    { temp: 82, color: "#ff9500" }, // Vibrant Orange
-    { temp: 95, color: "#ff3b30" }, // Hot Red
-    { temp: 105, color: "#af52de" }// Extreme Purple/Magenta
+    { temp: 10, color: "#1c3d5a" }, 
+    { temp: 32, color: "#007aff" }, 
+    { temp: 50, color: "#34c759" }, 
+    { temp: 68, color: "#ffcc00" }, 
+    { temp: 82, color: "#ff9500" }, 
+    { temp: 95, color: "#ff3b30" }, 
+    { temp: 105, color: "#af52de" }
 ];
 
 function getTempColor(temp) {
@@ -233,12 +233,12 @@ function getTempColor(temp) {
 
 // Apple Weather Smooth Wind & Gust Color Scale Lerp (mph)
 const appleWindStops = [
-    { speed: 0, color: "#30b0c7" },   // Calm / Light Cyan
-    { speed: 15, color: "#34c759" },  // Moderate Green
-    { speed: 30, color: "#ffcc00" },  // Breezy Yellow
-    { speed: 50, color: "#ff9500" },  // High Wind Orange
-    { speed: 75, color: "#ff3b30" },  // Severe Red
-    { speed: 100, color: "#af52de" }  // Destructive Purple/Magenta
+    { speed: 0, color: "#30b0c7" },   
+    { speed: 15, color: "#34c759" },  
+    { speed: 30, color: "#ffcc00" },  
+    { speed: 50, color: "#ff9500" },  
+    { speed: 75, color: "#ff3b30" },  
+    { speed: 100, color: "#af52de" }  
 ];
 
 function getWindColor(speed) {
@@ -455,14 +455,12 @@ function parseAndRender(data, searchQuery, placeName) {
         const gusts = matchedOverride ? matchedOverride.gusts : apiGusts;
         const note = matchedOverride ? matchedOverride.condition : "";
 
-        // OVERRIDE HOURLY DATA FOR GRAPH IF MATCHED EVENT EXISTS
         if (matchedOverride && activeHourlyData) {
             const [mm, dd, yy] = dateStr.split("/").map(Number);
             const formattedDate = `${yy}-${String(mm).padStart(2, '0')}-${String(dd).padStart(2, '0')}`;
             
             for (let h = 0; h < activeHourlyData.time.length; h++) {
                 if (activeHourlyData.time[h].startsWith(formattedDate)) {
-                    // Shape hourly curve dynamically toward target override values based on confidence
                     let origTemp = activeHourlyData.temperature_2m[h];
                     let origWind = activeHourlyData.wind_speed_10m[h];
                     let origGust = activeHourlyData.wind_gusts_10m[h];
@@ -642,6 +640,14 @@ function closeModal() {
     document.getElementById("chartModal").style.display = "none";
 }
 
+function hexToRgba(hex, alpha) {
+    let bigint = parseInt(hex.replace('#',''), 16);
+    let r = (bigint >> 16) & 255;
+    let g = (bigint >> 8) & 255;
+    let b = bigint & 255;
+    return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+}
+
 function updateChartMetric() {
     if (!activeHourlyData || !activeDayDateStr) return;
 
@@ -651,7 +657,6 @@ function updateChartMetric() {
 
     const labels = [];
     const values = [];
-    const pointColors = [];
 
     for (let i = 0; i < activeHourlyData.time.length; i++) {
         if (activeHourlyData.time[i].startsWith(formattedDate)) {
@@ -659,39 +664,32 @@ function updateChartMetric() {
             labels.push(timePart);
 
             let val = 0;
-            let color = "#007aff";
-
-            if (metric === "temp") {
-                val = activeHourlyData.temperature_2m[i];
-                color = getTempColor(val);
-            } else if (metric === "wind") {
-                val = activeHourlyData.wind_speed_10m[i];
-                color = getWindColor(val);
-            } else if (metric === "gusts") {
-                val = activeHourlyData.wind_gusts_10m[i];
-                color = getWindColor(val);
-            }
+            if (metric === "temp") val = activeHourlyData.temperature_2m[i];
+            else if (metric === "wind") val = activeHourlyData.wind_speed_10m[i];
+            else if (metric === "gusts") val = activeHourlyData.wind_gusts_10m[i];
 
             values.push(val);
-            pointColors.push(color);
         }
     }
 
-    let labelName = "Temperature (°F)";
-    let mainColor = metric === "temp" ? getTempColor(values.reduce((a,b)=>a+b,0)/values.length || 70) : getWindColor(values.reduce((a,b)=>a+b,0)/values.length || 20);
+    const avgVal = values.reduce((a,b)=>a+b,0)/values.length || (metric === 'temp' ? 70 : 20);
+    const themeColor = metric === 'temp' ? getTempColor(avgVal) : getWindColor(avgVal);
+    const labelName = metric === 'temp' ? "Temperature (°F)" : (metric === 'wind' ? "Wind Speed (mph)" : "Wind Gusts (mph)");
 
-    if (metric === "wind") labelName = "Wind Speed (mph)";
-    if (metric === "gusts") labelName = "Wind Gusts (mph)";
-
-    renderChart(labels, values, pointColors, labelName, mainColor);
+    renderChart(labels, values, labelName, themeColor);
 }
 
-function renderChart(labels, values, pointColors, labelName, mainColor) {
+function renderChart(labels, values, labelName, themeColor) {
     const ctx = document.getElementById("forecastChart").getContext("2d");
 
     if (chartInstance) {
         chartInstance.destroy();
     }
+
+    // Create Apple Weather style vertical gradient fill fading from themeColor down to transparent
+    const gradient = ctx.createLinearGradient(0, 0, 0, 350);
+    gradient.addColorStop(0, hexToRgba(themeColor, 0.45));
+    gradient.addColorStop(1, hexToRgba(themeColor, 0.0));
 
     chartInstance = new Chart(ctx, {
         type: 'line',
@@ -700,21 +698,25 @@ function renderChart(labels, values, pointColors, labelName, mainColor) {
             datasets: [{
                 label: labelName,
                 data: values,
-                borderColor: mainColor,
-                backgroundColor: 'rgba(0, 122, 255, 0.15)',
+                borderColor: themeColor,
+                backgroundColor: gradient,
                 borderWidth: 3,
                 fill: true,
                 tension: 0.35,
-                pointRadius: 4,
-                pointBackgroundColor: pointColors,
-                pointBorderColor: '#fff',
-                pointBorderWidth: 1,
-                pointHoverRadius: 7
+                pointRadius: 0,          /* No dots on the line */
+                pointHoverRadius: 6,     /* Exactly one dot appears on hover / drag */
+                pointHoverBackgroundColor: themeColor,
+                pointHoverBorderColor: '#fff',
+                pointHoverBorderWidth: 2
             }]
         },
         options: {
             responsive: true,
             maintainAspectRatio: false,
+            interaction: {
+                mode: 'index',
+                intersect: false
+            },
             scales: {
                 x: {
                     grid: { color: '#2a2a2a' },
@@ -728,8 +730,7 @@ function renderChart(labels, values, pointColors, labelName, mainColor) {
             plugins: {
                 legend: { labels: { color: '#fff' } },
                 tooltip: {
-                    mode: 'index',
-                    intersect: false,
+                    enabled: true,
                     callbacks: {
                         label: function(context) {
                             let label = context.dataset.label || '';
