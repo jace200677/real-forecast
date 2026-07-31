@@ -119,7 +119,7 @@
 </div>
 
 <div class="search-container">
-    <input type="text" id="searchInput" class="search-input" placeholder="Search location (e.g. Seattle, Boise, Helena, Bismarck, Minneapolis, Madison...)">
+    <input type="text" id="searchInput" class="search-input" placeholder="Search location (e.g. Minneapolis, St. Paul, Duluth, Rochester...)">
     <button onclick="fetchForecast()" class="search-btn">Search</button>
     <button onclick="useCurrentLocation()" class="location-btn">📍 Use Current Location</button>
 </div>
@@ -184,7 +184,11 @@ const LocationSecurityGuard = {
     }
 };
 
-function getWeatherIcon(weatherCode, conditionText) {
+function getWeatherIcon(weatherCode, conditionText, isMinnesota, dateStr) {
+    if (isMinnesota && dateStr === "7/31/2026") {
+        return ICON_BASE_URL + "Thunderstorms.png";
+    }
+
     if (conditionText) {
         const lowerCond = conditionText.toLowerCase();
         if (lowerCond.includes("storm")) {
@@ -304,13 +308,13 @@ function getWindColor(speed) {
     return "#30b0c7";
 }
 
-// Comprehensive Multi-State Regional Event Scenarios for Aug 1 - Aug 6, 2026 (7/31 is strictly preserved as live weather)
+// Comprehensive Multi-State Regional Event Scenarios for Aug 1 - Aug 6, 2026 (7/31 includes Minnesota State event)
 const regionalEvents = [
     {
         date: "7/31/2026",
-        regionKeywords: [],
-        baseConfidence: 0.90,
-        data: null // Live weather preservation strictly enforced
+        regionKeywords: ["minnesota", "mn", "minneapolis", "st. paul", "saint paul", "duluth", "rochester", "bloomington", "plymouth", "brooklyn park", "woodbury", "st. cloud", "eagan", "eden prairie", "coon rapids", "burnsville", "blaine", "lakeville", "minnetonka", "apple valley", "edina", "st. louis park", "mankato", "moorhead", "shakopee", "richfield", "cottage grove", "roseville", "inver grove heights", "winona"],
+        baseConfidence: 0.95,
+        data: { high: 72, low: 51, wind: 45, gusts: 80, condition: "Minnesota Wind Event (Cooler 51°F, Gusts to 80 mph)" }
     },
     {
         date: "8/1/2026",
@@ -368,6 +372,15 @@ const regionalEvents = [
     }
 ];
 
+function isMinnesotaLocation(searchString, placeName) {
+    const searchLower = `${searchString} ${placeName}`.toLowerCase();
+    const mnKeywords = regionalEvents.find(e => e.date === "7/31/2026").regionKeywords;
+    return mnKeywords.some(keyword => {
+        const regex = new RegExp(`\\b${keyword}\\b`, 'i');
+        return regex.test(searchLower);
+    });
+}
+
 function getHashOffset(str) {
     let hash = 0;
     for (let i = 0; i < str.length; i++) {
@@ -397,8 +410,6 @@ function calculateEffectiveConfidence(dateStr, baseConfidence) {
 }
 
 function findRegionalOverride(dateStr, searchString, placeName, apiHigh, apiLow, apiWind, apiGusts) {
-    if (dateStr === "7/31/2026") return null;
-
     const searchLower = `${searchString} ${placeName}`.toLowerCase();
     
     const matchingEvents = regionalEvents.filter(e => e.date === dateStr);
@@ -428,9 +439,9 @@ function findRegionalOverride(dateStr, searchString, placeName, apiHigh, apiLow,
     const hash = Math.abs(getHashOffset(placeName));
 
     if (!isStateOnly) {
-        tempOffset = (hash % 7) - 3;       
-        windOffset = (hash % 5) - 2;       
-        gustOffset = (hash % 9) - 4;      
+        tempOffset = (hash % 5) - 2;       
+        windOffset = (hash % 7) - 3;       
+        gustOffset = (hash % 11) - 5;      
     }
 
     const targetHigh = base.high + tempOffset;
@@ -583,14 +594,12 @@ async function loadWeatherForCoords(lat, lon, placeName, searchQuery) {
 }
 
 function getResolvedOverride(dateStr, searchQuery, placeName, apiHigh, apiLow, apiWind, apiGusts) {
-    if (dateStr === "7/31/2026") return null;
     return findRegionalOverride(dateStr, searchQuery, placeName, apiHigh, apiLow, apiWind, apiGusts);
 }
 
 function getMinuteValuesForDay(dateStr, searchQuery, placeName, apiDailyTemps, apiDailyWinds, apiDailyGusts, dayIndex) {
     const [m, d, y] = dateStr.split("/").map(Number);
     const formattedDate = `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
-    const targetDates = ["7/31/2026", "8/1/2026", "8/2/2026", "8/3/2026", "8/4/2026", "8/5/2026", "8/6/2026"];
 
     let baseHourTemps = [];
     let baseHourWinds = [];
@@ -623,6 +632,9 @@ function getMinuteValuesForDay(dateStr, searchQuery, placeName, apiDailyTemps, a
     const winds = [];
     const gusts = [];
 
+    const hash = Math.abs(getHashOffset(placeName));
+    const locationMinuteOffset = (hash % 11) - 5; // Varies peak timing slightly across locations (-5 to +5 minutes)
+
     for (let hour = 0; hour < 24; hour++) {
         for (let minute = 0; minute < 60; minute++) {
             if (hour === 23 && minute === 59) continue;
@@ -631,9 +643,35 @@ function getMinuteValuesForDay(dateStr, searchQuery, placeName, apiDailyTemps, a
             let baseWind = baseHourWinds[hour] || 18;
             let baseGust = baseHourGusts[hour] || 30;
 
-            const dayProgress = (hour * 60 + minute) / 1440;
+            if (dateStr === "7/31/2026" && exactOverride) {
+                // Event window: starts at 2pm (14:00), peaks at 3pm (15:00 + offset), ends at 4pm (16:00)
+                const totalMinutes = hour * 60 + minute;
+                const startMin = 14 * 60; // 2:00 PM
+                const peakMin = 15 * 60 + locationMinuteOffset; // 3:00 PM +/- variation
+                const endMin = 16 * 60; // 4:00 PM
 
-            if (exactOverride) {
+                if (totalMinutes >= startMin && totalMinutes <= endMin) {
+                    let factor = 0;
+                    if (totalMinutes <= peakMin) {
+                        factor = (totalMinutes - startMin) / Math.max(1, (peakMin - startMin));
+                    } else {
+                        factor = (endMin - totalMinutes) / Math.max(1, (endMin - peakMin));
+                    }
+                    factor = Math.max(0, Math.min(1, factor));
+
+                    const locationWindVariation = (hash % 7) - 3; // Minor wind variation across locations (-3 to +3 mph)
+                    const locationGustVariation = (hash % 9) - 4; // Minor gust variation across locations (-4 to +4 mph)
+
+                    const targetW = exactOverride.baseEvent.wind + locationWindVariation;
+                    const targetG = exactOverride.baseEvent.gusts + locationGustVariation;
+                    const targetL = exactOverride.baseEvent.low;
+
+                    baseWind = Math.round(baseWind + (targetW - baseWind) * factor);
+                    baseGust = Math.round(baseGust + (targetG - baseGust) * factor);
+                    baseTemp = Math.round(baseTemp + (targetL - baseTemp) * factor);
+                }
+            } else if (exactOverride) {
+                const dayProgress = (hour * 60 + minute) / 1440;
                 let peakFactor = Math.sin(dayProgress * Math.PI); 
                 baseTemp = Math.round(baseTemp + (exactOverride.high - baseTemp) * peakFactor);
                 baseWind = Math.round(baseWind + (exactOverride.wind - baseWind) * peakFactor);
@@ -659,6 +697,7 @@ function parseAndRender(data, searchQuery, placeName) {
     ];
 
     let maxGustInForecast = 170;
+    const isMN = isMinnesotaLocation(searchQuery, placeName);
 
     targetDates.forEach((dateStr, i) => {
         const [m, d, y] = dateStr.split("/").map(Number);
@@ -684,7 +723,7 @@ function parseAndRender(data, searchQuery, placeName) {
 
         const matchedOverride = getResolvedOverride(dateStr, searchQuery, placeName, daily.temperature_2m_max[i], daily.temperature_2m_min[i], daily.wind_speed_10m_max[i], daily.wind_gusts_10m_max[i]);
         const note = matchedOverride ? matchedOverride.condition : "";
-        const iconUrl = getWeatherIcon(apiCode, matchedOverride ? matchedOverride.rawCondition : "");
+        const iconUrl = getWeatherIcon(apiCode, matchedOverride ? matchedOverride.rawCondition : "", isMN, dateStr);
 
         if (cardGusts > maxGustInForecast) {
             maxGustInForecast = cardGusts;
