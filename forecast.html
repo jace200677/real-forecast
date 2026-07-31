@@ -85,7 +85,7 @@ function getTempColor(temp) {
 
 // Ventusky Wind & Gust Color Scale (mph)
 function getWindColor(speed) {
-    if (speed >= 95) return "#ff00ff"; // Vivid Magenta (Extreme 100+ mph Winds)
+    if (speed >= 95) return "#ff00ff"; // Vivid Magenta
     if (speed >= 80) return "#800020"; // Deep Burgundy 
     if (speed >= 65) return "#b30000"; // Severe High Red
     if (speed >= 55) return "#e62e00"; // Red-Orange
@@ -98,41 +98,48 @@ function getWindColor(speed) {
     return "#5a2a9e";                  // Calm
 }
 
-// Base Regional Weather Event Scenarios
+// Regional Weather Event Scenarios with Confidence Ratings (0.0 to 1.0)
 const regionalEvents = [
     {
         date: "7/31/2026",
         regionKeywords: ["minnesota", "mn"],
+        confidence: 0.90, // High confidence (90% intensity target)
         data: { high: 82, low: 64, wind: 38, gusts: 75, condition: "Storms Afternoon" }
     },
     {
         date: "8/2/2026",
         regionKeywords: ["washington", "wa"],
-        data: { high: 50, low: 38, wind: 68, gusts: 105, condition: "Severe Winds >100mph" }
+        confidence: 0.85, // High confidence
+        data: { high: 50, low: 38, wind: 68, gusts: 105, condition: "High Winds >100mph" }
     },
     {
         date: "8/3/2026",
         regionKeywords: ["idaho", "id"],
+        confidence: 0.70, // Moderate-high confidence
         data: { high: 72, low: 48, wind: 20, gusts: 35, condition: "Moderate Winds" }
     },
     {
         date: "8/4/2026",
         regionKeywords: ["montana", "mt"],
+        confidence: 0.95, // Very high confidence
         data: { high: 98, low: 70, wind: 52, gusts: 88, condition: "Hot & Strong Winds" }
     },
     {
         date: "8/5/2026",
         regionKeywords: ["north dakota", "nd"],
+        confidence: 0.80, // Moderate confidence
         data: { high: 92, low: 64, wind: 44, gusts: 80, condition: "Hot & Gusty" }
     },
     {
         date: "8/6/2026",
         regionKeywords: ["minnesota", "mn"],
+        confidence: 0.92, // High confidence
         data: { high: 70, low: 34, wind: 39, gusts: 87, condition: "High Gusts (Northern MN)" }
     },
     {
         date: "8/7/2026",
         regionKeywords: ["wisconsin", "wi"],
+        confidence: 0.75, // Moderate confidence
         data: { high: 62, low: 40, wind: 55, gusts: 99, condition: "Cool / Severe Winds" }
     }
 ];
@@ -147,35 +154,19 @@ function getHashOffset(str) {
 
 function findRegionalOverride(dateStr, searchString, placeName, apiHigh, apiLow, apiWind, apiGusts) {
     const searchLower = `${searchString} ${placeName}`.toLowerCase();
-    const targetDate = new Date(dateStr).getTime();
     
-    let bestMatch = null;
-    let minDaysDiff = Infinity;
+    // STRICT CHECK: Only match exact event date
+    const event = regionalEvents.find(e => e.date === dateStr);
+    if (!event) return null;
 
-    for (const event of regionalEvents) {
-        const matchesRegion = event.regionKeywords.some(keyword => {
-            const regex = new RegExp(`\\b${keyword}\\b`, 'i');
-            return regex.test(searchLower);
-        });
+    const matchesRegion = event.regionKeywords.some(keyword => {
+        const regex = new RegExp(`\\b${keyword}\\b`, 'i');
+        return regex.test(searchLower);
+    });
 
-        if (matchesRegion) {
-            const eventDate = new Date(event.date).getTime();
-            const daysDiff = Math.round(Math.abs(targetDate - eventDate) / (1000 * 60 * 60 * 24));
+    if (!matchesRegion) return null;
 
-            // Only apply override if EXACT match or within 1 day window
-            if (daysDiff <= 1 && daysDiff < minDaysDiff) {
-                minDaysDiff = daysDiff;
-                bestMatch = { event, daysDiff };
-            }
-        }
-    }
-
-    // Return null so non-matching days use pure API data untouched
-    if (!bestMatch) return null;
-
-    const { event, daysDiff } = bestMatch;
     const base = event.data;
-
     const isStateOnly = event.regionKeywords.some(k => searchString.trim().toLowerCase() === k);
 
     let tempOffset = 0;
@@ -189,31 +180,29 @@ function findRegionalOverride(dateStr, searchString, placeName, apiHigh, apiLow,
         gustOffset = (hash % 11) - 5;      // -5 to +5 mph variance
     }
 
-    const eventHigh = base.high + tempOffset;
-    const eventLow = base.low + Math.round(tempOffset / 2);
-    const eventWind = Math.max(5, base.wind + windOffset);
-    const eventGusts = Math.max(10, base.gusts + gustOffset);
+    const targetHigh = base.high + tempOffset;
+    const targetLow = base.low + Math.round(tempOffset / 2);
+    const targetWind = Math.max(5, base.wind + windOffset);
+    const targetGusts = Math.max(10, base.gusts + gustOffset);
 
-    // Exact override day vs close day adjustment
-    if (daysDiff === 0) {
-        return {
-            high: eventHigh,
-            low: eventLow,
-            wind: eventWind,
-            gusts: eventGusts,
-            condition: isStateOnly ? base.condition : `${base.condition} - Localized`
-        };
-    } else {
-        // Close date (1 day away): scale values slightly relative to API baseline
-        const weight = 0.65;
-        return {
-            high: Math.round(eventHigh * weight + apiHigh * (1 - weight)),
-            low: Math.round(eventLow * weight + apiLow * (1 - weight)),
-            wind: Math.round(eventWind * weight + apiWind * (1 - weight)),
-            gusts: Math.round(eventGusts * weight + apiGusts * (1 - weight)),
-            condition: `Approaching System (${base.condition})`
-        };
-    }
+    // Apply confidence rating to adjust intensity on the specific override date
+    const c = Math.max(0, Math.min(1.0, event.confidence)); 
+
+    const finalHigh = Math.round(targetHigh * c + apiHigh * (1 - c));
+    const finalLow = Math.round(targetLow * c + apiLow * (1 - c));
+    const finalWind = Math.round(targetWind * c + apiWind * (1 - c));
+    const finalGusts = Math.round(targetGusts * c + apiGusts * (1 - c));
+
+    const confPercent = Math.round(c * 100);
+    const label = `${base.condition} (${confPercent}% Confidence)`;
+
+    return {
+        high: finalHigh,
+        low: finalLow,
+        wind: finalWind,
+        gusts: finalGusts,
+        condition: label
+    };
 }
 
 async function fetchForecast() {
@@ -264,20 +253,23 @@ function parseAndRender(data, searchQuery, placeName) {
     const daily = data.daily;
     const forecastData = [];
 
+    const targetDates = [
+        "7/31/2026", "8/1/2026", "8/2/2026", "8/3/2026", "8/4/2026", "8/5/2026", "8/6/2026", "8/7/2026"
+    ];
+
     let maxGustInForecast = 110;
 
-    for (let i = 0; i < daily.time.length; i++) {
-        const dateParts = daily.time[i].split("-");
-        const dateObj = new Date(dateParts[0], dateParts[1] - 1, dateParts[2]);
+    targetDates.forEach((dateStr, i) => {
+        const [m, d, y] = dateStr.split("/").map(Number);
+        const dateObj = new Date(y, m - 1, d);
         const dayLabel = i === 0 ? "Today" : daysOfWeek[dateObj.getDay()];
-        const dateStr = `${dateObj.getMonth() + 1}/${dateObj.getDate()}/${dateObj.getFullYear()}`;
 
-        const apiHigh = Math.round(daily.temperature_2m_max[i]);
-        const apiLow = Math.round(daily.temperature_2m_min[i]);
-        const apiWind = Math.round(daily.wind_speed_10m_max[i]);
-        const apiGusts = Math.round(daily.wind_gusts_10m_max[i]);
+        const apiHigh = Math.round(daily.temperature_2m_max[i] || 72);
+        const apiLow = Math.round(daily.temperature_2m_min[i] || 52);
+        const apiWind = Math.round(daily.wind_speed_10m_max[i] || 18);
+        const apiGusts = Math.round(daily.wind_gusts_10m_max[i] || 30);
 
-        // Evaluate override ONLY if this date matches or is close to an override date
+        // Check ONLY for exact override date match with confidence scaling
         const matchedOverride = findRegionalOverride(dateStr, searchQuery, placeName, apiHigh, apiLow, apiWind, apiGusts);
 
         const high = matchedOverride ? matchedOverride.high : apiHigh;
@@ -300,7 +292,7 @@ function parseAndRender(data, searchQuery, placeName) {
             note: note,
             maxGustScale: maxGustInForecast
         });
-    }
+    });
 
     renderForecast(forecastData);
 }
