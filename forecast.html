@@ -275,8 +275,15 @@ function getWindColor(speed) {
     return "#30b0c7";
 }
 
-// Regional Events extended based on specific prompt requirements
+// Regional Events mapped strictly per prompt instructions
 const regionalEvents = [
+    {
+        date: "7/31/2026",
+        regionKeywords: ["minnesota", "mn", "minneapolis", "st. paul", "saint paul", "duluth", "rochester", "bloomington", "plymouth", "brooklyn park", "woodbury", "st. cloud", "eagan", "eden prairie", "coon rapids", "burnsville", "blaine", "lakeville", "minnetonka", "apple valley", "edina", "st. louis park", "mankato", "moorhead", "shakopee", "richfield", "cottage grove", "roseville", "inver grove heights", "winona", "st. joseph", "saint joseph"],
+        type: "cooler",
+        baseConfidence: 0.95,
+        data: { tempDelta: -15, wind: 45, gusts: 80, condition: "Minnesota Storm Front (Cooler, Gusts to 80 mph)" }
+    },
     {
         date: "8/2/2026",
         regionKeywords: ["washington", "wa", "seattle", "spokane", "tacoma", "vancouver", "bellevue", "everett", "kent", "renton", "spokane valley", "federal way", "yakima", "bellingham", "kennewick", "auburn", "pasco", "marysville", "lakewood", "redmond", "richland", "shoreline", "sammamish", "burien", "olympia", "lacey", "edmonds", "bremerton", "puyallup"],
@@ -314,7 +321,7 @@ const regionalEvents = [
     },
     {
         date: "8/6/2026",
-        regionKeywords: ["minneapolis", "st. paul", "saint paul", "rochester", "bloomington", "plymouth", "brooklyn park", "woodbury", "st. cloud", "st. joseph", "saint joseph", "eagan", "eden prairie", "coon rapids", "burnsville", "blaine", "lakeville", "minnetonka", "apple valley", "edina", "st. louis park", "mankato", "shakopee", "richfield", "cottage grove", "roseville", "inver grove heights", "winona", "faribault", "austin", "owatonna", "red wing", "new ulm", "hutchinson", "marshall", "northfield", "worthington", "willmar", "fairmont", "minnesota", "mn", "southern minnesota"],
+        regionKeywords: ["minneapolis", "st. paul", "saint paul", "rochester", "bloomington", "plymouth", "brooklyn park", "woodbury", "st. cloud", "st. joseph", "saint joseph", "eagan", "eden prairie", "coon rapids", "burnsville", "blaine", "lakeville", "minnetonka", "apple valley", "edina", "st. louis park", "mankato", "shakopee", "richfield", "cottage grove", "roseville", "inver grove heights", "winona", "faribault", "austin", "owatonna", "red wing", "new ulm", "hutchinson", "marshall", "northfield", "worthington", "willmar", "fairmont", "southern minnesota"],
         type: "hotter",
         baseConfidence: 0.96,
         data: { tempDelta: 18, wind: 75, gusts: 120, condition: "Southern MN Heat Surge (Hotter Temps, 75 mph, Gusts 120 mph)" }
@@ -384,7 +391,7 @@ function findRegionalOverride(dateStr, searchString, placeName, apiHigh, apiLow,
     const base = event.data;
     const hash = Math.abs(getHashOffset(placeName));
     
-    // Vary based on location search input
+    // Vary strictly based on location search input
     const tempVar = (hash % 5) - 2; 
     const windVar = (hash % 7) - 3; 
     const gustVar = (hash % 11) - 5; 
@@ -576,21 +583,20 @@ function getMinuteValuesForDay(dateStr, searchQuery, placeName, apiDailyTemps, a
             const totalDayMins = 24 * 60;
 
             if (exactOverride) {
-                // EVENT DAY TRANSITIONS
+                // EVENT DAY: AT MIDNIGHT START CONTINUOUSLY FROM LEFT OFF VALUE (45% factor left off from 11:59pm)
                 let factor = 0;
                 let tempShift = exactOverride.baseEvent.tempDelta;
 
                 if (totalMinutes <= noonMin) {
-                    // Continues seamlessly from midnight left off, ramps to peak by 12pm
                     let progress = totalMinutes / noonMin;
-                    // Starts smoothly from 11:59pm state of day before (~40% ramp)
-                    factor = 0.4 + (0.6 * progress);
+                    // Starts continuous from left off value at midnight (~0.45) and reaches peak by 12pm (1.0)
+                    factor = 0.45 + (0.55 * progress);
                 } else if (totalMinutes > noonMin && totalMinutes <= min6pm) {
-                    // Slight fluctuation up or down until 6pm
+                    // Fluctuate slightly up or down until 6pm
                     let wave = Math.sin((totalMinutes - noonMin) / 60 * Math.PI) * 0.05;
                     factor = 1.0 + wave;
                 } else {
-                    // After 6pm, trend down winds & trend up/down temps gradually toward midnight (doesn't have to fully complete by 11:59pm)
+                    // After 6pm, trend down winds & trend up/down temps gradually toward midnight (left off value at 11:59pm)
                     let postProgress = (totalMinutes - min6pm) / (totalDayMins - min6pm);
                     factor = 1.0 - (postProgress * 0.45); 
                 }
@@ -600,10 +606,9 @@ function getMinuteValuesForDay(dateStr, searchQuery, placeName, apiDailyTemps, a
                 baseTemp = Math.round(baseTemp + (tempShift * factor));
             }
             else if (futureEventOverride) {
-                // 1 DAY BEFORE EVENT DAY
-                // Trend up winds & trend down/up temps gradually (takes its time, doesn't rush by 11:59pm)
+                // 1 DAY BEFORE EVENT DAY: Takes its time to ramp up towards peak, ends at 11:59pm at left off value (~0.45)
                 let progress = totalMinutes / totalDayMins;
-                let factor = progress * 0.45; // Takes time to ramp up smoothly toward midnight
+                let factor = progress * 0.45; 
 
                 let tempShift = futureEventOverride.baseEvent.tempDelta;
 
@@ -612,20 +617,19 @@ function getMinuteValuesForDay(dateStr, searchQuery, placeName, apiDailyTemps, a
                 baseTemp = Math.round(baseTemp + (tempShift * factor));
             }
             else if (pastEventOverride) {
-                // 1 DAY AFTER EVENT DAY
-                // Midnight continue from left off (starts at ~55% leftover factor) until 5pm when it reaches normal live weather
+                // 1 DAY AFTER EVENT DAY: AT MIDNIGHT CONTINUE FROM LEFT OFF VALUE (starts at ~0.55 factor left off from event day midnight)
                 let min5pm = 17 * 60;
                 let tempShift = pastEventOverride.baseEvent.tempDelta;
 
                 if (totalMinutes <= min5pm) {
                     let decayProgress = totalMinutes / min5pm;
-                    let factor = 0.55 * (1.0 - decayProgress); // Continuously returns back to normal by 5pm
+                    let factor = 0.55 * (1.0 - decayProgress); // Continuously returns back to normal live weather by 5pm
 
                     baseWind = Math.round(baseWind + ((pastEventOverride.baseEvent.wind - baseWind) * factor));
                     baseGust = Math.round(baseGust + ((pastEventOverride.baseEvent.gusts - baseGust) * factor));
                     baseTemp = Math.round(baseTemp + (tempShift * factor));
                 }
-                // By 5pm and beyond, it remains as normal live weather!
+                // By 5pm and beyond, it is live weather!
             }
 
             temps.push(baseTemp);
@@ -641,8 +645,9 @@ function parseAndRender(data, searchQuery, placeName) {
     const daily = data.daily;
     const forecastData = [];
 
+    // Keeping today (7/31/2026) in the sequence
     const targetDates = [
-        "8/1/2026", "8/2/2026", "8/3/2026", "8/4/2026", "8/5/2026", "8/6/2026", "8/7/2026"
+        "7/31/2026", "8/1/2026", "8/2/2026", "8/3/2026", "8/4/2026", "8/5/2026", "8/6/2026", "8/7/2026"
     ];
 
     let maxGustInForecast = 160;
@@ -901,13 +906,13 @@ function updateChartMetric() {
     const metric = document.getElementById("metricSelector").value;
     
     let dayIndex = 0;
-    const targetDates = ["8/1/2026", "8/2/2026", "8/3/2026", "8/4/2026", "8/5/2026", "8/6/2026", "8/7/2026"];
+    const targetDates = ["7/31/2026", "8/1/2026", "8/2/2026", "8/3/2026", "8/4/2026", "8/5/2026", "8/6/2026", "8/7/2026"];
     const foundIdx = targetDates.indexOf(activeDayDateStr);
     if (foundIdx !== -1) dayIndex = foundIdx;
 
-    const dummyTempsMax = { max: [72,72,72,72,72,72,72], min: [52,52,52,52,52,52,52] };
-    const dummyWinds = [18,18,18,18,18,18,18];
-    const dummyGusts = [30,30,30,30,30,30,30];
+    const dummyTempsMax = { max: [72,72,72,72,72,72,72,72], min: [52,52,52,52,52,52,52,52] };
+    const dummyWinds = [18,18,18,18,18,18,18,18];
+    const dummyGusts = [30,30,30,30,30,30,30,30];
 
     const minuteData = getMinuteValuesForDay(activeDayDateStr, activeSearchQuery, activePlaceName, dummyTempsMax, dummyWinds, dummyGusts, dayIndex);
 
