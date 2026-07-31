@@ -282,7 +282,7 @@ const regionalEvents = [
         regionKeywords: ["minnesota", "mn", "minneapolis", "st. paul", "saint paul", "duluth", "rochester", "bloomington", "plymouth", "brooklyn park", "woodbury", "st. cloud", "eagan", "eden prairie", "coon rapids", "burnsville", "blaine", "lakeville", "minnetonka", "apple valley", "edina", "st. louis park", "mankato", "moorhead", "shakopee", "richfield", "cottage grove", "roseville", "inver grove heights", "winona", "st. joseph", "saint joseph"],
         type: "cooler",
         baseConfidence: 0.95,
-        data: { tempDelta: -15, wind: 45, gusts: 80, condition: "Minnesota Storm Front (Cooler, Gusts to 80 mph)" }
+        data: { tempDelta: -15, wind: 48, gusts: 83, condition: "Minnesota Storm Peak (7PM-9PM)" }
     },
     {
         date: "8/2/2026",
@@ -583,6 +583,8 @@ function getMinuteValuesForDay(dateStr, searchQuery, placeName, apiDailyTemps, a
     const winds = [];
     const gusts = [];
 
+    const isMinnesota731 = dateStr === "7/31/2026" && exactOverride && exactOverride.rawCondition.includes("Minnesota");
+
     for (let hour = 0; hour < 24; hour++) {
         for (let minute = 0; minute < 60; minute++) {
             if (hour === 23 && minute === 59) continue;
@@ -592,25 +594,53 @@ function getMinuteValuesForDay(dateStr, searchQuery, placeName, apiDailyTemps, a
             let baseGust = baseHourGusts[hour] || 30;
 
             const totalMinutes = hour * 60 + minute;
-            const noonMin = 12 * 60;       
-            const min6pm = 18 * 60;        
-            const totalDayMins = 24 * 60;
+            const min7pm = 19 * 60; // 1140 min
+            const min8pm = 20 * 60; // 1200 min
+            const min9pm = 21 * 60; // 1260 min
 
-            if (exactOverride) {
-                // EVENT DAY: AT MIDNIGHT START CONTINUOUSLY FROM LEFT OFF VALUE (45% factor left off from 11:59pm)
+            if (isMinnesota731) {
+                // Targets built using dynamic location-seeded offsets
+                const targetWindBaseline = exactOverride.wind;  // ~48 mph baseline
+                const targetGustBaseline = exactOverride.gusts; // ~83 mph baseline
+                const targetTempDelta = exactOverride.baseEvent.tempDelta;
+
+                if (totalMinutes < min7pm) {
+                    // Before 7 PM: Live Weather Only
+                } 
+                else if (totalMinutes >= min7pm && totalMinutes <= min8pm) {
+                    // 7:00 PM to 8:00 PM: Ramp up to peak (48 mph wind / 83 mph gusts)
+                    let progress = (totalMinutes - min7pm) / (min8pm - min7pm);
+                    baseWind = Math.round(baseWind + (targetWindBaseline - baseWind) * progress);
+                    baseGust = Math.round(baseGust + (targetGustBaseline - baseGust) * progress);
+                    baseTemp = Math.round(baseTemp + (targetTempDelta * progress));
+                } 
+                else if (totalMinutes > min8pm && totalMinutes <= min9pm) {
+                    // 8:00 PM to 9:00 PM: Drop back down from peak to Live Weather
+                    let progress = (totalMinutes - min8pm) / (min9pm - min8pm);
+                    let decayFactor = 1.0 - progress;
+                    baseWind = Math.round(baseWind + (targetWindBaseline - baseWind) * decayFactor);
+                    baseGust = Math.round(baseGust + (targetGustBaseline - baseGust) * decayFactor);
+                    baseTemp = Math.round(baseTemp + (targetTempDelta * decayFactor));
+                } 
+                else {
+                    // After 9 PM: Live Weather Only
+                }
+            } 
+            else if (exactOverride) {
+                // General regional event rules for other dates/locations
+                const noonMin = 12 * 60;       
+                const min6pm = 18 * 60;        
+                const totalDayMins = 24 * 60;
                 let factor = 0;
                 let tempShift = exactOverride.baseEvent.tempDelta;
 
                 if (totalMinutes <= noonMin) {
                     let progress = totalMinutes / noonMin;
-                    // Starts continuous from left off value at midnight (~0.45) and reaches peak by 12pm (1.0)
                     factor = 0.45 + (0.55 * progress);
                 } else if (totalMinutes > noonMin && totalMinutes <= min6pm) {
-                    // Fluctuate slightly up or down until 6pm
                     let wave = Math.sin((totalMinutes - noonMin) / 60 * Math.PI) * 0.05;
                     factor = 1.0 + wave;
                 } else {
-                    // After 6pm, trend down winds & trend up/down temps gradually toward midnight (left off value at 11:59pm)
                     let postProgress = (totalMinutes - min6pm) / (totalDayMins - min6pm);
                     factor = 1.0 - (postProgress * 0.45); 
                 }
@@ -620,10 +650,8 @@ function getMinuteValuesForDay(dateStr, searchQuery, placeName, apiDailyTemps, a
                 baseTemp = Math.round(baseTemp + (tempShift * factor));
             }
             else if (futureEventOverride) {
-                // 1 DAY BEFORE EVENT DAY: Takes its time to ramp up towards peak, ends at 11:59pm at left off value (~0.45)
-                let progress = totalMinutes / totalDayMins;
+                let progress = totalMinutes / (24 * 60);
                 let factor = progress * 0.45; 
-
                 let tempShift = futureEventOverride.baseEvent.tempDelta;
 
                 baseWind = Math.round(baseWind + ((futureEventOverride.baseEvent.wind - baseWind) * factor));
@@ -631,19 +659,17 @@ function getMinuteValuesForDay(dateStr, searchQuery, placeName, apiDailyTemps, a
                 baseTemp = Math.round(baseTemp + (tempShift * factor));
             }
             else if (pastEventOverride) {
-                // 1 DAY AFTER EVENT DAY: AT MIDNIGHT CONTINUE FROM LEFT OFF VALUE (starts at ~0.55 factor left off from event day midnight)
                 let min5pm = 17 * 60;
                 let tempShift = pastEventOverride.baseEvent.tempDelta;
 
                 if (totalMinutes <= min5pm) {
                     let decayProgress = totalMinutes / min5pm;
-                    let factor = 0.55 * (1.0 - decayProgress); // Continuously returns back to normal live weather by 5pm
+                    let factor = 0.55 * (1.0 - decayProgress);
 
                     baseWind = Math.round(baseWind + ((pastEventOverride.baseEvent.wind - baseWind) * factor));
                     baseGust = Math.round(baseGust + ((pastEventOverride.baseEvent.gusts - baseGust) * factor));
                     baseTemp = Math.round(baseTemp + (tempShift * factor));
                 }
-                // By 5pm and beyond, it is live weather!
             }
 
             temps.push(baseTemp);
@@ -659,7 +685,6 @@ function parseAndRender(data, searchQuery, placeName) {
     const daily = data.daily;
     const forecastData = [];
 
-    // Keeping today (7/31/2026) in the sequence
     const targetDates = [
         "7/31/2026", "8/1/2026", "8/2/2026", "8/3/2026", "8/4/2026", "8/5/2026", "8/6/2026", "8/7/2026"
     ];
@@ -715,7 +740,7 @@ function parseAndRender(data, searchQuery, placeName) {
             cardLow = Math.min(...minuteData.temps);
             cardWind = Math.max(...minuteData.winds);
             cardGusts = Math.max(...minuteData.gusts);
-            note = matchedOverride ? matchedOverride.condition : (futureEventOverride ? "Building Event Trend" : "Post-Event Normalizing (Live by 5 PM)");
+            note = matchedOverride ? matchedOverride.condition : (futureEventOverride ? "Building Event Trend" : "Post-Event Normalizing");
             rawCondition = matchedOverride ? matchedOverride.rawCondition : (wmoConditions[apiCode] || "Partly Cloudy");
         } else {
             cardHigh = apiHigh;
