@@ -187,34 +187,73 @@ function getWeatherIcon(weatherCode, conditionText) {
     }
 }
 
-// Ventusky Temperature Color Scale (°F)
-function getTempColor(temp) {
-    if (temp >= 110) return "#7b003a";
-    if (temp >= 95)  return "#bd0042";
-    if (temp >= 85)  return "#ff3300";
-    if (temp >= 75)  return "#ffaa00";
-    if (temp >= 65)  return "#ffff00";
-    if (temp >= 55)  return "#88ff00";
-    if (temp >= 45)  return "#00ffcc";
-    if (temp >= 35)  return "#0099ff";
-    if (temp >= 20)  return "#0033cc";
-    if (temp >= 0)   return "#4b0082";
-    return "#330044";
+// Apple Weather Smooth Temperature Color Scale Lerp (°F)
+function hexToRgb(hex) {
+    let bigint = parseInt(hex.replace('#',''), 16);
+    return [(bigint >> 16) & 255, (bigint >> 8) & 255, bigint & 255];
 }
 
-// Ventusky Wind & Gust Color Scale (mph)
+function rgbToHex(r, g, b) {
+    return "#" + ((1 << 24) + (Math.round(r) << 16) + (Math.round(g) << 8) + Math.round(b)).toString(16).slice(1);
+}
+
+function interpolateColor(color1, color2, factor) {
+    let c1 = hexToRgb(color1);
+    let c2 = hexToRgb(color2);
+    let r = c1[0] + factor * (c2[0] - c1[0]);
+    let g = c1[1] + factor * (c2[1] - c1[1]);
+    let b = c1[2] + factor * (c2[2] - c1[2]);
+    return rgbToHex(r, g, b);
+}
+
+const appleTempStops = [
+    { temp: 10, color: "#1c3d5a" }, // Deep Frost Blue
+    { temp: 32, color: "#007aff" }, // Apple Ice Blue
+    { temp: 50, color: "#34c759" }, // Fresh Green
+    { temp: 68, color: "#ffcc00" }, // Warm Yellow
+    { temp: 82, color: "#ff9500" }, // Vibrant Orange
+    { temp: 95, color: "#ff3b30" }, // Hot Red
+    { temp: 105, color: "#af52de" }// Extreme Purple/Magenta
+];
+
+function getTempColor(temp) {
+    if (temp <= appleTempStops[0].temp) return appleTempStops[0].color;
+    if (temp >= appleTempStops[appleTempStops.length - 1].temp) return appleTempStops[appleTempStops.length - 1].color;
+
+    for (let i = 0; i < appleTempStops.length - 1; i++) {
+        let lowStop = appleTempStops[i];
+        let highStop = appleTempStops[i + 1];
+        if (temp >= lowStop.temp && temp <= highStop.temp) {
+            let factor = (temp - lowStop.temp) / (highStop.temp - lowStop.temp);
+            return interpolateColor(lowStop.color, highStop.color, factor);
+        }
+    }
+    return "#007aff";
+}
+
+// Apple Weather Smooth Wind & Gust Color Scale Lerp (mph)
+const appleWindStops = [
+    { speed: 0, color: "#30b0c7" },   // Calm / Light Cyan
+    { speed: 15, color: "#34c759" },  // Moderate Green
+    { speed: 30, color: "#ffcc00" },  // Breezy Yellow
+    { speed: 50, color: "#ff9500" },  // High Wind Orange
+    { speed: 75, color: "#ff3b30" },  // Severe Red
+    { speed: 100, color: "#af52de" }  // Destructive Purple/Magenta
+];
+
 function getWindColor(speed) {
-    if (speed >= 95) return "#ff00ff"; // Vivid Magenta
-    if (speed >= 80) return "#800020"; // Deep Burgundy 
-    if (speed >= 65) return "#b30000"; // Severe High Red
-    if (speed >= 55) return "#e62e00"; // Red-Orange
-    if (speed >= 45) return "#f54e00"; // High Wind
-    if (speed >= 35) return "#f5ab00"; // Strong Winds
-    if (speed >= 25) return "#f0e100"; // Moderate High
-    if (speed >= 18) return "#00c875"; // Moderate
-    if (speed >= 10) return "#00a8cc"; // Light-Moderate
-    if (speed >= 5)  return "#2b5cbf"; // Light
-    return "#5a2a9e";                  // Calm
+    if (speed <= appleWindStops[0].speed) return appleWindStops[0].color;
+    if (speed >= appleWindStops[appleWindStops.length - 1].speed) return appleWindStops[appleWindStops.length - 1].color;
+
+    for (let i = 0; i < appleWindStops.length - 1; i++) {
+        let lowStop = appleWindStops[i];
+        let highStop = appleWindStops[i + 1];
+        if (speed >= lowStop.speed && speed <= highStop.speed) {
+            let factor = (speed - lowStop.speed) / (highStop.speed - lowStop.speed);
+            return interpolateColor(lowStop.color, highStop.color, factor);
+        }
+    }
+    return "#30b0c7";
 }
 
 // Regional Weather Event Scenarios with Base Confidence Ratings (0.0 to 1.0)
@@ -274,7 +313,6 @@ function getHashOffset(str) {
 function findRegionalOverride(dateStr, searchString, placeName, apiHigh, apiLow, apiWind, apiGusts) {
     const searchLower = `${searchString} ${placeName}`.toLowerCase();
     
-    // STRICT CHECK: Only match exact event date
     const event = regionalEvents.find(e => e.date === dateStr);
     if (!event) return null;
 
@@ -294,9 +332,9 @@ function findRegionalOverride(dateStr, searchString, placeName, apiHigh, apiLow,
 
     if (!isStateOnly) {
         const hash = Math.abs(getHashOffset(placeName));
-        tempOffset = (hash % 9) - 4;       // -4 to +4 °F variance
-        windOffset = (hash % 7) - 3;       // -3 to +3 mph variance
-        gustOffset = (hash % 11) - 5;      // -5 to +5 mph variance
+        tempOffset = (hash % 9) - 4;       
+        windOffset = (hash % 7) - 3;       
+        gustOffset = (hash % 11) - 5;      
     }
 
     const targetHigh = base.high + tempOffset;
@@ -304,20 +342,15 @@ function findRegionalOverride(dateStr, searchString, placeName, apiHigh, apiLow,
     const targetWind = Math.max(5, base.wind + windOffset);
     const targetGusts = Math.max(10, base.gusts + gustOffset);
 
-    // Calculate dynamic confidence based on date proximity down to exact hours, minutes, and seconds
     const now = new Date();
-    const eventDate = new Date(dateStr); // Sets time to midnight 00:00:00 of target date
-    
-    // Difference in days (fractional with high precision)
+    const eventDate = new Date(dateStr); 
     const diffMs = eventDate.getTime() - now.getTime();
     const daysDiff = diffMs / (1000 * 60 * 60 * 24);
 
     let proximityMultiplier = 1.0;
     if (daysDiff > 0) {
-        // Future date: scales down smoothly based on exact remaining fractional days
         proximityMultiplier = Math.max(0.3, 1.0 - (daysDiff * 0.12));
     } else {
-        // Today or past date: confidence decays continuously based on hours, minutes, seconds elapsed
         const currentFractionalHour = now.getHours() + 
                                       (now.getMinutes() / 60) + 
                                       (now.getSeconds() / 3600) + 
@@ -327,7 +360,6 @@ function findRegionalOverride(dateStr, searchString, placeName, apiHigh, apiLow,
 
     const effectiveConfidence = Math.max(0, Math.min(1.0, event.baseConfidence * proximityMultiplier));
 
-    // Calculate values blended by confidence
     const finalHigh = Math.round(targetHigh * effectiveConfidence + apiHigh * (1 - effectiveConfidence));
     const finalLow = Math.round(targetLow * effectiveConfidence + apiLow * (1 - effectiveConfidence));
     const finalWind = Math.round(targetWind * effectiveConfidence + apiWind * (1 - effectiveConfidence));
@@ -342,7 +374,9 @@ function findRegionalOverride(dateStr, searchString, placeName, apiHigh, apiLow,
         wind: finalWind,
         gusts: finalGusts,
         condition: label,
-        rawCondition: base.condition
+        rawCondition: base.condition,
+        baseEvent: base,
+        effectiveConfidence: effectiveConfidence
     };
 }
 
@@ -413,7 +447,6 @@ function parseAndRender(data, searchQuery, placeName) {
         const apiWind = Math.round(daily.wind_speed_10m_max[i] || 18);
         const apiGusts = Math.round(daily.wind_gusts_10m_max[i] || 30);
 
-        // Check ONLY for exact override date match with confidence scaling
         const matchedOverride = findRegionalOverride(dateStr, searchQuery, placeName, apiHigh, apiLow, apiWind, apiGusts);
 
         const high = matchedOverride ? matchedOverride.high : apiHigh;
@@ -421,6 +454,29 @@ function parseAndRender(data, searchQuery, placeName) {
         const wind = matchedOverride ? matchedOverride.wind : apiWind;
         const gusts = matchedOverride ? matchedOverride.gusts : apiGusts;
         const note = matchedOverride ? matchedOverride.condition : "";
+
+        // OVERRIDE HOURLY DATA FOR GRAPH IF MATCHED EVENT EXISTS
+        if (matchedOverride && activeHourlyData) {
+            const [mm, dd, yy] = dateStr.split("/").map(Number);
+            const formattedDate = `${yy}-${String(mm).padStart(2, '0')}-${String(dd).padStart(2, '0')}`;
+            
+            for (let h = 0; h < activeHourlyData.time.length; h++) {
+                if (activeHourlyData.time[h].startsWith(formattedDate)) {
+                    // Shape hourly curve dynamically toward target override values based on confidence
+                    let origTemp = activeHourlyData.temperature_2m[h];
+                    let origWind = activeHourlyData.wind_speed_10m[h];
+                    let origGust = activeHourlyData.wind_gusts_10m[h];
+
+                    let targetTempSeq = matchedOverride.baseEvent.high - ((matchedOverride.baseEvent.high - matchedOverride.baseEvent.low) * 0.5 * (1 - Math.cos((h/24) * 2 * Math.PI)));
+                    let targetWindSeq = matchedOverride.baseEvent.wind * (0.7 + 0.3 * Math.sin((h/24) * Math.PI));
+                    let targetGustSeq = matchedOverride.baseEvent.gusts * (0.7 + 0.3 * Math.sin((h/24) * Math.PI));
+
+                    activeHourlyData.temperature_2m[h] = Math.round(targetTempSeq * matchedOverride.effectiveConfidence + origTemp * (1 - matchedOverride.effectiveConfidence));
+                    activeHourlyData.wind_speed_10m[h] = Math.round(targetWindSeq * matchedOverride.effectiveConfidence + origWind * (1 - matchedOverride.effectiveConfidence));
+                    activeHourlyData.wind_gusts_10m[h] = Math.round(targetGustSeq * matchedOverride.effectiveConfidence + origGust * (1 - matchedOverride.effectiveConfidence));
+                }
+            }
+        }
 
         const iconUrl = getWeatherIcon(apiCode, matchedOverride ? matchedOverride.rawCondition : "");
 
@@ -595,41 +651,42 @@ function updateChartMetric() {
 
     const labels = [];
     const values = [];
+    const pointColors = [];
 
-    // Filter hourly points matching selected date
     for (let i = 0; i < activeHourlyData.time.length; i++) {
         if (activeHourlyData.time[i].startsWith(formattedDate)) {
             const timePart = activeHourlyData.time[i].split("T")[1];
             labels.push(timePart);
 
+            let val = 0;
+            let color = "#007aff";
+
             if (metric === "temp") {
-                values.push(activeHourlyData.temperature_2m[i]);
+                val = activeHourlyData.temperature_2m[i];
+                color = getTempColor(val);
             } else if (metric === "wind") {
-                values.push(activeHourlyData.wind_speed_10m[i]);
+                val = activeHourlyData.wind_speed_10m[i];
+                color = getWindColor(val);
             } else if (metric === "gusts") {
-                values.push(activeHourlyData.wind_gusts_10m[i]);
+                val = activeHourlyData.wind_gusts_10m[i];
+                color = getWindColor(val);
             }
+
+            values.push(val);
+            pointColors.push(color);
         }
     }
 
     let labelName = "Temperature (°F)";
-    let borderColor = "#00a8cc";
-    let backgroundColor = "rgba(0, 168, 204, 0.2)";
+    let mainColor = metric === "temp" ? getTempColor(values.reduce((a,b)=>a+b,0)/values.length || 70) : getWindColor(values.reduce((a,b)=>a+b,0)/values.length || 20);
 
-    if (metric === "wind") {
-        labelName = "Wind Speed (mph)";
-        borderColor = "#00c875";
-        backgroundColor = "rgba(0, 200, 117, 0.2)";
-    } else if (metric === "gusts") {
-        labelName = "Wind Gusts (mph)";
-        borderColor = "#ff3300";
-        backgroundColor = "rgba(255, 51, 0, 0.2)";
-    }
+    if (metric === "wind") labelName = "Wind Speed (mph)";
+    if (metric === "gusts") labelName = "Wind Gusts (mph)";
 
-    renderChart(labels, values, labelName, borderColor, backgroundColor);
+    renderChart(labels, values, pointColors, labelName, mainColor);
 }
 
-function renderChart(labels, values, labelName, borderColor, backgroundColor) {
+function renderChart(labels, values, pointColors, labelName, mainColor) {
     const ctx = document.getElementById("forecastChart").getContext("2d");
 
     if (chartInstance) {
@@ -643,13 +700,16 @@ function renderChart(labels, values, labelName, borderColor, backgroundColor) {
             datasets: [{
                 label: labelName,
                 data: values,
-                borderColor: borderColor,
-                backgroundColor: backgroundColor,
-                borderWidth: 2,
+                borderColor: mainColor,
+                backgroundColor: 'rgba(0, 122, 255, 0.15)',
+                borderWidth: 3,
                 fill: true,
-                tension: 0.3,
-                pointRadius: 3,
-                pointHoverRadius: 6
+                tension: 0.35,
+                pointRadius: 4,
+                pointBackgroundColor: pointColors,
+                pointBorderColor: '#fff',
+                pointBorderWidth: 1,
+                pointHoverRadius: 7
             }]
         },
         options: {
@@ -669,7 +729,17 @@ function renderChart(labels, values, labelName, borderColor, backgroundColor) {
                 legend: { labels: { color: '#fff' } },
                 tooltip: {
                     mode: 'index',
-                    intersect: false
+                    intersect: false,
+                    callbacks: {
+                        label: function(context) {
+                            let label = context.dataset.label || '';
+                            if (label) label += ': ';
+                            if (context.parsed.y !== null) {
+                                label += context.parsed.y + (context.dataset.label.includes('Temperature') ? '°F' : ' mph');
+                            }
+                            return label;
+                        }
+                    }
                 }
             }
         }
