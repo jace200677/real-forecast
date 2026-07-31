@@ -169,27 +169,21 @@ let chartInstance = null;
 // ==========================================
 const LocationSecurityGuard = {
     isSpoofed(position) {
-        // Detects emulated or injected geolocation coordinates common in browser spoofing tools
         if (!position || !position.coords) return true;
         const { latitude, longitude, accuracy } = position.coords;
-        
-        // Check for round mock numbers or null/zero anomalies
         if (latitude === 0 && longitude === 0) return true;
         if (Number.isInteger(latitude) && Number.isInteger(longitude) && accuracy === 0) return true;
-        
         return false;
     },
 
     sanitizeCoordinates(lat, lon) {
-        // Applies precision jitter masking to prevent precise triangulation tracking via man-in-the-middle sniffing
-        const precisionFactor = 1000; // Rounds to ~100 meters obfuscation window
+        const precisionFactor = 1000;
         const safeLat = Math.round(lat * precisionFactor) / precisionFactor;
         const safeLon = Math.round(lon * precisionFactor) / precisionFactor;
         return { lat: safeLat, lon: safeLon };
     },
 
     encryptTelemetryPayload(data) {
-        // Simulates secure token signing for client-side location queries against network snoopers
         try {
             const tokenString = JSON.stringify(data);
             return btoa(encodeURIComponent(tokenString).replace(/%([0-9A-F]{2})/g, (match, p1) => String.fromCharCode('0x' + p1)));
@@ -199,7 +193,6 @@ const LocationSecurityGuard = {
     }
 };
 
-// Map WMO weather codes and custom conditions to repository icon filenames
 function getWeatherIcon(weatherCode, conditionText) {
     if (conditionText) {
         const lowerCond = conditionText.toLowerCase();
@@ -470,7 +463,6 @@ async function fetchForecast() {
 
         const place = geoData.results[0];
         
-        // Apply secure location auto-protection masking
         const securedCoords = LocationSecurityGuard.sanitizeCoordinates(place.latitude, place.longitude);
         currentLat = securedCoords.lat;
         currentLon = securedCoords.lon;
@@ -500,13 +492,11 @@ function useCurrentLocation() {
 
     navigator.geolocation.getCurrentPosition(
         async (position) => {
-            // Check for malicious location spoofing attempts
             if (LocationSecurityGuard.isSpoofed(position)) {
                 container.innerHTML = "<p style='color: #ff3b30;'>⚠️ Security Alert: Spoofed or unverified location stream intercepted. Auto-protection active.</p>";
                 return;
             }
 
-            // Apply auto-protection masking coordinates against snooping
             const rawLat = position.coords.latitude;
             const rawLon = position.coords.longitude;
             const securedCoords = LocationSecurityGuard.sanitizeCoordinates(rawLat, rawLon);
@@ -572,6 +562,88 @@ async function loadWeatherForCoords(lat, lon, placeName, searchQuery) {
     }
 }
 
+// Helper to calculate exact minute-by-minute graph array values for a specific day
+function getMinuteValuesForDay(dateStr, searchQuery, placeName, apiDailyTemps, apiDailyWinds, apiDailyGusts, dayIndex) {
+    const [m, d, y] = dateStr.split("/").map(Number);
+    const formattedDate = `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+
+    let baseHourTemps = [];
+    let baseHourWinds = [];
+    let baseHourGusts = [];
+
+    if (activeHourlyData) {
+        for (let i = 0; i < activeHourlyData.time.length; i++) {
+            if (activeHourlyData.time[i].startsWith(formattedDate)) {
+                baseHourTemps.push(activeHourlyData.temperature_2m[i]);
+                baseHourWinds.push(activeHourlyData.wind_speed_10m[i]);
+                baseHourGusts.push(activeHourlyData.wind_gusts_10m[i]);
+            }
+        }
+    }
+
+    while (baseHourTemps.length < 24) {
+        baseHourTemps.push(72);
+        baseHourWinds.push(18);
+        baseHourGusts.push(30);
+    }
+
+    let isMnStormEvent = false;
+    let matchedOverride = null;
+    if (dateStr === "7/31/2026") {
+        const apiHigh = Math.round(apiDailyTemps.max[dayIndex] || 72);
+        const apiLow = Math.round(apiDailyTemps.min[dayIndex] || 52);
+        const apiWind = Math.round(apiDailyWinds[dayIndex] || 18);
+        const apiGusts = Math.round(apiDailyGusts[dayIndex] || 30);
+        matchedOverride = findRegionalOverride("7/31/2026", searchQuery, placeName, apiHigh, apiLow, apiWind, apiGusts);
+        if (matchedOverride) {
+            isMnStormEvent = true;
+        }
+    }
+
+    const temps = [];
+    const winds = [];
+    const gusts = [];
+
+    for (let hour = 0; hour < 24; hour++) {
+        for (let minute = 0; minute < 60; minute++) {
+            if (hour === 23 && minute === 59) continue;
+
+            let baseTemp = baseHourTemps[hour] || 72;
+            let baseWind = baseHourWinds[hour] || 18;
+            let baseGust = baseHourGusts[hour] || 30;
+
+            if (isMnStormEvent && matchedOverride) {
+                const totalMinutes = hour * 60 + minute;
+                const startRise = 14 * 60;
+                const peakTime = 15 * 60;
+                const endDrop = 16 * 60;
+
+                const targetPeakTemp = matchedOverride.baseEvent.high;
+                const targetPeakWind = matchedOverride.baseEvent.wind;
+                const targetPeakGust = matchedOverride.baseEvent.gusts;
+
+                if (totalMinutes >= startRise && totalMinutes <= peakTime) {
+                    let progress = (totalMinutes - startRise) / (peakTime - startRise);
+                    baseTemp = Math.round(baseTemp + (targetPeakTemp - baseTemp) * progress);
+                    baseWind = Math.round(baseWind + (targetPeakWind - baseWind) * progress);
+                    baseGust = Math.round(baseGust + (targetPeakGust - baseGust) * progress);
+                } else if (totalMinutes > peakTime && totalMinutes <= endDrop) {
+                    let progress = (totalMinutes - peakTime) / (endDrop - peakTime);
+                    baseTemp = Math.round(targetPeakTemp + (baseTemp - targetPeakTemp) * progress);
+                    baseWind = Math.round(targetPeakWind + (baseWind - targetPeakWind) * progress);
+                    baseGust = Math.round(targetPeakGust + (baseGust - targetPeakGust) * progress);
+                }
+            }
+
+            temps.push(baseTemp);
+            winds.push(baseWind);
+            gusts.push(baseGust);
+        }
+    }
+
+    return { temps, winds, gusts };
+}
+
 function parseAndRender(data, searchQuery, placeName) {
     const daysOfWeek = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
     const daily = data.daily;
@@ -589,97 +661,43 @@ function parseAndRender(data, searchQuery, placeName) {
         const dayLabel = i === 0 ? "Today" : daysOfWeek[dateObj.getDay()];
 
         const apiCode = daily.weather_code ? daily.weather_code[i] : 0;
-        const apiHigh = Math.round(daily.temperature_2m_max[i] || 72);
-        const apiLow = Math.round(daily.temperature_2m_min[i] || 52);
-        const apiWind = Math.round(daily.wind_speed_10m_max[i] || 18);
-        const apiGusts = Math.round(daily.wind_gusts_10m_max[i] || 30);
+        
+        // Retrieve minute-by-minute derived arrays to compute exact graph min/max
+        const minuteData = getMinuteValuesForDay(
+            dateStr, 
+            searchQuery, 
+            placeName, 
+            { max: daily.temperature_2m_max, min: daily.temperature_2m_min }, 
+            daily.wind_speed_10m_max, 
+            daily.wind_gusts_10m_max, 
+            i
+        );
 
-        const matchedOverride = findRegionalOverride(dateStr, searchQuery, placeName, apiHigh, apiLow, apiWind, apiGusts);
+        // Low temp of lowest temp on graph, High temp of highest temp on graph
+        const cardLow = Math.min(...minuteData.temps);
+        const cardHigh = Math.max(...minuteData.temps);
 
-        if (matchedOverride && activeHourlyData && dateStr === "7/31/2026") {
-            const [mm, dd, yy] = dateStr.split("/").map(Number);
-            const formattedDate = `${yy}-${String(mm).padStart(2, '0')}-${String(dd).padStart(2, '0')}`;
-            
-            for (let h = 0; h < activeHourlyData.time.length; h++) {
-                if (activeHourlyData.time[h].startsWith(formattedDate)) {
-                    const hourStr = activeHourlyData.time[h].split("T")[1];
-                    const hourNum = parseInt(hourStr.split(":")[0], 10);
+        // High wind of highest wind speed on graph
+        const cardWind = Math.max(...minuteData.winds);
 
-                    let origTemp = activeHourlyData.temperature_2m[h];
-                    let origWind = activeHourlyData.wind_speed_10m[h];
-                    let origGust = activeHourlyData.wind_gusts_10m[h];
+        // High gust of highest gust speed on graph
+        const cardGusts = Math.max(...minuteData.gusts);
 
-                    let targetTemp = matchedOverride.baseEvent.high;
-                    let targetWind = matchedOverride.baseEvent.wind;
-                    let targetGust = matchedOverride.baseEvent.gusts;
-
-                    let blendWeight = 0;
-                    if (hourNum < 14) {
-                        blendWeight = 0.0;
-                    } else if (hourNum === 14 || hourNum === 15) {
-                        blendWeight = 1.0;
-                    } else if (hourNum === 16) {
-                        blendWeight = 0.0;
-                    } else {
-                        blendWeight = 0.0;
-                    }
-
-                    let finalWeight = blendWeight * matchedOverride.effectiveConfidence;
-
-                    activeHourlyData.temperature_2m[h] = Math.round(targetTemp * finalWeight + origTemp * (1 - finalWeight));
-                    activeHourlyData.wind_speed_10m[h] = Math.round(targetWind * finalWeight + origWind * (1 - finalWeight));
-                    activeHourlyData.wind_gusts_10m[h] = Math.round(targetGust * finalWeight + origGust * (1 - finalWeight));
-                }
-            }
-        }
-
-        let calcHigh = apiHigh;
-        let calcLow = apiLow;
-        let calcWind = apiWind;
-        let calcGusts = apiGusts;
-
-        if (activeHourlyData) {
-            const [mm, dd, yy] = dateStr.split("/").map(Number);
-            const formattedDate = `${yy}-${String(mm).padStart(2, '0')}-${String(dd).padStart(2, '0')}`;
-            let dayTemps = [];
-            let dayWinds = [];
-            let dayGusts = [];
-
-            for (let h = 0; h < activeHourlyData.time.length; h++) {
-                if (activeHourlyData.time[h].startsWith(formattedDate)) {
-                    dayTemps.push(activeHourlyData.temperature_2m[h]);
-                    dayWinds.push(activeHourlyData.wind_speed_10m[h]);
-                    dayGusts.push(activeHourlyData.wind_gusts_10m[h]);
-                }
-            }
-
-            if (dayTemps.length > 0) {
-                calcHigh = Math.max(...dayTemps);
-                calcLow = Math.min(...dayTemps);
-                calcWind = Math.max(...dayWinds);
-                calcGusts = Math.max(...dayGusts);
-            }
-        }
-
-        const high = matchedOverride ? calcHigh : apiHigh;
-        const low = matchedOverride ? calcLow : apiLow;
-        const wind = matchedOverride ? calcWind : apiWind;
-        const gusts = matchedOverride ? calcGusts : apiGusts;
+        const matchedOverride = findRegionalOverride(dateStr, searchQuery, placeName, daily.temperature_2m_max[i], daily.temperature_2m_min[i], daily.wind_speed_10m_max[i], daily.wind_gusts_10m_max[i]);
         const note = matchedOverride ? matchedOverride.condition : "";
-
         const iconUrl = getWeatherIcon(apiCode, matchedOverride ? matchedOverride.rawCondition : "");
 
-        if (gusts > maxGustInForecast) {
-            maxGustInForecast = gusts;
+        if (cardGusts > maxGustInForecast) {
+            maxGustInForecast = cardGusts;
         }
 
         forecastData.push({
             day: dayLabel,
             dateStr: dateStr,
-            high: high,
-            low: low,
-            wind: wind,
-            gusts: gusts,
+            high: cardHigh,
+            low: cardLow,
+            wind: cardWind,
+            gusts: cardGusts,
             note: note,
             iconUrl: iconUrl,
             maxGustScale: maxGustInForecast
@@ -889,35 +907,17 @@ function updateChartMetric() {
     if (!activeHourlyData || !activeDayDateStr) return;
 
     const metric = document.getElementById("metricSelector").value;
-    const [m, d, y] = activeDayDateStr.split("/").map(Number);
-    const formattedDate = `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+    
+    let dayIndex = 0;
+    const targetDates = ["7/31/2026", "8/1/2026", "8/2/2026", "8/3/2026", "8/4/2026", "8/5/2026", "8/6/2026", "8/7/2026"];
+    const foundIdx = targetDates.indexOf(activeDayDateStr);
+    if (foundIdx !== -1) dayIndex = foundIdx;
 
-    let baseHourTemps = [];
-    let baseHourWinds = [];
-    let baseHourGusts = [];
+    const dummyTempsMax = { max: [72,72,72,72,72,72,72,72], min: [52,52,52,52,52,52,52,52] };
+    const dummyWinds = [18,18,18,18,18,18,18,18];
+    const dummyGusts = [30,30,30,30,30,30,30,30];
 
-    for (let i = 0; i < activeHourlyData.time.length; i++) {
-        if (activeHourlyData.time[i].startsWith(formattedDate)) {
-            baseHourTemps.push(activeHourlyData.temperature_2m[i]);
-            baseHourWinds.push(activeHourlyData.wind_speed_10m[i]);
-            baseHourGusts.push(activeHourlyData.wind_gusts_10m[i]);
-        }
-    }
-
-    while (baseHourTemps.length < 24) {
-        baseHourTemps.push(72);
-        baseHourWinds.push(18);
-        baseHourGusts.push(30);
-    }
-
-    let isMnStormEvent = false;
-    let matchedOverride = null;
-    if (activeDayDateStr === "7/31/2026") {
-        matchedOverride = findRegionalOverride("7/31/2026", activeSearchQuery, activePlaceName, 72, 52, 18, 30);
-        if (matchedOverride) {
-            isMnStormEvent = true;
-        }
-    }
+    const minuteData = getMinuteValuesForDay(activeDayDateStr, activeSearchQuery, activePlaceName, dummyTempsMax, dummyWinds, dummyGusts, dayIndex);
 
     const labels = [];
     const values = [];
@@ -931,48 +931,20 @@ function updateChartMetric() {
             labels.push(timeLabel);
 
             let val = 0;
-            let color = "#007aff";
-
-            let baseVal = 0;
-            let targetPeak = 0;
+            let indexInDay = hour * 60 + minute;
+            if (indexInDay >= minuteData.temps.length) {
+                indexInDay = minuteData.temps.length - 1;
+            }
 
             if (metric === "temp") {
-                baseVal = baseHourTemps[hour] || 72;
-                if (matchedOverride) targetPeak = matchedOverride.baseEvent.high;
+                val = minuteData.temps[indexInDay];
             } else if (metric === "wind") {
-                baseVal = baseHourWinds[hour] || 18;
-                if (matchedOverride) targetPeak = matchedOverride.baseEvent.wind;
+                val = minuteData.winds[indexInDay];
             } else if (metric === "gusts") {
-                baseVal = baseHourGusts[hour] || 30;
-                if (matchedOverride) targetPeak = matchedOverride.baseEvent.gusts;
+                val = minuteData.gusts[indexInDay];
             }
 
-            if (isMnStormEvent) {
-                const totalMinutes = hour * 60 + minute;
-                const startRise = 14 * 60;     // 2:00 PM
-                const peakTime = 15 * 60;      // 3:00 PM
-                const endDrop = 16 * 60;       // 4:00 PM
-
-                if (totalMinutes < startRise) {
-                    val = baseVal;
-                } else if (totalMinutes >= startRise && totalMinutes <= peakTime) {
-                    let progress = (totalMinutes - startRise) / (peakTime - startRise);
-                    val = Math.round(baseVal + (targetPeak - baseVal) * progress);
-                } else if (totalMinutes > peakTime && totalMinutes <= endDrop) {
-                    let progress = (totalMinutes - peakTime) / (endDrop - peakTime);
-                    val = Math.round(targetPeak + (baseVal - targetPeak) * progress);
-                } else {
-                    val = baseVal;
-                }
-            } else {
-                val = baseVal;
-            }
-
-            if (metric === "temp") {
-                color = getTempColor(val);
-            } else {
-                color = getWindColor(val);
-            }
+            let color = metric === 'temp' ? getTempColor(val) : getWindColor(val);
 
             values.push(val);
             segmentColors.push(color);
