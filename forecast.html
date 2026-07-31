@@ -683,24 +683,31 @@ function getMinuteValuesForDay(dateStr, searchQuery, placeName, apiDailyTemps, a
                     baseTemp = Math.round(baseTemp + (targetL - baseTemp) * factor);
 
                 } else {
-                    // General Event Days:
-                    // The day before the event date on that night do NOT trend towards live weather values.
-                    // On the event day itself, does NOT trend towards live weather (stays locked/peaked), 
-                    // continuing into the morning of the day after the event date, peaking before 5 PM on that following day, 
-                    // and then trending to live weather.
+                    // Rule Implementation:
+                    // - The day before the event date on that night do NOT trend down for winds and do NOT trend up for temperatures towards live weather values.
+                    // - On the event day itself, does NOT trend down for winds and do NOT trend up for temperatures towards live weather.
+                    // - Continues into the morning of the day after the event date, and peaks before 5 PM on that following day for trends to live weather.
                     
-                    // Let's implement this precise timeline rule:
-                    // We check if this is the event day or the morning after the event date.
-                    // Since getMinuteValuesForDay runs per card date, we can evaluate relative to dateStr.
-                    // Let's assume standard event day profiles peak before 5 PM and blend.
-                    const noonPeakMin = 12 * 60 + locationMinuteOffset;
+                    const eventDateObj = new Date(dateStr);
+                    const targetDatesArray = ["7/31/2026", "8/1/2026", "8/2/2026", "8/3/2026", "8/4/2026", "8/5/2026", "8/6/2026"];
+                    
+                    // We can inspect whether dayIndex corresponds to day-before, event-day, or day-after.
+                    // Let's identify event index dynamically or check relative position.
+                    // Instead of strict date matching alone, let's apply the exact mathematical constraint requested:
+                    // Night before & event day & morning after: maintain peak/event values without premature blending.
+                    // Only after 5 PM (17:00) on the day *after* the event date do we blend back down to live weather.
+                    
+                    const targetPeakMin = 17 * 60 + locationMinuteOffset; // 5:00 PM peak
                     const midnightEndMin = 23 * 60 + 59;
 
-                    let factor = 1.0; // Maintain event profile through event night & morning after
-                    if (totalMinutes >= noonPeakMin) {
-                        const postDuration = midnightEndMin - noonPeakMin;
-                        const elapsedPost = totalMinutes - noonPeakMin;
-                        factor = Math.max(0, 1.0 - (elapsedPost / Math.max(1, postDuration)));
+                    let factor = 1.0; 
+                    if (dayIndex >= 2) { 
+                        // For day after or subsequent fade phases, start blending after 5 PM peak
+                        if (totalMinutes >= targetPeakMin) {
+                            const postDuration = midnightEndMin - targetPeakMin;
+                            const elapsedPost = totalMinutes - targetPeakMin;
+                            factor = Math.max(0, 1.0 - (elapsedPost / Math.max(1, postDuration)));
+                        }
                     }
 
                     const locationWindVariation = (hash % 7) - 3;
