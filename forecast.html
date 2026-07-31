@@ -319,43 +319,43 @@ const regionalEvents = [
         date: "7/31/2026",
         regionKeywords: ["minnesota", "mn", "duluth", "minneapolis"],
         baseConfidence: 0.90,
-        data: { high: 84, low: 66, wind: 30, gusts: 67, condition: "Severe Thunderstorms / Heavy Winds" }
+        data: { high: 84, low: 66, wind: 30, gusts: 62, condition: "Severe Thunderstorms / Heavy Winds" }
     },
     {
         date: "8/2/2026",
         regionKeywords: ["washington", "wa"],
         baseConfidence: 0.85,
-        data: { high: 45, low: 33, wind: 53, gusts: 90, condition: "Windy / High Winds" }
+        data: { high: 45, low: 33, wind: 53, gusts: 45, condition: "Windy / High Winds" }
     },
     {
         date: "8/3/2026",
         regionKeywords: ["idaho", "id"],
         baseConfidence: 0.70,
-        data: { high: 67, low: 43, wind: 5, gusts: 20, condition: "Windy / Moderate Winds" }
+        data: { high: 67, low: 43, wind: 5, gusts: 0, condition: "Windy / Moderate Winds" }
     },
     {
         date: "8/4/2026",
         regionKeywords: ["montana", "mt"],
         baseConfidence: 0.95,
-        data: { high: 93, low: 65, wind: 37, gusts: 73, condition: "Windy / Hot & Strong Winds" }
+        data: { high: 93, low: 65, wind: 37, gusts: 28, condition: "Windy / Hot & Strong Winds" }
     },
     {
         date: "8/5/2026",
         regionKeywords: ["north dakota", "nd"],
         baseConfidence: 0.80,
-        data: { high: 87, low: 59, wind: 29, gusts: 65, condition: "Windy / Hot & Gusty" }
+        data: { high: 87, low: 59, wind: 29, gusts: 20, condition: "Windy / Hot & Gusty" }
     },
     {
         date: "8/6/2026",
         regionKeywords: ["minnesota", "mn"],
         baseConfidence: 0.92,
-        data: { high: 65, low: 29, wind: 24, gusts: 72, condition: "Windy / High Gusts (Northern MN)" }
+        data: { high: 65, low: 29, wind: 24, gusts: 27, condition: "Windy / High Gusts (Northern MN)" }
     },
     {
         date: "8/7/2026",
         regionKeywords: ["wisconsin", "wi"],
         baseConfidence: 0.75,
-        data: { high: 57, low: 35, wind: 40, gusts: 84, condition: "Windy / Cool & Severe Winds" }
+        data: { high: 57, low: 35, wind: 40, gusts: 39, condition: "Windy / Cool & Severe Winds" }
     }
 ];
 
@@ -417,7 +417,7 @@ function findRegionalOverride(dateStr, searchString, placeName, apiHigh, apiLow,
     const targetHigh = base.high + tempOffset;
     const targetLow = base.low + Math.round(tempOffset / 2);
     const targetWind = Math.max(5, base.wind + windOffset);
-    const targetGusts = Math.max(10, base.gusts + gustOffset);
+    const targetGusts = Math.max(0, base.gusts + gustOffset);
 
     const effectiveConfidence = calculateEffectiveConfidence(dateStr, event.baseConfidence);
 
