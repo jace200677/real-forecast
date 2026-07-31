@@ -313,7 +313,7 @@ function getWindColor(speed) {
     return "#30b0c7";
 }
 
-// Regional Weather Event Scenarios with Base Confidence Ratings (0.0 to 1.0)
+// Updated Regional Weather Event Scenarios with Custom Baselines & East Coast Movement
 const regionalEvents = [
     {
         date: "7/31/2026",
@@ -322,40 +322,52 @@ const regionalEvents = [
         data: { high: 84, low: 66, wind: 30, gusts: 62, condition: "Severe Thunderstorms / Heavy Winds" }
     },
     {
+        date: "8/1/2026",
+        regionKeywords: ["united states", "usa", "national", "east coast", "washington", "idaho", "montana", "north dakota", "minnesota", "wisconsin"],
+        baseConfidence: 0.88,
+        data: { high: 78, low: 58, wind: 35, gusts: 70, condition: "Transitioning System / High Winds" }
+    },
+    {
         date: "8/2/2026",
         regionKeywords: ["washington", "wa"],
         baseConfidence: 0.85,
-        data: { high: 45, low: 33, wind: 53, gusts: 55, condition: "Windy / High Winds" }
+        data: { high: 38, low: 26, wind: 70, gusts: 110, condition: "Colder / High Winds & Severe Gusts" }
     },
     {
         date: "8/3/2026",
         regionKeywords: ["idaho", "id"],
         baseConfidence: 0.70,
-        data: { high: 67, low: 43, wind: 5, gusts: 10, condition: "Windy / Moderate Winds" }
+        data: { high: 76, low: 52, wind: 30, gusts: 62, condition: "Warmer / Moderate Winds & Gusts" }
     },
     {
         date: "8/4/2026",
         regionKeywords: ["montana", "mt"],
         baseConfidence: 0.95,
-        data: { high: 93, low: 65, wind: 37, gusts: 38, condition: "Windy / Hot & Strong Winds" }
+        data: { high: 88, low: 60, wind: 60, gusts: 100, condition: "Warmer / Strong Winds & Extreme Gusts" }
     },
     {
         date: "8/5/2026",
         regionKeywords: ["north dakota", "nd"],
         baseConfidence: 0.80,
-        data: { high: 87, low: 59, wind: 29, gusts: 30, condition: "Windy / Hot & Gusty" }
+        data: { high: 90, low: 62, wind: 63, gusts: 130, condition: "Warmer / Severe High Winds & Extreme Gusts" }
     },
     {
         date: "8/6/2026",
-        regionKeywords: ["minnesota", "mn"],
+        regionKeywords: ["minnesota", "mn", "northern minnesota"],
         baseConfidence: 0.92,
-        data: { high: 65, low: 29, wind: 24, gusts: 37, condition: "Windy / High Gusts (Northern MN)" }
+        data: { high: 74, low: 48, wind: 55, gusts: 100, condition: "Warmer / High Sustained Winds & Severe Gusts" }
     },
     {
         date: "8/7/2026",
         regionKeywords: ["wisconsin", "wi"],
         baseConfidence: 0.75,
-        data: { high: 57, low: 35, wind: 40, gusts: 49, condition: "Windy / Cool & Severe Winds" }
+        data: { high: 50, low: 32, wind: 67, gusts: 120, condition: "Cooler / Severe Winds & Destructive Gusts" }
+    },
+    {
+        date: "8/8/2026",
+        regionKeywords: ["united states", "usa", "national", "east coast"],
+        baseConfidence: 0.88,
+        data: { high: 46, low: 30, wind: 75, gusts: 125, condition: "Cooler / Moving to East Coast / Severe Winds" }
     }
 ];
 
@@ -649,10 +661,10 @@ function parseAndRender(data, searchQuery, placeName) {
     const forecastData = [];
 
     const targetDates = [
-        "7/31/2026", "8/1/2026", "8/2/2026", "8/3/2026", "8/4/2026", "8/5/2026", "8/6/2026", "8/7/2026"
+        "7/31/2026", "8/1/2026", "8/2/2026", "8/3/2026", "8/4/2026", "8/5/2026", "8/6/2026"
     ];
 
-    let maxGustInForecast = 110;
+    let maxGustInForecast = 130;
 
     targetDates.forEach((dateStr, i) => {
         const [m, d, y] = dateStr.split("/").map(Number);
@@ -908,13 +920,13 @@ function updateChartMetric() {
     const metric = document.getElementById("metricSelector").value;
     
     let dayIndex = 0;
-    const targetDates = ["7/31/2026", "8/1/2026", "8/2/2026", "8/3/2026", "8/4/2026", "8/5/2026", "8/6/2026", "8/7/2026"];
+    const targetDates = ["7/31/2026", "8/1/2026", "8/2/2026", "8/3/2026", "8/4/2026", "8/5/2026", "8/6/2026"];
     const foundIdx = targetDates.indexOf(activeDayDateStr);
     if (foundIdx !== -1) dayIndex = foundIdx;
 
-    const dummyTempsMax = { max: [72,72,72,72,72,72,72,72], min: [52,52,52,52,52,52,52,52] };
-    const dummyWinds = [18,18,18,18,18,18,18,18];
-    const dummyGusts = [30,30,30,30,30,30,30,30];
+    const dummyTempsMax = { max: [72,72,72,72,72,72,72], min: [52,52,52,52,52,52,52] };
+    const dummyWinds = [18,18,18,18,18,18,18];
+    const dummyGusts = [30,30,30,30,30,30,30];
 
     const minuteData = getMinuteValuesForDay(activeDayDateStr, activeSearchQuery, activePlaceName, dummyTempsMax, dummyWinds, dummyGusts, dayIndex);
 
