@@ -684,8 +684,8 @@ function getMinuteValuesForDay(dateStr, searchQuery, placeName, apiDailyTemps, a
                 const localGustPeak = 75 + ((hash % 15) - 7);    
 
                 // Target ending values after 9 PM down-trend
-                const targetEndWind = 15;
-                const targetEndGust = 30;
+                const targetEndWind = 5;
+                const targetEndGust = 10;
 
                 // Confidence trending up to 100% (1.0) by 5 PM
                 let confidenceFactor = totalMinutes <= min5pm ? (totalMinutes / min5pm) : 1.0;
