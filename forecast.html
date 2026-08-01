@@ -1599,13 +1599,20 @@ function renderChart(labels, values, segmentColors, labelName, metric) {
     const minVal = Math.min(...values);
     const maxVal = Math.max(...values);
     
-    const numStops = 6;
-    for (let s = 0; s <= numStops; s++) {
-        let ratio = s / numStops;
+    for (let s = 0; s <= 6; s++) {
+        let ratio = s / 6;
         let interpolatedVal = maxVal - (ratio * (maxVal - minVal));
         let stopColor = metric === 'temp' ? getTempColor(interpolatedVal) : getWindColor(interpolatedVal);
-        let alpha = 0.45 * (1 - ratio * 0.7);
-        gradient.addColorStop(ratio, hexToRgba(stopColor, alpha));
+        gradient.addColorStop(ratio, hexToRgba(stopColor, 0.45 * (1 - ratio * 0.7)));
+    }
+
+    // Determine current time index if viewing today's date (8/1/2026)
+    const now = new Date();
+    const todayStr = `${now.getMonth() + 1}/${now.getDate()}/${now.getFullYear()}`;
+    let currentIndex = -1;
+    
+    if (activeDayDateStr === todayStr) {
+        currentIndex = now.getHours() * 60 + now.getMinutes();
     }
 
     window.chartInstance = new Chart(ctx, {
@@ -1617,12 +1624,18 @@ function renderChart(labels, values, segmentColors, labelName, metric) {
                 data: values, 
                 backgroundColor: gradient,
                 borderWidth: 2, 
-                borderDash: [6, 6], // Apple-style dashed line
+                borderDash: [6, 6],
                 fill: true, 
                 tension: 0.4, 
                 cubicInterpolationMode: 'monotone', 
-                pointRadius: 0,
-                pointHoverRadius: 5, 
+                // Target the exact current minute index for a visible point marker, hide others
+                pointRadius: function(context) {
+                    return context.dataIndex === currentIndex ? 6 : 0;
+                },
+                pointBackgroundColor: '#ffffff',
+                pointBorderColor: '#00a8cc',
+                pointBorderWidth: 2,
+                pointHoverRadius: 8, 
                 pointHoverBorderColor: '#fff', 
                 pointHoverBorderWidth: 2,
                 pointHoverBackgroundColor: function(context) { return segmentColors[context.dataIndex] || '#fff'; },
@@ -1640,29 +1653,21 @@ function renderChart(labels, values, segmentColors, labelName, metric) {
                     ticks: {
                         color: '#8e8e93', 
                         maxTicksLimit: 6,
-                        font: { size: 11, family: '-apple-system, BlinkMacSystemFont, sans-serif' }
+                        font: { size: 11 }
                     }
                 },
                 y: {
-                    position: 'right', // Apple Weather places the value scale on the right
+                    position: 'right',
                     grid: { color: '#2a2a2a', drawBorder: false },
                     ticks: {
                         color: '#8e8e95',
-                        font: { size: 11, family: '-apple-system, BlinkMacSystemFont, sans-serif' },
-                        // Handles large numbers cleanly by adding shorthand units if needed
-                        callback: function(value) {
-                            if (value >= 1000) {
-                                return (value / 1000).toFixed(1) + 'k';
-                            }
-                            return value;
-                        }
+                        font: { size: 11 }
                     },
-                    // Ensures big values don't clip at the top edge of the chart card
                     suggestedMax: maxVal + (maxVal - minVal) * 0.15 
                 }
             },
             plugins: {
-                legend: { display: false }, // Apple Weather hides bulky legends in favor of card headers
+                legend: { display: false },
                 tooltip: {
                     enabled: true,
                     backgroundColor: 'rgba(30, 30, 30, 0.9)',
@@ -1675,6 +1680,9 @@ function renderChart(labels, values, segmentColors, labelName, metric) {
                             if (label) label += ': ';
                             if (context.parsed.y !== null) {
                                 label += context.parsed.y.toLocaleString() + (metric === 'temp' ? '°' : ' mph');
+                                if (context.dataIndex === currentIndex) {
+                                    label += ' (Current Time)';
+                                }
                             }
                             return label;
                         }
