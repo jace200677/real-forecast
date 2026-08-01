@@ -600,12 +600,20 @@ function getMinuteValuesForDay(dateStr, searchQuery, placeName, apiDailyTemps, a
     const prevEventOverride = findRegionalOverride(prevDateStr, searchQuery, placeName, apiHigh, apiLow, apiWind, apiGusts);
     const wasPrevDayMN731 = (prevDateStr === "7/31/2026" && isMN);
 
-    // Location-based deterministic hash offset for non-MN 7/31 locations
+    // Location-based hash for dynamic offsets
     const locationSeed = `${searchQuery.toLowerCase().trim()}_${placeName.toLowerCase().trim()}`;
     const hash = Math.abs(getHashOffset(locationSeed));
-    const tempVar = (hash % 7) - 3;   // -3 to +3 °F shift
-    const windVar = (hash % 5) - 2;   // -2 to +2 mph shift
-    const gustVar = (hash % 9) - 4;   // -4 to +4 mph shift
+
+    // Dynamic targets for MN 7/31 event per location:
+    // Sustained Wind Peak: between 42 mph and 54 mph
+    // Wind Gust Peak: between 78 mph and 96 mph
+    const mnTargetWind = 48 + ((hash % 13) - 6); 
+    const mnTargetGust = 89 + ((hash % 19) - 10);
+
+    // Location-seeded shifts for Non-MN locations on 7/31
+    const tempVar = (hash % 7) - 3;   // -3 to +3 °F
+    const windVar = (hash % 5) - 2;   // -2 to +2 mph
+    const gustVar = (hash % 9) - 4;   // -4 to +4 mph
 
     const temps = [];
     const winds = [];
@@ -619,9 +627,9 @@ function getMinuteValuesForDay(dateStr, searchQuery, placeName, apiDailyTemps, a
     if (wasPrevDayMN731) {
         const base22Wind = activeHourlyData ? (baseHourWinds[22] || 18) : 18;
         const base22Gust = activeHourlyData ? (baseHourGusts[22] || 30) : 30;
-        const progress1159 = (59) / 60;
-        startWind1159 = Math.round(48 + (base22Wind - 48) * progress1159);
-        startGust1159 = Math.round(89 + (base22Gust - 89) * progress1159);
+        const progress1159 = 59 / 60;
+        startWind1159 = Math.round(mnTargetWind + (base22Wind - mnTargetWind) * progress1159);
+        startGust1159 = Math.round(mnTargetGust + (base22Gust - mnTargetGust) * progress1159);
         startTemp1159 = baseHourTemps[0];
     } else if (prevEventOverride) {
         const factor1159 = 0.55;
@@ -648,22 +656,22 @@ function getMinuteValuesForDay(dateStr, searchQuery, placeName, apiDailyTemps, a
 
             if (dateStr === "7/31/2026") {
                 if (isMN) {
-                    // Minnesota Evening Severe Event Curve
+                    // Minnesota Evening Severe Event Curve (Location-Varied Peak)
                     const min8pm = 20 * 60;
                     const min9pm = 21 * 60;
                     const min10pm = 22 * 60;
 
                     if (totalMinutes >= min8pm && totalMinutes < min9pm) {
                         const progress = (totalMinutes - min8pm) / 60;
-                        baseWind = Math.round(baseWind + (48 - baseWind) * progress);
-                        baseGust = Math.round(baseGust + (89 - baseGust) * progress);
+                        baseWind = Math.round(baseWind + (mnTargetWind - baseWind) * progress);
+                        baseGust = Math.round(baseGust + (mnTargetGust - baseGust) * progress);
                     } else if (totalMinutes >= min9pm && totalMinutes < min10pm) {
                         const progress = (totalMinutes - min9pm) / 60;
-                        baseWind = Math.round(48 + (baseHourWinds[22] - 48) * progress);
-                        baseGust = Math.round(89 + (baseHourGusts[22] - 89) * progress);
+                        baseWind = Math.round(mnTargetWind + (baseHourWinds[22] - mnTargetWind) * progress);
+                        baseGust = Math.round(mnTargetGust + (baseHourGusts[22] - mnTargetGust) * progress);
                     }
                 } else {
-                    // Non-Minnesota: Apply location-seeded variation onto live weather baseline
+                    // Non-Minnesota: Location-seeded variation onto live weather baseline
                     baseTemp = Math.round(baseTemp + tempVar);
                     baseWind = Math.max(0, Math.round(baseWind + windVar));
                     baseGust = Math.max(baseWind, Math.round(baseGust + gustVar));
