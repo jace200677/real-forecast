@@ -646,8 +646,34 @@ function getMinuteValuesForDay(dateStr, searchQuery, placeName, apiDailyTemps, a
             let baseGust = baseHourGusts[hour] || 30;
 
             const totalMinutes = hour * 60 + minute;
+            if (dateStr === "8/1/2026" && isMN) {
+                const min1pm = 13 * 60;
+                const min5pm = 17 * 60;
+                const minMidnight = 24 * 60;
 
-            if (dateStr === "7/31/2026") {
+                // Location-specific variation seed based on searched input
+                const locationSeed = `${searchQuery.toLowerCase().trim()}_${placeName.toLowerCase().trim()}`;
+                const hash = Math.abs(getHashOffset(locationSeed));
+                const localWindBaseline = 38 + ((hash % 7) - 3);   // Varies slightly across MN inputs
+                const localGustPeak = 73 + ((hash % 11) - 5);      // Varies slightly across MN inputs
+
+                if (totalMinutes >= min1pm && totalMinutes < (min1pm + 60)) {
+                    // Ramp up from live weather to localized event baseline between 1 PM and 2 PM
+                    const progress = (totalMinutes - min1pm) / 60;
+                    baseWind = Math.round(baseWind + (localWindBaseline - baseWind) * progress);
+                    baseGust = Math.round(baseGust + (localGustPeak - baseGust) * progress);
+                } else if (totalMinutes >= (min1pm + 60) && totalMinutes < min5pm) {
+                    // Maintain event baseline from 2 PM to 5 PM
+                    baseWind = localWindBaseline;
+                    baseGust = localGustPeak;
+                } else if (totalMinutes >= min5pm && totalMinutes < minMidnight) {
+                    // Transition back down from event peak to live weather between 5 PM and midnight
+                    const progress = (totalMinutes - min5pm) / (minMidnight - min5pm);
+                    baseWind = Math.round(localWindBaseline + (baseHourWinds[23] - localWindBaseline) * progress);
+                    baseGust = Math.round(localGustPeak + (baseHourGusts[23] - localGustPeak) * progress);
+                }
+            }
+            else if (dateStr === "7/31/2026") {
                 if (isMN) {
                     const min10pm = 22 * 60;
                     const min11pm = 23 * 60;
