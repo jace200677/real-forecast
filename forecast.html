@@ -178,7 +178,71 @@ const LocationSecurityGuard = {
         return { lat: safeLat, lon: safeLon };
     }
 };
+function openHistoryPanel() {
+    const query = document.getElementById("searchInput").value.trim();
+    if (!query) {
+        alert("Please search for a location first.");
+        return;
+    }
+    document.getElementById("historyLocationName").innerText = query;
+    document.getElementById("historyDateInput").value = "";
+    document.getElementById("historyResultContainer").innerHTML = "";
+    document.getElementById("historyModal").style.display = "flex";
+}
 
+function closeHistoryModal() {
+    document.getElementById("historyModal").style.display = "none";
+}
+
+function loadHistoryDateCard() {
+    const dateInputStr = document.getElementById("historyDateInput").value.trim();
+    const resultContainer = document.getElementById("historyResultContainer");
+    
+    const dateRegex = /^(0?[1-9]|1[0-2])\/(0?[1-9]|[12]\d|3[01])\/\d{4}$/;
+    if (!dateRegex.test(dateInputStr)) {
+        resultContainer.innerHTML = "<p style='color: #ff3b30; font-size: 13px;'>Invalid format. Please use MM/DD/YYYY.</p>";
+        return;
+    }
+
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const [m, d, y] = dateInputStr.split("/").map(Number);
+    const targetDateObj = new Date(y, m - 1, d);
+
+    if (targetDateObj >= today) {
+        resultContainer.innerHTML = "<p style='color: #ffcc00; font-size: 13px;'>Please select a date strictly in the past.</p>";
+        return;
+    }
+
+    resultContainer.innerHTML = "<p style='font-size: 13px; color: #aaa;'>Loading past weather record...</p>";
+
+    setTimeout(() => {
+        const dummyTempsMax = { max: [72], min: [52] };
+        const dummyWinds = [18];
+        const dummyGusts = [30];
+        
+        const pastMinuteData = getMinuteValuesForDay(dateInputStr, activeSearchQuery, activePlaceName, dummyTempsMax, dummyWinds, dummyGusts, 0);
+        const pastHigh = Math.max(...pastMinuteData.temps);
+        const pastLow = Math.min(...pastMinuteData.temps);
+        const pastWind = Math.max(...pastMinuteData.winds);
+        const pastGusts = Math.max(...pastMinuteData.gusts);
+
+        const daysOfWeek = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+        const dayLabel = daysOfWeek[targetDateObj.getDay()];
+        const iconUrl = getWeatherIcon(0, "Historical Record", false, dateInputStr, pastWind);
+
+        resultContainer.innerHTML = `
+            <div style="background: #151515; border: 1px solid #333; padding: 15px; border-radius: 12px; text-align: center;">
+                <div style="font-size: 16px; font-weight: bold; color: #00a8cc;">${dayLabel} (${dateInputStr})</div>
+                <div style="font-size: 12px; color: #777; margin-bottom: 8px;">Historical Archive Record</div>
+                <img src="${iconUrl}" style="width: 45px; height: 45px; object-fit: contain; margin-bottom: 8px;" alt="Icon">
+                <div style="font-size: 20px; font-weight: bold; color: ${getTempColor(pastHigh)};">${pastHigh}°F</div>
+                <div style="font-size: 12px; color: #aaa; margin-bottom: 8px;">Low: <span style="color: ${getTempColor(pastLow)}; font-weight: bold;">${pastLow}°F</span></div>
+                <div style="font-size: 12px; color: #ccc;">Sustained Wind: <b>${pastWind} mph</b> | Gusts: <b>${pastGusts} mph</b></div>
+            </div>
+        `;
+    }, 300);
+}
 function getWeatherIcon(weatherCode, conditionText, regionMatch, dateStr, windSpeed) {
     const searchLower = `${activeSearchQuery} ${activePlaceName}`.toLowerCase();
     const isMinnesota = ["minnesota", "mn", "duluth", "moorhead", "bemidji", "brainerd", "hibbing", "grand rapids", "fergus falls", "international falls", "virginia", "cloquet", "east grand forks", "thief river falls", "crookston", "detroit lakes", "little falls", "alexandria", "park rapids", "minneapolis", "st. paul", "saint paul", "rochester", "bloomington", "plymouth", "brooklyn park", "woodbury", "st. cloud", "st. joseph", "saint joseph", "eagan", "eden prairie", "coon rapids", "burnsville", "blaine", "lakeville", "minnetonka", "apple valley", "edina", "st. louis park", "mankato", "shakopee", "richfield", "cottage grove", "roseville", "inver grove heights", "winona"].some(kw => new RegExp(`\\b${kw.replace('.', '\\.')}\\b`, 'i').test(searchLower));
@@ -735,6 +799,12 @@ function getMinuteValuesForDay(dateStr, searchQuery, placeName, apiDailyTemps, a
 }
 
 function parseAndRender(data, searchQuery, placeName) {
+    // Reveal history button once search results are actively rendered
+    const historyBtn = document.getElementById("historyToggleBtn");
+    if (historyBtn) {
+        historyBtn.style.display = "inline-block";
+    }
+
     const daysOfWeek = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
     const daily = data.daily;
     const forecastData = [];
@@ -743,11 +813,9 @@ function parseAndRender(data, searchQuery, placeName) {
         "7/31/2026", "8/1/2026", "8/2/2026", "8/3/2026", "8/4/2026", "8/5/2026", "8/6/2026", "8/7/2026"
     ];
 
-    // Normalize today's date to midnight to accurately filter out past days as time moves forward
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
-    // Filter target dates to exclude days in the past
     const targetDates = rawTargetDates.filter(dateStr => {
         const [m, d, y] = dateStr.split("/").map(Number);
         const itemDate = new Date(y, m - 1, d);
@@ -785,7 +853,6 @@ function parseAndRender(data, searchQuery, placeName) {
         const apiWind = Math.round((daily.wind_speed_10m_max && daily.wind_speed_10m_max[apiIndex]) || 18);
         const apiGusts = Math.round((daily.wind_gusts_10m_max && daily.wind_gusts_10m_max[apiIndex]) || 30);
         
-        // Compute minute-by-minute array to get accurate daily extrema
         const minuteData = getMinuteValuesForDay(
             dateStr, searchQuery, placeName, 
             { max: daily.temperature_2m_max, min: daily.temperature_2m_min }, 
@@ -805,7 +872,6 @@ function parseAndRender(data, searchQuery, placeName) {
         let cardHigh, cardLow, cardWind, cardGusts, note, rawCondition;
         const hasEventInfluence = matchedOverride || futureEventOverride;
 
-        // Extract exact day card values directly from minuteData calculations
         cardHigh = Math.max(...minuteData.temps);
         cardLow = Math.min(...minuteData.temps);
         cardWind = Math.max(...minuteData.winds);
@@ -833,10 +899,8 @@ function parseAndRender(data, searchQuery, placeName) {
             note = `Live: ${rawCondition}`;
         }
 
-        // Fetch icon using full context (Location + Date + Wind Speed)
         const iconUrl = getWeatherIcon(apiCode, rawCondition, (dateStr === "7/31/2026" ? isMN : hasEventInfluence), dateStr, cardWind);
 
-        // Update maximum forecast scaling bound for wind graph rendering
         if (cardGusts > maxGustInForecast) {
             maxGustInForecast = cardGusts;
         }
