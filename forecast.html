@@ -1063,18 +1063,53 @@ function initLeafletMap(dateStr) {
     }, 250);
 }
 
+// Linear interpolation helper for colors
+function interpolateColor(color1, color2, factor) {
+    const c1 = parseInt(color1.slice(1), 16);
+    const c2 = parseInt(color2.slice(1), 16);
+
+    const r1 = (c1 >> 16) & 255, g1 = (c1 >> 8) & 255, b1 = c1 & 255;
+    const r2 = (c2 >> 16) & 255, g2 = (c2 >> 8) & 255, b2 = c2 & 255;
+
+    const r = Math.round(r1 + factor * (r2 - r1));
+    const g = Math.round(g1 + factor * (g2 - g1));
+    const b = Math.round(b1 + factor * (b2 - b1));
+
+    return `#${((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1)}`;
+}
+
+// Get blended dynamic color matching the current value range smoothly
+function getLerpedMetricColor(val, metric) {
+    if (metric === 'temp') {
+        // Example bounds: 0°F (blue) to 100°F (red)
+        const minVal = 0, maxVal = 100;
+        const factor = Math.max(0, Math.min(1, (val - minVal) / (maxVal - minVal)));
+        return interpolateColor('#3b82f6', '#ef4444', factor);
+    } else {
+        // Wind/Gust bounds: 0 mph (green) to 50 mph (purple)
+        const minVal = 0, maxVal = 50;
+        const factor = Math.max(0, Math.min(1, (val - minVal) / (maxVal - minVal)));
+        return interpolateColor('#10b981', '#8b5cf6', factor);
+    }
+}
+
 function updateMapForMinute(totalMinutes) {
     if (!mapLayersGroup || !window.activeMinuteDataCache) return;
 
-    const hour24 = Math.floor(totalMinutes / 60);
-    const minute = totalMinutes % 60;
+    // Fetch timeline matching current chart state (e.g. 1440 minutes in a full day graph)
+    const maxMinutes = 1440;
+    const clampedMinutes = Math.max(0, Math.min(totalMinutes, maxMinutes));
+
+    const hour24 = Math.floor(clampedMinutes / 60);
+    const minute = clampedMinutes % 60;
     const h12 = hour24 % 12 === 0 ? 12 : hour24 % 12;
     const ampm = hour24 >= 12 ? 'PM' : 'AM';
     const minFormatted = String(minute).padStart(2, '0');
     
+    // Sync current time label directly with the graph timeline position
     const timeLabelElem = document.getElementById("mapCurrentTimeLabel");
     if (timeLabelElem) {
-        timeLabelElem.innerText = `${h12}:${minFormatted} ${ampm} (${totalMinutes}m)`;
+        timeLabelElem.innerText = `${h12}:${minFormatted} ${ampm} (${clampedMinutes}m)`;
     }
 
     const metric = document.getElementById("metricSelector").value;
@@ -1085,8 +1120,8 @@ function updateMapForMinute(totalMinutes) {
 
     const latMin = -90.0, latMax = 90.0;
     const lonMin = -180.0, lonMax = 180.0;
-    const latSteps = 40;
-    const lonSteps = 64;
+    const latSteps = 35;
+    const lonSteps = 55;
 
     const dLat = (latMax - latMin) / latSteps;
     const dLon = (lonMax - lonMin) / lonSteps;
@@ -1096,23 +1131,25 @@ function updateMapForMinute(totalMinutes) {
             const cellLat = latMin + (i + 0.5) * dLat;
             const cellLon = lonMin + (j + 0.5) * dLon;
 
-            const spatialOffset = Math.floor(Math.abs(Math.sin(cellLat * 12.9898 + cellLon * 78.233) * 1000));
-            const valueIndex = (totalMinutes + spatialOffset) % valuesArray.length;
+            // Bind spatial variance to specific active location data context
+            const spatialOffset = Math.floor(Math.abs(Math.sin(cellLat * 12.9898 + cellLon * 78.233 + (currentLat || 0)) * 1000));
+            const valueIndex = (clampedMinutes + spatialOffset) % valuesArray.length;
             const cellVal = valuesArray[valueIndex];
 
-            // Lerp color mapping based directly on active location weather parameters
-            const cellColor = metric === 'temp' ? getTempColor(cellVal) : getWindColor(cellVal);
+            // Apply smooth color lerp fade based on value transitions
+            const cellColor = getLerpedMetricColor(cellVal, metric);
 
             const cellBounds = [
                 [cellLat - dLat / 2, cellLon - dLon / 2],
                 [cellLat + dLat / 2, cellLon + dLon / 2]
             ];
 
+            // Render with smooth opacity fading for continuous background flow
             L.rectangle(cellBounds, {
                 color: cellColor,
                 weight: 0,
                 fillColor: cellColor,
-                fillOpacity: 0.42
+                fillOpacity: 0.45
             }).addTo(mapLayersGroup);
         }
     }
