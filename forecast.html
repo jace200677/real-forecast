@@ -1011,31 +1011,100 @@ function renderForecast(forecastData) {
 }
 
 function openGraphModal(item) {
-    activeDayDateStr = item.dateStr;
-    document.getElementById("modalTitle").innerText = `${item.day} Minute-by-Minute Forecast Graph`;
-    document.getElementById("modalSubtitle").innerText = `Date: ${item.dateStr} (0 to 24 Hours, 12-Hour Format)`;
+    const modal = document.getElementById("graphModal");
+    if (!modal) return;
+    
+    document.getElementById("modalDayTitle").innerText = `${item.day} — ${item.dateStr}`;
+    document.getElementById("modalTempSummary").innerHTML = `High: <span style="color:${getTempColor(item.high)}">${item.high}°F</span> | Low: <span style="color:${getTempColor(item.low)}">${item.low}°F</span>`;
+    document.getElementById("modalWindSummary").innerHTML = `Sustained: ${item.wind} mph | Peak Gusts: ${item.gusts} mph`;
+    
+    const canvas = document.getElementById("weatherGraphCanvas");
+    const ctx = canvas.getContext("2d");
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-    let mapBtn = document.getElementById("modalMapBtn");
-    if (!mapBtn) {
-        mapBtn = document.createElement("button");
-        mapBtn.id = "modalMapBtn";
-        const headerContainer = document.getElementById("modalTitle").parentNode;
-        headerContainer.appendChild(mapBtn);
+    let minuteTemps = [];
+    let minuteWinds = [];
+    let minuteGusts = [];
+
+    const isMN = isMinnesotaLocation(activeSearchQuery, activePlaceName);
+    const isSpecial731 = (item.dateStr === "7/31/2026" && isMN);
+    const regionalOverride = getRegionalEventForDateAndLocation(item.dateStr, activeSearchQuery, activePlaceName);
+
+    if (isSpecial731 || regionalOverride || item.note === "Historical Record" || item.note === "Historical Telemetry Record" || item.note?.includes("Event Archive")) {
+        const dummyMax = { max: [item.high], min: [item.low] };
+        const dummyW = [item.wind];
+        const dummyG = [item.gusts];
+        const generated = getMinuteValuesForDay(item.dateStr, activeSearchQuery, activePlaceName, dummyMax, dummyW, dummyG, 0);
+        minuteTemps = generated.temps;
+        minuteWinds = generated.winds;
+        minuteGusts = generated.gusts;
+    } else {
+        for (let i = 0; i < 1440; i += 10) {
+            let tProgress = Math.sin((i / 1440) * Math.PI * 2 - Math.PI / 2);
+            let curTemp = Math.round(item.low + (item.high - item.low) * ((tProgress + 1) / 2));
+            let curWind = Math.max(2, Math.round(item.wind + (Math.random() * 6 - 3)));
+            let curGust = Math.max(curWind + 2, Math.round(item.gusts * (0.6 + Math.random() * 0.4)));
+            minuteTemps.push(curTemp);
+            minuteWinds.push(curWind);
+            minuteGusts.push(curGust);
+        }
     }
 
-    mapBtn.innerText = "Open Map";
-    mapBtn.disabled = false;
-    mapBtn.onclick = function() { openMinuteMapView(item.dateStr); };
-    mapBtn.style.cssText = `
-        background-color: #007bff; color: #ffffff; border: none;
-        padding: 6px 14px; border-radius: 6px; cursor: pointer;
-        font-weight: 600; margin-left: 10px; opacity: 1; pointer-events: auto;
-    `;
+    const padding = 40;
+    const w = canvas.width - padding * 2;
+    const h = canvas.height - padding * 2;
 
-    document.getElementById("chartModal").style.display = "flex";
-    updateChartMetric();
-    updateLiveConfidenceDisplay();
+    const minT = Math.min(...minuteTemps) - 3;
+    const maxT = Math.max(...minuteTemps) + 3;
+    const maxW = Math.max(50, ...minuteGusts) + 5;
+
+    const getX = (index) => padding + (index / (minuteTemps.length - 1)) * w;
+    const getYTemp = (val) => canvas.height - padding - ((val - minT) / (maxT - minT)) * h;
+    const getYWind = (val) => canvas.height - padding - (val / maxW) * h;
+
+    ctx.strokeStyle = "#222";
+    ctx.lineWidth = 1;
+    for (let i = 0; i <= 4; i++) {
+        let yPos = padding + (h / 4) * i;
+        ctx.beginPath();
+        ctx.moveTo(padding, yPos);
+        ctx.lineTo(canvas.width - padding, yPos);
+        ctx.stroke();
+    }
+
+    ctx.strokeStyle = "#ff9f0a";
+    ctx.lineWidth = 2.5;
+    ctx.beginPath();
+    minuteTemps.forEach((val, idx) => {
+        let x = getX(idx);
+        let y = getYTemp(val);
+        if (idx === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+    });
+    ctx.stroke();
+
+    ctx.strokeStyle = "#30b0c7";
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    minuteGusts.forEach((val, idx) => {
+        let x = getX(idx);
+        let y = getYWind(val);
+        if (idx === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+    });
+    ctx.stroke();
+
+    ctx.fillStyle = "#888";
+    ctx.font = "11px sans-serif";
+    ctx.fillText("12 AM", padding, canvas.height - 15);
+    ctx.fillText("6 AM", padding + w * 0.25, canvas.height - 15);
+    ctx.fillText("12 PM", padding + w * 0.5, canvas.height - 15);
+    ctx.fillText("6 PM", padding + w * 0.75, canvas.height - 15);
+    ctx.fillText("12 AM", canvas.width - padding - 35, canvas.height - 15);
+
+    modal.style.display = "flex";
 }
+   
 function openHistoryPanel() {
     const query = document.getElementById("searchInput").value.trim();
     if (!query) {
@@ -1077,28 +1146,90 @@ function loadHistoryDateCard() {
     const daysOfWeek = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
     const dayLabel = daysOfWeek[targetDateObj.getDay()];
 
-    const dummyTempsMax = { max: [82], min: [61] };
-    const dummyWinds = [18];
-    const dummyGusts = [32];
-    
-    const isMN = isMinnesotaLocation(activeSearchQuery, activePlaceName);
-    const isSpecial731 = (dateInputStr === "7/31/2026" && isMN);
-    const regionalOverride = getRegionalEventForDateAndLocation(dateInputStr, activeSearchQuery, activePlaceName);
+    const formattedDateStr = `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+    const lat = currentLat || 45.5623;
+    const lon = currentLon || -94.3164;
 
-    if (isSpecial731 || regionalOverride) {
-        setTimeout(() => {
+    const archiveUrl = `https://archive-api.open-meteo.com/v1/archive?latitude=${lat}&longitude=${lon}&start_date=${formattedDateStr}&end_date=${formattedDateStr}&daily=weather_code,temperature_2m_max,temperature_2m_min,wind_speed_10m_max,wind_gusts_10m_max&temperature_unit=fahrenheit&wind_speed_unit=mph&timezone=auto`;
+
+    fetch(archiveUrl)
+        .then(res => res.json())
+        .then(data => {
+            if (!data || !data.daily || !data.daily.temperature_2m_max || data.daily.temperature_2m_max.length === 0 || data.daily.temperature_2m_max[0] === null) {
+                throw new Error("No live archive data found");
+            }
+
+            const isMN = isMinnesotaLocation(activeSearchQuery, activePlaceName);
+            const isSpecial731 = (dateInputStr === "7/31/2026" && isMN);
+            const regionalOverride = getRegionalEventForDateAndLocation(dateInputStr, activeSearchQuery, activePlaceName);
+
+            let pastHigh, pastLow, pastWind, pastGusts, iconUrl, recordType, conditionText;
+
+            if (isSpecial731 || regionalOverride) {
+                const dummyTempsMax = { max: [Math.round(data.daily.temperature_2m_max[0])], min: [Math.round(data.daily.temperature_2m_min[0])] };
+                const dummyWinds = [Math.round(data.daily.wind_speed_10m_max ? data.daily.wind_speed_10m_max[0] : 18)];
+                const dummyGusts = [Math.round(data.daily.wind_gusts_10m_max ? data.daily.wind_gusts_10m_max[0] : 32)];
+                
+                const pastMinuteData = getMinuteValuesForDay(dateInputStr, activeSearchQuery, activePlaceName, dummyTempsMax, dummyWinds, dummyGusts, 0);
+                pastHigh = Math.max(...pastMinuteData.temps);
+                pastLow = Math.min(...pastMinuteData.temps);
+                pastWind = Math.max(...pastMinuteData.winds);
+                pastGusts = Math.max(...pastMinuteData.gusts);
+                conditionText = isSpecial731 ? "Thunderstorms" : regionalOverride.data.condition;
+                iconUrl = getWeatherIcon(0, conditionText, true, dateInputStr, pastWind);
+                recordType = `Event Archive (${conditionText})`;
+            } else {
+                pastHigh = Math.round(data.daily.temperature_2m_max[0]);
+                pastLow = Math.round(data.daily.temperature_2m_min[0]);
+                pastWind = Math.round(data.daily.wind_speed_10m_max ? data.daily.wind_speed_10m_max[0] : 12);
+                pastGusts = Math.round(data.daily.wind_gusts_10m_max ? data.daily.wind_gusts_10m_max[0] : 22);
+                const weatherCode = data.daily.weather_code ? data.daily.weather_code[0] : 0;
+                iconUrl = getLiveWeatherIconByCode(weatherCode);
+                recordType = "Live Historical Archive Record";
+            }
+
+            resultContainer.innerHTML = `
+                <div id="historyCardBox" style="background: #151515; border: 1px solid #333; padding: 15px; border-radius: 12px; text-align: center; cursor: pointer; transition: border-color 0.2s;" onmouseover="this.style.borderColor='#00a8cc'" onmouseout="this.style.borderColor='#333'">
+                    <div style="font-size: 16px; font-weight: bold; color: #00a8cc;">${dayLabel} (${dateInputStr})</div>
+                    <div style="font-size: 12px; color: #777; margin-bottom: 8px;">${recordType} (Click for Graph)</div>
+                    <img src="${iconUrl}" style="width: 45px; height: 45px; object-fit: contain; margin-bottom: 8px;" alt="Icon">
+                    <div style="font-size: 20px; font-weight: bold; color: ${getTempColor(pastHigh)};">${pastHigh}°F</div>
+                    <div style="font-size: 12px; color: #aaa; margin-bottom: 8px;">Low: <span style="color: ${getTempColor(pastLow)}; font-weight: bold;">${pastLow}°F</span></div>
+                    <div style="font-size: 12px; color: #ccc;">Sustained Wind: <b>${pastWind} mph</b> | Gusts: <b>${pastGusts} mph</b></div>
+                </div>
+            `;
+            
+            document.getElementById("historyCardBox").onclick = () => {
+                closeHistoryModal();
+                openGraphModal({
+                    day: dayLabel,
+                    dateStr: dateInputStr,
+                    high: pastHigh,
+                    low: pastLow,
+                    wind: pastWind,
+                    gusts: pastGusts,
+                    note: recordType,
+                    iconUrl: iconUrl,
+                    maxGustScale: Math.max(pastGusts, 50)
+                });
+            };
+        })
+        .catch(err => {
+            console.warn("Archive API fallback triggered:", err);
+            const dummyTempsMax = { max: [82], min: [61] };
+            const dummyWinds = [15];
+            const dummyGusts = [25];
             const pastMinuteData = getMinuteValuesForDay(dateInputStr, activeSearchQuery, activePlaceName, dummyTempsMax, dummyWinds, dummyGusts, 0);
             const pastHigh = Math.max(...pastMinuteData.temps);
             const pastLow = Math.min(...pastMinuteData.temps);
             const pastWind = Math.max(...pastMinuteData.winds);
             const pastGusts = Math.max(...pastMinuteData.gusts);
-            const conditionText = isSpecial731 ? "Thunderstorms" : (regionalOverride ? regionalOverride.data.condition : "Event Record");
-            const iconUrl = getWeatherIcon(0, conditionText, true, dateInputStr, pastWind);
+            const iconUrl = getWeatherIcon(0, "Live Historical Record", false, dateInputStr, pastWind);
 
             resultContainer.innerHTML = `
                 <div id="historyCardBox" style="background: #151515; border: 1px solid #333; padding: 15px; border-radius: 12px; text-align: center; cursor: pointer; transition: border-color 0.2s;" onmouseover="this.style.borderColor='#00a8cc'" onmouseout="this.style.borderColor='#333'">
                     <div style="font-size: 16px; font-weight: bold; color: #00a8cc;">${dayLabel} (${dateInputStr})</div>
-                    <div style="font-size: 12px; color: #777; margin-bottom: 8px;">Event Archive Record (${conditionText}) (Click for Graph)</div>
+                    <div style="font-size: 12px; color: #777; margin-bottom: 8px;">Live Historical Telemetry Record (Click for Graph)</div>
                     <img src="${iconUrl}" style="width: 45px; height: 45px; object-fit: contain; margin-bottom: 8px;" alt="Icon">
                     <div style="font-size: 20px; font-weight: bold; color: ${getTempColor(pastHigh)};">${pastHigh}°F</div>
                     <div style="font-size: 12px; color: #aaa; margin-bottom: 8px;">Low: <span style="color: ${getTempColor(pastLow)}; font-weight: bold;">${pastLow}°F</span></div>
@@ -1115,95 +1246,12 @@ function loadHistoryDateCard() {
                     low: pastLow,
                     wind: pastWind,
                     gusts: pastGusts,
-                    note: `Event Archive (${conditionText})`,
+                    note: "Historical Telemetry Record",
                     iconUrl: iconUrl,
                     maxGustScale: Math.max(pastGusts, 50)
                 });
             };
-        }, 200);
-    } else {
-        const formattedDateStr = `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
-        const lat = currentLat || 45.5623;
-        const lon = currentLon || -94.3164;
-
-        const archiveUrl = `https://archive-api.open-meteo.com/v1/archive?latitude=${lat}&longitude=${lon}&start_date=${formattedDateStr}&end_date=${formattedDateStr}&daily=weather_code,temperature_2m_max,temperature_2m_min,wind_speed_10m_max,wind_gusts_10m_max&temperature_unit=fahrenheit&wind_speed_unit=mph&timezone=auto`;
-
-        fetch(archiveUrl)
-            .then(res => res.json())
-            .then(data => {
-                if (!data || !data.daily || !data.daily.temperature_2m_max || data.daily.temperature_2m_max.length === 0 || data.daily.temperature_2m_max[0] === null) {
-                    throw new Error("No live archive data found");
-                }
-
-                const pastHigh = Math.round(data.daily.temperature_2m_max[0]);
-                const pastLow = Math.round(data.daily.temperature_2m_min[0]);
-                const pastWind = Math.round(data.daily.wind_speed_10m_max ? data.daily.wind_speed_10m_max[0] : 12);
-                const pastGusts = Math.round(data.daily.wind_gusts_10m_max ? data.daily.wind_gusts_10m_max[0] : 22);
-                const weatherCode = data.daily.weather_code ? data.daily.weather_code[0] : 0;
-                const iconUrl = getLiveWeatherIconByCode(weatherCode);
-
-                resultContainer.innerHTML = `
-                    <div id="historyCardBox" style="background: #151515; border: 1px solid #333; padding: 15px; border-radius: 12px; text-align: center; cursor: pointer; transition: border-color 0.2s;" onmouseover="this.style.borderColor='#00a8cc'" onmouseout="this.style.borderColor='#333'">
-                        <div style="font-size: 16px; font-weight: bold; color: #00a8cc;">${dayLabel} (${dateInputStr})</div>
-                        <div style="font-size: 12px; color: #777; margin-bottom: 8px;">Live Historical Archive Record (Click for Graph)</div>
-                        <img src="${iconUrl}" style="width: 45px; height: 45px; object-fit: contain; margin-bottom: 8px;" alt="Icon">
-                        <div style="font-size: 20px; font-weight: bold; color: ${getTempColor(pastHigh)};">${pastHigh}°F</div>
-                        <div style="font-size: 12px; color: #aaa; margin-bottom: 8px;">Low: <span style="color: ${getTempColor(pastLow)}; font-weight: bold;">${pastLow}°F</span></div>
-                        <div style="font-size: 12px; color: #ccc;">Sustained Wind: <b>${pastWind} mph</b> | Gusts: <b>${pastGusts} mph</b></div>
-                    </div>
-                `;
-                
-                document.getElementById("historyCardBox").onclick = () => {
-                    closeHistoryModal();
-                    openGraphModal({
-                        day: dayLabel,
-                        dateStr: dateInputStr,
-                        high: pastHigh,
-                        low: pastLow,
-                        wind: pastWind,
-                        gusts: pastGusts,
-                        note: "Historical Record",
-                        iconUrl: iconUrl,
-                        maxGustScale: Math.max(pastGusts, 50)
-                    });
-                };
-            })
-            .catch(err => {
-                console.warn("Archive API fallback triggered:", err);
-                const pastMinuteData = getMinuteValuesForDay(dateInputStr, activeSearchQuery, activePlaceName, dummyTempsMax, dummyWinds, dummyGusts, 0);
-                const pastHigh = Math.max(...pastMinuteData.temps);
-                const pastLow = Math.min(...pastMinuteData.temps);
-                const pastWind = Math.max(...pastMinuteData.winds);
-                const pastGusts = Math.max(...pastMinuteData.gusts);
-                const iconUrl = getWeatherIcon(0, "Live Historical Record", false, dateInputStr, pastWind);
-
-                resultContainer.innerHTML = `
-                    <div id="historyCardBox" style="background: #151515; border: 1px solid #333; padding: 15px; border-radius: 12px; text-align: center; cursor: pointer; transition: border-color 0.2s;" onmouseover="this.style.borderColor='#00a8cc'" onmouseout="this.style.borderColor='#333'">
-                        <div style="font-size: 16px; font-weight: bold; color: #00a8cc;">${dayLabel} (${dateInputStr})</div>
-                        <div style="font-size: 12px; color: #777; margin-bottom: 8px;">Live Historical Telemetry Record (Click for Graph)</div>
-                        <img src="${iconUrl}" style="width: 45px; height: 45px; object-fit: contain; margin-bottom: 8px;" alt="Icon">
-                        <div style="font-size: 20px; font-weight: bold; color: ${getTempColor(pastHigh)};">${pastHigh}°F</div>
-                        <div style="font-size: 12px; color: #aaa; margin-bottom: 8px;">Low: <span style="color: ${getTempColor(pastLow)}; font-weight: bold;">${pastLow}°F</span></div>
-                        <div style="font-size: 12px; color: #ccc;">Sustained Wind: <b>${pastWind} mph</b> | Gusts: <b>${pastGusts} mph</b></div>
-                    </div>
-                `;
-
-                document.getElementById("historyCardBox").onclick = () => {
-                    closeHistoryModal();
-                    openGraphModal({
-                        day: dayLabel,
-                        dateStr: dateInputStr,
-                        high: pastHigh,
-                        low: pastLow,
-                        wind: pastWind,
-                        gusts: pastGusts,
-                        note: "Historical Telemetry Record",
-                        iconUrl: iconUrl,
-                        maxGustScale: Math.max(pastGusts, 50)
-                    });
-                };
-            });
-    }
+        });
 }
    
 function openMinuteMapView(dateStr) {
