@@ -1133,6 +1133,7 @@ function updateMapForMinute(totalMinutes) {
             const valueIndex = (totalMinutes + spatialOffset) % valuesArray.length;
             const cellVal = valuesArray[valueIndex];
 
+            // Correctly apply temperature or wind color scales based on exact metric value stops
             const cellColor = metric === 'temp' ? getTempColor(cellVal) : getWindColor(cellVal);
 
             const cellBounds = [
