@@ -278,7 +278,7 @@ function getWindColor(speed) {
 // Regional Events mapped strictly per prompt instructions
 const regionalEvents = [
     {
-        date: "7/31/2026",
+        date: "8/1/2026",
         regionKeywords: ["minnesota", "mn", "minneapolis", "st. paul", "saint paul", "duluth", "rochester", "bloomington", "plymouth", "brooklyn park", "woodbury", "st. cloud", "eagan", "eden prairie", "coon rapids", "burnsville", "blaine", "lakeville", "minnetonka", "apple valley", "edina", "st. louis park", "mankato", "moorhead", "shakopee", "richfield", "cottage grove", "roseville", "inver grove heights", "winona", "st. joseph", "saint joseph"],
         type: "cooler",
         baseConfidence: 0.95,
@@ -623,21 +623,6 @@ function getMinuteValuesForDay(dateStr, searchQuery, placeName, apiDailyTemps, a
                 baseGust = Math.round(baseGust + ((futureEventOverride.baseEvent.gusts - baseGust) * factor));
                 baseTemp = Math.round(baseTemp + (tempShift * factor));
             }
-            else if (pastEventOverride) {
-                // 1 DAY AFTER EVENT DAY: AT MIDNIGHT CONTINUE FROM LEFT OFF VALUE (starts at ~0.55 factor left off from event day midnight)
-                let min5pm = 17 * 60;
-                let tempShift = pastEventOverride.baseEvent.tempDelta;
-
-                if (totalMinutes <= min5pm) {
-                    let decayProgress = totalMinutes / min5pm;
-                    let factor = 0.55 * (1.0 - decayProgress); // Continuously returns back to normal live weather by 5pm
-
-                    baseWind = Math.round(baseWind + ((pastEventOverride.baseEvent.wind - baseWind) * factor));
-                    baseGust = Math.round(baseGust + ((pastEventOverride.baseEvent.gusts - baseGust) * factor));
-                    baseTemp = Math.round(baseTemp + (tempShift * factor));
-                }
-                // By 5pm and beyond, it is live weather!
-            }
 
             temps.push(baseTemp);
             winds.push(baseWind);
@@ -695,20 +680,18 @@ function parseAndRender(data, searchQuery, placeName) {
         );
 
         const matchedOverride = findRegionalOverride(dateStr, searchQuery, placeName, apiHigh, apiLow, apiWind, apiGusts);
-        const preDateStr = getPreEventDateString(dateStr);
-        const pastEventOverride = findRegionalOverride(preDateStr, searchQuery, placeName, apiHigh, apiLow, apiWind, apiGusts);
         const postDateStr = getPostEventDateString(dateStr);
         const futureEventOverride = findRegionalOverride(postDateStr, searchQuery, placeName, apiHigh, apiLow, apiWind, apiGusts);
         
         let cardHigh, cardLow, cardWind, cardGusts, note, rawCondition;
-        const hasEventInfluence = matchedOverride || pastEventOverride || futureEventOverride;
+        const hasEventInfluence = matchedOverride || futureEventOverride;
 
         if (hasEventInfluence) {
             cardHigh = Math.max(...minuteData.temps);
             cardLow = Math.min(...minuteData.temps);
             cardWind = Math.max(...minuteData.winds);
             cardGusts = Math.max(...minuteData.gusts);
-            note = matchedOverride ? matchedOverride.condition : (futureEventOverride ? "Building Event Trend" : "Post-Event Normalizing (Live by 5 PM)");
+            note = matchedOverride ? matchedOverride.condition : "Building Event Trend";
             rawCondition = matchedOverride ? matchedOverride.rawCondition : (wmoConditions[apiCode] || "Partly Cloudy");
         } else {
             cardHigh = apiHigh;
