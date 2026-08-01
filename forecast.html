@@ -1467,8 +1467,7 @@ function updateLiveConfidenceDisplay() {
 
     document.getElementById("modalConfVal").innerText = 
         `Live Clock: ${hours12}:${minutes}:${seconds} ${ampm} | ${timeUntilText} | Confidence: ${confPercent}%`;
-}
-
+} 
 function hexToRgba(hex, alpha) {
     let bigint = parseInt(hex.replace('#',''), 16);
     let r = (bigint >> 16) & 255; let g = (bigint >> 8) & 255; let b = bigint & 255;
