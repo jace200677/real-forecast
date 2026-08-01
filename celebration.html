@@ -2,35 +2,53 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>Daily Intensity Curve</title>
+  <title>Global Intensity & Ultimate Worldwide Rooftop Santa Tracker</title>
   <style>
     body {
       font-family: Arial, sans-serif;
-      background: linear-gradient(to bottom, #ffe6cc, #ffffff);
+      background: linear-gradient(to bottom, #090d16, #111e38, #2a1b15);
+      color: #fff;
       display: flex;
       flex-direction: column;
       align-items: center;
-      justify-content: center;
-      height: 100vh;
+      justify-content: flex-start;
+      min-height: 100vh;
       margin: 0;
+      padding: 20px;
+      box-sizing: border-box;
     }
     h1 {
-      margin-bottom: 10px;
+      margin-bottom: 5px;
       color: #ff6600;
+      text-shadow: 0 2px 6px rgba(0,0,0,0.7);
+      text-align: center;
     }
     #info {
       margin-bottom: 20px;
-      font-size: 1rem;
+      font-size: 0.95rem;
+      color: #ccc;
+      text-align: center;
+    }
+    .widget-card {
+      background: rgba(255, 255, 255, 0.95);
       color: #333;
+      padding: 20px;
+      border-radius: 15px;
+      width: 100%;
+      max-width: 650px;
+      box-shadow: 0 8px 25px rgba(0,0,0,0.4);
+      margin-bottom: 20px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
     }
     .bar-container {
-      width: 80%;
-      max-width: 500px;
-      height: 30px;
-      border-radius: 15px;
+      width: 100%;
+      height: 25px;
+      border-radius: 12px;
       background: #eee;
       overflow: hidden;
-      box-shadow: 0 0 10px rgba(0,0,0,0.1);
+      box-shadow: inset 0 0 5px rgba(0,0,0,0.1);
     }
     .bar-fill {
       height: 100%;
@@ -38,54 +56,165 @@
       background: linear-gradient(90deg, #ff9900, #ff3300);
       transition: width 0.5s ease;
     }
-    #percent {
-      margin-top: 10px;
+
+    /* Ultimate Rooftop Tracker Map Styles */
+    .tracker-card {
+      background: #0b1329;
+      border: 2px solid #1e293b;
+      max-width: 650px;
+    }
+    .tracker-title {
+      color: #38bdf8;
       font-size: 1.2rem;
+      font-weight: bold;
+      margin-bottom: 12px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      width: 100%;
+      justify-content: space-between;
+    }
+    .map-container {
+      position: relative;
+      width: 100%;
+      height: 350px;
+      background: radial-gradient(circle at center, #1e293b 0%, #090d16 100%);
+      border-radius: 12px;
+      overflow: hidden;
+      border: 1px solid #334155;
+      box-shadow: inset 0 0 20px rgba(0,0,0,0.8);
+    }
+    
+    /* Simulated Globe Grid & Landmass Elements */
+    .grid-overlay {
+      position: absolute;
+      width: 100%;
+      height: 100%;
+      background-image: 
+        linear-gradient(rgba(56, 189, 248, 0.05) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(56, 189, 248, 0.05) 1px, transparent 1px);
+      background-size: 30px 30px;
+    }
+    
+    /* Dynamic House Nodes Generator */
+    .house-node {
+      position: absolute;
+      width: 6px;
+      height: 6px;
+      background-color: #facc15;
+      border-radius: 50%;
+      box-shadow: 0 0 6px #f59e0b;
+      transform: translate(-50%, -50%);
+      transition: background-color 0.3s, transform 0.3s;
+    }
+    .house-node.visited {
+      background-color: #ef4444;
+      box-shadow: 0 0 8px #dc2626;
+    }
+    .house-node.active-target {
+      background-color: #22c55e;
+      box-shadow: 0 0 12px #4ade80, 0 0 20px #22c55e;
+      transform: translate(-50%, -50%) scale(2);
+      z-index: 10;
+    }
+
+    .santa-sleigh-global {
+      position: absolute;
+      font-size: 2.2rem;
+      transform: translate(-50%, -50%);
+      transition: top 0.15s linear, left 0.15s linear;
+      filter: drop-shadow(0 0 8px rgba(255, 255, 255, 0.9));
+      z-index: 20;
+    }
+
+    .radar-sweep {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      width: 100%;
+      height: 100%;
+      transform: translate(-50%, -50%);
+      pointer-events: none;
+      border-radius: 50%;
+      border: 1px dashed rgba(56, 189, 248, 0.15);
+    }
+
+    .flight-panel {
+      margin-top: 15px;
+      width: 100%;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+      font-size: 0.85rem;
+      color: #94a3b8;
+      background: rgba(15, 23, 42, 0.8);
+      padding: 12px;
+      border-radius: 8px;
+      box-sizing: border-box;
+    }
+    .flight-panel div span {
+      color: #f8fafc;
       font-weight: bold;
     }
   </style>
 </head>
 <body>
+
   <h1>Summer Celebration Intensity</h1>
-  <div id="info">Live intensity based on your 3 PM → 5 PM → 1 AM → 5 AM curve.</div>
+  <div id="info">Live intensity tracking based on your 3 PM → 5 PM → 1 AM → 5 AM schedule.</div>
   
-  <div class="bar-container">
-    <div class="bar-fill" id="barFill"></div>
+  <!-- Intensity Curve Widget -->
+  <div class="widget-card">
+    <div style="width: 100%; display: flex; justify-content: space-between; margin-bottom: 8px; font-weight: bold; font-size: 0.9rem; color: #333;">
+      <span>Progress Level</span>
+      <span id="percent" style="color: #ff3300;">0%</span>
+    </div>
+    <div class="bar-container">
+      <div class="bar-fill" id="barFill"></div>
+    </div>
   </div>
-  <div id="percent">0%</div>
+
+  <!-- Ultimate Worldwide Rooftop Santa Tracker Widget -->
+  <div class="widget-card tracker-card">
+    <div class="tracker-title">
+      <span>🎅</span> Worldwide Rooftop Delivery Matrix
+      <span style="font-size: 0.8rem; background: #1e293b; padding: 3px 8px; border-radius: 6px; color: #38bdf8;" id="deliveryStatus">Active Sweep</span>
+    </div>
+    <div class="map-container" id="mapContainer">
+      <div class="grid-overlay"></div>
+      <div class="radar-sweep"></div>
+      <div class="santa-sleigh-global" id="globalSleigh">🛷</div>
+    </div>
+    <div class="flight-panel">
+      <div>Target Sector: <span id="targetSector">Suburban Residential Grid #402</span></div>
+      <div>Current Neighborhood: <span id="currentRooftop">Checking chimney coordinates...</span></div>
+      <div>Presents Delivered: <span id="totalPresents" style="color: #38bdf8;">0</span></div>
+      <div>Delivery Rate: <span style="color: #4ade80;">1,420 homes / sec</span></div>
+    </div>
+  </div>
 
   <script>
+    // --- 1. Intensity Curve Logic ---
     function getIntensity() {
       const now = new Date();
       let hour = now.getHours() + now.getMinutes() / 60 + now.getSeconds() / 3600;
 
-      // Adjust timeline relative to the 3 PM (15:00) start line
-      // Hours from 00:00 to 14:59 roll over into the next day timeline (24 to 38.99)
       if (hour < 15) {
         hour += 24;
       }
 
-      // 1. Before 3 PM (hour < 15) -> Starts at 100%
       if (hour < 15) return 100;
-
-      // 2. 3 PM → 5 PM (15 to 17) -> Climbs from 100% to 300% (Peaks by 5 PM)
       if (hour >= 15 && hour < 17) {
         const progress = (hour - 15) / 2;
         return 100 + (300 - 100) * progress;
       }
-
-      // 3. 5 PM → 1 AM (17 to 25) -> Stays still at 300%
       if (hour >= 17 && hour < 25) {
         return 300;
       }
-
-      // 4. 1 AM → 5 AM (25 to 29) -> Drops from 300% down to 0%
       if (hour >= 25 && hour < 29) {
         const progress = (hour - 25) / 4;
         return 300 * (1 - progress);
       }
-
-      // 5. After 5 AM (hour >= 29) -> Remains at 0% until the loop resets at 3 PM
       return 0;
     }
 
@@ -94,15 +223,77 @@
       const bar = document.getElementById("barFill");
       const percentText = document.getElementById("percent");
       
-      // Caps visual width at 100% even if numerical value goes up to 300%
-      const visualWidth = Math.min(intensity, 100); 
-      
+      const visualWidth = Math.min(intensity, 100);  
       bar.style.width = visualWidth + "%";
       percentText.textContent = Math.round(intensity) + "%";
     }
 
+    // --- 2. Ultimate Comprehensive Worldwide Rooftop Simulation ---
+    const neighborhoods = [
+      "Suburban Crescent, Austin, TX", "Maple Street Estates, Toronto", "Barrio Norte, Buenos Aires", 
+      "Viale dei Mille, Milan", "Shibuya Residential Block, Tokyo", "Kensington Mews, London", 
+      "Sandton Suburbs, Johannesburg", "Copacabana Ridge, Rio de Janeiro", "Heliopolis District, Cairo", 
+      "Connaught Place Sector, New Delhi", "Parnell Terraces, Auckland", "Bondi Suburbs, Sydney",
+      "Kremlin Outskirts, Moscow", "Nordic Hamlet, Reykjavik", "Gangnam Residential Blocks, Seoul"
+    ];
+
+    // Generate hundreds of individual coordinate nodes across the map container to represent every single home / micro-cluster
+    const mapContainer = document.getElementById("mapContainer");
+    const totalHomes = 140;
+    const homeNodes = [];
+
+    for (let i = 0; i < totalHomes; i++) {
+      // Distribute nodes organically across map box coordinates (percentages)
+      const x = Math.random() * 92 + 4;
+      const y = Math.random() * 86 + 7;
+      
+      const node = document.createElement("div");
+      node.className = "house-node";
+      node.style.left = x + "%";
+      node.style.top = y + "%";
+      mapContainer.appendChild(node);
+
+      homeNodes.push({ x, y, element: node, neighborhood: neighborhoods[Math.floor(Math.random() * neighborhoods.length)] });
+    }
+
+    let currentHomeIndex = 0;
+    let accumulatedPresents = 482910;
+
+    function updateGlobalSantaTracker() {
+      const activeHome = homeNodes[currentHomeIndex];
+
+      // Move sleigh smoothly to current home coordinate
+      const sleigh = document.getElementById("globalSleigh");
+      sleigh.style.left = activeHome.x + "%";
+      sleigh.style.top = activeHome.y + "%";
+
+      // Update node styles: mark previous as visited, active as highlighted target
+      homeNodes.forEach((h, idx) => {
+        h.element.classList.remove("active-target");
+        if (idx < currentHomeIndex) {
+          h.element.classList.add("visited");
+        }
+      });
+      activeHome.element.classList.add("active-target");
+
+      // Update UI panels
+      document.getElementById("currentRooftop").textContent = `${activeHome.neighborhood} (Rooftop #${currentHomeIndex + 1})`;
+      document.getElementById("targetSector").textContent = `Sector Grid ${Math.floor(activeHome.x * 10)} - Alt ${Math.floor(activeHome.y * 5)}`;
+      
+      accumulatedPresents += Math.floor(Math.random() * 3) + 1;
+      document.getElementById("totalPresents").textContent = accumulatedPresents.toLocaleString();
+
+      // Cycle forward through the massive home list continuously
+      currentHomeIndex = (currentHomeIndex + 1) % homeNodes.length;
+    }
+
+    // Initial executions
     updateBar();
+    updateGlobalSantaTracker();
+
+    // High-frequency loops for live rapid rooftop hopping simulation
     setInterval(updateBar, 1000);
+    setInterval(updateGlobalSantaTracker, 350); // Rapid chimney-to-chimney jumps across the globe
   </script>
 </body>
 </html>
