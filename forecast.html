@@ -180,6 +180,14 @@ const LocationSecurityGuard = {
 };
 
 function getWeatherIcon(weatherCode, conditionText, regionMatch, dateStr, windSpeed) {
+    // Force Thunderstorms icon ONLY for Minnesota on 7/31/2026
+    const searchLower = `${activeSearchQuery} ${activePlaceName}`.toLowerCase();
+    const isMinnesota = ["minnesota", "mn", "duluth", "moorhead", "bemidji", "brainerd", "hibbing", "grand rapids", "fergus falls", "international falls", "virginia", "cloquet", "east grand forks", "thief river falls", "crookston", "detroit lakes", "little falls", "alexandria", "park rapids", "minneapolis", "st. paul", "saint paul", "rochester", "bloomington", "plymouth", "brooklyn park", "woodbury", "st. cloud", "st. joseph", "saint joseph", "eagan", "eden prairie", "coon rapids", "burnsville", "blaine", "lakeville", "minnetonka", "apple valley", "edina", "st. louis park", "mankato", "shakopee", "richfield", "cottage grove", "roseville", "inver grove heights", "winona"].some(kw => new RegExp(`\\b${kw}\\b`, 'i').test(searchLower));
+
+    if (dateStr === "7/31/2026" && isMinnesota) {
+        return ICON_BASE_URL + "Thunderstorms.png";
+    }
+
     if (regionMatch) {
         return ICON_BASE_URL + "windy.png";
     }
