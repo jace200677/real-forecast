@@ -1018,7 +1018,7 @@ function initLeafletMap(dateStr) {
         const centerLat = currentLat || 39.8283;
         const centerLon = currentLon || -98.5795;
 
-        const map = L.map('leafletMapContainer').setView([centerLat, centerLon], 5);
+        const map = L.map('leafletMapContainer').setView([centerLat, centerLon], 3);
         window.activeLeafletMap = map;
 
         L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
@@ -1038,17 +1038,12 @@ function initLeafletMap(dateStr) {
         const minuteData = getMinuteValuesForDay(dateStr, activeSearchQuery, activePlaceName, dummyTempsMax, dummyWinds, dummyGusts, dayIndex);
         const metric = document.getElementById("metricSelector").value;
 
-        let centerVal = 72;
-        if (minuteData.temps.length > 0) {
-            if (metric === "temp") centerVal = minuteData.temps[Math.floor(minuteData.temps.length / 2)];
-            else if (metric === "wind") centerVal = minuteData.winds[Math.floor(minuteData.winds.length / 2)];
-            else if (metric === "gusts") centerVal = minuteData.gusts[Math.floor(minuteData.gusts.length / 2)];
-        }
+        const valuesArray = metric === 'temp' ? minuteData.temps : (metric === 'wind' ? minuteData.winds : minuteData.gusts);
 
-        const latMin = 24.0, latMax = 50.0;
-        const lonMin = -125.0, lonMax = -66.0;
-        const latSteps = 16;
-        const lonSteps = 24;
+        const latMin = -90.0, latMax = 90.0;
+        const lonMin = -180.0, lonMax = 180.0;
+        const latSteps = 24;
+        const lonSteps = 36;
 
         const dLat = (latMax - latMin) / latSteps;
         const dLon = (lonMax - lonMin) / lonSteps;
@@ -1058,8 +1053,8 @@ function initLeafletMap(dateStr) {
                 const cellLat = latMin + (i + 0.5) * dLat;
                 const cellLon = lonMin + (j + 0.5) * dLon;
 
-                const spatialFactor = ((cellLat - 37.0) * 0.015) - ((cellLon + 95.0) * 0.01);
-                let cellVal = centerVal + (spatialFactor * 25);
+                const indexMapping = Math.floor(Math.abs(Math.sin(cellLat * cellLon) * valuesArray.length)) % valuesArray.length;
+                const cellVal = valuesArray[indexMapping];
 
                 let cellColor = metric === 'temp' ? getTempColor(cellVal) : getWindColor(cellVal);
 
@@ -1072,7 +1067,7 @@ function initLeafletMap(dateStr) {
                     color: cellColor,
                     weight: 0,
                     fillColor: cellColor,
-                    fillOpacity: 0.48
+                    fillOpacity: 0.45
                 }).addTo(map);
             }
         }
