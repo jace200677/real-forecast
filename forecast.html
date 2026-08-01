@@ -1122,9 +1122,18 @@ function renderChart(labels, values, segmentColors, labelName, metric) {
         data: {
             labels: labels,
             datasets: [{
-                label: labelName, data: values, backgroundColor: gradient,
-                borderWidth: 2, fill: true, tension: 0.4, cubicInterpolationMode: 'monotone', pointRadius: 0,
-                pointHoverRadius: 5, pointHoverBorderColor: '#fff', pointHoverBorderWidth: 2,
+                label: labelName, 
+                data: values, 
+                backgroundColor: gradient,
+                borderWidth: 2, 
+                borderDash: [6, 6], // <-- Adds the dashed line effect from your screenshot
+                fill: true, 
+                tension: 0.4, 
+                cubicInterpolationMode: 'monotone', 
+                pointRadius: 0,
+                pointHoverRadius: 5, 
+                pointHoverBorderColor: '#fff', 
+                pointHoverBorderWidth: 2,
                 pointHoverBackgroundColor: function(context) { return segmentColors[context.dataIndex] || '#fff'; },
                 segment: { borderColor: function(ctx) { return metric === 'temp' ? getTempColor(ctx.p1.parsed.y) : getWindColor(ctx.p1.parsed.y); } }
             }]
