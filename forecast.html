@@ -944,66 +944,116 @@ function openGraphModal(item) {
     document.getElementById("modalTitle").innerText = `${item.day} Minute-by-Minute Forecast Graph`;
     document.getElementById("modalSubtitle").innerText = `Date: ${item.dateStr} (0 to 24 Hours, 12-Hour Format)`;
 
-    // Parse the graph item's date
-    const [m, d, y] = item.dateStr.split("/").map(Number);
-    const itemDate = new Date(y, m - 1, d);
-    
-    // Target availability date threshold: August 1, 2026
-    const targetAvailabilityDate = new Date(2026, 7, 1); // Month 7 is August (0-indexed)
-
-    // Check if the current live date has reached the target date AND if the item date is on/after 8/1/2026
-    const now = new Date();
-    const isMapAvailable = (now >= targetAvailabilityDate) && (itemDate >= targetAvailabilityDate);
-
-    // Check for existing map button or create a container for it in the modal header
     let mapBtn = document.getElementById("modalMapBtn");
     if (!mapBtn) {
         mapBtn = document.createElement("button");
         mapBtn.id = "modalMapBtn";
-        
-        // Append map button next to title/subtitle area in the modal
         const headerContainer = document.getElementById("modalTitle").parentNode;
         headerContainer.appendChild(mapBtn);
     }
 
-    // Configure disabled vs active state based on current date evaluation
-    if (!isMapAvailable) {
-        mapBtn.innerText = "Map (Coming Soon)";
-        mapBtn.disabled = true;
-        mapBtn.onclick = null;
-        mapBtn.style.cssText = `
-            background-color: #e0e0e0;
-            color: #888888;
-            border: 1px solid #cccccc;
-            padding: 6px 14px;
-            border-radius: 6px;
-            cursor: not-allowed;
-            opacity: 0.6;
-            font-weight: 600;
-            margin-left: 10px;
-            pointer-events: none;
-        `;
-    } else {
-        mapBtn.innerText = "Open Map";
-        mapBtn.disabled = false;
-        mapBtn.onclick = function() { openMinuteMapView(item.dateStr); };
-        mapBtn.style.cssText = `
-            background-color: #007bff;
-            color: #ffffff;
-            border: none;
-            padding: 6px 14px;
-            border-radius: 6px;
-            cursor: pointer;
-            font-weight: 600;
-            margin-left: 10px;
-            opacity: 1;
-            pointer-events: auto;
-        `;
-    }
+    mapBtn.innerText = "Open Map";
+    mapBtn.disabled = false;
+    mapBtn.onclick = function() { openMinuteMapView(item.dateStr); };
+    mapBtn.style.cssText = `
+        background-color: #007bff; color: #ffffff; border: none;
+        padding: 6px 14px; border-radius: 6px; cursor: pointer;
+        font-weight: 600; margin-left: 10px; opacity: 1; pointer-events: auto;
+    `;
 
     document.getElementById("chartModal").style.display = "flex";
     updateChartMetric();
     updateLiveConfidenceDisplay();
+}
+
+function openMinuteMapView(dateStr) {
+    let mapModal = document.getElementById("mapModalOverlay");
+    if (!mapModal) {
+        mapModal = document.createElement("div");
+        mapModal.id = "mapModalOverlay";
+        mapModal.style.cssText = `
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0, 0, 0, 0.9); backdrop-filter: blur(5px);
+            display: flex; justify-content: center; align-items: center; z-index: 2000;
+        `;
+        mapModal.innerHTML = `
+            <div style="background: #1c1c1c; border: 1px solid #333; border-radius: 16px; width: 95%; max-width: 900px; height: 80vh; padding: 20px; display: flex; flex-direction: column; box-shadow: 0 10px 30px rgba(0,0,0,0.8);">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+                    <div id="mapModalTitle" style="font-size: 18px; font-weight: bold; color: #fff;">Satellite Overlay Map (${dateStr})</div>
+                    <button onclick="document.getElementById('mapModalOverlay').style.display='none'" style="font-size: 24px; color: #aaa; cursor: pointer; border: none; background: none;">&times;</button>
+                </div>
+                <div id="leafletMapContainer" style="flex-grow: 1; width: 100%; border-radius: 8px; z-index: 10;"></div>
+            </div>
+        `;
+        document.body.appendChild(mapModal);
+    } else {
+        document.getElementById("mapModalTitle").innerText = `Satellite Overlay Map (${dateStr})`;
+        mapModal.style.display = "flex";
+    }
+
+    if (!window.leafletCSSLoaded) {
+        const leafletCSS = document.createElement("link");
+        leafletCSS.rel = "stylesheet";
+        leafletCSS.href = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.css";
+        document.head.appendChild(leafletCSS);
+        window.leafletCSSLoaded = true;
+    }
+
+    if (!window.L) {
+        const leafletJS = document.createElement("script");
+        leafletJS.src = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.js";
+        leafletJS.onload = () => initLeafletMap(dateStr);
+        document.head.appendChild(leafletJS);
+    } else {
+        initLeafletMap(dateStr);
+    }
+}
+
+function initLeafletMap(dateStr) {
+    setTimeout(() => {
+        if (window.activeLeafletMap) {
+            window.activeLeafletMap.remove();
+        }
+
+        const lat = currentLat || 39.8283;
+        const lon = currentLon || -98.5795;
+
+        const map = L.map('leafletMapContainer').setView([lat, lon], 7);
+        window.activeLeafletMap = map;
+
+        L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+            maxZoom: 19,
+            attribution: 'Tiles &copy; Esri &mdash; Source: Esri, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-EGP, and the GIS User Community'
+        }).addTo(map);
+
+        let dayIndex = 0;
+        const targetDates = ["7/31/2026", "8/1/2026", "8/2/2026", "8/3/2026", "8/4/2026", "8/5/2026", "8/6/2026", "8/7/2026"];
+        const foundIdx = targetDates.indexOf(dateStr);
+        if (foundIdx !== -1) dayIndex = foundIdx;
+
+        const dummyTempsMax = { max: [72,72,72,72,72,72,72,72], min: [52,52,52,52,52,52,52,52] };
+        const dummyWinds = [18,18,18,18,18,18,18,18];
+        const dummyGusts = [30,30,30,30,30,30,30,30];
+
+        const minuteData = getMinuteValuesForDay(dateStr, activeSearchQuery, activePlaceName, dummyTempsMax, dummyWinds, dummyGusts, dayIndex);
+        const metric = document.getElementById("metricSelector").value;
+
+        let sampleVal = 72;
+        if (minuteData.temps.length > 0) {
+            if (metric === "temp") sampleVal = minuteData.temps[Math.floor(minuteData.temps.length / 2)];
+            else if (metric === "wind") sampleVal = minuteData.winds[Math.floor(minuteData.winds.length / 2)];
+            else if (metric === "gusts") sampleVal = minuteData.gusts[Math.floor(minuteData.gusts.length / 2)];
+        }
+
+        let overlayColor = metric === 'temp' ? getTempColor(sampleVal) : getWindColor(sampleVal);
+
+        L.circle([lat, lon], {
+            color: overlayColor,
+            fillColor: overlayColor,
+            fillOpacity: 0.5,
+            radius: 120000
+        }).addTo(map).bindPopup(`<b>${activePlaceName || 'Location'}</b><br>Metric: ${metric}<br>Value: ${sampleVal}`).openPopup();
+    }, 250);
 }
 
 function closeModal() {
