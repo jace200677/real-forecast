@@ -1082,7 +1082,7 @@ function initLeafletMap(dateStr) {
         const centerLat = currentLat || 39.8283;
         const centerLon = currentLon || -98.5795;
 
-        // Leaflet map initialized with no upper limit on zoom depth
+        // Initialize Leaflet map with expanded zoom capabilities for depth exploration
         const map = L.map('leafletMapContainer', {
             center: [centerLat, centerLon],
             zoom: 3,
@@ -1118,17 +1118,27 @@ function initLeafletMap(dateStr) {
         const dummyWinds = [18,18,18,18,18,18,18,18];
         const dummyGusts = [30,30,30,30,30,30,30,30];
 
+        // Cache minute-by-minute data strictly matching the active graph timeline
         window.activeMinuteDataCache = getMinuteValuesForDay(dateStr, activeSearchQuery, activePlaceName, dummyTempsMax, dummyWinds, dummyGusts, dayIndex);
 
         addMinuteTimeSliderControl(map);
+
+        // Update map rendering dynamically on zoom changes to scale square sizes
+        map.on('zoomend', () => {
+            const currentSlider = document.getElementById("mapMinuteRange");
+            const currentMin = currentSlider ? parseInt(currentSlider.value, 10) : 0;
+            updateMapForMinute(currentMin);
+        });
+
         updateMapForMinute(0);
     }, 250);
 }
 
 function updateMapForMinute(totalMinutes) {
-    if (!mapLayersGroup || !window.activeMinuteDataCache) return;
+    if (!mapLayersGroup || !window.activeMinuteDataCache || !window.activeLeafletMap) return;
 
-    const maxMinutes = 1440;
+    // Clamp minutes between 12:00 AM (0) and 11:59 PM (1439)
+    const maxMinutes = 1439;
     const clampedMinutes = Math.max(0, Math.min(totalMinutes, maxMinutes));
 
     const hour24 = Math.floor(clampedMinutes / 60);
@@ -1137,7 +1147,6 @@ function updateMapForMinute(totalMinutes) {
     const ampm = hour24 >= 12 ? 'PM' : 'AM';
     const minFormatted = String(minute).padStart(2, '0');
     
-    // Sync current time label directly with the graph timeline position
     const timeLabelElem = document.getElementById("mapCurrentTimeLabel");
     if (timeLabelElem) {
         timeLabelElem.innerText = `${h12}:${minFormatted} ${ampm} (${clampedMinutes}m)`;
@@ -1149,10 +1158,13 @@ function updateMapForMinute(totalMinutes) {
 
     mapLayersGroup.clearLayers();
 
+    // Scale grid density dynamically based on current Leaflet map zoom level
+    const currentZoom = window.activeLeafletMap.getZoom();
+    const latSteps = Math.min(100, Math.max(12, Math.round(15 * Math.pow(1.25, currentZoom - 3))));
+    const lonSteps = Math.min(160, Math.max(20, Math.round(24 * Math.pow(1.25, currentZoom - 3))));
+
     const latMin = -90.0, latMax = 90.0;
     const lonMin = -180.0, lonMax = 180.0;
-    const latSteps = 40;
-    const lonSteps = 64;
 
     const dLat = (latMax - latMin) / latSteps;
     const dLon = (lonMax - lonMin) / lonSteps;
@@ -1162,13 +1174,13 @@ function updateMapForMinute(totalMinutes) {
             const cellLat = latMin + (i + 0.5) * dLat;
             const cellLon = lonMin + (j + 0.5) * dLon;
 
-            // Bind spatial variance directly to active location coordinates and graph timeline data
+            // Bind spatial variance directly to active location coordinates
             const spatialOffset = Math.floor(Math.abs(Math.sin(cellLat * 12.9898 + cellLon * 78.233 + (currentLat || 0)) * 1000));
             const valueIndex = (clampedMinutes + spatialOffset) % valuesArray.length;
             const cellVal = valuesArray[valueIndex];
 
-            // Smooth color lerp fade mapped perfectly to Apple Weather spectrum stops
-            const cellColor = getAppleWeatherColor(cellVal, metric);
+            // Apply smooth color lerp fade mapped precisely to Apple Weather spectrum stops
+            const cellColor = metric === 'temp' ? getTempColor(cellVal) : getWindColor(cellVal);
 
             const cellBounds = [
                 [cellLat - dLat / 2, cellLon - dLon / 2],
@@ -1179,41 +1191,10 @@ function updateMapForMinute(totalMinutes) {
                 color: cellColor,
                 weight: 0,
                 fillColor: cellColor,
-                fillOpacity: 0.42
+                fillOpacity: 0.45
             }).addTo(mapLayersGroup);
         }
     }
-}
-
-function addMinuteTimeSliderControl(map) {
-    const existingControl = document.getElementById("mapTimeSliderContainer");
-    if (existingControl) existingControl.remove();
-
-    const sliderControlDiv = document.createElement("div");
-    sliderControlDiv.id = "mapTimeSliderContainer";
-    sliderControlDiv.style.cssText = `
-        position: absolute; bottom: 25px; left: 50%; transform: translateX(-50%);
-        background: rgba(28, 28, 28, 0.92); padding: 12px 18px; border-radius: 12px;
-        border: 1px solid #444; z-index: 3000; width: 85%; max-width: 600px;
-        box-shadow: 0 8px 24px rgba(0,0,0,0.7); display: flex; flex-direction: column; gap: 8px;
-    `;
-
-    sliderControlDiv.innerHTML = `
-        <div style="display: flex; justify-content: space-between; align-items: center; font-size: 13px; color: #fff; font-weight: 500;">
-            <span>⏱️ Minute-by-Minute Timeline</span>
-            <span id="mapCurrentTimeLabel" style="color: #00a8cc; font-weight: bold;">12:00 AM</span>
-        </div>
-        <input type="range" id="mapMinuteRange" min="0" max="1439" value="0" step="1" style="width: 100%; cursor: pointer; accent-color: #00a8cc;">
-    `;
-
-    const mapContainerElem = document.getElementById("leafletMapContainer");
-    mapContainerElem.style.position = "relative";
-    mapContainerElem.appendChild(sliderControlDiv);
-
-    document.getElementById("mapMinuteRange").addEventListener("input", (e) => {
-        const selectedMinute = parseInt(e.target.value, 10);
-        updateMapForMinute(selectedMinute);
-    });
 }
    
 function closeModal() {
