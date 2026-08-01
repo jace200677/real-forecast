@@ -1123,7 +1123,7 @@ function renderChart(labels, values, segmentColors, labelName, metric) {
             labels: labels,
             datasets: [{
                 label: labelName, data: values, backgroundColor: gradient,
-                borderWidth: 2, fill: true, tension: 0.2, pointRadius: 0,
+                borderWidth: 2, fill: true, tension: 0.4, cubicInterpolationMode: 'monotone', pointRadius: 0,
                 pointHoverRadius: 5, pointHoverBorderColor: '#fff', pointHoverBorderWidth: 2,
                 pointHoverBackgroundColor: function(context) { return segmentColors[context.dataIndex] || '#fff'; },
                 segment: { borderColor: function(ctx) { return metric === 'temp' ? getTempColor(ctx.p1.parsed.y) : getWindColor(ctx.p1.parsed.y); } }
@@ -1161,6 +1161,7 @@ function renderChart(labels, values, segmentColors, labelName, metric) {
         }
     });
 }
+```[cite: 1]
 
 document.getElementById("searchInput").addEventListener("keyup", function(event) {
     if (event.key === "Enter") fetchForecast();
