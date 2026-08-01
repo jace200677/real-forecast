@@ -156,9 +156,47 @@
       color: #f8fafc;
       font-weight: bold;
     }
+
+    /* Finished / Off-season Screen Style */
+    #offseasonScreen {
+      display: none;
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100vw;
+      height: 100vh;
+      background: #090d16;
+      color: #ffffff;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      z-index: 9999;
+      text-align: center;
+      padding: 20px;
+      box-sizing: border-box;
+    }
+    #offseasonScreen h1 {
+      font-size: 3rem;
+      color: #ff3300;
+      margin-bottom: 10px;
+      text-shadow: 0 0 20px rgba(255, 51, 0, 0.5);
+    }
+    #offseasonScreen p {
+      font-size: 1.5rem;
+      color: #38bdf8;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      font-weight: bold;
+    }
   </style>
 </head>
 <body>
+
+  <!-- Off-season / Finished Screen -->
+  <div id="offseasonScreen">
+    <h1>Celebration Complete</h1>
+    <p>Not live until December!!!</p>
+  </div>
 
   <h1>Summer Celebration Intensity</h1>
   <div id="info">Live intensity tracking based on your 3 PM → 5 PM → 1 AM → 5 AM schedule.</div>
@@ -194,6 +232,17 @@
   </div>
 
   <script>
+    // --- Check for Post-Celebration Trigger ---
+    // Change this date string to test or set the exact end threshold of the celebration tomorrow
+    const celebrationEndDate = new Date('2026-08-02T05:00:00'); // Example: End of celebration schedule
+
+    function checkCelebrationStatus() {
+      const now = new Date();
+      if (now >= celebrationEndDate) {
+        document.getElementById('offseasonScreen').style.display = 'flex';
+      }
+    }
+
     // --- 1. Intensity Curve Logic ---
     function getIntensity() {
       const now = new Date();
@@ -237,13 +286,11 @@
       "Kremlin Outskirts, Moscow", "Nordic Hamlet, Reykjavik", "Gangnam Residential Blocks, Seoul"
     ];
 
-    // Generate hundreds of individual coordinate nodes across the map container to represent every single home / micro-cluster
     const mapContainer = document.getElementById("mapContainer");
     const totalHomes = 140;
     const homeNodes = [];
 
     for (let i = 0; i < totalHomes; i++) {
-      // Distribute nodes organically across map box coordinates (percentages)
       const x = Math.random() * 92 + 4;
       const y = Math.random() * 86 + 7;
       
@@ -262,12 +309,10 @@
     function updateGlobalSantaTracker() {
       const activeHome = homeNodes[currentHomeIndex];
 
-      // Move sleigh smoothly to current home coordinate
       const sleigh = document.getElementById("globalSleigh");
       sleigh.style.left = activeHome.x + "%";
       sleigh.style.top = activeHome.y + "%";
 
-      // Update node styles: mark previous as visited, active as highlighted target
       homeNodes.forEach((h, idx) => {
         h.element.classList.remove("active-target");
         if (idx < currentHomeIndex) {
@@ -276,24 +321,24 @@
       });
       activeHome.element.classList.add("active-target");
 
-      // Update UI panels
       document.getElementById("currentRooftop").textContent = `${activeHome.neighborhood} (Rooftop #${currentHomeIndex + 1})`;
       document.getElementById("targetSector").textContent = `Sector Grid ${Math.floor(activeHome.x * 10)} - Alt ${Math.floor(activeHome.y * 5)}`;
       
       accumulatedPresents += Math.floor(Math.random() * 3) + 1;
       document.getElementById("totalPresents").textContent = accumulatedPresents.toLocaleString();
 
-      // Cycle forward through the massive home list continuously
       currentHomeIndex = (currentHomeIndex + 1) % homeNodes.length;
     }
 
     // Initial executions
+    checkCelebrationStatus();
     updateBar();
     updateGlobalSantaTracker();
 
-    // High-frequency loops for live rapid rooftop hopping simulation
+    // High-frequency loops
+    setInterval(checkCelebrationStatus, 1000);
     setInterval(updateBar, 1000);
-    setInterval(updateGlobalSantaTracker, 350); // Rapid chimney-to-chimney jumps across the globe
+    setInterval(updateGlobalSantaTracker, 350);
   </script>
 </body>
 </html>
