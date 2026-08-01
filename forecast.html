@@ -1009,6 +1009,8 @@ function openMinuteMapView(dateStr) {
     }
 }
 
+let mapLayersGroup = null;
+
 function initLeafletMap(dateStr) {
     setTimeout(() => {
         if (window.activeLeafletMap) {
@@ -1018,13 +1020,30 @@ function initLeafletMap(dateStr) {
         const centerLat = currentLat || 39.8283;
         const centerLon = currentLon || -98.5795;
 
-        const map = L.map('leafletMapContainer').setView([centerLat, centerLon], 3);
+        // Initialize Leaflet map with strict zoom and boundary limits to keep the planet filled
+        const map = L.map('leafletMapContainer', {
+            center: [centerLat, centerLon],
+            zoom: 3,
+            minZoom: 2,
+            maxZoom: 10,
+            maxBounds: [
+                [-90, -180],
+                [90, 180]
+            ],
+            maxBoundsViscosity: 1.0
+        });
         window.activeLeafletMap = map;
 
         L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
-            maxZoom: 19,
+            noWrap: true,
+            bounds: [
+                [-90, -180],
+                [90, 180]
+            ],
             attribution: 'Tiles &copy; Esri &mdash; Source: Esri, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-EGP, and the GIS User Community'
         }).addTo(map);
+
+        mapLayersGroup = L.layerGroup().addTo(map);
 
         let dayIndex = 0;
         const targetDates = ["7/31/2026", "8/1/2026", "8/2/2026", "8/3/2026", "8/4/2026", "8/5/2026", "8/6/2026", "8/7/2026"];
@@ -1035,43 +1054,100 @@ function initLeafletMap(dateStr) {
         const dummyWinds = [18,18,18,18,18,18,18,18];
         const dummyGusts = [30,30,30,30,30,30,30,30];
 
-        const minuteData = getMinuteValuesForDay(dateStr, activeSearchQuery, activePlaceName, dummyTempsMax, dummyWinds, dummyGusts, dayIndex);
-        const metric = document.getElementById("metricSelector").value;
+        // Cache the full 1,440-minute dataset for the day
+        window.activeMinuteDataCache = getMinuteValuesForDay(dateStr, activeSearchQuery, activePlaceName, dummyTempsMax, dummyWinds, dummyGusts, dayIndex);
 
-        const valuesArray = metric === 'temp' ? minuteData.temps : (metric === 'wind' ? minuteData.winds : minuteData.gusts);
+        // Inject the minute-by-minute time slider into the map container UI
+        addMinuteTimeSliderControl(map);
 
-        const latMin = -90.0, latMax = 90.0;
-        const lonMin = -180.0, lonMax = 180.0;
-        const latSteps = 24;
-        const lonSteps = 36;
-
-        const dLat = (latMax - latMin) / latSteps;
-        const dLon = (lonMax - lonMin) / lonSteps;
-
-        for (let i = 0; i < latSteps; i++) {
-            for (let j = 0; j < lonSteps; j++) {
-                const cellLat = latMin + (i + 0.5) * dLat;
-                const cellLon = lonMin + (j + 0.5) * dLon;
-
-                const indexMapping = Math.floor(Math.abs(Math.sin(cellLat * cellLon) * valuesArray.length)) % valuesArray.length;
-                const cellVal = valuesArray[indexMapping];
-
-                let cellColor = metric === 'temp' ? getTempColor(cellVal) : getWindColor(cellVal);
-
-                const cellBounds = [
-                    [cellLat - dLat / 2, cellLon - dLon / 2],
-                    [cellLat + dLat / 2, cellLon + dLon / 2]
-                ];
-
-                L.rectangle(cellBounds, {
-                    color: cellColor,
-                    weight: 0,
-                    fillColor: cellColor,
-                    fillOpacity: 0.45
-                }).addTo(map);
-            }
-        }
+        // Render starting minute (Minute 0 = 12:00 AM)
+        updateMapForMinute(0);
     }, 250);
+}
+
+function addMinuteTimeSliderControl(map) {
+    const existingControl = document.getElementById("mapTimeSliderContainer");
+    if (existingControl) existingControl.remove();
+
+    const sliderControlDiv = document.createElement("div");
+    sliderControlDiv.id = "mapTimeSliderContainer";
+    sliderControlDiv.style.cssText = `
+        position: absolute; bottom: 25px; left: 50%; transform: translateX(-50%);
+        background: rgba(28, 28, 28, 0.92); padding: 12px 18px; border-radius: 12px;
+        border: 1px solid #444; z-index: 3000; width: 85%; max-width: 600px;
+        box-shadow: 0 8px 24px rgba(0,0,0,0.7); display: flex; flex-direction: column; gap: 8px;
+    `;
+
+    sliderControlDiv.innerHTML = `
+        <div style="display: flex; justify-content: space-between; align-items: center; font-size: 13px; color: #fff; font-weight: 500;">
+            <span>⏱️ Minute-by-Minute Timeline</span>
+            <span id="mapCurrentTimeLabel" style="color: #00a8cc; font-weight: bold;">12:00 AM</span>
+        </div>
+        <input type="range" id="mapMinuteRange" min="0" max="1439" value="0" step="1" style="width: 100%; cursor: pointer; accent-color: #00a8cc;">
+    `;
+
+    const mapContainerElem = document.getElementById("leafletMapContainer");
+    mapContainerElem.style.position = "relative";
+    mapContainerElem.appendChild(sliderControlDiv);
+
+    document.getElementById("mapMinuteRange").addEventListener("input", (e) => {
+        const selectedMinute = parseInt(e.target.value, 10);
+        updateMapForMinute(selectedMinute);
+    });
+}
+
+function updateMapForMinute(totalMinutes) {
+    if (!mapLayersGroup || !window.activeMinuteDataCache) return;
+
+    const hour24 = Math.floor(totalMinutes / 60);
+    const minute = totalMinutes % 60;
+    const h12 = hour24 % 12 === 0 ? 12 : hour24 % 12;
+    const ampm = hour24 >= 12 ? 'PM' : 'AM';
+    const minFormatted = String(minute).padStart(2, '0');
+    
+    const timeLabelElem = document.getElementById("mapCurrentTimeLabel");
+    if (timeLabelElem) {
+        timeLabelElem.innerText = `${h12}:${minFormatted} ${ampm} (${totalMinutes}m)`;
+    }
+
+    const metric = document.getElementById("metricSelector").value;
+    const valuesArray = metric === 'temp' ? window.activeMinuteDataCache.temps : 
+                        (metric === 'wind' ? window.activeMinuteDataCache.winds : window.activeMinuteDataCache.gusts);
+
+    mapLayersGroup.clearLayers();
+
+    const latMin = -90.0, latMax = 90.0;
+    const lonMin = -180.0, lonMax = 180.0;
+    const latSteps = 18;
+    const lonSteps = 30;
+
+    const dLat = (latMax - latMin) / latSteps;
+    const dLon = (lonMax - lonMin) / lonSteps;
+
+    for (let i = 0; i < latSteps; i++) {
+        for (let j = 0; j < lonSteps; j++) {
+            const cellLat = latMin + (i + 0.5) * dLat;
+            const cellLon = lonMin + (j + 0.5) * dLon;
+
+            const spatialOffset = Math.floor(Math.abs(Math.sin(cellLat * 12.9898 + cellLon * 78.233) * 1000));
+            const valueIndex = (totalMinutes + spatialOffset) % valuesArray.length;
+            const cellVal = valuesArray[valueIndex];
+
+            const cellColor = metric === 'temp' ? getTempColor(cellVal) : getWindColor(cellVal);
+
+            const cellBounds = [
+                [cellLat - dLat / 2, cellLon - dLon / 2],
+                [cellLat + dLat / 2, cellLon + dLon / 2]
+            ];
+
+            L.rectangle(cellBounds, {
+                color: cellColor,
+                weight: 0,
+                fillColor: cellColor,
+                fillOpacity: 0.52
+            }).addTo(mapLayersGroup);
+        }
+    }
 }
    
 function closeModal() {
