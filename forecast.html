@@ -739,9 +739,20 @@ function parseAndRender(data, searchQuery, placeName) {
     const daily = data.daily;
     const forecastData = [];
 
-    const targetDates = [
+    const rawTargetDates = [
         "7/31/2026", "8/1/2026", "8/2/2026", "8/3/2026", "8/4/2026", "8/5/2026", "8/6/2026", "8/7/2026"
     ];
+
+    // Normalize today's date to midnight to accurately filter out past days as time moves forward
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    // Filter target dates to exclude days in the past
+    const targetDates = rawTargetDates.filter(dateStr => {
+        const [m, d, y] = dateStr.split("/").map(Number);
+        const itemDate = new Date(y, m - 1, d);
+        return itemDate >= today;
+    });
 
     let maxGustInForecast = 160;
 
