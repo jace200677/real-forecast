@@ -600,21 +600,6 @@ function getMinuteValuesForDay(dateStr, searchQuery, placeName, apiDailyTemps, a
     const prevEventOverride = findRegionalOverride(prevDateStr, searchQuery, placeName, apiHigh, apiLow, apiWind, apiGusts);
     const wasPrevDayMN731 = (prevDateStr === "7/31/2026" && isMN);
 
-    // Location-based hash for dynamic offsets
-    const locationSeed = `${searchQuery.toLowerCase().trim()}_${placeName.toLowerCase().trim()}`;
-    const hash = Math.abs(getHashOffset(locationSeed));
-
-    // Dynamic targets for MN 7/31 event per location:
-    // Sustained Wind Peak: between 42 mph and 54 mph
-    // Wind Gust Peak: between 78 mph and 96 mph
-    const mnTargetWind = 48 + ((hash % 13) - 6); 
-    const mnTargetGust = 89 + ((hash % 19) - 10);
-
-    // Location-seeded shifts for Non-MN locations on 7/31
-    const tempVar = (hash % 7) - 3;   // -3 to +3 °F
-    const windVar = (hash % 5) - 2;   // -2 to +2 mph
-    const gustVar = (hash % 9) - 4;   // -4 to +4 mph
-
     const temps = [];
     const winds = [];
     const gusts = [];
@@ -628,8 +613,8 @@ function getMinuteValuesForDay(dateStr, searchQuery, placeName, apiDailyTemps, a
         const base22Wind = activeHourlyData ? (baseHourWinds[22] || 18) : 18;
         const base22Gust = activeHourlyData ? (baseHourGusts[22] || 30) : 30;
         const progress1159 = 59 / 60;
-        startWind1159 = Math.round(mnTargetWind + (base22Wind - mnTargetWind) * progress1159);
-        startGust1159 = Math.round(mnTargetGust + (base22Gust - mnTargetGust) * progress1159);
+        startWind1159 = Math.round(66 + (base22Wind - 66) * progress1159);
+        startGust1159 = Math.round(124 + (base22Gust - 124) * progress1159);
         startTemp1159 = baseHourTemps[0];
     } else if (prevEventOverride) {
         const factor1159 = 0.55;
@@ -642,7 +627,7 @@ function getMinuteValuesForDay(dateStr, searchQuery, placeName, apiDailyTemps, a
         startTemp1159 = Math.round(baseHourTemp23 + (prevEventOverride.baseEvent.tempDelta * factor1159));
     }
 
-    const min5pm = 17 * 60; // 1020 minutes (5:00 PM)
+    const min5pm = 17 * 60;
 
     for (let hour = 0; hour < 24; hour++) {
         for (let minute = 0; minute < 60; minute++) {
@@ -656,30 +641,27 @@ function getMinuteValuesForDay(dateStr, searchQuery, placeName, apiDailyTemps, a
 
             if (dateStr === "7/31/2026") {
                 if (isMN) {
-                    // Minnesota Evening Severe Event Curve (Location-Varied Peak)
-                    const min8pm = 20 * 60;
-                    const min9pm = 21 * 60;
                     const min10pm = 22 * 60;
+                    const min11pm = 23 * 60;
+                    const minMidnight = 24 * 60;
 
-                    if (totalMinutes >= min8pm && totalMinutes < min9pm) {
-                        const progress = (totalMinutes - min8pm) / 60;
-                        baseWind = Math.round(baseWind + (mnTargetWind - baseWind) * progress);
-                        baseGust = Math.round(baseGust + (mnTargetGust - baseGust) * progress);
-                    } else if (totalMinutes >= min9pm && totalMinutes < min10pm) {
-                        const progress = (totalMinutes - min9pm) / 60;
-                        baseWind = Math.round(mnTargetWind + (baseHourWinds[22] - mnTargetWind) * progress);
-                        baseGust = Math.round(mnTargetGust + (baseHourGusts[22] - mnTargetGust) * progress);
+                    if (totalMinutes >= min10pm && totalMinutes < min11pm) {
+                        const progress = (totalMinutes - min10pm) / 60;
+                        baseWind = Math.round(baseWind + (66 - baseWind) * progress);
+                        baseGust = Math.round(baseGust + (124 - baseGust) * progress);
+                    } else if (totalMinutes >= min11pm && totalMinutes < minMidnight) {
+                        const progress = (totalMinutes - min11pm) / 60;
+                        baseWind = Math.round(66 + (baseHourWinds[23] - 66) * progress);
+                        baseGust = Math.round(124 + (baseHourGusts[23] - 124) * progress);
                     }
                 } else {
-                    // Non-Minnesota: Location-seeded variation onto live weather baseline
-                    baseTemp = Math.round(baseTemp + tempVar);
-                    baseWind = Math.max(0, Math.round(baseWind + windVar));
-                    baseGust = Math.max(baseWind, Math.round(baseGust + gustVar));
+                    baseWind = Math.max(0, Math.round(baseWind));
+                    baseGust = Math.max(baseWind, Math.round(baseGust));
                 }
             } else if (exactOverride) {
-                const noonMin = 12 * 60;       
-                const min6pm = 18 * 60;        
-                const totalDayMins = 24 * 60;
+                let noonMin = 12 * 60;       
+                let min6pm = 18 * 60;        
+                let totalDayMins = 24 * 60;
                 let factor = 0;
                 let tempShift = exactOverride.baseEvent.tempDelta;
 
@@ -704,7 +686,7 @@ function getMinuteValuesForDay(dateStr, searchQuery, placeName, apiDailyTemps, a
                 baseGust = Math.round(startGust1159 + (baseGust - startGust1159) * progress);
                 baseTemp = Math.round(startTemp1159 + (baseTemp - startTemp1159) * progress);
             } else if (futureEventOverride) {
-                const totalDayMins = 24 * 60;
+                let totalDayMins = 24 * 60;
                 let progress = totalMinutes / totalDayMins;
                 let factor = progress * 0.45; 
                 let tempShift = futureEventOverride.baseEvent.tempDelta;
