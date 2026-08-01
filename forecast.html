@@ -668,20 +668,32 @@ function getMinuteValuesForDay(dateStr, searchQuery, placeName, apiDailyTemps, a
             let baseGust = baseHourGusts[hour] || 30;
 
             const totalMinutes = hour * 60 + minute;
+            const totalMinutes = hour * 60 + minute;
             if (dateStr === "8/1/2026" && isMN) {
-                // Location-specific variation seed based on searched input
                 const locationSeed = `${searchQuery.toLowerCase().trim()}_${placeName.toLowerCase().trim()}`;
                 const hash = Math.abs(getHashOffset(locationSeed));
-                const localWindPeak = 55 + ((hash % 10) - 5);   // Peak wind at 10 PM
-                const localGustPeak = 95 + ((hash % 15) - 7);    // Peak gust at 10 PM
+                
+                // Adjusted peak values: wind down 10 mph (55 -> 45), gusts down 20 mph (95 -> 75)[cite: 1]
+                const localWindPeak = 45 + ((hash % 10) - 5);   
+                const localGustPeak = 75 + ((hash % 15) - 7);    
 
-                if (totalMinutes >= min5pm && totalMinutes < min10pm) {
-                    // Trend up starting at 5 PM to peak at 10 PM (5-hour ramp window)
+                // Confidence trending up to 100% (1.0) by 5 PM (17:00 / 1020 minutes)[cite: 1]
+                let confidenceFactor = 0.0;
+                if (totalMinutes <= min5pm) {
+                    confidenceFactor = totalMinutes / min5pm; // Scales from 0.0 up to 1.0 at 5 PM
+                } else {
+                    confidenceFactor = 1.0; // Locked at 100% confidence from 5 PM onward
+                }
+
+                if (totalMinutes >= 0 && totalMinutes <= min5pm) {
+                    const progress = totalMinutes / min5pm;
+                    baseWind = Math.round(baseWind + ((localWindPeak - baseWind) * progress * confidenceFactor));
+                    baseGust = Math.round(baseGust + ((localGustPeak - baseGust) * progress * confidenceFactor));
+                } else if (totalMinutes > min5pm && totalMinutes < min10pm) {
                     const progress = (totalMinutes - min5pm) / (min10pm - min5pm);
-                    baseWind = Math.round(baseWind + (localWindPeak - baseWind) * progress);
-                    baseGust = Math.round(baseGust + (localGustPeak - baseGust) * progress);
+                    baseWind = Math.round(baseWind + (localWindPeak - baseWind) * confidenceFactor);
+                    baseGust = Math.round(baseGust + (localGustPeak - baseGust) * confidenceFactor);
                 } else if (totalMinutes >= min10pm && totalMinutes < minMidnight) {
-                    // After 10 PM, slowly go back down toward end-of-day baseline
                     const progress = (totalMinutes - min10pm) / (minMidnight - min10pm);
                     baseWind = Math.round(localWindPeak + (baseHourWinds[23] - localWindPeak) * progress);
                     baseGust = Math.round(localGustPeak + (baseHourGusts[23] - localGustPeak) * progress);
