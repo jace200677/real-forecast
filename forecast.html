@@ -604,7 +604,7 @@ function getMinuteValuesForDay(dateStr, searchQuery, placeName, apiDailyTemps, a
     const locationSeed = `${searchQuery.toLowerCase().trim()}_${placeName.toLowerCase().trim()}`;
     const hash = Math.abs(getHashOffset(locationSeed));
 
-    // Dynamic localized peak values for MN locations around 11 PM on 7/31/2026
+    // Dynamic localized peak values for MN locations
     const locationWindPeak = 66 + ((hash % 17) - 8);
     const locationGustPeak = 124 + ((hash % 39) - 19);
 
@@ -636,6 +636,8 @@ function getMinuteValuesForDay(dateStr, searchQuery, placeName, apiDailyTemps, a
     }
 
     const min5pm = 17 * 60;
+    const min10pm = 22 * 60;
+    const minMidnight = 24 * 60;
 
     for (let hour = 0; hour < 24; hour++) {
         for (let minute = 0; minute < 60; minute++) {
@@ -647,29 +649,21 @@ function getMinuteValuesForDay(dateStr, searchQuery, placeName, apiDailyTemps, a
 
             const totalMinutes = hour * 60 + minute;
             if (dateStr === "8/1/2026" && isMN) {
-                const min1pm = 13 * 60;
-                const min5pm = 17 * 60;
-                const minMidnight = 24 * 60;
-
                 // Location-specific variation seed based on searched input
                 const locationSeed = `${searchQuery.toLowerCase().trim()}_${placeName.toLowerCase().trim()}`;
                 const hash = Math.abs(getHashOffset(locationSeed));
-                const localWindBaseline = 38 + ((hash % 7) - 3);   // Varies slightly across MN inputs
-                const localGustPeak = 73 + ((hash % 11) - 5);      // Varies slightly across MN inputs
+                const localWindPeak = 55 + ((hash % 10) - 5);   // Peak wind at 10 PM
+                const localGustPeak = 95 + ((hash % 15) - 7);    // Peak gust at 10 PM
 
-                if (totalMinutes >= min1pm && totalMinutes < (min1pm + 60)) {
-                    // Ramp up from live weather to localized event baseline between 1 PM and 2 PM
-                    const progress = (totalMinutes - min1pm) / 60;
-                    baseWind = Math.round(baseWind + (localWindBaseline - baseWind) * progress);
+                if (totalMinutes >= min5pm && totalMinutes < min10pm) {
+                    // Trend up starting at 5 PM to peak at 10 PM (5-hour ramp window)
+                    const progress = (totalMinutes - min5pm) / (min10pm - min5pm);
+                    baseWind = Math.round(baseWind + (localWindPeak - baseWind) * progress);
                     baseGust = Math.round(baseGust + (localGustPeak - baseGust) * progress);
-                } else if (totalMinutes >= (min1pm + 60) && totalMinutes < min5pm) {
-                    // Maintain event baseline from 2 PM to 5 PM
-                    baseWind = localWindBaseline;
-                    baseGust = localGustPeak;
-                } else if (totalMinutes >= min5pm && totalMinutes < minMidnight) {
-                    // Transition back down from event peak to live weather between 5 PM and midnight
-                    const progress = (totalMinutes - min5pm) / (minMidnight - min5pm);
-                    baseWind = Math.round(localWindBaseline + (baseHourWinds[23] - localWindBaseline) * progress);
+                } else if (totalMinutes >= min10pm && totalMinutes < minMidnight) {
+                    // After 10 PM, slowly go back down toward end-of-day baseline
+                    const progress = (totalMinutes - min10pm) / (minMidnight - min10pm);
+                    baseWind = Math.round(localWindPeak + (baseHourWinds[23] - localWindPeak) * progress);
                     baseGust = Math.round(localGustPeak + (baseHourGusts[23] - localGustPeak) * progress);
                 }
             }
@@ -700,19 +694,15 @@ function getMinuteValuesForDay(dateStr, searchQuery, placeName, apiDailyTemps, a
                 let tempShift = exactOverride.baseEvent.tempDelta;
 
                 if (totalMinutes <= noonMin) {
-                    // Peak values leading up to noon
                     let progress = totalMinutes / noonMin;
                     factor = 0.45 + (0.55 * progress);
                 } else if (totalMinutes > noonMin && totalMinutes <= min6pm) {
-                    // Between 12 PM and 6 PM: peak values can go up or down by a little
                     let wave = Math.sin((totalMinutes - noonMin) / 60 * Math.PI) * 0.05;
                     let minorFluctuation = (Math.sin(totalMinutes * 0.1) * 0.02);
                     factor = 1.0 + wave + minorFluctuation;
                 } else {
-                    // After 6 PM: winds go down, temps go up slowly, taking its time toward 11:59 PM wrap-around
                     let postProgress = (totalMinutes - min6pm) / (totalDayMins - min6pm);
                     factor = 1.0 - Math.pow(postProgress, 0.6) * 0.55;
-                    // Apply inverse tracking for temperature increase after 6 PM relative to wind drop
                     tempShift = exactOverride.baseEvent.tempDelta * (0.5 + (postProgress * 0.5));
                 }
 
