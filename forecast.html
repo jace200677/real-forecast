@@ -1118,8 +1118,9 @@ function updateMapForMinute(totalMinutes) {
 
     const latMin = -90.0, latMax = 90.0;
     const lonMin = -180.0, lonMax = 180.0;
-    const latSteps = 18;
-    const lonSteps = 30;
+    // Increase grid steps to ensure finer, smoother gradient distribution across the canvas
+    const latSteps = 45;
+    const lonSteps = 75;
 
     const dLat = (latMax - latMin) / latSteps;
     const dLon = (lonMax - lonMin) / lonSteps;
@@ -1133,7 +1134,6 @@ function updateMapForMinute(totalMinutes) {
             const valueIndex = (totalMinutes + spatialOffset) % valuesArray.length;
             const cellVal = valuesArray[valueIndex];
 
-            // Correctly apply temperature or wind color scales based on exact metric value stops
             const cellColor = metric === 'temp' ? getTempColor(cellVal) : getWindColor(cellVal);
 
             const cellBounds = [
@@ -1141,11 +1141,12 @@ function updateMapForMinute(totalMinutes) {
                 [cellLat + dLat / 2, cellLon + dLon / 2]
             ];
 
+            // Render with softer opacity blending to remove harsh squared boundaries
             L.rectangle(cellBounds, {
                 color: cellColor,
                 weight: 0,
                 fillColor: cellColor,
-                fillOpacity: 0.52
+                fillOpacity: 0.38
             }).addTo(mapLayersGroup);
         }
     }
