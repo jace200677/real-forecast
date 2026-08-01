@@ -1010,69 +1010,7 @@ function openMinuteMapView(dateStr) {
 }
 
 let mapLayersGroup = null;
-
-// Apple Weather Exact Multi-Stop Color Interpolation Engine
-function getAppleWeatherColor(val, metric) {
-    if (metric === 'temp') {
-        // Apple Weather standard temperature stops (°F)
-        const stops = [
-            { temp: 10, color: "#1c3d5a" },  // Extremely Cold / Dark Blue
-            { temp: 32, color: "#007aff" },  // Cold / Blue
-            { temp: 50, color: "#34c759" },  // Cool / Green
-            { temp: 68, color: "#ffcc00" },  // Mild / Yellow
-            { temp: 82, color: "#ff9500" },  // Warm / Orange
-            { temp: 95, color: "#ff3b30" },  // Hot / Red
-            { temp: 105, color: "#af52de" }  // Extreme / Purple
-        ];
-
-        if (val <= stops[0].temp) return stops[0].color;
-        if (val >= stops[stops.length - 1].temp) return stops[stops.length - 1].color;
-
-        for (let i = 0; i < stops.length - 1; i++) {
-            if (val >= stops[i].temp && val <= stops[i + 1].temp) {
-                const factor = (val - stops[i].temp) / (stops[i + 1].temp - stops[i].temp);
-                return interpolateColor(stops[i].color, stops[i + 1].color, factor);
-            }
-        }
-        return "#007aff";
-    } else {
-        // Apple Weather wind/gust spectrum stops (mph)
-        const stops = [
-            { speed: 0, color: "#30b0c7" },
-            { speed: 15, color: "#34c759" },
-            { speed: 30, color: "#ffcc00" },
-            { speed: 50, color: "#ff9500" },
-            { speed: 75, color: "#ff3b30" },
-            { speed: 100, color: "#af52de" }
-        ];
-
-        if (val <= stops[0].speed) return stops[0].color;
-        if (val >= stops[stops.length - 1].speed) return stops[stops.length - 1].color;
-
-        for (let i = 0; i < stops.length - 1; i++) {
-            if (val >= stops[i].speed && val <= stops[i + 1].speed) {
-                const factor = (val - stops[i].speed) / (stops[i + 1].speed - stops[i].speed);
-                return interpolateColor(stops[i].color, stops[i + 1].color, factor);
-            }
-        }
-        return "#30b0c7";
-    }
-}
-
-function interpolateColor(color1, color2, factor) {
-    const c1 = parseInt(color1.slice(1), 16);
-    const c2 = parseInt(color2.slice(1), 16);
-
-    const r1 = (c1 >> 16) & 255, g1 = (c1 >> 8) & 255, b1 = c1 & 255;
-    const r2 = (c2 >> 16) & 255, g2 = (c2 >> 8) & 255, b2 = c2 & 255;
-
-    const r = Math.round(r1 + factor * (r2 - r1));
-    const g = Math.round(g1 + factor * (g2 - g1));
-    const b = Math.round(b1 + factor * (b2 - b1));
-
-    return `#${((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1)}`;
-}
-
+   
 function initLeafletMap(dateStr) {
     setTimeout(() => {
         if (window.activeLeafletMap) {
@@ -1082,7 +1020,7 @@ function initLeafletMap(dateStr) {
         const centerLat = currentLat || 39.8283;
         const centerLon = currentLon || -98.5795;
 
-        // Initialize Leaflet map with expanded zoom capabilities for depth exploration
+        // Initialize Leaflet map covering the entire planet with strict constraints
         const map = L.map('leafletMapContainer', {
             center: [centerLat, centerLon],
             zoom: 3,
@@ -1118,12 +1056,12 @@ function initLeafletMap(dateStr) {
         const dummyWinds = [18,18,18,18,18,18,18,18];
         const dummyGusts = [30,30,30,30,30,30,30,30];
 
-        // Cache minute-by-minute data strictly matching the active graph timeline
+        // Cache minute-by-minute data matching the active graph timeline
         window.activeMinuteDataCache = getMinuteValuesForDay(dateStr, activeSearchQuery, activePlaceName, dummyTempsMax, dummyWinds, dummyGusts, dayIndex);
 
         addMinuteTimeSliderControl(map);
 
-        // Update map rendering dynamically on zoom changes to scale square sizes
+        // Update map rendering dynamically on zoom changes to scale global square sizes
         map.on('zoomend', () => {
             const currentSlider = document.getElementById("mapMinuteRange");
             const currentMin = currentSlider ? parseInt(currentSlider.value, 10) : 0;
@@ -1158,10 +1096,10 @@ function updateMapForMinute(totalMinutes) {
 
     mapLayersGroup.clearLayers();
 
-    // Scale grid density dynamically based on current Leaflet map zoom level
+    // Scale grid density globally across the entire planet based on Leaflet zoom level
     const currentZoom = window.activeLeafletMap.getZoom();
-    const latSteps = Math.min(100, Math.max(12, Math.round(15 * Math.pow(1.25, currentZoom - 3))));
-    const lonSteps = Math.min(160, Math.max(20, Math.round(24 * Math.pow(1.25, currentZoom - 3))));
+    const latSteps = Math.min(120, Math.max(16, Math.round(18 * Math.pow(1.3, currentZoom - 3))));
+    const lonSteps = Math.min(200, Math.max(24, Math.round(28 * Math.pow(1.3, currentZoom - 3))));
 
     const latMin = -90.0, latMax = 90.0;
     const lonMin = -180.0, lonMax = 180.0;
@@ -1174,12 +1112,12 @@ function updateMapForMinute(totalMinutes) {
             const cellLat = latMin + (i + 0.5) * dLat;
             const cellLon = lonMin + (j + 0.5) * dLon;
 
-            // Bind spatial variance directly to active location coordinates
-            const spatialOffset = Math.floor(Math.abs(Math.sin(cellLat * 12.9898 + cellLon * 78.233 + (currentLat || 0)) * 1000));
+            // Bind spatial variance across latitude and longitude globally
+            const spatialOffset = Math.floor(Math.abs(Math.sin(cellLat * 12.9898 + cellLon * 78.233) * 1000));
             const valueIndex = (clampedMinutes + spatialOffset) % valuesArray.length;
             const cellVal = valuesArray[valueIndex];
 
-            // Apply smooth color lerp fade mapped precisely to Apple Weather spectrum stops
+            // Apply color grading mapped precisely to Apple Weather spectrum stops based on location and values
             const cellColor = metric === 'temp' ? getTempColor(cellVal) : getWindColor(cellVal);
 
             const cellBounds = [
@@ -1195,6 +1133,45 @@ function updateMapForMinute(totalMinutes) {
             }).addTo(mapLayersGroup);
         }
     }
+}
+
+function addMinuteTimeSliderControl(map) {
+    if (document.getElementById("mapSliderContainer")) return;
+
+    const sliderContainer = document.createElement("div");
+    sliderContainer.id = "mapSliderContainer";
+    sliderContainer.style.cssText = `
+        position: absolute; bottom: 25px; left: 50%; transform: translateX(-50%);
+        background: rgba(20, 20, 20, 0.85); backdrop-filter: blur(10px);
+        padding: 12px 20px; border-radius: 12px; border: 1px solid #333;
+        display: flex; flex-direction: column; gap: 8px; z-index: 1000; width: 85%; max-width: 600px;
+        box-shadow: 0 10px 25px rgba(0,0,0,0.6);
+    `;
+
+    sliderContainer.innerHTML = `
+        <div style="display: flex; justify-content: space-between; align-items: center; font-size: 13px; color: #fff; font-weight: 600;">
+            <span>Timeline Control (12:00 AM - 11:59 PM)</span>
+            <span id="mapCurrentTimeLabel" style="color: #00a8cc; font-family: monospace; font-size: 14px;">12:00 AM (0m)</span>
+        </div>
+        <input type="range" id="mapMinuteRange" min="0" max="1439" value="0" step="1" style="width: 100%; accent-color: #00a8cc; cursor: pointer;">
+        <div style="display: flex; justify-content: space-between; font-size: 10px; color: #888;">
+            <span>12:00 AM</span>
+            <span>6:00 AM</span>
+            <span>12:00 PM</span>
+            <span>6:00 PM</span>
+            <span>11:59 PM</span>
+        </div>
+    `;
+
+    const mapContainer = document.getElementById("leafletMapContainer");
+    mapContainer.style.position = "relative";
+    mapContainer.appendChild(sliderContainer);
+
+    const rangeInput = document.getElementById("mapMinuteRange");
+    rangeInput.addEventListener("input", (e) => {
+        const val = parseInt(e.target.value, 10);
+        updateMapForMinute(val);
+    });
 }
    
 function closeModal() {
