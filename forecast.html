@@ -712,6 +712,7 @@ function getMinuteValuesForDay(dateStr, searchQuery, placeName, apiDailyTemps, a
     }
 const min2am = 2 * 60;
     const min5pm = 17 * 60;
+   const min7pm = 19 * 60;
     const min10pm = 22 * 60;
    const min9pm = 21 * 60;
     const minMidnight = 24 * 60;
@@ -762,8 +763,8 @@ const min2am = 2 * 60;
                 const hash = Math.abs(getHashOffset(locationSeed));
                 
                 // Adjusted peak values based on confidence
-                const localWindPeak = 15 + ((hash % 10) - 5);   
-                const localGustPeak = 35 + ((hash % 15) - 7);    
+                const localWindPeak = 19 + ((hash % 10) - 5);   
+                const localGustPeak = 42 + ((hash % 15) - 7);    
 
                 // Target ending values after 9 PM down-trend
                 const targetEndWind = 5;
@@ -772,13 +773,13 @@ const min2am = 2 * 60;
                 // Confidence trending up to 100% (1.0) by 5 PM
                 let confidenceFactor = totalMinutes <= min5pm ? (totalMinutes / min5pm) : 1.0;
 
-                if (totalMinutes < min5pm) {
+                if (totalMinutes < min7pm) {
                     // No wind event clipping before 5 PM; maintain normal baseline
                     baseWind = baseHourWinds[hour] || 18;
                     baseGust = baseHourGusts[hour] || 30;
-                } else if (totalMinutes >= min5pm && totalMinutes <= min9pm) {
+                } else if (totalMinutes >= min7pm && totalMinutes <= min9pm) {
                     // Ramp up starting strictly after 5 PM, peaking at 9 PM
-                    const progress = (totalMinutes - min5pm) / (min9pm - min5pm);
+                    const progress = (totalMinutes - min7pm) / (min9pm - min7pm);
                     baseWind = Math.round(baseHourWinds[17] + (localWindPeak - baseHourWinds[17]) * progress * confidenceFactor);
                     baseGust = Math.round(baseHourGusts[17] + (localGustPeak - baseHourGusts[17]) * progress * confidenceFactor);
                 } else if (totalMinutes > min9pm && totalMinutes < minMidnight) {
