@@ -1012,18 +1012,15 @@ function renderForecast(forecastData) {
 
 function openGraphModal(item) {
     // If opened from a history panel or archive list, target item might just have a dateStr
-    // Fallback gracefully if full properties aren't directly on the passed item
-    const targetDateStr = item.dateStr || item; 
+    const targetDateStr = typeof item === "string" ? item : (item.dateStr || item); 
     
-    // Check if data source comes from history/archive panel
-    // If item is just a string/date, look it up from your data array, or use default fallback values
+    // Check if data source comes from history/archive panel or standard objects
     let activeItem = item;
-    if (typeof item === "string") {
-        // Try to find the matching item in your history, archive, or forecast data arrays
-        activeItem = (typeof eventArchives !== 'undefined' ? eventArchives : []).find(d => d.dateStr === item) ||
-                     (typeof historicalData !== 'undefined' ? historicalData : []).find(d => d.dateStr === item) || 
-                     (typeof forecastData !== 'undefined' ? forecastData : []).find(d => d.dateStr === item) || 
-                     { day: "Archive Day", dateStr: item, high: 75, low: 55, wind: 10, gusts: 15, note: "Event Archive" };
+    if (typeof item === "string" || !item.day) {
+        activeItem = (typeof eventArchives !== 'undefined' ? eventArchives : []).find(d => d.dateStr === targetDateStr) ||
+                     (typeof historicalData !== 'undefined' ? historicalData : []).find(d => d.dateStr === targetDateStr) || 
+                     (typeof forecastData !== 'undefined' ? forecastData : []).find(d => d.dateStr === targetDateStr) || 
+                     { day: "Archive Day", dateStr: targetDateStr, high: 75, low: 55, wind: 10, gusts: 15, note: "Historical Record" };
     }
 
     activeDayDateStr = activeItem.dateStr;
@@ -1051,6 +1048,20 @@ function openGraphModal(item) {
             padding: 6px 14px; border-radius: 6px; cursor: pointer;
             font-weight: 600; margin-left: 10px; opacity: 1; pointer-events: auto;
         `;
+    }
+
+    // Ensure minute-by-minute generation references the archive/history item data correctly
+    if (typeof getMinuteValuesForDay === "function") {
+        const isMN = typeof isMinnesotaLocation === "function" && isMinnesotaLocation(activeSearchQuery, activePlaceName);
+        const isSpecial731 = (activeItem.dateStr === "7/31/2026" && isMN);
+        const regionalOverride = typeof getRegionalEventForDateAndLocation === "function" ? getRegionalEventForDateAndLocation(activeItem.dateStr, activeSearchQuery, activePlaceName) : null;
+
+        if (isSpecial731 || regionalOverride || activeItem.note === "Historical Record" || activeItem.note === "Historical Telemetry Record" || activeItem.note?.includes("Event Archive")) {
+            const dummyMax = { max: [activeItem.high || 75], min: [activeItem.low || 55] };
+            const dummyW = [activeItem.wind || 10];
+            const dummyG = [activeItem.gusts || 15];
+            window.currentMinuteData = getMinuteValuesForDay(activeItem.dateStr, activeSearchQuery, activePlaceName, dummyMax, dummyW, dummyG, 0);
+        }
     }
 
     if (chartModalElem) {
