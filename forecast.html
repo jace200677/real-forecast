@@ -977,12 +977,12 @@ function openMinuteMapView(dateStr) {
             display: flex; justify-content: center; align-items: center; z-index: 2000;
         `;
         mapModal.innerHTML = `
-            <div style="background: #1c1c1c; border: 1px solid #333; border-radius: 16px; width: 95%; max-width: 900px; height: 80vh; padding: 20px; display: flex; flex-direction: column; box-shadow: 0 10px 30px rgba(0,0,0,0.8);">
+            <div style="background: #1c1c1c; border: 1px solid #333; border-radius: 16px; width: 95%; max-width: 950px; height: 85vh; padding: 20px; display: flex; flex-direction: column; box-shadow: 0 10px 30px rgba(0,0,0,0.8);">
                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
                     <div id="mapModalTitle" style="font-size: 18px; font-weight: bold; color: #fff;">Satellite Overlay Map (${dateStr})</div>
                     <button onclick="document.getElementById('mapModalOverlay').style.display='none'" style="font-size: 24px; color: #aaa; cursor: pointer; border: none; background: none;">&times;</button>
                 </div>
-                <div id="leafletMapContainer" style="flex-grow: 1; width: 100%; border-radius: 8px; z-index: 10;"></div>
+                <div id="leafletMapContainer" style="flex-grow: 1; width: 100%; border-radius: 8px; z-index: 10; background: #0d0d0d;"></div>
             </div>
         `;
         document.body.appendChild(mapModal);
@@ -1018,7 +1018,7 @@ function initLeafletMap(dateStr) {
         const lat = currentLat || 39.8283;
         const lon = currentLon || -98.5795;
 
-        const map = L.map('leafletMapContainer').setView([lat, lon], 7);
+        const map = L.map('leafletMapContainer').setView([lat, lon], 6);
         window.activeLeafletMap = map;
 
         L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
@@ -1047,12 +1047,25 @@ function initLeafletMap(dateStr) {
 
         let overlayColor = metric === 'temp' ? getTempColor(sampleVal) : getWindColor(sampleVal);
 
-        L.circle([lat, lon], {
+        const bounds = [
+            [lat - 12, lon - 18],
+            [lat + 12, lon + 18]
+        ];
+
+        L.rectangle(bounds, {
             color: overlayColor,
+            weight: 1,
             fillColor: overlayColor,
-            fillOpacity: 0.5,
-            radius: 120000
-        }).addTo(map).bindPopup(`<b>${activePlaceName || 'Location'}</b><br>Metric: ${metric}<br>Value: ${sampleVal}`).openPopup();
+            fillOpacity: 0.42
+        }).addTo(map);
+
+        L.circle([lat, lon], {
+            color: '#ffffff',
+            weight: 2,
+            fillColor: overlayColor,
+            fillOpacity: 0.85,
+            radius: 85000
+        }).addTo(map).bindPopup(`<b>${activePlaceName || 'Location'}</b><br>Metric: ${metric.toUpperCase()}<br>Value: ${sampleVal}${metric === 'temp' ? '°F' : ' mph'}`).openPopup();
     }, 250);
 }
 
