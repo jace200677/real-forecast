@@ -675,7 +675,6 @@ function getMinuteValuesForDay(dateStr, searchQuery, placeName, apiDailyTemps, a
             let baseGust = baseHourGusts[hour] || 30;
 
             const totalMinutes = hour * 60 + minute;
-            const totalMinutes = hour * 60 + minute;
             if (dateStr === "8/1/2026" && isMN) {
                 const locationSeed = `${searchQuery.toLowerCase().trim()}_${placeName.toLowerCase().trim()}`;
                 const hash = Math.abs(getHashOffset(locationSeed));
