@@ -762,65 +762,61 @@ function parseAndRender(data, searchQuery, placeName) {
         const apiWind = Math.round((daily.wind_speed_10m_max && daily.wind_speed_10m_max[apiIndex]) || 18);
         const apiGusts = Math.round((daily.wind_gusts_10m_max && daily.wind_gusts_10m_max[apiIndex]) || 30);
         
+        // Compute minute-by-minute array to get accurate daily extrema
         const minuteData = getMinuteValuesForDay(
             dateStr, searchQuery, placeName, 
             { max: daily.temperature_2m_max, min: daily.temperature_2m_min }, 
             daily.wind_speed_10m_max, daily.wind_gusts_10m_max, apiIndex
         );
 
+        const isMN = isMinnesotaLocation(searchQuery, placeName);
         const matchedOverride = findRegionalOverride(dateStr, searchQuery, placeName, apiHigh, apiLow, apiWind, apiGusts);
         const postDateStr = getPostEventDateString(dateStr);
         const futureEventOverride = findRegionalOverride(postDateStr, searchQuery, placeName, apiHigh, apiLow, apiWind, apiGusts);
         
-        // Check previous day for post-event decay logic
         const prevDateStr = getPreEventDateString(dateStr);
         const prevEventOverride = findRegionalOverride(prevDateStr, searchQuery, placeName, apiHigh, apiLow, apiWind, apiGusts);
-        const isMN = isMinnesotaLocation(searchQuery, placeName);
         const wasPrevDayMN731 = (prevDateStr === "7/31/2026" && isMN);
         const hasPrevEvent = prevEventOverride || wasPrevDayMN731;
 
         let cardHigh, cardLow, cardWind, cardGusts, note, rawCondition;
         const hasEventInfluence = matchedOverride || futureEventOverride;
 
-        if (dateStr === "7/31/2026") {
-            cardHigh = Math.max(...minuteData.temps);
-            cardLow = Math.min(...minuteData.temps);
-            cardWind = Math.max(...minuteData.winds);
-            cardGusts = Math.max(...minuteData.gusts);
+        // Extract exact day card values directly from minuteData calculations
+        cardHigh = Math.max(...minuteData.temps);
+        cardLow = Math.min(...minuteData.temps);
+        cardWind = Math.max(...minuteData.winds);
+        cardGusts = Math.max(...minuteData.gusts);
 
+        if (dateStr === "7/31/2026") {
             if (isMN) {
                 rawCondition = "Thunderstorms";
-                note = `Thunderstorms (Evening Gusts to 89 mph)`;
+                note = `Thunderstorms (Evening Gusts to ${cardGusts} mph)`;
             } else {
                 rawCondition = wmoConditions[apiCode] || "Partly Cloudy";
                 note = `Live: ${rawCondition}`;
             }
-        } else if (hasEventInfluence) {
-            cardHigh = Math.max(...minuteData.temps);
-            cardLow = Math.min(...minuteData.temps);
-            cardWind = Math.max(...minuteData.winds);
-            cardGusts = Math.max(...minuteData.gusts);
-            note = matchedOverride ? matchedOverride.condition : "Building Event Trend";
-            rawCondition = matchedOverride ? matchedOverride.rawCondition : (wmoConditions[apiCode] || "Partly Cloudy");
+        } else if (matchedOverride) {
+            rawCondition = matchedOverride.rawCondition || "Windy";
+            note = matchedOverride.condition;
+        } else if (futureEventOverride) {
+            rawCondition = wmoConditions[apiCode] || "Partly Cloudy";
+            note = `Building Event Trend`;
         } else if (hasPrevEvent) {
-            // Day after event transitioning to live weather by 5 PM
-            cardHigh = Math.max(...minuteData.temps);
-            cardLow = Math.min(...minuteData.temps);
-            cardWind = Math.max(...minuteData.winds);
-            cardGusts = Math.max(...minuteData.gusts);
             rawCondition = wmoConditions[apiCode] || "Partly Cloudy";
             note = `Post-Event Transition to Live Weather`;
         } else {
-            cardHigh = Math.max(...minuteData.temps);
-            cardLow = Math.min(...minuteData.temps);
-            cardWind = Math.max(...minuteData.winds);
-            cardGusts = Math.max(...minuteData.gusts);
             rawCondition = wmoConditions[apiCode] || "Partly Cloudy";
-            note = `Live: ${rawCondition}`; 
+            note = `Live: ${rawCondition}`;
         }
 
-        const iconUrl = getWeatherIcon(apiCode, rawCondition, hasEventInfluence, dateStr, cardWind);
-        if (cardGusts > maxGustInForecast) maxGustInForecast = cardGusts;
+        // Fetch icon using full context (Location + Date + Wind Speed)
+        const iconUrl = getWeatherIcon(apiCode, rawCondition, (dateStr === "7/31/2026" ? isMN : hasEventInfluence), dateStr, cardWind);
+
+        // Update maximum forecast scaling bound for wind graph rendering
+        if (cardGusts > maxGustInForecast) {
+            maxGustInForecast = cardGusts;
+        }
 
         forecastData.push({
             day: dayLabel, 
