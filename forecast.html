@@ -664,6 +664,7 @@ function getMinuteValuesForDay(dateStr, searchQuery, placeName, apiDailyTemps, a
 
     const min5pm = 17 * 60;
     const min10pm = 22 * 60;
+   const min9pm = 21 * 60;
     const minMidnight = 24 * 60;
 
     for (let hour = 0; hour < 24; hour++) {
@@ -673,7 +674,7 @@ function getMinuteValuesForDay(dateStr, searchQuery, placeName, apiDailyTemps, a
             let baseTemp = baseHourTemps[hour] || 72;
             let baseWind = baseHourWinds[hour] || 18;
             let baseGust = baseHourGusts[hour] || 30;
-
+            
             const totalMinutes = hour * 60 + minute;
             if (dateStr === "8/1/2026" && isMN) {
                 const locationSeed = `${searchQuery.toLowerCase().trim()}_${placeName.toLowerCase().trim()}`;
