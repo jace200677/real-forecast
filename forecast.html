@@ -681,8 +681,8 @@ function getMinuteValuesForDay(dateStr, searchQuery, placeName, apiDailyTemps, a
                 const hash = Math.abs(getHashOffset(locationSeed));
                 
                 // Adjusted peak values based on confidence
-                const localWindPeak = 12 + ((hash % 10) - 5);   
-                const localGustPeak = 22 + ((hash % 15) - 7);    
+                const localWindPeak = 25 + ((hash % 10) - 5);   
+                const localGustPeak = 55 + ((hash % 15) - 7);    
 
                 // Target ending values after 9 PM down-trend
                 const targetEndWind = 5;
