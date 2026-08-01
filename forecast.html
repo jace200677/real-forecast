@@ -1048,24 +1048,16 @@ function initLeafletMap(dateStr) {
         let overlayColor = metric === 'temp' ? getTempColor(sampleVal) : getWindColor(sampleVal);
 
         const bounds = [
-            [lat - 12, lon - 18],
-            [lat + 12, lon + 18]
+            [lat - 15, lon - 22],
+            [lat + 15, lon + 22]
         ];
 
         L.rectangle(bounds, {
             color: overlayColor,
-            weight: 1,
+            weight: 0,
             fillColor: overlayColor,
-            fillOpacity: 0.42
+            fillOpacity: 0.55
         }).addTo(map);
-
-        L.circle([lat, lon], {
-            color: '#ffffff',
-            weight: 2,
-            fillColor: overlayColor,
-            fillOpacity: 0.85,
-            radius: 85000
-        }).addTo(map).bindPopup(`<b>${activePlaceName || 'Location'}</b><br>Metric: ${metric.toUpperCase()}<br>Value: ${sampleVal}${metric === 'temp' ? '°F' : ' mph'}`).openPopup();
     }, 250);
 }
 
