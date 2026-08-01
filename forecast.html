@@ -952,6 +952,59 @@ function openGraphModal(item) {
     activeDayDateStr = item.dateStr;
     document.getElementById("modalTitle").innerText = `${item.day} Minute-by-Minute Forecast Graph`;
     document.getElementById("modalSubtitle").innerText = `Date: ${item.dateStr} (0 to 24 Hours, 12-Hour Format)`;
+
+    // Date check for 8/1/2026 threshold
+    const [m, d, y] = item.dateStr.split("/").map(Number);
+    const currentDate = new Date(y, m - 1, d);
+    const targetDate = new Date(2026, 7, 1); // August 1, 2026 (Month is 0-indexed: 7 = August)
+    const isBeforeAugFirst = currentDate < targetDate;
+
+    // Check for existing map button or create a container for it in the modal header
+    let mapBtn = document.getElementById("modalMapBtn");
+    if (!mapBtn) {
+        mapBtn = document.createElement("button");
+        mapBtn.id = "modalMapBtn";
+        
+        // Append map button next to title/subtitle area in the modal
+        const headerContainer = document.getElementById("modalTitle").parentNode;
+        headerContainer.appendChild(mapBtn);
+    }
+
+    // Configure disabled vs active state
+    if (isBeforeAugFirst) {
+        mapBtn.innerText = "Map (Coming Soon)";
+        mapBtn.disabled = true;
+        mapBtn.onclick = null;
+        mapBtn.style.cssText = `
+            background-color: #e0e0e0;
+            color: #888888;
+            border: 1px solid #cccccc;
+            padding: 6px 14px;
+            border-radius: 6px;
+            cursor: not-allowed;
+            opacity: 0.6;
+            font-weight: 600;
+            margin-left: 10px;
+            pointer-events: none;
+        `;
+    } else {
+        mapBtn.innerText = "Open Map";
+        mapBtn.disabled = false;
+        mapBtn.onclick = function() { openMinuteMapView(item.dateStr); };
+        mapBtn.style.cssText = `
+            background-color: #007bff;
+            color: #ffffff;
+            border: none;
+            padding: 6px 14px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: 600;
+            margin-left: 10px;
+            opacity: 1;
+            pointer-events: auto;
+        `;
+    }
+
     document.getElementById("chartModal").style.display = "flex";
     updateChartMetric();
     updateLiveConfidenceDisplay();
