@@ -212,7 +212,7 @@ function getWeatherIcon(weatherCode, conditionText, regionMatch, dateStr, windSp
             return getLiveWeatherIconByCode(weatherCode);
         }
     }
-    if (dateStr === "8/1/2026") {
+    if (dateStr === "8/3/2026") {
         if (isMinnesota) {
             return ICON_BASE_URL + "Thunderstorms.png";
         } else {
@@ -730,8 +730,8 @@ function getMinuteValuesForDay(dateStr, searchQuery, placeName, apiDailyTemps, a
                 const hash = Math.abs(getHashOffset(locationSeed));
                 
                 // Adjusted peak values based on confidence
-                const localWindPeak = 25 + ((hash % 10) - 5);   
-                const localGustPeak = 55 + ((hash % 15) - 7);    
+                const localWindPeak = 22 + ((hash % 10) - 5);   
+                const localGustPeak = 47 + ((hash % 15) - 7);    
 
                 // Target ending values after 9 PM down-trend
                 const targetEndWind = 5;
