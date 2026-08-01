@@ -1011,116 +1011,54 @@ function renderForecast(forecastData) {
 }
 
 function openGraphModal(item) {
-    console.log("openGraphModal called with item:", item); // Debug: Check if function triggers
+    // If opened from a history panel or archive list, target item might just have a dateStr
+    // Fallback gracefully if full properties aren't directly on the passed item
+    const targetDateStr = item.dateStr || item; 
+    
+    // Check if data source comes from history/archive panel
+    // If item is just a string/date, look it up from your data array, or use default fallback values
+    let activeItem = item;
+    if (typeof item === "string") {
+        // Try to find the matching item in your history, archive, or forecast data arrays
+        activeItem = (typeof eventArchives !== 'undefined' ? eventArchives : []).find(d => d.dateStr === item) ||
+                     (typeof historicalData !== 'undefined' ? historicalData : []).find(d => d.dateStr === item) || 
+                     (typeof forecastData !== 'undefined' ? forecastData : []).find(d => d.dateStr === item) || 
+                     { day: "Archive Day", dateStr: item, high: 75, low: 55, wind: 10, gusts: 15, note: "Event Archive" };
+    }
 
-    const modal = document.getElementById("graphModal");
-    if (!modal) {
-        console.error("graphModal element not found in DOM");
-        return;
+    activeDayDateStr = activeItem.dateStr;
+    
+    const modalTitleElem = document.getElementById("modalTitle");
+    const modalSubtitleElem = document.getElementById("modalSubtitle");
+    const chartModalElem = document.getElementById("chartModal");
+
+    if (modalTitleElem) modalTitleElem.innerText = `${activeItem.day || "Selected"} Minute-by-Minute Forecast Graph`;
+    if (modalSubtitleElem) modalSubtitleElem.innerText = `Date: ${activeItem.dateStr} (0 to 24 Hours, 12-Hour Format)`;
+
+    let mapBtn = document.getElementById("modalMapBtn");
+    if (!mapBtn && modalTitleElem) {
+        mapBtn = document.createElement("button");
+        mapBtn.id = "modalMapBtn";
+        modalTitleElem.parentNode.appendChild(mapBtn);
+    }
+
+    if (mapBtn) {
+        mapBtn.innerText = "Open Map";
+        mapBtn.disabled = false;
+        mapBtn.onclick = function() { openMinuteMapView(activeItem.dateStr); };
+        mapBtn.style.cssText = `
+            background-color: #007bff; color: #ffffff; border: none;
+            padding: 6px 14px; border-radius: 6px; cursor: pointer;
+            font-weight: 600; margin-left: 10px; opacity: 1; pointer-events: auto;
+        `;
+    }
+
+    if (chartModalElem) {
+        chartModalElem.style.setProperty("display", "flex", "important");
     }
     
-    const dayTitle = document.getElementById("modalDayTitle");
-    const tempSummary = document.getElementById("modalTempSummary");
-    const windSummary = document.getElementById("modalWindSummary");
-
-    if (dayTitle) dayTitle.innerText = `${item.day} — ${item.dateStr}`;
-    if (tempSummary) tempSummary.innerHTML = `High: <span style="color:${getTempColor(item.high)}">${item.high}°F</span> | Low: <span style="color:${getTempColor(item.low)}">${item.low}°F</span>`;
-    if (windSummary) windSummary.innerHTML = `Sustained: ${item.wind} mph | Peak Gusts: ${item.gusts} mph`;
-    
-    const canvas = document.getElementById("weatherGraphCanvas");
-    if (!canvas) {
-        console.error("weatherGraphCanvas element not found in DOM");
-        // Force modal open anyway so you can see the layout even if canvas fails
-        modal.style.setProperty("display", "flex", "important");
-        return;
-    }
-
-    const ctx = canvas.getContext("2d");
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-    let minuteTemps = [];
-    let minuteWinds = [];
-    let minuteGusts = [];
-
-    const isMN = typeof isMinnesotaLocation === "function" && isMinnesotaLocation(activeSearchQuery, activePlaceName);
-    const isSpecial731 = (item.dateStr === "7/31/2026" && isMN);
-    const regionalOverride = typeof getRegionalEventForDateAndLocation === "function" ? getRegionalEventForDateAndLocation(item.dateStr, activeSearchQuery, activePlaceName) : null;
-
-    if (isSpecial731 || regionalOverride || item.note === "Historical Record" || item.note === "Historical Telemetry Record" || item.note?.includes("Event Archive")) {
-        const dummyMax = { max: [item.high], min: [item.low] };
-        const dummyW = [item.wind];
-        const dummyG = [item.gusts];
-        const generated = getMinuteValuesForDay(item.dateStr, activeSearchQuery, activePlaceName, dummyMax, dummyW, dummyG, 0);
-        minuteTemps = generated.temps;
-        minuteWinds = generated.winds;
-        minuteGusts = generated.gusts;
-    } else {
-        for (let i = 0; i < 1440; i += 10) {
-            let tProgress = Math.sin((i / 1440) * Math.PI * 2 - Math.PI / 2);
-            let curTemp = Math.round(item.low + (item.high - item.low) * ((tProgress + 1) / 2));
-            let curWind = Math.max(2, Math.round(item.wind + (Math.random() * 6 - 3)));
-            let curGust = Math.max(curWind + 2, Math.round(item.gusts * (0.6 + Math.random() * 0.4)));
-            minuteTemps.push(curTemp);
-            minuteWinds.push(curWind);
-            minuteGusts.push(curGust);
-        }
-    }
-
-    const padding = 40;
-    const w = canvas.width - padding * 2;
-    const h = canvas.height - padding * 2;
-
-    const minT = Math.min(...minuteTemps) - 3;
-    const maxT = Math.max(...minuteTemps) + 3;
-    const maxW = Math.max(50, ...minuteGusts) + 5;
-
-    const getX = (index) => padding + (index / (minuteTemps.length - 1)) * w;
-    const getYTemp = (val) => canvas.height - padding - ((val - minT) / (maxT - minT)) * h;
-    const getYWind = (val) => canvas.height - padding - (val / maxW) * h;
-
-    ctx.strokeStyle = "#222";
-    ctx.lineWidth = 1;
-    for (let i = 0; i <= 4; i++) {
-        let yPos = padding + (h / 4) * i;
-        ctx.beginPath();
-        ctx.moveTo(padding, yPos);
-        ctx.lineTo(canvas.width - padding, yPos);
-        ctx.stroke();
-    }
-
-    ctx.strokeStyle = "#ff9f0a";
-    ctx.lineWidth = 2.5;
-    ctx.beginPath();
-    minuteTemps.forEach((val, idx) => {
-        let x = getX(idx);
-        let y = getYTemp(val);
-        if (idx === 0) ctx.moveTo(x, y);
-        else ctx.lineTo(x, y);
-    });
-    ctx.stroke();
-
-    ctx.strokeStyle = "#30b0c7";
-    ctx.lineWidth = 1.5;
-    ctx.beginPath();
-    minuteGusts.forEach((val, idx) => {
-        let x = getX(idx);
-        let y = getYWind(val);
-        if (idx === 0) ctx.moveTo(x, y);
-        else ctx.lineTo(x, y);
-    });
-    ctx.stroke();
-
-    ctx.fillStyle = "#888";
-    ctx.font = "11px sans-serif";
-    ctx.fillText("12 AM", padding, canvas.height - 15);
-    ctx.fillText("6 AM", padding + w * 0.25, canvas.height - 15);
-    ctx.fillText("12 PM", padding + w * 0.5, canvas.height - 15);
-    ctx.fillText("6 PM", padding + w * 0.75, canvas.height - 15);
-    ctx.fillText("12 AM", canvas.width - padding - 35, canvas.height - 15);
-
-    // Force display using setProperty in case of CSS !important conflicts
-    modal.style.setProperty("display", "flex", "important");
-    console.log("Modal display set to flex");
+    if (typeof updateChartMetric === "function") updateChartMetric();
+    if (typeof updateLiveConfidenceDisplay === "function") updateLiveConfidenceDisplay();
 }
    
 function openHistoryPanel() {
