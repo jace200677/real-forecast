@@ -605,7 +605,6 @@ function getMinuteValuesForDay(dateStr, searchQuery, placeName, apiDailyTemps, a
     const hash = Math.abs(getHashOffset(locationSeed));
 
     // Dynamic localized peak values for MN locations around 11 PM on 7/31/2026
-    // Sustained wind varies between 58 and 74 mph baseline; gusts vary between 105 and 143 mph baseline
     const locationWindPeak = 66 + ((hash % 17) - 8);
     const locationGustPeak = 124 + ((hash % 39) - 19);
 
@@ -675,14 +674,20 @@ function getMinuteValuesForDay(dateStr, searchQuery, placeName, apiDailyTemps, a
                 let tempShift = exactOverride.baseEvent.tempDelta;
 
                 if (totalMinutes <= noonMin) {
+                    // Peak values leading up to noon
                     let progress = totalMinutes / noonMin;
                     factor = 0.45 + (0.55 * progress);
                 } else if (totalMinutes > noonMin && totalMinutes <= min6pm) {
+                    // Between 12 PM and 6 PM: peak values can go up or down by a little
                     let wave = Math.sin((totalMinutes - noonMin) / 60 * Math.PI) * 0.05;
-                    factor = 1.0 + wave;
+                    let minorFluctuation = (Math.sin(totalMinutes * 0.1) * 0.02);
+                    factor = 1.0 + wave + minorFluctuation;
                 } else {
+                    // After 6 PM: winds go down, temps go up slowly, taking its time toward 11:59 PM wrap-around
                     let postProgress = (totalMinutes - min6pm) / (totalDayMins - min6pm);
-                    factor = 1.0 - (postProgress * 0.45); 
+                    factor = 1.0 - Math.pow(postProgress, 0.6) * 0.55;
+                    // Apply inverse tracking for temperature increase after 6 PM relative to wind drop
+                    tempShift = exactOverride.baseEvent.tempDelta * (0.5 + (postProgress * 0.5));
                 }
 
                 baseWind = Math.round(baseWind + (exactOverride.baseEvent.wind - baseWind) * factor);
