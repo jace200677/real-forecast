@@ -1050,18 +1050,18 @@ function openGraphModal(item) {
         `;
     }
 
-    // Ensure minute-by-minute generation references the archive/history item data correctly
+    // Explicitly compute and anchor minute-by-minute values based on the history/archive card values
     if (typeof getMinuteValuesForDay === "function") {
         const isMN = typeof isMinnesotaLocation === "function" && isMinnesotaLocation(activeSearchQuery, activePlaceName);
         const isSpecial731 = (activeItem.dateStr === "7/31/2026" && isMN);
         const regionalOverride = typeof getRegionalEventForDateAndLocation === "function" ? getRegionalEventForDateAndLocation(activeItem.dateStr, activeSearchQuery, activePlaceName) : null;
 
-        if (isSpecial731 || regionalOverride || activeItem.note === "Historical Record" || activeItem.note === "Historical Telemetry Record" || activeItem.note?.includes("Event Archive")) {
-            const dummyMax = { max: [activeItem.high || 75], min: [activeItem.low || 55] };
-            const dummyW = [activeItem.wind || 10];
-            const dummyG = [activeItem.gusts || 15];
-            window.currentMinuteData = getMinuteValuesForDay(activeItem.dateStr, activeSearchQuery, activePlaceName, dummyMax, dummyW, dummyG, 0);
-        }
+        const dummyMax = { max: [activeItem.high !== undefined ? activeItem.high : 75], min: [activeItem.low !== undefined ? activeItem.low : 55] };
+        const dummyW = [activeItem.wind !== undefined ? activeItem.wind : 10];
+        const dummyG = [activeItem.gusts !== undefined ? activeItem.gusts : 15];
+
+        // Force generation using the active history/card values so the chart matches the card stats precisely
+        window.currentMinuteData = getMinuteValuesForDay(activeItem.dateStr, activeSearchQuery, activePlaceName, dummyMax, dummyW, dummyG, 0);
     }
 
     if (chartModalElem) {
