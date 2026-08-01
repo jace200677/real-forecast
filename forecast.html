@@ -1011,6 +1011,8 @@ function renderForecast(forecastData) {
 }
 
 function openGraphModal(item) {
+    console.log("openGraphModal called with item:", item); // Debug: Check if function triggers
+
     const modal = document.getElementById("graphModal");
     if (!modal) {
         console.error("graphModal element not found in DOM");
@@ -1028,7 +1030,8 @@ function openGraphModal(item) {
     const canvas = document.getElementById("weatherGraphCanvas");
     if (!canvas) {
         console.error("weatherGraphCanvas element not found in DOM");
-        modal.style.display = "flex";
+        // Force modal open anyway so you can see the layout even if canvas fails
+        modal.style.setProperty("display", "flex", "important");
         return;
     }
 
@@ -1039,9 +1042,9 @@ function openGraphModal(item) {
     let minuteWinds = [];
     let minuteGusts = [];
 
-    const isMN = isMinnesotaLocation(activeSearchQuery, activePlaceName);
+    const isMN = typeof isMinnesotaLocation === "function" && isMinnesotaLocation(activeSearchQuery, activePlaceName);
     const isSpecial731 = (item.dateStr === "7/31/2026" && isMN);
-    const regionalOverride = getRegionalEventForDateAndLocation(item.dateStr, activeSearchQuery, activePlaceName);
+    const regionalOverride = typeof getRegionalEventForDateAndLocation === "function" ? getRegionalEventForDateAndLocation(item.dateStr, activeSearchQuery, activePlaceName) : null;
 
     if (isSpecial731 || regionalOverride || item.note === "Historical Record" || item.note === "Historical Telemetry Record" || item.note?.includes("Event Archive")) {
         const dummyMax = { max: [item.high], min: [item.low] };
@@ -1115,7 +1118,9 @@ function openGraphModal(item) {
     ctx.fillText("6 PM", padding + w * 0.75, canvas.height - 15);
     ctx.fillText("12 AM", canvas.width - padding - 35, canvas.height - 15);
 
-    modal.style.display = "flex";
+    // Force display using setProperty in case of CSS !important conflicts
+    modal.style.setProperty("display", "flex", "important");
+    console.log("Modal display set to flex");
 }
    
 function openHistoryPanel() {
