@@ -369,8 +369,57 @@ const regionalEvents = [
         regionKeywords: ["east coast", "new york", "ny", "boston", "ma", "pennsylvania", "pa", "philadelphia", "new jersey", "nj", "connecticut", "ct", "maryland", "md", "virginia", "va", "maine", "me", "vermont", "vt", "new hampshire", "nh", "rhode island", "ri", "delaware", "de", "washington dc", "dc"],
         type: "cooler",
         baseConfidence: 0.95,
-        data: { tempDelta: -12, wind: 35, gusts: 70, condition: "East Coast Shift (Eastward Progression)" }
-    }
+        data: { tempDelta: -12, wind: 25, gusts: 59, condition: "East Coast Shift (Eastward Progression)" }
+    },
+   {
+        date: "8/23/2026",
+        regionKeywords: ["washington", "wa", "seattle", "spokane", "tacoma", "vancouver", "bellevue", "everett", "kent", "renton", "spokane valley", "federal way", "yakima", "bellingham", "kennewick", "auburn", "pasco", "marysville", "lakewood", "redmond", "richland", "shoreline", "sammamish", "burien", "olympia", "lacey", "edmonds", "bremerton", "puyallup"],
+        type: "cooler",
+        baseConfidence: 0.96,
+        data: { tempDelta: -23, wind: 29, gusts: 65, condition: "Washington Storm (Cooler Temps, 29 mph, Gusts 65 mph)" }
+    },
+   {
+        date: "8/24/2026",
+        regionKeywords: ["idaho", "id", "boise", "meridian", "nampa", "idaho falls", "pocatello", "caldwell", "coeur d'alene", "twin falls", "post falls", "rexburg", "moscow", "eagle", "chubbuck", "mountain home", "kuna", "hayden", "rigby", "blackfoot"],
+        type: "warmer",
+        baseConfidence: 0.95,
+        data: { tempDelta: 16, wind: 33, gusts: 70, condition: "Idaho Extreme Weather (Warmer Temps, 33 mph, Gusts 70 mph)" }
+    },
+   {
+        date: "8/25/2026",
+        regionKeywords: ["montana", "mt", "billings", "missoula", "great falls", "bozeman", "butte", "helena", "kalispell", "havre", "anaconda", "miles city", "laurel", "sidney", "lewistown", "glendive", "whitefish", "polson", "livingston"],
+        type: "cooler",
+        baseConfidence: 0.96,
+        data: { tempDelta: -20, wind: 36, gusts: 65, condition: "Montana Severe Storm (Cooler Temps, 36 mph, Gusts 65 mph)" }
+    },
+   {
+        date: "8/26/2026",
+        regionKeywords: ["north dakota", "nd", "fargo", "bismarck", "grand forks", "minot", "mandan", "dickinson", "williston", "west fargo", "wahpeton", "valley city", "jamestown", "devils lake"],
+        type: "hotter",
+        baseConfidence: 0.97,
+        data: { tempDelta: -22, wind: 32, gusts: 59, condition: "North Dakota Extreme Front (Hotter Temps, 32 mph, Gusts 59 mph)" }
+    },
+   {
+        date: "8/27/2026",
+        regionKeywords: ["minnesota", "mn", "duluth", "moorhead", "bemidji", "brainerd", "hibbing", "grand rapids", "fergus falls", "international falls", "virginia", "cloquet", "east grand forks", "thief river falls", "crookston", "detroit lakes", "little falls", "alexandria", "park rapids", "minneapolis", "st. paul", "saint paul", "rochester", "bloomington", "plymouth", "brooklyn park", "woodbury", "st. cloud", "st. joseph", "saint joseph", "eagan", "eden prairie", "coon rapids", "burnsville", "blaine", "lakeville", "minnetonka", "apple valley", "edina", "st. louis park", "mankato", "shakopee", "richfield", "cottage grove", "roseville", "inver grove heights", "winona"],
+        type: "cooler",
+        baseConfidence: 0.95,
+        data: { tempDelta: -16, wind: 27, gusts: 58, condition: "Minnesota Cool Front (Cooler Temps, 27 mph, Gusts 58 mph)" }
+    },
+   {
+        date: "8/28/2026",
+        regionKeywords: ["wisconsin", "wi", "milwaukee", "madison", "green bay", "kenosha", "racine", "appleton", "waukesha", "eau claire", "oshkosh", "janesville", "west allis", "la crosse", "sheboygan", "wauwatosa", "fond du lac", "new berlin", "wausau", "brookfield", "beloit", "greenfield", "franklin", "oak creek", "manitowoc", "west bend", "superior", "stevens point", "neenah", "sun prairie"],
+        type: "cooler",
+        baseConfidence: 0.96,
+        data: { tempDelta: -16, wind: 29, gusts: 63, condition: "Wisconsin System (Cooler Temps, 29 mph, Gusts 63 mph)" }
+    },
+    {
+        date: "8/29/2026",
+        regionKeywords: ["east coast", "new york", "ny", "boston", "ma", "pennsylvania", "pa", "philadelphia", "new jersey", "nj", "connecticut", "ct", "maryland", "md", "virginia", "va", "maine", "me", "vermont", "vt", "new hampshire", "nh", "rhode island", "ri", "delaware", "de", "washington dc", "dc"],
+        type: "cooler",
+        baseConfidence: 0.95,
+        data: { tempDelta: -12, wind: 39, gusts: 65, condition: "East Coast Shift (Eastward Progression)" }
+    },
 ];
 
 function getRegionalEventForDateAndLocation(dateStr, searchString, placeName) {
