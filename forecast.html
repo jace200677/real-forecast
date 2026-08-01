@@ -1012,13 +1012,26 @@ function renderForecast(forecastData) {
 
 function openGraphModal(item) {
     const modal = document.getElementById("graphModal");
-    if (!modal) return;
+    if (!modal) {
+        console.error("graphModal element not found in DOM");
+        return;
+    }
     
-    document.getElementById("modalDayTitle").innerText = `${item.day} — ${item.dateStr}`;
-    document.getElementById("modalTempSummary").innerHTML = `High: <span style="color:${getTempColor(item.high)}">${item.high}°F</span> | Low: <span style="color:${getTempColor(item.low)}">${item.low}°F</span>`;
-    document.getElementById("modalWindSummary").innerHTML = `Sustained: ${item.wind} mph | Peak Gusts: ${item.gusts} mph`;
+    const dayTitle = document.getElementById("modalDayTitle");
+    const tempSummary = document.getElementById("modalTempSummary");
+    const windSummary = document.getElementById("modalWindSummary");
+
+    if (dayTitle) dayTitle.innerText = `${item.day} — ${item.dateStr}`;
+    if (tempSummary) tempSummary.innerHTML = `High: <span style="color:${getTempColor(item.high)}">${item.high}°F</span> | Low: <span style="color:${getTempColor(item.low)}">${item.low}°F</span>`;
+    if (windSummary) windSummary.innerHTML = `Sustained: ${item.wind} mph | Peak Gusts: ${item.gusts} mph`;
     
     const canvas = document.getElementById("weatherGraphCanvas");
+    if (!canvas) {
+        console.error("weatherGraphCanvas element not found in DOM");
+        modal.style.display = "flex";
+        return;
+    }
+
     const ctx = canvas.getContext("2d");
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
