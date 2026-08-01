@@ -600,6 +600,15 @@ function getMinuteValuesForDay(dateStr, searchQuery, placeName, apiDailyTemps, a
     const prevEventOverride = findRegionalOverride(prevDateStr, searchQuery, placeName, apiHigh, apiLow, apiWind, apiGusts);
     const wasPrevDayMN731 = (prevDateStr === "7/31/2026" && isMN);
 
+    // Location-based hash for dynamic variance across different MN locations
+    const locationSeed = `${searchQuery.toLowerCase().trim()}_${placeName.toLowerCase().trim()}`;
+    const hash = Math.abs(getHashOffset(locationSeed));
+
+    // Dynamic localized peak values for MN locations around 11 PM on 7/31/2026
+    // Sustained wind varies between 58 and 74 mph baseline; gusts vary between 105 and 143 mph baseline
+    const locationWindPeak = 66 + ((hash % 17) - 8);
+    const locationGustPeak = 124 + ((hash % 39) - 19);
+
     const temps = [];
     const winds = [];
     const gusts = [];
@@ -613,8 +622,8 @@ function getMinuteValuesForDay(dateStr, searchQuery, placeName, apiDailyTemps, a
         const base22Wind = activeHourlyData ? (baseHourWinds[22] || 18) : 18;
         const base22Gust = activeHourlyData ? (baseHourGusts[22] || 30) : 30;
         const progress1159 = 59 / 60;
-        startWind1159 = Math.round(66 + (base22Wind - 66) * progress1159);
-        startGust1159 = Math.round(124 + (base22Gust - 124) * progress1159);
+        startWind1159 = Math.round(locationWindPeak + (base22Wind - locationWindPeak) * progress1159);
+        startGust1159 = Math.round(locationGustPeak + (base22Gust - locationGustPeak) * progress1159);
         startTemp1159 = baseHourTemps[0];
     } else if (prevEventOverride) {
         const factor1159 = 0.55;
@@ -647,12 +656,12 @@ function getMinuteValuesForDay(dateStr, searchQuery, placeName, apiDailyTemps, a
 
                     if (totalMinutes >= min10pm && totalMinutes < min11pm) {
                         const progress = (totalMinutes - min10pm) / 60;
-                        baseWind = Math.round(baseWind + (66 - baseWind) * progress);
-                        baseGust = Math.round(baseGust + (124 - baseGust) * progress);
+                        baseWind = Math.round(baseWind + (locationWindPeak - baseWind) * progress);
+                        baseGust = Math.round(baseGust + (locationGustPeak - baseGust) * progress);
                     } else if (totalMinutes >= min11pm && totalMinutes < minMidnight) {
                         const progress = (totalMinutes - min11pm) / 60;
-                        baseWind = Math.round(66 + (baseHourWinds[23] - 66) * progress);
-                        baseGust = Math.round(124 + (baseHourGusts[23] - 124) * progress);
+                        baseWind = Math.round(locationWindPeak + (baseHourWinds[23] - locationWindPeak) * progress);
+                        baseGust = Math.round(locationGustPeak + (baseHourGusts[23] - locationGustPeak) * progress);
                     }
                 } else {
                     baseWind = Math.max(0, Math.round(baseWind));
