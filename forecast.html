@@ -1015,10 +1015,10 @@ function initLeafletMap(dateStr) {
             window.activeLeafletMap.remove();
         }
 
-        const lat = currentLat || 39.8283;
-        const lon = currentLon || -98.5795;
+        const centerLat = currentLat || 39.8283;
+        const centerLon = currentLon || -98.5795;
 
-        const map = L.map('leafletMapContainer').setView([lat, lon], 6);
+        const map = L.map('leafletMapContainer').setView([centerLat, centerLon], 5);
         window.activeLeafletMap = map;
 
         L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
@@ -1038,29 +1038,47 @@ function initLeafletMap(dateStr) {
         const minuteData = getMinuteValuesForDay(dateStr, activeSearchQuery, activePlaceName, dummyTempsMax, dummyWinds, dummyGusts, dayIndex);
         const metric = document.getElementById("metricSelector").value;
 
-        let sampleVal = 72;
+        let centerVal = 72;
         if (minuteData.temps.length > 0) {
-            if (metric === "temp") sampleVal = minuteData.temps[Math.floor(minuteData.temps.length / 2)];
-            else if (metric === "wind") sampleVal = minuteData.winds[Math.floor(minuteData.winds.length / 2)];
-            else if (metric === "gusts") sampleVal = minuteData.gusts[Math.floor(minuteData.gusts.length / 2)];
+            if (metric === "temp") centerVal = minuteData.temps[Math.floor(minuteData.temps.length / 2)];
+            else if (metric === "wind") centerVal = minuteData.winds[Math.floor(minuteData.winds.length / 2)];
+            else if (metric === "gusts") centerVal = minuteData.gusts[Math.floor(minuteData.gusts.length / 2)];
         }
 
-        let overlayColor = metric === 'temp' ? getTempColor(sampleVal) : getWindColor(sampleVal);
+        const latMin = 24.0, latMax = 50.0;
+        const lonMin = -125.0, lonMax = -66.0;
+        const latSteps = 16;
+        const lonSteps = 24;
 
-        const bounds = [
-            [lat - 15, lon - 22],
-            [lat + 15, lon + 22]
-        ];
+        const dLat = (latMax - latMin) / latSteps;
+        const dLon = (lonMax - lonMin) / lonSteps;
 
-        L.rectangle(bounds, {
-            color: overlayColor,
-            weight: 0,
-            fillColor: overlayColor,
-            fillOpacity: 0.55
-        }).addTo(map);
+        for (let i = 0; i < latSteps; i++) {
+            for (let j = 0; j < lonSteps; j++) {
+                const cellLat = latMin + (i + 0.5) * dLat;
+                const cellLon = lonMin + (j + 0.5) * dLon;
+
+                const spatialFactor = ((cellLat - 37.0) * 0.015) - ((cellLon + 95.0) * 0.01);
+                let cellVal = centerVal + (spatialFactor * 25);
+
+                let cellColor = metric === 'temp' ? getTempColor(cellVal) : getWindColor(cellVal);
+
+                const cellBounds = [
+                    [cellLat - dLat / 2, cellLon - dLon / 2],
+                    [cellLat + dLat / 2, cellLon + dLon / 2]
+                ];
+
+                L.rectangle(cellBounds, {
+                    color: cellColor,
+                    weight: 0,
+                    fillColor: cellColor,
+                    fillOpacity: 0.48
+                }).addTo(map);
+            }
+        }
     }, 250);
 }
-
+   
 function closeModal() {
     document.getElementById("chartModal").style.display = "none";
 }
