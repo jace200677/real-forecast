@@ -953,11 +953,16 @@ function openGraphModal(item) {
     document.getElementById("modalTitle").innerText = `${item.day} Minute-by-Minute Forecast Graph`;
     document.getElementById("modalSubtitle").innerText = `Date: ${item.dateStr} (0 to 24 Hours, 12-Hour Format)`;
 
-    // Date check for 8/1/2026 threshold
+    // Parse the graph item's date
     const [m, d, y] = item.dateStr.split("/").map(Number);
-    const currentDate = new Date(y, m - 1, d);
-    const targetDate = new Date(2026, 7, 1); // August 1, 2026 (Month is 0-indexed: 7 = August)
-    const isBeforeAugFirst = currentDate < targetDate;
+    const itemDate = new Date(y, m - 1, d);
+    
+    // Target availability date threshold: August 1, 2026
+    const targetAvailabilityDate = new Date(2026, 7, 1); // Month 7 is August (0-indexed)
+
+    // Check if the current live date has reached the target date AND if the item date is on/after 8/1/2026
+    const now = new Date();
+    const isMapAvailable = (now >= targetAvailabilityDate) && (itemDate >= targetAvailabilityDate);
 
     // Check for existing map button or create a container for it in the modal header
     let mapBtn = document.getElementById("modalMapBtn");
@@ -970,8 +975,8 @@ function openGraphModal(item) {
         headerContainer.appendChild(mapBtn);
     }
 
-    // Configure disabled vs active state
-    if (isBeforeAugFirst) {
+    // Configure disabled vs active state based on current date evaluation
+    if (!isMapAvailable) {
         mapBtn.innerText = "Map (Coming Soon)";
         mapBtn.disabled = true;
         mapBtn.onclick = null;
