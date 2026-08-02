@@ -1511,6 +1511,7 @@ function initLeafletMap(dateStr) {
         updateMapForMinute(initialMinuteIndex);
     }, 250);
 }
+
 function updateMapForMinute(totalMinutes) {
     if (!mapLayersGroup || !window.activeMinuteDataCache || !window.activeLeafletMap) return;
 
@@ -1521,7 +1522,7 @@ function updateMapForMinute(totalMinutes) {
     // 1) Universe Base Time starting at 6:00 AM (360 minutes from midnight baseline) — matching updateChartMetric() exactly
     const universeBaseMinute = 360;
 
-    // 2) Determine location-specific timezone offset using cell coordinates (lon/15 or DST helper)
+    // 2) Determine location-specific timezone offset using target longitude or DST helper
     let locationOffsetHours = 0;
     const targetLon = currentLon !== null ? currentLon : -98.5795;
     
@@ -1591,14 +1592,21 @@ function updateMapForMinute(totalMinutes) {
         return `rgb(${r},${g},${b})`;
     }
 
+    // Iterate through all latitude and longitude steps across the globe
     for (let i = 0; i < latSteps; i++) {
         for (let j = 0; j < lonSteps; j++) {
             const cellLat = latMin + (i + 0.5) * dLat;
             const cellLon = lonMin + (j + 0.5) * dLon;
 
-            // Match the exact timing logic used in updateChartMetric() (indexInDay = totalMinutes)
-            let indexInDay = clampedMinutes;
+            // Map each specific longitude step directly to the data array index to cover all longitudes perfectly
+            const normalizedLon = (cellLon - lonMin) / (lonMax - lonMin);
+            const rawLonIndex = Math.floor(normalizedLon * valuesArray.length);
+            const baseLonIndex = Math.max(0, Math.min(rawLonIndex, valuesArray.length - 1));
+
+            // Match exact timing with the graph (indexInDay = clampedMinutes) combined with spatial longitude progression
+            let indexInDay = (baseLonIndex + clampedMinutes) % valuesArray.length;
             if (indexInDay >= valuesArray.length) indexInDay = valuesArray.length - 1;
+            
             let cellVal = valuesArray[indexInDay];
             let cellLabelOverride = null;
 
@@ -1618,7 +1626,7 @@ function updateMapForMinute(totalMinutes) {
             const secondaryVal = valuesArray[(indexInDay + 1) % valuesArray.length];
             const secondaryColor = metric === 'temp' ? getTempColor(secondaryVal) : getWindColor(secondaryVal);
             
-            // Dual Latitude and Longitude based color lerping and opacity fade-in/fade-out
+            // Dual Latitude and Longitude based color lerping and smooth fade-in/fade-out opacity
             const latFactor = (cellLat - latMin) / (latMax - latMin);
             const lonFactor = (cellLon - lonMin) / (lonMax - lonMin);
             const lerpFactor = Math.pow(latFactor * 0.5 + lonFactor * 0.5, 2);
