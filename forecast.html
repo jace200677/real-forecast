@@ -1518,8 +1518,19 @@ function updateMapForMinute(totalMinutes) {
     const maxMinutes = 1439;
     const clampedMinutes = Math.max(0, Math.min(totalMinutes, maxMinutes));
 
-    const hour24 = Math.floor(clampedMinutes / 60);
-    const minute = clampedMinutes % 60;
+    // Determine active longitude offset based on current hover position stored globally, or default to system/UTC offset
+    let dynamicOffsetMinutes = new Date().getTimezoneOffset(); // fallback local offset
+    if (window._activeHoverLon !== undefined && window._activeHoverLon !== null) {
+        // Each 15 degrees of longitude roughly equals 1 hour (60 minutes) offset from UTC
+        // Standard formula: offset in minutes = - (longitude / 15) * 60 => -4 * longitude
+        dynamicOffsetMinutes = Math.round(-4 * window._activeHoverLon);
+    }
+
+    // Shift minute baseline using the dynamic longitude-based timezone offset
+    const adjustedMinutes = (clampedMinutes - dynamicOffsetMinutes + 1440) % 1440;
+
+    const hour24 = Math.floor(adjustedMinutes / 60);
+    const minute = adjustedMinutes % 60;
     const h12 = hour24 % 12 === 0 ? 12 : hour24 % 12;
     const ampm = hour24 >= 12 ? 'PM' : 'AM';
     const minFormatted = String(minute).padStart(2, '0');
@@ -1623,6 +1634,13 @@ function updateMapForMinute(totalMinutes) {
                 weight: 0,
                 fillColor: cellColor,
                 fillOpacity: 0.55
+            });
+
+            // Track hover longitude dynamically to update timezone offset live on mouseover
+            rect.on('mouseover', () => {
+                window._activeHoverLon = cellLon;
+                // Optional: trigger immediate UI time update on hover change without redrawing whole map
+                updateMapForMinute(clampedMinutes);
             });
 
             // Bind coordinate-focused hover tooltips detailing precise lat/lon mapping values matching graph series
