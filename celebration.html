@@ -2,11 +2,11 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>Global Intensity & Ultimate Worldwide Rooftop Santa Tracker</title>
+  <title>Global Wish Granting Matrix & Magical Portal</title>
   <style>
     body {
       font-family: Arial, sans-serif;
-      background: linear-gradient(to bottom, #090d16, #111e38, #2a1b15);
+      background: linear-gradient(to bottom, #090d16, #1b1138, #2a1528);
       color: #fff;
       display: flex;
       flex-direction: column;
@@ -19,7 +19,7 @@
     }
     h1 {
       margin-bottom: 5px;
-      color: #ff6600;
+      color: #f43f5e;
       text-shadow: 0 2px 6px rgba(0,0,0,0.7);
       text-align: center;
     }
@@ -41,6 +41,7 @@
       display: flex;
       flex-direction: column;
       align-items: center;
+      box-sizing: border-box;
     }
     .bar-container {
       width: 100%;
@@ -53,18 +54,19 @@
     .bar-fill {
       height: 100%;
       width: 0%;
-      background: linear-gradient(90deg, #ff9900, #ff3300);
+      background: linear-gradient(90deg, #ec4899, #f43f5e);
       transition: width 0.5s ease;
     }
 
-    /* Ultimate Rooftop Tracker Map Styles */
+    /* Wish Matrix Card Styles */
     .tracker-card {
-      background: #0b1329;
-      border: 2px solid #1e293b;
+      background: #110b29;
+      border: 2px solid #3b1e36;
       max-width: 650px;
+      color: #fff;
     }
     .tracker-title {
-      color: #38bdf8;
+      color: #f43f5e;
       font-size: 1.2rem;
       font-weight: bold;
       margin-bottom: 12px;
@@ -74,69 +76,85 @@
       width: 100%;
       justify-content: space-between;
     }
+    
+    /* Wish Input Form Area */
+    .wish-form {
+      width: 100%;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      margin-bottom: 15px;
+    }
+    .wish-input {
+      width: 100%;
+      padding: 12px 15px;
+      border-radius: 8px;
+      border: 1px solid #475569;
+      background: #090d16;
+      color: #fff;
+      font-size: 1rem;
+      box-sizing: border-box;
+      outline: none;
+      transition: border-color 0.3s;
+    }
+    .wish-input:focus {
+      border-color: #f43f5e;
+    }
+    .wish-btn {
+      background: linear-gradient(90deg, #ec4899, #f43f5e);
+      color: white;
+      border: none;
+      padding: 12px;
+      border-radius: 8px;
+      font-size: 1rem;
+      font-weight: bold;
+      cursor: pointer;
+      transition: opacity 0.2s, transform 0.1s;
+      box-shadow: 0 4px 12px rgba(244, 63, 94, 0.4);
+    }
+    .wish-btn:hover {
+      opacity: 0.9;
+    }
+    .wish-btn:active {
+      transform: scale(0.98);
+    }
+
     .map-container {
       position: relative;
       width: 100%;
-      height: 350px;
-      background: radial-gradient(circle at center, #1e293b 0%, #090d16 100%);
+      height: 250px;
+      background: radial-gradient(circle at center, #2e1065 0%, #090d16 100%);
       border-radius: 12px;
       overflow: hidden;
-      border: 1px solid #334155;
+      border: 1px solid #4c1d95;
       box-shadow: inset 0 0 20px rgba(0,0,0,0.8);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      padding: 20px;
+      box-sizing: border-box;
     }
     
-    /* Simulated Globe Grid & Landmass Elements */
     .grid-overlay {
       position: absolute;
       width: 100%;
       height: 100%;
       background-image: 
-        linear-gradient(rgba(56, 189, 248, 0.05) 1px, transparent 1px),
-        linear-gradient(90deg, rgba(56, 189, 248, 0.05) 1px, transparent 1px);
+        linear-gradient(rgba(244, 63, 94, 0.05) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(244, 63, 94, 0.05) 1px, transparent 1px);
       background-size: 30px 30px;
-    }
-    
-    /* Dynamic House Nodes Generator */
-    .house-node {
-      position: absolute;
-      width: 6px;
-      height: 6px;
-      background-color: #facc15;
-      border-radius: 50%;
-      box-shadow: 0 0 6px #f59e0b;
-      transform: translate(-50%, -50%);
-      transition: background-color 0.3s, transform 0.3s;
-    }
-    .house-node.visited {
-      background-color: #ef4444;
-      box-shadow: 0 0 8px #dc2626;
-    }
-    .house-node.active-target {
-      background-color: #22c55e;
-      box-shadow: 0 0 12px #4ade80, 0 0 20px #22c55e;
-      transform: translate(-50%, -50%) scale(2);
-      z-index: 10;
-    }
-
-    .santa-sleigh-global {
-      position: absolute;
-      font-size: 2.2rem;
-      transform: translate(-50%, -50%);
-      transition: top 0.15s linear, left 0.15s linear;
-      filter: drop-shadow(0 0 8px rgba(255, 255, 255, 0.9));
-      z-index: 20;
-    }
-
-    .radar-sweep {
-      position: absolute;
-      top: 50%;
-      left: 50%;
-      width: 100%;
-      height: 100%;
-      transform: translate(-50%, -50%);
       pointer-events: none;
-      border-radius: 50%;
-      border: 1px dashed rgba(56, 189, 248, 0.15);
+    }
+
+    #wishResultDisplay {
+      position: relative;
+      z-index: 10;
+      font-size: 1.15rem;
+      line-height: 1.5;
+      color: #fdf2f8;
+      text-shadow: 0 2px 8px rgba(0,0,0,0.8);
+      max-width: 500px;
     }
 
     .flight-panel {
@@ -177,9 +195,9 @@
     }
     #offseasonScreen h1 {
       font-size: 3rem;
-      color: #ff3300;
+      color: #f43f5e;
       margin-bottom: 10px;
-      text-shadow: 0 0 20px rgba(255, 51, 0, 0.5);
+      text-shadow: 0 0 20px rgba(244, 63, 94, 0.5);
     }
     #offseasonScreen p {
       font-size: 1.5rem;
@@ -195,46 +213,50 @@
   <!-- Off-season / Finished Screen -->
   <div id="offseasonScreen">
     <h1>Celebration Complete</h1>
-    <p>Not live until December!!!</p>
+    <p>Portal dormant until the next cycle!</p>
   </div>
 
-  <h1>Summer Celebration Intensity</h1>
-  <div id="info">Live intensity tracking based on your 3 PM → 5 PM → 1 AM → 5 AM schedule.</div>
+  <h1>Global Wish Intensity</h1>
+  <div id="info">Live cosmic energy tracking based on your custom threshold schedule.</div>
   
   <!-- Intensity Curve Widget -->
   <div class="widget-card">
     <div style="width: 100%; display: flex; justify-content: space-between; margin-bottom: 8px; font-weight: bold; font-size: 0.9rem; color: #333;">
-      <span>Progress Level</span>
-      <span id="percent" style="color: #ff3300;">0%</span>
+      <span>Cosmic Power Level</span>
+      <span id="percent" style="color: #f43f5e;">0%</span>
     </div>
     <div class="bar-container">
       <div class="bar-fill" id="barFill"></div>
     </div>
   </div>
 
-  <!-- Ultimate Worldwide Rooftop Santa Tracker Widget -->
+  <!-- Ultimate Worldwide Wish Matrix Widget -->
   <div class="widget-card tracker-card">
     <div class="tracker-title">
-      <span>🎅</span> Worldwide Rooftop Delivery Matrix
-      <span style="font-size: 0.8rem; background: #1e293b; padding: 3px 8px; border-radius: 6px; color: #38bdf8;" id="deliveryStatus">Active Sweep</span>
+      <span>✨</span> Worldwide Wish Granting Matrix
+      <span style="font-size: 0.8rem; background: #3b1e36; padding: 3px 8px; border-radius: 6px; color: #f43f5e;" id="deliveryStatus">Portal Active</span>
     </div>
+    
+    <div class="wish-form">
+      <input type="text" id="wishInput" class="wish-input" placeholder="Type your deepest aspiration or secret wish here..." />
+      <button class="wish-btn" id="submitWishBtn">Submit to the Cosmos</button>
+    </div>
+
     <div class="map-container" id="mapContainer">
       <div class="grid-overlay"></div>
-      <div class="radar-sweep"></div>
-      <div class="santa-sleigh-global" id="globalSleigh">🛷</div>
+      <div id="wishResultDisplay">🌟 Type a wish above and hit submit to unlock a magical surprise manifestation from the universe!</div>
     </div>
     <div class="flight-panel">
-      <div>Target Sector: <span id="targetSector">Suburban Residential Grid #402</span></div>
-      <div>Current Neighborhood: <span id="currentRooftop">Checking chimney coordinates...</span></div>
-      <div>Presents Delivered: <span id="totalPresents" style="color: #38bdf8;">0</span></div>
-      <div>Delivery Rate: <span style="color: #4ade80;">1,420 homes / sec</span></div>
+      <div>Target Frequency: <span id="targetSector">Harmonic Spectrum #774</span></div>
+      <div>Manifestation State: <span id="currentRooftop">Standing by for input...</span></div>
+      <div>Wishes Granted: <span id="totalPresents" style="color: #f43f5e;">842,910</span></div>
+      <div>Success Rate: <span style="color: #4ade80;">100% Guaranteed</span></div>
     </div>
   </div>
 
   <script>
     // --- Check for Post-Celebration Trigger ---
-    // Change this date string to test or set the exact end threshold of the celebration tomorrow
-    const celebrationEndDate = new Date('2026-08-02T05:00:00'); // Example: End of celebration schedule
+    const celebrationEndDate = new Date('2026-08-02T05:00:00');
 
     function checkCelebrationStatus() {
       const now = new Date();
@@ -277,68 +299,51 @@
       percentText.textContent = Math.round(intensity) + "%";
     }
 
-    // --- 2. Ultimate Comprehensive Worldwide Rooftop Simulation ---
-    const neighborhoods = [
-      "Suburban Crescent, Austin, TX", "Maple Street Estates, Toronto", "Barrio Norte, Buenos Aires", 
-      "Viale dei Mille, Milan", "Shibuya Residential Block, Tokyo", "Kensington Mews, London", 
-      "Sandton Suburbs, Johannesburg", "Copacabana Ridge, Rio de Janeiro", "Heliopolis District, Cairo", 
-      "Connaught Place Sector, New Delhi", "Parnell Terraces, Auckland", "Bondi Suburbs, Sydney",
-      "Kremlin Outskirts, Moscow", "Nordic Hamlet, Reykjavik", "Gangnam Residential Blocks, Seoul"
+    // --- 2. Wish Granting & Surprise Interaction Logic ---
+    let accumulatedWishes = 842910;
+
+    const surpriseWordingPool = [
+      "✨ Wish Effect Granted! The stellar winds have aligned, and your path is shifting toward unexpected abundance and sudden clarity.",
+      "🔮 Manifestation Success! A wave of quiet synchronicity has been unleashed—keep your eyes open for a marvelous coincidence today.",
+      "💫 Cosmic Override Complete! Your intention has broken through the noise. Prepare for a pleasant surprise wrapped in a golden breakthrough.",
+      "🌟 Frequency Verified! The universe just smiled back at you. Expect doors you didn't even know were locked to swing wide open.",
+      "🎇 Energy Crystallized! Your words have woven a new thread into reality. A spark of brilliant inspiration is headed your way right now."
     ];
 
-    const mapContainer = document.getElementById("mapContainer");
-    const totalHomes = 140;
-    const homeNodes = [];
+    document.getElementById("submitWishBtn").addEventListener("click", function() {
+      const inputField = document.getElementById("wishInput");
+      const displayArea = document.getElementById("wishResultDisplay");
+      const statusSpan = document.getElementById("currentRooftop");
+      const totalSpan = document.getElementById("totalPresents");
 
-    for (let i = 0; i < totalHomes; i++) {
-      const x = Math.random() * 92 + 4;
-      const y = Math.random() * 86 + 7;
+      const userWish = inputField.value.trim();
+      if (!userWish) {
+        displayArea.textContent = "⚠️ Please whisper a wish into the text box first before sending it to the stars!";
+        return;
+      }
+
+      // Pick a random surprise wording
+      const randomSurprise = surpriseWordingPool[Math.floor(Math.random() * surpriseWordingPool.length)];
       
-      const node = document.createElement("div");
-      node.className = "house-node";
-      node.style.left = x + "%";
-      node.style.top = y + "%";
-      mapContainer.appendChild(node);
+      displayArea.style.opacity = 0;
+      setTimeout(() => {
+        displayArea.innerHTML = `<strong>Your Wish:</strong> "${userWish}"<br><br><span style="color: #4ade80;">${randomSurprise}</span>`;
+        displayArea.style.opacity = 1;
+      }, 200);
 
-      homeNodes.push({ x, y, element: node, neighborhood: neighborhoods[Math.floor(Math.random() * neighborhoods.length)] });
-    }
-
-    let currentHomeIndex = 0;
-    let accumulatedPresents = 482910;
-
-    function updateGlobalSantaTracker() {
-      const activeHome = homeNodes[currentHomeIndex];
-
-      const sleigh = document.getElementById("globalSleigh");
-      sleigh.style.left = activeHome.x + "%";
-      sleigh.style.top = activeHome.y + "%";
-
-      homeNodes.forEach((h, idx) => {
-        h.element.classList.remove("active-target");
-        if (idx < currentHomeIndex) {
-          h.element.classList.add("visited");
-        }
-      });
-      activeHome.element.classList.add("active-target");
-
-      document.getElementById("currentRooftop").textContent = `${activeHome.neighborhood} (Rooftop #${currentHomeIndex + 1})`;
-      document.getElementById("targetSector").textContent = `Sector Grid ${Math.floor(activeHome.x * 10)} - Alt ${Math.floor(activeHome.y * 5)}`;
-      
-      accumulatedPresents += Math.floor(Math.random() * 3) + 1;
-      document.getElementById("totalPresents").textContent = accumulatedPresents.toLocaleString();
-
-      currentHomeIndex = (currentHomeIndex + 1) % homeNodes.length;
-    }
+      statusSpan.textContent = "Wish Manifested Successfully";
+      accumulatedWishes++;
+      totalSpan.textContent = accumulatedWishes.toLocaleString();
+      inputField.value = "";
+    });
 
     // Initial executions
     checkCelebrationStatus();
     updateBar();
-    updateGlobalSantaTracker();
 
     // High-frequency loops
     setInterval(checkCelebrationStatus, 1000);
     setInterval(updateBar, 1000);
-    setInterval(updateGlobalSantaTracker, 350);
   </script>
 </body>
 </html>
