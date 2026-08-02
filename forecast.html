@@ -1512,7 +1512,7 @@ function initLeafletMap(dateStr) {
     }, 250);
 }
 
-function updateMapForMinute(totalMinutes) {
+ffunction updateMapForMinute(totalMinutes) {
     if (!mapLayersGroup || !window.activeMinuteDataCache || !window.activeLeafletMap) return;
 
     // Clamp minutes between 12:00 AM (0) and 11:59 PM (1439)
@@ -1691,7 +1691,7 @@ function updateMapForMinute(totalMinutes) {
         }
     }
 }
-
+   
 // Helper function to check if a given date or forecast day corresponds to "today"
 function isToday(dateObj) {
     const today = new Date();
