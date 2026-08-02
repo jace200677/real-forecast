@@ -721,9 +721,9 @@ const min2am = 2 * 60;
         for (let minute = 0; minute < 60; minute++) {
             if (hour === 23 && minute === 59) continue;
 
-            let baseTemp = baseHourTemps[hour] || 72;
-            let baseWind = baseHourWinds[hour] || 18;
-            let baseGust = baseHourGusts[hour] || 30;
+            let baseTemp = baseHourTemps[hour] || 59;
+            let baseWind = baseHourWinds[hour] || 0;
+            let baseGust = baseHourGusts[hour] || 0;
             
             const totalMinutes = hour * 60 + minute;
            if (dateStr === "8/2/2026" && isMN) {
