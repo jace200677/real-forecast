@@ -837,8 +837,8 @@ const min2am = 2 * 60;
                         baseGust = Math.round(locationGustPeak + (baseHourGusts[23] - locationGustPeak) * progress);
                     }
                 } else {
-                    baseWind = Math.max(0, Math.round(baseWind));
-                    baseGust = Math.max(baseWind, Math.round(baseGust));
+                    baseWind = 0;
+                    baseGust = 0);
                 }
             } else if (exactOverride) {
                 let noonMin = 12 * 60;       
