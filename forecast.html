@@ -539,7 +539,7 @@ async function fetchForecast() {
         loadWeatherForCoords(currentLat, currentLon, placeName, query);
     } catch (err) {
         console.error(err);
-        container.innerHTML = "<p>Error loading weather data. Please try again.</p>";
+        container.innerHTML = "<p>Error loading weather data. Please try again. {err}</p>";
     }
 }
 
