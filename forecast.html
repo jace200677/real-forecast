@@ -1777,14 +1777,33 @@ function hexToRgba(hex, alpha) {
     return `rgba(${r}, ${g}, ${b}, ${alpha})`;
 }
 
-function format12HourLabel(hour24, minute) {
-    let h12 = hour24 % 12;
+
+function getTimezoneOffsetMinutes(lon) {
+    // Each 15° of longitude equals 1 hour (60 minutes) difference from UTC.
+    // Standard approximation: offset = - (lon / 15) * 60 -> -4 * lon
+    return Math.round(-4 * lon);
+}
+
+// Timezone-aware 12-hour label generator with cross-zone adjustments
+function formatTimezoneAwareLabel(hour24, minute, longitude) {
+    const tzOffsetMinutes = getTimezoneOffsetMinutes(longitude !== undefined ? longitude : (currentLon || -98.5795));
+    
+    // Adjust total minutes from UTC/Base by the local timezone offset
+    let totalMinutes = (hour24 * 60 + minute + tzOffsetMinutes) % 1440;
+    if (totalMinutes < 0) totalMinutes += 1440;
+
+    const adjustedHour24 = Math.floor(totalMinutes / 60);
+    const adjustedMinute = totalMinutes % 60;
+
+    let h12 = adjustedHour24 % 12;
     if (h12 === 0) h12 = 12;
-    const ampm = hour24 >= 12 ? 'PM' : 'AM';
-    const minStr = String(minute).padStart(2, '0');
+    const ampm = adjustedHour24 >= 12 ? 'PM' : 'AM';
+    const minStr = String(adjustedMinute).padStart(2, '0');
+    
     return `${h12}:${minStr} ${ampm}`;
 }
 
+// Updated Chart Metric Update Function utilizing timezone-adjusted graph times
 function updateChartMetric() {
     if (!activeHourlyData || !activeDayDateStr) return;
     const metric = document.getElementById("metricSelector").value;
@@ -1800,13 +1819,19 @@ function updateChartMetric() {
 
     const minuteData = getMinuteValuesForDay(activeDayDateStr, activeSearchQuery, activePlaceName, dummyTempsMax, dummyWinds, dummyGusts, dayIndex);
 
-    const labels = []; const values = []; const segmentColors = [];
+    const labels = []; 
+    const values = []; 
+    const segmentColors = [];
+    
+    // Use active longitude or default to center coordinates
+    const targetLon = currentLon !== null ? currentLon : -98.5795;
 
     for (let hour = 0; hour < 24; hour++) {
         for (let minute = 0; minute < 60; minute++) {
             if (hour === 23 && minute === 59) continue;
 
-            labels.push(format12HourLabel(hour, minute));
+            // Pass targetLon to format timezone-based times dynamically across zone lines
+            labels.push(formatTimezoneAwareLabel(hour, minute, targetLon));
 
             let val = 0;
             let indexInDay = hour * 60 + minute;
@@ -1821,6 +1846,7 @@ function updateChartMetric() {
             segmentColors.push(color);
         }
     }
+    
     const labelName = metric === 'temp' ? "Temperature (°F)" : (metric === 'wind' ? "Wind Speed (mph)" : "Wind Gusts (mph)");
     renderChart(labels, values, segmentColors, labelName, metric);
 }
