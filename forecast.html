@@ -1519,22 +1519,27 @@ function updateMapForMinute(totalMinutes) {
     const maxMinutes = 1439;
     const clampedMinutes = Math.max(0, Math.min(totalMinutes, maxMinutes));
 
-    // Universe Base Time starting at 6:00 AM (360 minutes from midnight baseline)
-    const universeBaseMinute = 360;
+    // 1) Universe Base Time starting at 5:00 AM (300 minutes from midnight baseline)
+    const universeBaseMinute = 300;
 
-    // Top-level header label update using global/active search or fallback default
+    // 2) Determine location-specific timezone offset (Hours only, leaving minutes untouched)
+    // Uses location/DST helper function if available, otherwise falls back to longitude blocks
     let locationOffsetHours = 0;
-    const targetLon = currentLon !== null ? currentLon : -98.5795;
+    let dynamicOffsetMinutes = 0;
     
-    if (typeof getLocalTimezoneOffsetMinutes === 'function') {
-        locationOffsetHours = Math.trunc(getLocalTimezoneOffsetMinutes(targetPlaceName || activePlaceName, activeDayDateStr) / 60);
-    } else {
-        locationOffsetHours = Math.trunc(targetLon / 15);
+    if (window._activeHoverLon !== undefined && window._activeHoverLon !== null) {
+        if (typeof getLocalTimezoneOffsetMinutes === 'function') {
+            locationOffsetHours = Math.trunc(getLocalTimezoneOffsetMinutes(targetPlaceName || activePlaceName, activeDayDateStr) / 60);
+        } else {
+            locationOffsetHours = Math.trunc(window._activeHoverLon / 15);
+        }
+        dynamicOffsetMinutes = locationOffsetHours * 60;
     }
 
+    // Shift ONLY the hours using integer hour offsets starting from 5:00 AM Universe Base Time, leaving minutes absolute
     const baseAdjustedMinutes = (clampedMinutes - universeBaseMinute + 1440) % 1440;
     const rawHour24 = Math.floor(baseAdjustedMinutes / 60);
-    const minute = baseAdjustedMinutes % 60;
+    const minute = baseAdjustedMinutes % 60; // Minutes remain strictly anchored to progression
 
     const hour24 = (rawHour24 - locationOffsetHours + 24) % 24;
     const h12 = hour24 % 12 === 0 ? 12 : hour24 % 12;
@@ -1552,7 +1557,7 @@ function updateMapForMinute(totalMinutes) {
 
     mapLayersGroup.clearLayers();
 
-    // Scale grid density globally across the entire planet based on Leaflet zoom level
+    // Scale grid density globally across the entire planet based on Leaflet zoom level (limited bounds)
     const currentZoom = window.activeLeafletMap.getZoom();
     const minZoomLimit = 2;
     const maxZoomLimit = 10;
@@ -1591,31 +1596,18 @@ function updateMapForMinute(totalMinutes) {
         return `rgb(${r},${g},${b})`;
     }
 
-    // Iterate through all latitude and longitude steps across the globe independently
     for (let i = 0; i < latSteps; i++) {
         for (let j = 0; j < lonSteps; j++) {
             const cellLat = latMin + (i + 0.5) * dLat;
             const cellLon = lonMin + (j + 0.5) * dLon;
 
-            // 1) Compute cell-specific local timezone offset based on its own longitude tile position
-            const cellOffsetHours = Math.trunc(cellLon / 15);
-
-            // 2) Map longitude across the cached dataset values array index range independently
             const normalizedLon = (cellLon - lonMin) / (lonMax - lonMin);
-            const rawLonIndex = Math.floor(normalizedLon * valuesArray.length);
-            const baseLonIndex = Math.max(0, Math.min(rawLonIndex, valuesArray.length - 1));
-
-            // Factor in latitude progression for smooth north-south gradients
-            const latNormalization = (cellLat - latMin) / (latMax - latMin);
-            const spatialOffset = Math.floor(latNormalization * (valuesArray.length * 0.1));
-
-            // 3) Calculate index in day shifted dynamically by longitude/timezone offset and graph slider timing
-            const timezoneMinuteShift = cellOffsetHours * 60;
-            let indexInDay = (baseLonIndex + spatialOffset + clampedMinutes + timezoneMinuteShift) % valuesArray.length;
-            if (indexInDay < 0) indexInDay += valuesArray.length;
-            if (indexInDay >= valuesArray.length) indexInDay = valuesArray.length - 1;
+            const rawIndex = Math.floor(normalizedLon * valuesArray.length);
+            const baseIndex = Math.max(0, Math.min(rawIndex, valuesArray.length - 1));
             
-            let cellVal = valuesArray[indexInDay];
+            // Retain full minute-by-minute progression per cell
+            const valueIndex = (baseIndex + clampedMinutes) % valuesArray.length;
+            let cellVal = valuesArray[valueIndex];
             let cellLabelOverride = null;
 
             for (const event of weatherEventsOverride) {
@@ -1631,15 +1623,11 @@ function updateMapForMinute(totalMinutes) {
             }
 
             const baseColor = metric === 'temp' ? getTempColor(cellVal) : getWindColor(cellVal);
-            const secondaryVal = valuesArray[(indexInDay + 1) % valuesArray.length];
+            const secondaryVal = valuesArray[(valueIndex + 1) % valuesArray.length];
             const secondaryColor = metric === 'temp' ? getTempColor(secondaryVal) : getWindColor(secondaryVal);
             
-            const latFactor = (cellLat - latMin) / (latMax - latMin);
-            const lonFactor = (cellLon - lonMin) / (lonMax - lonMin);
-            const lerpFactor = Math.pow(latFactor * 0.5 + lonFactor * 0.5, 2);
-            
+            const lerpFactor = Math.pow((cellLat - latMin) / (latMax - latMin), 2);
             const cellColor = lerpColor(baseColor, secondaryColor, lerpFactor);
-            const dynamicOpacity = Math.max(0.25, Math.min(0.75, 0.4 + 0.3 * Math.sin(latFactor * Math.PI) * Math.cos(lonFactor * Math.PI)));
 
             const cellBounds = [
                 [cellLat - dLat / 2, cellLon - dLon / 2],
@@ -1650,18 +1638,35 @@ function updateMapForMinute(totalMinutes) {
                 color: cellColor,
                 weight: 0,
                 fillColor: cellColor,
-                fillOpacity: dynamicOpacity
+                fillOpacity: 0.55
             });
 
+            // Trigger redraw only when crossing an hourly timezone/DST block boundary
             rect.on('mouseover', () => {
-                const currentOffsetHours = window._activeHoverLon !== undefined ? Math.trunc(window._activeHoverLon / 15) : 0;
+                let cellOffsetHours = 0;
+                if (typeof getLocalTimezoneOffsetMinutes === 'function') {
+                    cellOffsetHours = Math.trunc(getLocalTimezoneOffsetMinutes(targetPlaceName || activePlaceName, activeDayDateStr) / 60);
+                } else {
+                    cellOffsetHours = Math.trunc(cellLon / 15);
+                }
+
+                const currentOffsetHours = window._activeHoverLon !== undefined ? 
+                    (typeof getLocalTimezoneOffsetMinutes === 'function' ? Math.trunc(getLocalTimezoneOffsetMinutes(targetPlaceName || activePlaceName, activeDayDateStr) / 60) : Math.trunc(window._activeHoverLon / 15)) : 0;
+
                 if (window._activeHoverLon === undefined || cellOffsetHours !== currentOffsetHours) {
                     window._activeHoverLon = cellLon;
                     updateMapForMinute(clampedMinutes);
                 }
             });
 
-            // Calculate exact local time string for this individual map grid cell
+            // Compute local cell time matching 5 AM universe base time and hourly timezone offsets (minutes preserved)
+            let cellOffsetHours = 0;
+            if (typeof getLocalTimezoneOffsetMinutes === 'function') {
+                cellOffsetHours = Math.trunc(getLocalTimezoneOffsetMinutes(targetPlaceName || activePlaceName, activeDayDateStr) / 60);
+            } else {
+                cellOffsetHours = Math.trunc(cellLon / 15);
+            }
+
             const cellBaseAdj = (clampedMinutes - universeBaseMinute + 1440) % 1440;
             const cellRawH24 = Math.floor(cellBaseAdj / 60);
             const cellMin = cellBaseAdj % 60;
