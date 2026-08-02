@@ -134,6 +134,11 @@
       text-align: center;
       padding: 20px;
       box-sizing: border-box;
+      transition: background 0.5s ease;
+    }
+
+    .map-container.flash {
+      background: radial-gradient(circle at center, #f43f5e 0%, #2e1065 100%);
     }
     
     .grid-overlay {
@@ -155,6 +160,7 @@
       color: #fdf2f8;
       text-shadow: 0 2px 8px rgba(0,0,0,0.8);
       max-width: 500px;
+      transition: opacity 0.3s ease, transform 0.3s ease;
     }
 
     .flight-panel {
@@ -299,20 +305,21 @@
       percentText.textContent = Math.round(intensity) + "%";
     }
 
-    // --- 2. Wish Granting & Surprise Interaction Logic ---
+    // --- 2. Wish Granting & Immersive Surprise Logic ---
     let accumulatedWishes = 842910;
 
-    const surpriseWordingPool = [
-      "✨ Wish Effect Granted! The stellar winds have aligned, and your path is shifting toward unexpected abundance and sudden clarity.",
-      "🔮 Manifestation Success! A wave of quiet synchronicity has been unleashed—keep your eyes open for a marvelous coincidence today.",
-      "💫 Cosmic Override Complete! Your intention has broken through the noise. Prepare for a pleasant surprise wrapped in a golden breakthrough.",
-      "🌟 Frequency Verified! The universe just smiled back at you. Expect doors you didn't even know were locked to swing wide open.",
-      "🎇 Energy Crystallized! Your words have woven a new thread into reality. A spark of brilliant inspiration is headed your way right now."
+    const beliefSurprisePool = [
+      "⚡ REALITY SHIFT ENGAGED: As of this exact second, molecular friction in your path has dropped to zero. Watch how effortlessly the next door opens for you without resistance.",
+      "👁️ QUANTUM ALIGNMENT: Look up within the next 10 minutes. A completely unexpected message, sign, or person is converging precisely on your coordinates to make you believe.",
+      "🌠 ABSOLUTE LOCK-ON: Your wish bypassed the queue entirely. The universe just rewrote a minor detail of tomorrow morning to guarantee your success. Feel it settle in.",
+      "💫 IMMEDIATE MANIFESTATION: Feel that sudden warmth or chills right now? That is your cellular frequency locking onto the exact reality where your wish already exists.",
+      "🔥 UNIVERSAL OVERRIDE: Consider it done. The matrix has accepted your input as law—prepare to witness an uncanny coincidence before the hour ends."
     ];
 
     document.getElementById("submitWishBtn").addEventListener("click", function() {
       const inputField = document.getElementById("wishInput");
       const displayArea = document.getElementById("wishResultDisplay");
+      const mapContainer = document.getElementById("mapContainer");
       const statusSpan = document.getElementById("currentRooftop");
       const totalSpan = document.getElementById("totalPresents");
 
@@ -322,16 +329,22 @@
         return;
       }
 
-      // Pick a random surprise wording
-      const randomSurprise = surpriseWordingPool[Math.floor(Math.random() * surpriseWordingPool.length)];
+      // Select a random deep-belief surprise wording
+      const randomSurprise = beliefSurprisePool[Math.floor(Math.random() * beliefSurprisePool.length)];
       
+      // Visual feedback flash effect
+      mapContainer.classList.add("flash");
       displayArea.style.opacity = 0;
-      setTimeout(() => {
-        displayArea.innerHTML = `<strong>Your Wish:</strong> "${userWish}"<br><br><span style="color: #4ade80;">${randomSurprise}</span>`;
-        displayArea.style.opacity = 1;
-      }, 200);
+      displayArea.style.transform = "scale(0.95)";
 
-      statusSpan.textContent = "Wish Manifested Successfully";
+      setTimeout(() => {
+        displayArea.innerHTML = `<strong>Wish Locked:</strong> "${userWish}"<br><br><span style="color: #4ade80; font-weight: bold; font-size: 1.05rem; display: block; text-shadow: 0 0 10px rgba(74,222,128,0.5);">${randomSurprise}</span>`;
+        displayArea.style.opacity = 1;
+        displayArea.style.transform = "scale(1)";
+        mapContainer.classList.remove("flash");
+      }, 300);
+
+      statusSpan.textContent = "Instant Reality Lockdown Active";
       accumulatedWishes++;
       totalSpan.textContent = accumulatedWishes.toLocaleString();
       inputField.value = "";
