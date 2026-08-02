@@ -1522,7 +1522,7 @@ function updateMapForMinute(totalMinutes) {
     // 1) Universe Base Time starting at 6:00 AM (360 minutes from midnight baseline) — matching updateChartMetric() exactly
     const universeBaseMinute = 360;
 
-    // 2) Top-level label update using standard active/default location
+    // 2) Top-level label update using standard active/default location for the main control header
     let locationOffsetHours = 0;
     const targetLon = currentLon !== null ? currentLon : -98.5795;
     
@@ -1597,25 +1597,25 @@ function updateMapForMinute(totalMinutes) {
             const cellLat = latMin + (i + 0.5) * dLat;
             const cellLon = lonMin + (j + 0.5) * dLon;
 
-            // Compute local timezone offset for each individual grid cell independently of searched location input
-            let cellOffsetHours = Math.trunc(cellLon / 15);
-            if (typeof getLocalTimezoneOffsetMinutes === 'function') {
-                // Falls back dynamically to cell longitude blocks if place name isn't universal per tile, 
-                // but respects local offsets if configured via helper per coordinates.
-                cellOffsetHours = Math.trunc(cellLon / 15);
-            }
+            // Compute local timezone offset independently for EVERY tile based on its own longitude (15° per hour timezone blocks)
+            const cellOffsetHours = Math.trunc(cellLon / 15);
 
-            // Align each cell's data index precisely with its local timezone and the global graph time progression slider
+            // Shift the graph's timeline profile specifically for this tile's exact local timezone offset 
+            // so that graph timing syncs up naturally with local time anywhere on earth, independent of the searched location.
+            const cellGraphMinuteOffset = cellOffsetHours * 60;
+            const adjustedGraphMinute = (clampedMinutes + cellGraphMinuteOffset + 1440) % 1440;
+
+            // Map each specific longitude step directly to the data array index to cover all longitudes globally
             const normalizedLon = (cellLon - lonMin) / (lonMax - lonMin);
             const rawLonIndex = Math.floor(normalizedLon * valuesArray.length);
             const baseLonIndex = Math.max(0, Math.min(rawLonIndex, valuesArray.length - 1));
 
+            // Factor in latitude progression for smooth spatial gradients across north-south dimensions
             const latNormalization = (cellLat - latMin) / (latMax - latMin);
             const spatialOffset = Math.floor(latNormalization * (valuesArray.length * 0.05));
 
-            // Factor in individual cell timezone shift so timing precisely matches local solar/timezone hours relative to graph slider
-            const timeZoneMinuteShift = cellOffsetHours * 60;
-            let indexInDay = (baseLonIndex + spatialOffset + clampedMinutes - timeZoneMinuteShift + 144000) % valuesArray.length;
+            // Align data index with local-time-adjusted graph timing and spatial longitude/latitude progression
+            let indexInDay = (baseLonIndex + spatialOffset + adjustedGraphMinute) % valuesArray.length;
             if (indexInDay < 0) indexInDay += valuesArray.length;
             if (indexInDay >= valuesArray.length) indexInDay = valuesArray.length - 1;
             
@@ -1660,16 +1660,16 @@ function updateMapForMinute(totalMinutes) {
 
             // Trigger redraw when hovering across different longitudinal/timezone regions dynamically
             rect.on('mouseover', () => {
-                let hoverCellOffset = Math.trunc(cellLon / 15);
+                let hoverCellOffsetHours = Math.trunc(cellLon / 15);
                 const currentOffsetHours = window._activeHoverLon !== undefined ? Math.trunc(window._activeHoverLon / 15) : 0;
 
-                if (window._activeHoverLon === undefined || hoverCellOffset !== currentOffsetHours) {
+                if (window._activeHoverLon === undefined || hoverCellOffsetHours !== currentOffsetHours) {
                     window._activeHoverLon = cellLon;
                     updateMapForMinute(clampedMinutes);
                 }
             });
 
-            // Compute local cell time based specifically on the tile's own longitude position and graph slider values
+            // Compute local cell time based specifically on the tile's own longitude position
             const cellBaseAdj = (clampedMinutes - universeBaseMinute + 1440) % 1440;
             const cellRawH24 = Math.floor(cellBaseAdj / 60);
             const cellMin = cellBaseAdj % 60;
