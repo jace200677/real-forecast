@@ -1511,7 +1511,6 @@ function initLeafletMap(dateStr) {
     }, 250);
 }
 
-// Linear interpolation helper between two hex colors
 function updateMapForMinute(totalMinutes) {
     if (!mapLayersGroup || !window.activeMinuteDataCache || !window.activeLeafletMap) return;
 
@@ -1558,7 +1557,7 @@ function updateMapForMinute(totalMinutes) {
     function parseColor(colorStr) {
         if (!colorStr) return [0, 0, 0];
         if (colorStr.startsWith('#')) {
-            let hex = colorStr.slice(1);
+            let hex = colorStr.side ? colorStr.slice(1) : colorStr.slice(1);
             if (hex.length === 3) hex = hex.split('').map(c => c + c).join('');
             const num = parseInt(hex, 16);
             return [(num >> 16) & 255, (num >> 8) & 255, num & 255];
@@ -1575,6 +1574,9 @@ function updateMapForMinute(totalMinutes) {
         const b = Math.round(rgb1[2] + factor * (rgb2[2] - rgb1[2]));
         return `rgb(${r},${g},${b})`;
     }
+
+    // Approximate subsolar longitude based on time of day (Minutes 0 to 1439 map to 360 degrees longitude)
+    const subsolarLon = ((clampedMinutes / 1439) * 360) - 180;
 
     for (let i = 0; i < latSteps; i++) {
         for (let j = 0; j < lonSteps; j++) {
@@ -1603,10 +1605,21 @@ function updateMapForMinute(totalMinutes) {
                 }
             }
 
-            // Resolve dual base colors to enable square/bilinear color lerp blending across adjacent corners
-            const baseColor = metric === 'temp' ? getTempColor(cellVal) : getWindColor(cellVal);
-            const secondaryVal = valuesArray[(valueIndex + 1) % valuesArray.length];
-            const secondaryColor = metric === 'temp' ? getTempColor(secondaryVal) : getWindColor(secondaryVal);
+            // Determine day vs night based on longitudinal distance from subsolar point (~90 deg terminator boundary)
+            let lonDiff = Math.abs(cellLon - subsolarLon);
+            if (lonDiff > 180) lonDiff = 360 - lonDiff;
+            const isNight = lonDiff > 90;
+
+            // Resolve base colors and adjust darkness if it's nighttime
+            let baseColor = metric === 'temp' ? getTempColor(cellVal) : getWindColor(cellVal);
+            let secondaryVal = valuesArray[(valueIndex + 1) % valuesArray.length];
+            let secondaryColor = metric === 'temp' ? getTempColor(secondaryVal) : getWindColor(secondaryVal);
+
+            if (isNight) {
+                // Dim values/colors to simulate nighttime shading across the terminator
+                baseColor = lerpColor(baseColor, '#050b14', 0.65);
+                secondaryColor = lerpColor(secondaryColor, '#050b14', 0.65);
+            }
             
             // Apply non-linear square distance factor interpolation for smooth tile gradients
             const lerpFactor = Math.pow((cellLat - latMin) / (latMax - latMin), 2);
@@ -1622,18 +1635,19 @@ function updateMapForMinute(totalMinutes) {
                 color: cellColor,
                 weight: 0,
                 fillColor: cellColor,
-                fillOpacity: 0.55
+                fillOpacity: isNight ? 0.3 : 0.55
             });
 
-            // Bind coordinate-focused hover tooltips detailing precise lat/lon mapping values
+            // Bind coordinate-focused hover tooltips detailing precise lat/lon mapping values and day/night status
             const unitSymbol = metric === 'temp' ? '°' : ' mph';
             const latDir = cellLat >= 0 ? 'N' : 'S';
             const lonDir = cellLon >= 0 ? 'E' : 'W';
             const formattedCoords = `${Math.abs(cellLat).toFixed(2)}° ${latDir}, ${Math.abs(cellLon).toFixed(2)}° ${lonDir}`;
+            const timeOfDayTag = isNight ? '🌙 Night' : '☀️ Day';
             
             const tooltipText = cellLabelOverride ? 
-                `<b>${cellLabelOverride}</b><br/>📍 ${formattedCoords}<br/>${metric.toUpperCase()}: ${cellVal.toFixed(1)}${unitSymbol}` :
-                `📍 ${formattedCoords}<br/>${metric.toUpperCase()}: ${cellVal.toFixed(1)}${unitSymbol} (${h12}:${minFormatted} ${ampm})`;
+                `<b>${cellLabelOverride}</b><br/>📍 ${formattedCoords} (${timeOfDayTag})<br/>${metric.toUpperCase()}: ${cellVal.toFixed(1)}${unitSymbol}` :
+                `📍 ${formattedCoords} (${timeOfDayTag})<br/>${metric.toUpperCase()}: ${cellVal.toFixed(1)}${unitSymbol} (${h12}:${minFormatted} ${ampm})`;
 
             rect.bindTooltip(tooltipText, {
                 sticky: true,
