@@ -1776,6 +1776,20 @@ document.getElementById("searchInput").addEventListener("keyup", function(event)
 
 // Initial auto-load for default search location
 fetchForecast();
+
+// Live loop to update current time clocks and metrics seamlessly without page reloads
+setInterval(() => {
+    if (document.getElementById("chartModal").style.display === "flex") {
+        updateLiveConfidenceDisplay();
+    }
+}, 1000);
+
+// Periodic live sync for current weather conditions without reload
+setInterval(() => {
+    if (currentLat !== null && currentLon !== null && activeSearchQuery) {
+        loadWeatherForCoords(currentLat, currentLon, activePlaceName, activeSearchQuery);
+    }
+}, 300000);
 </script>
 </body>
 </html>
