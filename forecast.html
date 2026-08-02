@@ -1474,10 +1474,57 @@ function initLeafletMap(dateStr) {
     }, 250);
 }
 
+// Linear interpolation helper between two hex colors
+function lerpColor(hexA, hexB, amount) {
+    const ah = parseInt(hexA.replace(/#/g, ''), 16);
+    const ar = ah >> 16, ag = (ah >> 8) & 0xff, ab = ah & 0xff;
+    
+    const bh = parseInt(hexB.replace(/#/g, ''), 16);
+    const br = bh >> 16, bg = (bh >> 8) & 0xff, bb = bh & 0xff;
+    
+    const rr = Math.round(ar + amount * (br - ar));
+    const rg = Math.round(ag + amount * (bg - ag));
+    const rb = Math.round(ab + amount * (bb - ab));
+    
+    return `#(((1 << 24) + (rr << 16) + (rg << 8) + rb).toString(16).slice(1));`.replace(/[()]/g, '');
+}
+
+// Multi-stop smooth gradient mapping (Ventusky style)
+function getSmoothColor(value, stops) {
+    if (value <= stops[0].val) return stops[0].color;
+    if (value >= stops[stops.length - 1].val) return stops[stops.length - 1].color;
+
+    for (let i = 0; i < stops.length - 1; i++) {
+        const currentStop = stops[i];
+        const nextStop = stops[i + 1];
+        if (value >= currentStop.val && value <= nextStop.val) {
+            const factor = (value - currentStop.val) / (nextStop.val - currentStop.val);
+            return lerpColor(currentStop.color, nextStop.color, factor);
+        }
+    }
+    return stops[0].color;
+}
+
+// Define continuous gradient spectrum stops
+const tempStops = [
+    { val: -20, color: '#2b83ba' },
+    { val: 0,   color: '#abdda4' },
+    { val: 20,  color: '#ffffbf' },
+    { val: 35,  color: '#fdae61' },
+    { val: 50,  color: '#d7191c' }
+];
+
+const windStops = [
+    { val: 0,   color: '#edf8fb' },
+    { val: 15,  color: '#b2e2e2' },
+    { val: 30,  color: '#66c2a4' },
+    { val: 50,  color: '#2ca25f' },
+    { val: 80,  color: '#006d2c' }
+];
+
 function updateMapForMinute(totalMinutes) {
     if (!mapLayersGroup || !window.activeMinuteDataCache || !window.activeLeafletMap) return;
 
-    // Clamp minutes between 12:00 AM (0) and 11:59 PM (1439)
     const maxMinutes = 1439;
     const clampedMinutes = Math.max(0, Math.min(totalMinutes, maxMinutes));
 
@@ -1498,9 +1545,9 @@ function updateMapForMinute(totalMinutes) {
 
     mapLayersGroup.clearLayers();
 
-    // Fixed grid density independent of map zoom level to keep squares small
-    const latSteps = 120;
-    const lonSteps = 200;
+    // Constant pixel-independent grid dimensions (removes zoom scaling dependency)
+    const latSteps = 150;
+    const lonSteps = 250;
 
     const latMin = -90.0, latMax = 90.0;
     const lonMin = -180.0, lonMax = 180.0;
@@ -1513,13 +1560,14 @@ function updateMapForMinute(totalMinutes) {
             const cellLat = latMin + (i + 0.5) * dLat;
             const cellLon = lonMin + (j + 0.5) * dLon;
 
-            // Bind spatial variance across latitude and longitude globally
             const spatialOffset = Math.floor(Math.abs(Math.sin(cellLat * 12.9898 + cellLon * 78.233) * 1000));
             const valueIndex = (clampedMinutes + spatialOffset) % valuesArray.length;
             const cellVal = valuesArray[valueIndex];
 
-            // Apply color grading mapped precisely to Apple Weather spectrum stops based on location and values
-            const cellColor = metric === 'temp' ? getTempColor(cellVal) : getWindColor(cellVal);
+            // Blend smoothly across gradient thresholds
+            const cellColor = metric === 'temp' 
+                ? getSmoothColor(cellVal, tempStops) 
+                : getSmoothColor(cellVal, windStops);
 
             const cellBounds = [
                 [cellLat - dLat / 2, cellLon - dLon / 2],
@@ -1530,11 +1578,12 @@ function updateMapForMinute(totalMinutes) {
                 color: cellColor,
                 weight: 0,
                 fillColor: cellColor,
-                fillOpacity: 0.45
+                fillOpacity: 0.5
             }).addTo(mapLayersGroup);
         }
     }
 }
+   
 
 function addMinuteTimeSliderControl(map) {
     if (document.getElementById("mapSliderContainer")) return;
