@@ -1785,11 +1785,13 @@ setInterval(() => {
 }, 1000);
 
 // Periodic live sync for current weather conditions without reload
+// Periodic live sync updated to 30 seconds
 setInterval(() => {
     if (currentLat !== null && currentLon !== null && activeSearchQuery) {
         loadWeatherForCoords(currentLat, currentLon, activePlaceName, activeSearchQuery);
     }
-}, 300000);
+}, 30000);
+   
 </script>
 </body>
 </html>
