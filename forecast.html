@@ -1521,8 +1521,6 @@ function updateMapForMinute(totalMinutes) {
     // Determine active longitude offset based on current hover position stored globally, or default to system/UTC offset
     let dynamicOffsetMinutes = new Date().getTimezoneOffset(); // fallback local offset
     if (window._activeHoverLon !== undefined && window._activeHoverLon !== null) {
-        // Each 15 degrees of longitude roughly equals 1 hour (60 minutes) offset from UTC
-        // Standard formula: offset in minutes = - (longitude / 15) * 60 => -4 * longitude
         dynamicOffsetMinutes = Math.round(-4 * window._activeHoverLon);
     }
 
@@ -1564,7 +1562,6 @@ function updateMapForMinute(totalMinutes) {
     // Retrieve weather events override from global scope
     const weatherEventsOverride = window.activeWeatherEventsOverride || [];
 
-    // Helper function to parse hex/rgb color strings into RGB arrays for smooth square interpolation (lerp)
     function parseColor(colorStr) {
         if (!colorStr) return [0, 0, 0];
         if (colorStr.startsWith('#')) {
@@ -1591,17 +1588,14 @@ function updateMapForMinute(totalMinutes) {
             const cellLat = latMin + (i + 0.5) * dLat;
             const cellLon = lonMin + (j + 0.5) * dLon;
 
-            // Map spatial coordinates precisely to the global graph/data series index range (0 to valuesArray.length - 1)
-            const normalizedLon = (cellLon - lonMin) / (lonMax - lonMin); // 0.0 to 1.0
+            const normalizedLon = (cellLon - lonMin) / (lonMax - lonMin);
             const rawIndex = Math.floor(normalizedLon * valuesArray.length);
             const baseIndex = Math.max(0, Math.min(rawIndex, valuesArray.length - 1));
             
-            // Advance data index dynamically matching graph progression over time precisely per-minute
             const valueIndex = (baseIndex + clampedMinutes) % valuesArray.length;
             let cellVal = valuesArray[valueIndex];
             let cellLabelOverride = null;
 
-            // Check if any weather events override apply to this cell/minute
             for (const event of weatherEventsOverride) {
                 const matchesTime = clampedMinutes >= (event.startMinute || 0) && clampedMinutes <= (event.endMinute || 1439);
                 if (matchesTime) {
@@ -1614,16 +1608,13 @@ function updateMapForMinute(totalMinutes) {
                 }
             }
 
-            // Resolve dual base colors to enable square/bilinear color lerp blending across adjacent corners
             const baseColor = metric === 'temp' ? getTempColor(cellVal) : getWindColor(cellVal);
             const secondaryVal = valuesArray[(valueIndex + 1) % valuesArray.length];
             const secondaryColor = metric === 'temp' ? getTempColor(secondaryVal) : getWindColor(secondaryVal);
             
-            // Apply non-linear square distance factor interpolation for smooth tile gradients
             const lerpFactor = Math.pow((cellLat - latMin) / (latMax - latMin), 2);
             const cellColor = lerpColor(baseColor, secondaryColor, lerpFactor);
 
-            // Construct square geographic bounds
             const cellBounds = [
                 [cellLat - dLat / 2, cellLon - dLon / 2],
                 [cellLat + dLat / 2, cellLon + dLon / 2]
@@ -1636,14 +1627,27 @@ function updateMapForMinute(totalMinutes) {
                 fillOpacity: 0.55
             });
 
-            // Track hover longitude dynamically to update timezone offset live on mouseover
+            // FIX: Only update timezone/label if the hovered cell's longitude crosses into a new 15-degree timezone block.
+            // This completely eliminates the freezing recursive re-render loop.
             rect.on('mouseover', () => {
-                window._activeHoverLon = cellLon;
-                // Optional: trigger immediate UI time update on hover change without redrawing whole map
-                updateMapForMinute(clampedMinutes);
+                const newOffset = Math.round(-4 * cellLon);
+                if (window._activeHoverLon === undefined || Math.round(-4 * window._activeHoverLon) !== newOffset) {
+                    window._activeHoverLon = cellLon;
+                    
+                    // Safely update just the UI time label text element instead of rebuilding the entire map grid layers
+                    const updatedAdjustedMinutes = (clampedMinutes - newOffset + 1440) % 1440;
+                    const uHour24 = Math.floor(updatedAdjustedMinutes / 60);
+                    const uMinute = updatedAdjustedMinutes % 60;
+                    const uH12 = uHour24 % 12 === 0 ? 12 : uHour24 % 12;
+                    const uAmpm = uHour24 >= 12 ? 'PM' : 'AM';
+                    const uMinFormatted = String(uMinute).padStart(2, '0');
+                    
+                    if (timeLabelElem) {
+                        timeLabelElem.innerText = `${uH12}:${uMinFormatted} ${uAmpm} (${clampedMinutes}m)`;
+                    }
+                }
             });
 
-            // Bind coordinate-focused hover tooltips detailing precise lat/lon mapping values matching graph series
             const unitSymbol = metric === 'temp' ? '°' : ' mph';
             const latDir = cellLat >= 0 ? 'N' : 'S';
             const lonDir = cellLon >= 0 ? 'E' : 'W';
