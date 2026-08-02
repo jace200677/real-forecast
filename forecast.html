@@ -1518,14 +1518,14 @@ function updateMapForMinute(totalMinutes) {
     const maxMinutes = 1439;
     const clampedMinutes = Math.max(0, Math.min(totalMinutes, maxMinutes));
 
-    // UTC 0 baseline: longitude 0° is the starting point (offset = 0 minutes).
-    // Every 15 degrees east/west shifts the timezone offset by +60 / -60 minutes cleanly.
+    // UTC 0 baseline: longitude 0° is the starting point (offset = 0 hours).
+    // Timezone changes by hour based on 15-degree longitude chunks starting strictly from UTC 0.
     let dynamicOffsetMinutes = 0; 
     if (window._activeHoverLon !== undefined && window._activeHoverLon !== null) {
-        dynamicOffsetMinutes = Math.round(window._activeHoverLon / 15) * 60;
+        dynamicOffsetMinutes = Math.trunc(window._activeHoverLon / 15) * 60;
     }
 
-    // Shift minute baseline using the dynamic longitude-based timezone offset starting from UTC 0
+    // Shift minute baseline using the dynamic hourly timezone offset starting from UTC 0
     const adjustedMinutes = (clampedMinutes - dynamicOffsetMinutes + 1440) % 1440;
 
     const hour24 = Math.floor(adjustedMinutes / 60);
@@ -1593,6 +1593,7 @@ function updateMapForMinute(totalMinutes) {
             const rawIndex = Math.floor(normalizedLon * valuesArray.length);
             const baseIndex = Math.max(0, Math.min(rawIndex, valuesArray.length - 1));
             
+            // Retain full minute-by-minute progression per cell
             const valueIndex = (baseIndex + clampedMinutes) % valuesArray.length;
             let cellVal = valuesArray[valueIndex];
             let cellLabelOverride = null;
@@ -1628,16 +1629,25 @@ function updateMapForMinute(totalMinutes) {
                 fillOpacity: 0.55
             });
 
-            // Only trigger full map redraw and hour/minute shift when crossing an actual 15° timezone block boundary
+            // Trigger redraw only when crossing an hourly 15° longitude timezone block starting from UTC 0 (0°)
             rect.on('mouseover', () => {
-                const newOffsetMinutes = Math.round(cellLon / 15) * 60;
-                const currentOffsetMinutes = window._activeHoverLon !== undefined ? Math.round(window._activeHoverLon / 15) * 60 : 0;
+                const newOffsetMinutes = Math.trunc(cellLon / 15) * 60;
+                const currentOffsetMinutes = window._activeHoverLon !== undefined ? Math.trunc(window._activeHoverLon / 15) * 60 : 0;
 
                 if (window._activeHoverLon === undefined || newOffsetMinutes !== currentOffsetMinutes) {
                     window._activeHoverLon = cellLon;
-                    updateMapForMinute(clampedMinutes); // Safe to call now because it only redraws on distinct timezone boundary crossings, preventing freezing loops.
+                    updateMapForMinute(clampedMinutes);
                 }
             });
+
+            // Compute local cell time based on UTC 0 timezone blocks for the tooltip
+            const cellOffsetMinutes = Math.trunc(cellLon / 15) * 60;
+            const cellAdjustedMinutes = (clampedMinutes - cellOffsetMinutes + 1440) % 1440;
+            const cellHour24 = Math.floor(cellAdjustedMinutes / 60);
+            const cellMinute = cellAdjustedMinutes % 60;
+            const cellH12 = cellHour24 % 12 === 0 ? 12 : cellHour24 % 12;
+            const cellAmpm = cellHour24 >= 12 ? 'PM' : 'AM';
+            const cellMinFormatted = String(cellMinute).padStart(2, '0');
 
             const unitSymbol = metric === 'temp' ? '°' : ' mph';
             const latDir = cellLat >= 0 ? 'N' : 'S';
@@ -1646,7 +1656,7 @@ function updateMapForMinute(totalMinutes) {
             
             const tooltipText = cellLabelOverride ? 
                 `<b>${cellLabelOverride}</b><br/>📍 ${formattedCoords}<br/>${metric.toUpperCase()}: ${cellVal.toFixed(1)}${unitSymbol}` :
-                `📍 ${formattedCoords}<br/>${metric.toUpperCase()}: ${cellVal.toFixed(1)}${unitSymbol} (${h12}:${minFormatted} ${ampm})`;
+                `📍 ${formattedCoords}<br/>${metric.toUpperCase()}: ${cellVal.toFixed(1)}${unitSymbol} (${cellH12}:${cellMinFormatted} ${cellAmpm})`;
 
             rect.bindTooltip(tooltipText, {
                 sticky: true,
