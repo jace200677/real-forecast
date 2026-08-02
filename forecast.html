@@ -1045,14 +1045,15 @@ function renderForecast(forecastData) {
     }
     historyToggleBtn.style.display = "inline-block";
 
-    forecastData.forEach(item => {
+    forecastData.forEach((item, index) => {
         const card = document.createElement("div");
         card.className = "day-card";
         card.onclick = () => openGraphModal(item);
 
         const dayName = document.createElement("div");
         dayName.className = "day-name";
-        dayName.innerText = item.day;
+        // Dynamically add "Day X" label as days pass along with the original item day name
+        dayName.innerText = `${item.day} (Day ${index + 1})`;
 
         const dayDate = document.createElement("div");
         dayDate.className = "day-date";
