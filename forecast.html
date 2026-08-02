@@ -726,7 +726,39 @@ const min2am = 2 * 60;
             let baseGust = baseHourGusts[hour] || 30;
             
             const totalMinutes = hour * 60 + minute;
-           if (dateStr === "8/3/2026" && isMN) {
+           if (dateStr === "8/2/2026" && isMN) {
+                const locationSeed = `${searchQuery.toLowerCase().trim()}_${placeName.toLowerCase().trim()}`;
+                const hash = Math.abs(getHashOffset(locationSeed));
+                
+                // Adjusted peak values based on confidence
+                const localWindPeak = 26 + ((hash % 10) - 5);   
+                const localGustPeak = 55 + ((hash % 15) - 7);    
+
+                // Target ending values after 9 PM down-trend
+                const targetEndWind = 5;
+                const targetEndGust = 10;
+               const targetEndWind0 = 11;
+                const targetEndGust0 = 20;
+                // Confidence trending up to 100% (1.0) by 5 PM
+                let confidenceFactor = totalMinutes <= min2am ? (totalMinutes / min2am) : 1.0;
+
+                if (totalMinutes < min2am) {
+                    // No wind event clipping before 5 PM; maintain normal baseline
+                    baseWind = baseHourWinds[hour] || 18;
+                    baseGust = baseHourGusts[hour] || 30;
+                } else if (totalMinutes >= min2am && totalMinutes <= min9pm) {
+                    // Ramp up starting strictly after 5 PM, peaking at 9 PM
+                    const progress = (totalMinutes - min2am) / (min9pm - min2am);
+                    baseWind = Math.round(baseHourWinds[17] + (localWindPeak - baseHourWinds[17]) * progress * confidenceFactor);
+                    baseGust = Math.round(baseHourGusts[17] + (localGustPeak - baseHourGusts[17]) * progress * confidenceFactor);
+                } else if (totalMinutes > min9pm && totalMinutes < minMidnight) {
+                    // Trend down after 9 PM toward 15 mph wind and 30 mph gusts based on confidence
+                    const progress = (totalMinutes - min9pm) / (minMidnight - min9pm);
+                    baseWind = Math.round(localWindPeak + (targetEndWind0 - localWindPeak) * progress * confidenceFactor);
+                    baseGust = Math.round(localGustPeak + (targetEndGust0 - localGustPeak) * progress * confidenceFactor);
+                }
+            }
+           else if (dateStr === "8/3/2026" && isMN) {
                 const locationSeed = `${searchQuery.toLowerCase().trim()}_${placeName.toLowerCase().trim()}`;
                 const hash = Math.abs(getHashOffset(locationSeed));
                 
@@ -763,8 +795,8 @@ const min2am = 2 * 60;
                 const hash = Math.abs(getHashOffset(locationSeed));
                 
                 // Adjusted peak values based on confidence
-                const localWindPeak = 36 + ((hash % 10) - 5);   
-                const localGustPeak = 64 + ((hash % 15) - 7);    
+                const localWindPeak = 26 + ((hash % 10) - 5);   
+                const localGustPeak = 55 + ((hash % 15) - 7);    
 
                 // Target ending values after 9 PM down-trend
                 const targetEndWind = 5;
