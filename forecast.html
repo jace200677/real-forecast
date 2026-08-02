@@ -1522,7 +1522,7 @@ function updateMapForMinute(totalMinutes) {
     // 1) Universe Base Time starting at 6:00 AM (360 minutes from midnight baseline) — matching updateChartMetric() exactly
     const universeBaseMinute = 360;
 
-    // 2) Determine location-specific timezone offset using target longitude or DST helper
+    // 2) Top-level label update using standard active/default location
     let locationOffsetHours = 0;
     const targetLon = currentLon !== null ? currentLon : -98.5795;
     
@@ -1532,10 +1532,9 @@ function updateMapForMinute(totalMinutes) {
         locationOffsetHours = Math.trunc(targetLon / 15);
     }
 
-    // Shift ONLY the hours using integer hour offsets starting from 6:00 AM Universe Base Time, leaving minutes absolute
     const baseAdjustedMinutes = (clampedMinutes - universeBaseMinute + 1440) % 1440;
     const rawHour24 = Math.floor(baseAdjustedMinutes / 60);
-    const minute = baseAdjustedMinutes % 60; // Minutes remain strictly anchored to progression
+    const minute = baseAdjustedMinutes % 60;
 
     const hour24 = (rawHour24 - locationOffsetHours + 24) % 24;
     const h12 = hour24 % 12 === 0 ? 12 : hour24 % 12;
@@ -1598,13 +1597,18 @@ function updateMapForMinute(totalMinutes) {
             const cellLat = latMin + (i + 0.5) * dLat;
             const cellLon = lonMin + (j + 0.5) * dLon;
 
-            // Map each specific longitude step directly to the data array index to cover all longitudes perfectly
+            // 1) Universal Longitude & Latitude offset mapping for any arbitrary location on earth (independent of searched input)
             const normalizedLon = (cellLon - lonMin) / (lonMax - lonMin);
             const rawLonIndex = Math.floor(normalizedLon * valuesArray.length);
             const baseLonIndex = Math.max(0, Math.min(rawLonIndex, valuesArray.length - 1));
 
-            // Match exact timing with the graph (indexInDay = clampedMinutes) combined with spatial longitude progression
-            let indexInDay = (baseLonIndex + clampedMinutes) % valuesArray.length;
+            // Factor in latitude progression so values shift smoothly across both north-south and east-west gradients
+            const latNormalization = (cellLat - latMin) / (latMax - latMin);
+            const spatialOffset = Math.floor(latNormalization * (valuesArray.length * 0.1));
+
+            // Align data index with graph timing, spatial longitude progression, and continuous latitudinal variation
+            let indexInDay = (baseLonIndex + spatialOffset + clampedMinutes) % valuesArray.length;
+            if (indexInDay < 0) indexInDay += valuesArray.length;
             if (indexInDay >= valuesArray.length) indexInDay = valuesArray.length - 1;
             
             let cellVal = valuesArray[indexInDay];
@@ -1646,17 +1650,10 @@ function updateMapForMinute(totalMinutes) {
                 fillOpacity: dynamicOpacity
             });
 
-            // Trigger redraw when crossing an hourly timezone/DST block boundary based on tile coordinates
+            // Trigger redraw when hovering across different longitudinal/timezone regions dynamically
             rect.on('mouseover', () => {
-                let cellOffsetHours = 0;
-                if (typeof getLocalTimezoneOffsetMinutes === 'function') {
-                    cellOffsetHours = Math.trunc(getLocalTimezoneOffsetMinutes(targetPlaceName || activePlaceName, activeDayDateStr) / 60);
-                } else {
-                    cellOffsetHours = Math.trunc(cellLon / 15);
-                }
-
-                const currentOffsetHours = window._activeHoverLon !== undefined ? 
-                    (typeof getLocalTimezoneOffsetMinutes === 'function' ? Math.trunc(getLocalTimezoneOffsetMinutes(targetPlaceName || activePlaceName, activeDayDateStr) / 60) : Math.trunc(window._activeHoverLon / 15)) : 0;
+                let cellOffsetHours = Math.trunc(cellLon / 15);
+                const currentOffsetHours = window._activeHoverLon !== undefined ? Math.trunc(window._activeHoverLon / 15) : 0;
 
                 if (window._activeHoverLon === undefined || cellOffsetHours !== currentOffsetHours) {
                     window._activeHoverLon = cellLon;
@@ -1664,14 +1661,8 @@ function updateMapForMinute(totalMinutes) {
                 }
             });
 
-            // Compute local cell time using tile's own longitude and DST/timezone helper
-            let cellOffsetHours = 0;
-            if (typeof getLocalTimezoneOffsetMinutes === 'function') {
-                cellOffsetHours = Math.trunc(getLocalTimezoneOffsetMinutes(targetPlaceName || activePlaceName, activeDayDateStr) / 60);
-            } else {
-                cellOffsetHours = Math.trunc(cellLon / 15);
-            }
-
+            // Compute local cell time based specifically on the tile's own longitude position rather than searched location input
+            const cellOffsetHours = Math.trunc(cellLon / 15);
             const cellBaseAdj = (clampedMinutes - universeBaseMinute + 1440) % 1440;
             const cellRawH24 = Math.floor(cellBaseAdj / 60);
             const cellMin = cellBaseAdj % 60;
