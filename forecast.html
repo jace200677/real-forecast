@@ -1545,16 +1545,15 @@ function updateMapForMinute(totalMinutes) {
             const cellLat = latMin + (i + 0.5) * dLat;
             const cellLon = lonMin + (j + 0.5) * dLon;
 
-            // FIX: Anchor spatial variance strictly to fixed geographic position + time progression, 
-            // ensuring colors/values stay pinned to exact map coordinates like Ventusky.
+            // Anchor spatial profile strictly to coordinates like Ventusky
             const fixedSpatialHash = Math.abs(Math.sin(cellLat * 12.9898 + cellLon * 78.233) * 43758.5453) % 1;
             const baseIndex = Math.floor(fixedSpatialHash * valuesArray.length);
             
-            // Advance data index smoothly forward based on the minute timeline elapsed
+            // Advance data index dynamically matching graph progression over time
             const valueIndex = (baseIndex + clampedMinutes) % valuesArray.length;
-            const cellVal = valuesArray.valueIndex; // Safe lookup
+            const cellVal = valuesArray[valueIndex];
 
-            // Apply color grading mapped precisely to spectrum stops based on absolute values
+            // Resolve color directly derived from exact graph value scales and thematic color palettes
             const cellColor = metric === 'temp' ? getTempColor(cellVal) : getWindColor(cellVal);
 
             const cellBounds = [
