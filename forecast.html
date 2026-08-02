@@ -1519,10 +1519,10 @@ function updateMapForMinute(totalMinutes) {
     const maxMinutes = 1439;
     const clampedMinutes = Math.max(0, Math.min(totalMinutes, maxMinutes));
 
-    // 1) Universe Base Time starting at 6:00 AM (360 minutes from midnight baseline) — matching updateChartMetric() exactly
+    // 1) Universe Base Time starting at 6:00 AM (360 minutes from midnight baseline)
     const universeBaseMinute = 360;
 
-    // 2) Top-level label update using standard active/default location for the main control header
+    // 2) Top-level label update using standard active/default location
     let locationOffsetHours = 0;
     const targetLon = currentLon !== null ? currentLon : -98.5795;
     
@@ -1597,27 +1597,15 @@ function updateMapForMinute(totalMinutes) {
             const cellLat = latMin + (i + 0.5) * dLat;
             const cellLon = lonMin + (j + 0.5) * dLon;
 
-            // Compute local timezone offset independently for EVERY tile based on its own longitude (15° per hour timezone blocks)
+            // Compute local cell timezone offset based entirely on cell longitude (independent of searched input)
             const cellOffsetHours = Math.trunc(cellLon / 15);
 
-            // Shift the graph's timeline profile specifically for this tile's exact local timezone offset 
-            // so that graph timing syncs up naturally with local time anywhere on earth, independent of the searched location.
-            const cellGraphMinuteOffset = cellOffsetHours * 60;
-            const adjustedGraphMinute = (clampedMinutes + cellGraphMinuteOffset + 1440) % 1440;
-
-            // Map each specific longitude step directly to the data array index to cover all longitudes globally
-            const normalizedLon = (cellLon - lonMin) / (lonMax - lonMin);
-            const rawLonIndex = Math.floor(normalizedLon * valuesArray.length);
-            const baseLonIndex = Math.max(0, Math.min(rawLonIndex, valuesArray.length - 1));
-
-            // Factor in latitude progression for smooth spatial gradients across north-south dimensions
-            const latNormalization = (cellLat - latMin) / (latMax - latMin);
-            const spatialOffset = Math.floor(latNormalization * (valuesArray.length * 0.05));
-
-            // Align data index with local-time-adjusted graph timing and spatial longitude/latitude progression
-            let indexInDay = (baseLonIndex + spatialOffset + adjustedGraphMinute) % valuesArray.length;
-            if (indexInDay < 0) indexInDay += valuesArray.length;
-            if (indexInDay >= valuesArray.length) indexInDay = valuesArray.length - 1;
+            // Shift data index using the cell's unique timezone offset to match the graph's time progression per location
+            const cellTimelineMinute = (clampedMinutes - (cellOffsetHours * 60) + 1440) % 1440;
+            const normalizedTime = cellTimelineMinute / 1440;
+            
+            const rawIndex = Math.floor(normalizedTime * valuesArray.length);
+            let indexInDay = Math.max(0, Math.min(rawIndex, valuesArray.length - 1));
             
             let cellVal = valuesArray[indexInDay];
             let cellLabelOverride = null;
@@ -1658,12 +1646,11 @@ function updateMapForMinute(totalMinutes) {
                 fillOpacity: dynamicOpacity
             });
 
-            // Trigger redraw when hovering across different longitudinal/timezone regions dynamically
+            // Trigger dynamic hover updates when moving across different longitudinal regions
             rect.on('mouseover', () => {
-                let hoverCellOffsetHours = Math.trunc(cellLon / 15);
                 const currentOffsetHours = window._activeHoverLon !== undefined ? Math.trunc(window._activeHoverLon / 15) : 0;
 
-                if (window._activeHoverLon === undefined || hoverCellOffsetHours !== currentOffsetHours) {
+                if (window._activeHoverLon === undefined || cellOffsetHours !== currentOffsetHours) {
                     window._activeHoverLon = cellLon;
                     updateMapForMinute(clampedMinutes);
                 }
