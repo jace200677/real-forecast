@@ -1511,7 +1511,6 @@ function initLeafletMap(dateStr) {
         updateMapForMinute(initialMinuteIndex);
     }, 250);
 }
-
 function updateMapForMinute(totalMinutes) {
     if (!mapLayersGroup || !window.activeMinuteDataCache || !window.activeLeafletMap) return;
 
@@ -1519,7 +1518,7 @@ function updateMapForMinute(totalMinutes) {
     const maxMinutes = 1439;
     const clampedMinutes = Math.max(0, Math.min(totalMinutes, maxMinutes));
 
-    // 1) Universe Base Time starting at 6:00 AM (360 minutes from midnight baseline) — matching updateChartMetric()
+    // 1) Universe Base Time starting at 6:00 AM (360 minutes from midnight baseline) — matching updateChartMetric() exactly
     const universeBaseMinute = 360;
 
     // 2) Determine location-specific timezone offset using cell coordinates (lon/15 or DST helper)
@@ -1597,13 +1596,8 @@ function updateMapForMinute(totalMinutes) {
             const cellLat = latMin + (i + 0.5) * dLat;
             const cellLon = lonMin + (j + 0.5) * dLon;
 
-            // Compute value index independently using the tile's own longitude position
-            const normalizedLon = (cellLon - lonMin) / (lonMax - lonMin);
-            const rawIndex = Math.floor(normalizedLon * valuesArray.length);
-            const baseIndex = Math.max(0, Math.min(rawIndex, valuesArray.length - 1));
-            
-            // Align value index directly with totalMinutes plus spatial longitude shift
-            let indexInDay = (baseIndex + clampedMinutes) % valuesArray.length;
+            // Match the exact timing logic used in updateChartMetric() (indexInDay = totalMinutes)
+            let indexInDay = clampedMinutes;
             if (indexInDay >= valuesArray.length) indexInDay = valuesArray.length - 1;
             let cellVal = valuesArray[indexInDay];
             let cellLabelOverride = null;
