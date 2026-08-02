@@ -714,7 +714,6 @@ const min2am = 2 * 60;
     const min5pm = 17 * 60;
    const min7pm = 19 * 60;
     const min10pm = 22 * 60;
-   const min9pm = 21 * 60;
     const minMidnight = 24 * 60;
 
     for (let hour = 0; hour < 24; hour++) {
@@ -809,14 +808,14 @@ const min2am = 2 * 60;
                     // No wind event clipping before 5 PM; maintain normal baseline
                     baseWind = baseHourWinds[hour] || 18;
                     baseGust = baseHourGusts[hour] || 30;
-                } else if (totalMinutes >= min7pm && totalMinutes <= min9pm) {
+                } else if (totalMinutes >= min7pm && totalMinutes <= min10pm) {
                     // Ramp up starting strictly after 5 PM, peaking at 9 PM
-                    const progress = (totalMinutes - min7pm) / (min9pm - min7pm);
+                    const progress = (totalMinutes - min7pm) / (min10pm - min7pm);
                     baseWind = Math.round(baseHourWinds[17] + (localWindPeak - baseHourWinds[17]) * progress * confidenceFactor);
                     baseGust = Math.round(baseHourGusts[17] + (localGustPeak - baseHourGusts[17]) * progress * confidenceFactor);
-                } else if (totalMinutes > min9pm && totalMinutes < minMidnight) {
+                } else if (totalMinutes > min10pm && totalMinutes < minMidnight) {
                     // Trend down after 9 PM toward 15 mph wind and 30 mph gusts based on confidence
-                    const progress = (totalMinutes - min9pm) / (minMidnight - min9pm);
+                    const progress = (totalMinutes - min10pm) / (minMidnight - min10pm);
                     baseWind = Math.round(localWindPeak + (targetEndWind - localWindPeak) * progress * confidenceFactor);
                     baseGust = Math.round(localGustPeak + (targetEndGust - localGustPeak) * progress * confidenceFactor);
                 }
