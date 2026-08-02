@@ -802,7 +802,7 @@ const min2am = 2 * 60;
                 const targetEndGust = 10;
 
                 // Confidence trending up to 100% (1.0) by 5 PM
-                let confidenceFactor = totalMinutes <= min5pm ? (totalMinutes / min5pm) : 1.0;
+                let confidenceFactor = totalMinutes <= min7pm ? (totalMinutes / min7pm) : 1.0;
 
                 if (totalMinutes < min7pm) {
                     // No wind event clipping before 5 PM; maintain normal baseline
