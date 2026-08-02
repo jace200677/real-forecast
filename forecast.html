@@ -1597,7 +1597,7 @@ function updateMapForMinute(totalMinutes) {
             const cellLat = latMin + (i + 0.5) * dLat;
             const cellLon = lonMin + (j + 0.5) * dLon;
 
-            // Compute value index independently using the tile's own longitude position (lat/lon based)
+            // Compute value index independently using the tile's own longitude position
             const normalizedLon = (cellLon - lonMin) / (lonMax - lonMin);
             const rawIndex = Math.floor(normalizedLon * valuesArray.length);
             const baseIndex = Math.max(0, Math.min(rawIndex, valuesArray.length - 1));
@@ -1624,9 +1624,13 @@ function updateMapForMinute(totalMinutes) {
             const secondaryVal = valuesArray[(indexInDay + 1) % valuesArray.length];
             const secondaryColor = metric === 'temp' ? getTempColor(secondaryVal) : getWindColor(secondaryVal);
             
-            // Latitude-based color lerping for smooth gradients across the map tiles
-            const lerpFactor = Math.pow((cellLat - latMin) / (latMax - latMin), 2);
+            // Dual Latitude and Longitude based color lerping and opacity fade-in/fade-out
+            const latFactor = (cellLat - latMin) / (latMax - latMin);
+            const lonFactor = (cellLon - lonMin) / (lonMax - lonMin);
+            const lerpFactor = Math.pow(latFactor * 0.5 + lonFactor * 0.5, 2);
+            
             const cellColor = lerpColor(baseColor, secondaryColor, lerpFactor);
+            const dynamicOpacity = Math.max(0.25, Math.min(0.75, 0.4 + 0.3 * Math.sin(latFactor * Math.PI) * Math.cos(lonFactor * Math.PI)));
 
             const cellBounds = [
                 [cellLat - dLat / 2, cellLon - dLon / 2],
@@ -1637,7 +1641,7 @@ function updateMapForMinute(totalMinutes) {
                 color: cellColor,
                 weight: 0,
                 fillColor: cellColor,
-                fillOpacity: 0.55
+                fillOpacity: dynamicOpacity
             });
 
             // Trigger redraw when crossing an hourly timezone/DST block boundary based on tile coordinates
