@@ -941,10 +941,10 @@ function parseAndRender(data, searchQuery, placeName) {
         }
 
         const apiCode = daily.weather_code ? daily.weather_code[apiIndex] : 0;
-        const apiHigh = Math.round((daily.temperature_2m_max && daily.temperature_2m_max[apiIndex]) || 72);
-        const apiLow = Math.round((daily.temperature_2m_min && daily.temperature_2m_min[apiIndex]) || 52);
-        const apiWind = Math.round((daily.wind_speed_10m_max && daily.wind_speed_10m_max[apiIndex]) || 18);
-        const apiGusts = Math.round((daily.wind_gusts_10m_max && daily.wind_gusts_10m_max[apiIndex]) || 30);
+        const apiHigh = Math.round((daily.temperature_2m_max && daily.temperature_2m_max[apiIndex]) || 59);
+        const apiLow = Math.round((daily.temperature_2m_min && daily.temperature_2m_min[apiIndex]) || 32);
+        const apiWind = Math.round((daily.wind_speed_10m_max && daily.wind_speed_10m_max[apiIndex]) || 0);
+        const apiGusts = Math.round((daily.wind_gusts_10m_max && daily.wind_gusts_10m_max[apiIndex]) || 0);
         
         const minuteData = getMinuteValuesForDay(
             dateStr, searchQuery, placeName, 
