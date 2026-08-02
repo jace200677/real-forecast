@@ -1831,6 +1831,7 @@ function formatTimezoneAwareLabel(hour24, minute, longitude) {
 }
 
 // Updated Chart Metric Update Function utilizing timezone-adjusted graph times
+// Updated Chart Metric Update Function utilizing timezone-adjusted graph times
 function updateChartMetric() {
     if (!activeHourlyData || !activeDayDateStr) return;
     const metric = document.getElementById("metricSelector").value;
@@ -1840,62 +1841,100 @@ function updateChartMetric() {
     const foundIdx = targetDates.indexOf(activeDayDateStr);
     if (foundIdx !== -1) dayIndex = foundIdx;
 
-    const dummyTempsMax = { max: [72,72,72,72,72,72,72,72], min: [52,52,52,52,52,52,52,52] };
-    const dummyWinds = [18,18,18,18,18,18,18,18];
-    const dummyGusts = [30,30,30,30,30,30,30,30];
+    const [m, d, y] = activeDayDateStr.split("/").map(Number);
+    const formattedDate = `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
 
-    const minuteData = getMinuteValuesForDay(activeDayDateStr, activeSearchQuery, activePlaceName, dummyTempsMax, dummyWinds, dummyGusts, dayIndex);
+    let labels = [];
+    let dataValues = [];
 
-    const labels = []; 
-    const values = []; 
-    const segmentColors = [];
-    
-    // Universe Base Time starting at 6:00 AM (360 minutes from midnight baseline)
-    const universeBaseMinute = 360; 
+    const minuteValues = window.currentMinuteData || { 
+        temps: new Array(1440).fill(59), 
+        winds: new Array(1440).fill(10), 
+        gusts: new Array(1440).fill(15) 
+    };
 
-    // Determine location-specific timezone offset (Hours only, leaving minutes completely untouched)
-    let locationOffsetHours = 0;
-    const targetLon = currentLon !== null ? currentLon : -98.5795;
-    
-    if (typeof getLocalTimezoneOffsetMinutes === 'function') {
-        locationOffsetHours = Math.trunc(getLocalTimezoneOffsetMinutes(targetPlaceName || activePlaceName, activeDayDateStr) / 60);
-    } else {
-        locationOffsetHours = Math.trunc(targetLon / 15);
+    const rawValues = metric === 'temp' ? minuteValues.temps : 
+                      (metric === 'wind' ? minuteValues.winds : minuteValues.gusts);
+
+    for (let h = 0; h < 24; h++) {
+        for (let min = 0; min < 60; min++) {
+            if (h === 23 && min === 59) continue;
+            let index = h * 60 + min;
+            if (index >= rawValues.length) index = rawValues.length - 1;
+
+            if (min === 0) {
+                let h12 = h % 12 === 0 ? 12 : h % 12;
+                let ampm = h >= 12 ? 'PM' : 'AM';
+                labels.push(`${h12}:00 ${ampm}`);
+            } else {
+                labels.push('');
+            }
+            dataValues.push(rawValues[index]);
+        }
     }
 
-    // Loop through every minute of the day (0 to 1438, skipping 23:59 if desired)
-    for (let totalMinutes = 0; totalMinutes < 1440; totalMinutes++) {
-        if (totalMinutes === 1439) continue;
-
-        // Shift ONLY the hours using integer hour offsets, leaving the minute counter absolute and intact
-        const baseAdjustedMinutes = (totalMinutes - universeBaseMinute + 1440) % 1440;
-        const rawHour24 = Math.floor(baseAdjustedMinutes / 60);
-        const minute = baseAdjustedMinutes % 60; // Minutes remain strictly anchored to the progression
-
-        // Apply hour shift from timezone/DST without modifying the minute value
-        const hour24 = (rawHour24 - locationOffsetHours + 24) % 24;
-
-        const h12 = hour24 % 12 === 0 ? 12 : hour24 % 12;
-        const ampm = hour24 >= 12 ? 'PM' : 'AM';
-        const minFormatted = String(minute).padStart(2, '0');
-
-        labels.push(`${h12}:${minFormatted} ${ampm}`);
-
-        let val = 0;
-        let indexInDay = totalMinutes;
-        if (indexInDay >= minuteData.temps.length) indexInDay = minuteData.temps.length - 1;
-
-        if (metric === "temp") val = minuteData.temps[indexInDay];
-        else if (metric === "wind") val = minuteData.winds[indexInDay];
-        else if (metric === "gusts") val = minuteData.gusts[indexInDay];
-
-        let color = metric === 'temp' ? getTempColor(val) : getWindColor(val);
-        values.push(val);
-        segmentColors.push(color);
+    const ctx = document.getElementById('forecastChart').getContext('2d');
+    if (chartInstance) {
+        chartInstance.destroy();
     }
-    
-    const labelName = metric === 'temp' ? "Temperature (°F)" : (metric === 'wind' ? "Wind Speed (mph)" : "Wind Gusts (mph)");
-    renderChart(labels, values, segmentColors, labelName, metric);
+
+    let chartColor = '#00a8cc';
+    if (metric === 'temp') chartColor = '#ff9500';
+    else if (metric === 'wind') chartColor = '#30b0c7';
+    else if (metric === 'gusts') chartColor = '#ff3b30';
+
+    chartInstance = new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: labels,
+            datasets: [{
+                label: metric === 'temp' ? 'Temperature (°F)' : (metric === 'wind' ? 'Wind Speed (mph)' : 'Wind Gusts (mph)'),
+                data: dataValues,
+                borderColor: chartColor,
+                backgroundColor: hexToRgba(chartColor, 0.15),
+                borderWidth: 2,
+                fill: true,
+                tension: 0.3,
+                pointRadius: 0,
+                pointHoverRadius: 5
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: { display: false },
+                tooltip: {
+                    mode: 'index',
+                    intersect: false,
+                    callbacks: {
+                        title: function(tooltipItems) {
+                            let idx = tooltipItems[0].dataIndex;
+                            let hr = Math.floor(idx / 60);
+                            let mn = idx % 60;
+                            let h12 = hr % 12 === 0 ? 12 : hr % 12;
+                            let ampm = hr >= 12 ? 'PM' : 'AM';
+                            return `${h12}:${String(mn).padStart(2, '0')} ${ampm} on ${activeDayDateStr}`;
+                        }
+                    }
+                }
+            },
+            scales: {
+                x: {
+                    grid: { color: '#222' },
+                    ticks: {
+                        color: '#888',
+                        maxTicksLimit: 12,
+                        autoSkip: true
+                    }
+                },
+                y: {
+                    grid: { color: '#222' },
+                    ticks: { color: '#888' }
+                }
+            }
+        }
+    });
 }
 
 function renderChart(labels, values, segmentColors, labelName, metric) {
