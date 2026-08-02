@@ -1512,17 +1512,17 @@ function initLeafletMap(dateStr) {
     }, 250);
 }
 
-ffunction updateMapForMinute(totalMinutes) {
+function updateMapForMinute(totalMinutes) {
     if (!mapLayersGroup || !window.activeMinuteDataCache || !window.activeLeafletMap) return;
 
     // Clamp minutes between 12:00 AM (0) and 11:59 PM (1439)
     const maxMinutes = 1439;
     const clampedMinutes = Math.max(0, Math.min(totalMinutes, maxMinutes));
 
-    // Universe Base Time starting at 6:00 AM (360 minutes from midnight baseline) matching the chart
+    // Universe Base Time starting at 6:00 AM (360 minutes from midnight baseline)
     const universeBaseMinute = 360;
 
-    // Top-level map time label header based on active or default location view
+    // Top-level header label update using global/active search or fallback default
     let locationOffsetHours = 0;
     const targetLon = currentLon !== null ? currentLon : -98.5795;
     
@@ -1567,6 +1567,7 @@ ffunction updateMapForMinute(totalMinutes) {
     const dLat = (latMax - latMin) / latSteps;
     const dLon = (lonMax - lonMin) / lonSteps;
 
+    // Retrieve weather events override from global scope
     const weatherEventsOverride = window.activeWeatherEventsOverride || [];
 
     function parseColor(colorStr) {
@@ -1590,34 +1591,30 @@ ffunction updateMapForMinute(totalMinutes) {
         return `rgb(${r},${g},${b})`;
     }
 
-    // Iterate through every latitude and longitude tile coordinate independently across the globe
+    // Iterate through all latitude and longitude steps across the globe independently
     for (let i = 0; i < latSteps; i++) {
         for (let j = 0; j < lonSteps; j++) {
             const cellLat = latMin + (i + 0.5) * dLat;
             const cellLon = lonMin + (j + 0.5) * dLon;
 
-            // 1) Compute local time offset specifically for this individual tile's longitude (each 15 degrees = 1 hour offset)
-            const cellTimezoneOffsetHours = Math.trunc(cellLon / 15);
+            // 1) Compute cell-specific local timezone offset based on its own longitude tile position
+            const cellOffsetHours = Math.trunc(cellLon / 15);
 
-            // 2) Derive individual tile local time matching the exact slider timing progression from the graph
-            const cellLocalBaseMinutes = (clampedMinutes - universeBaseMinute + 1440) % 1440;
-            const cellLocalRawH24 = Math.floor(cellLocalBaseMinutes / 60);
-            const cellLocalMin = cellLocalBaseMinutes % 60;
-            const cellLocalHour24 = (cellLocalRawH24 - cellTimezoneOffsetHours + 24) % 24;
-            const cellTotalLocalMinutes = (cellLocalHour24 * 60) + cellLocalMin;
+            // 2) Map longitude across the cached dataset values array index range independently
+            const normalizedLon = (cellLon - lonMin) / (lonMax - lonMin);
+            const rawLonIndex = Math.floor(normalizedLon * valuesArray.length);
+            const baseLonIndex = Math.max(0, Math.min(rawLonIndex, valuesArray.length - 1));
 
-            // Map individual local minute progression directly to the data array index for this tile
-            const dataIndexFactor = cellTotalLocalMinutes / 1440;
-            let indexInDay = Math.floor(dataIndexFactor * valuesArray.length);
-            
-            // Add a subtle continuous latitude variation gradient so values change north-to-south as well
+            // Factor in latitude progression for smooth north-south gradients
             const latNormalization = (cellLat - latMin) / (latMax - latMin);
-            const spatialLatShift = Math.floor(latNormalization * (valuesArray.length * 0.05));
-            
-            indexInDay = (indexInDay + spatialLatShift) % valuesArray.length;
+            const spatialOffset = Math.floor(latNormalization * (valuesArray.length * 0.1));
+
+            // 3) Calculate index in day shifted dynamically by longitude/timezone offset and graph slider timing
+            const timezoneMinuteShift = cellOffsetHours * 60;
+            let indexInDay = (baseLonIndex + spatialOffset + clampedMinutes + timezoneMinuteShift) % valuesArray.length;
             if (indexInDay < 0) indexInDay += valuesArray.length;
             if (indexInDay >= valuesArray.length) indexInDay = valuesArray.length - 1;
-
+            
             let cellVal = valuesArray[indexInDay];
             let cellLabelOverride = null;
 
@@ -1637,7 +1634,6 @@ ffunction updateMapForMinute(totalMinutes) {
             const secondaryVal = valuesArray[(indexInDay + 1) % valuesArray.length];
             const secondaryColor = metric === 'temp' ? getTempColor(secondaryVal) : getWindColor(secondaryVal);
             
-            // Dual Latitude and Longitude based color lerping and smooth fade-in/fade-out opacity
             const latFactor = (cellLat - latMin) / (latMax - latMin);
             const lonFactor = (cellLon - lonMin) / (lonMax - lonMin);
             const lerpFactor = Math.pow(latFactor * 0.5 + lonFactor * 0.5, 2);
@@ -1657,21 +1653,23 @@ ffunction updateMapForMinute(totalMinutes) {
                 fillOpacity: dynamicOpacity
             });
 
-            // Trigger redraw when hovering across different longitudinal/timezone regions dynamically
             rect.on('mouseover', () => {
-                let cellOffsetHours = Math.trunc(cellLon / 15);
                 const currentOffsetHours = window._activeHoverLon !== undefined ? Math.trunc(window._activeHoverLon / 15) : 0;
-
                 if (window._activeHoverLon === undefined || cellOffsetHours !== currentOffsetHours) {
                     window._activeHoverLon = cellLon;
                     updateMapForMinute(clampedMinutes);
                 }
             });
 
-            // Format tile local time string for the tooltip display
-            const cellH12 = cellLocalHour24 % 12 === 0 ? 12 : cellLocalHour24 % 12;
-            const cellAmpm = cellLocalHour24 >= 12 ? 'PM' : 'AM';
-            const cellMinFormatted = String(cellLocalMin).padStart(2, '0');
+            // Calculate exact local time string for this individual map grid cell
+            const cellBaseAdj = (clampedMinutes - universeBaseMinute + 1440) % 1440;
+            const cellRawH24 = Math.floor(cellBaseAdj / 60);
+            const cellMin = cellBaseAdj % 60;
+            const cellHour24 = (cellRawH24 - cellOffsetHours + 24) % 24;
+
+            const cellH12 = cellHour24 % 12 === 0 ? 12 : cellHour24 % 12;
+            const cellAmpm = cellHour24 >= 12 ? 'PM' : 'AM';
+            const cellMinFormatted = String(cellMin).padStart(2, '0');
 
             const unitSymbol = metric === 'temp' ? '°' : ' mph';
             const latDir = cellLat >= 0 ? 'N' : 'S';
@@ -1691,6 +1689,7 @@ ffunction updateMapForMinute(totalMinutes) {
         }
     }
 }
+   
 // Helper function to check if a given date or forecast day corresponds to "today"
 function isToday(dateObj) {
     const today = new Date();
