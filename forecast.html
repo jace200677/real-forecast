@@ -1518,18 +1518,29 @@ function updateMapForMinute(totalMinutes) {
     const maxMinutes = 1439;
     const clampedMinutes = Math.max(0, Math.min(totalMinutes, maxMinutes));
 
-    // UTC 0 baseline: longitude 0° is the starting point (offset = 0 hours).
-    // Timezone changes by hour based on 15-degree longitude chunks starting strictly from UTC 0.
-    let dynamicOffsetMinutes = 0; 
+    // 1) Universe Base Time starting at 5:00 AM (300 minutes from midnight baseline)
+    const universeBaseMinute = 300;
+
+    // 2) Determine location-specific timezone offset (Hours only, leaving minutes untouched)
+    // Uses location/DST helper function if available, otherwise falls back to longitude blocks
+    let locationOffsetHours = 0;
+    let dynamicOffsetMinutes = 0;
+    
     if (window._activeHoverLon !== undefined && window._activeHoverLon !== null) {
-        dynamicOffsetMinutes = Math.trunc(window._activeHoverLon / 15) * 60;
+        if (typeof getLocalTimezoneOffsetMinutes === 'function') {
+            locationOffsetHours = Math.trunc(getLocalTimezoneOffsetMinutes(targetPlaceName || activePlaceName, activeDayDateStr) / 60);
+        } else {
+            locationOffsetHours = Math.trunc(window._activeHoverLon / 15);
+        }
+        dynamicOffsetMinutes = locationOffsetHours * 60;
     }
 
-    // Shift minute baseline using the dynamic hourly timezone offset starting from UTC 0
-    const adjustedMinutes = (clampedMinutes - dynamicOffsetMinutes + 1440) % 1440;
+    // Shift ONLY the hours using integer hour offsets starting from 5:00 AM Universe Base Time, leaving minutes absolute
+    const baseAdjustedMinutes = (clampedMinutes - universeBaseMinute + 1440) % 1440;
+    const rawHour24 = Math.floor(baseAdjustedMinutes / 60);
+    const minute = baseAdjustedMinutes % 60; // Minutes remain strictly anchored to progression
 
-    const hour24 = Math.floor(adjustedMinutes / 60);
-    const minute = adjustedMinutes % 60;
+    const hour24 = (rawHour24 - locationOffsetHours + 24) % 24;
     const h12 = hour24 % 12 === 0 ? 12 : hour24 % 12;
     const ampm = hour24 >= 12 ? 'PM' : 'AM';
     const minFormatted = String(minute).padStart(2, '0');
@@ -1629,25 +1640,40 @@ function updateMapForMinute(totalMinutes) {
                 fillOpacity: 0.55
             });
 
-            // Trigger redraw only when crossing an hourly 15° longitude timezone block starting from UTC 0 (0°)
+            // Trigger redraw only when crossing an hourly timezone/DST block boundary
             rect.on('mouseover', () => {
-                const newOffsetMinutes = Math.trunc(cellLon / 15) * 60;
-                const currentOffsetMinutes = window._activeHoverLon !== undefined ? Math.trunc(window._activeHoverLon / 15) * 60 : 0;
+                let cellOffsetHours = 0;
+                if (typeof getLocalTimezoneOffsetMinutes === 'function') {
+                    cellOffsetHours = Math.trunc(getLocalTimezoneOffsetMinutes(targetPlaceName || activePlaceName, activeDayDateStr) / 60);
+                } else {
+                    cellOffsetHours = Math.trunc(cellLon / 15);
+                }
 
-                if (window._activeHoverLon === undefined || newOffsetMinutes !== currentOffsetMinutes) {
+                const currentOffsetHours = window._activeHoverLon !== undefined ? 
+                    (typeof getLocalTimezoneOffsetMinutes === 'function' ? Math.trunc(getLocalTimezoneOffsetMinutes(targetPlaceName || activePlaceName, activeDayDateStr) / 60) : Math.trunc(window._activeHoverLon / 15)) : 0;
+
+                if (window._activeHoverLon === undefined || cellOffsetHours !== currentOffsetHours) {
                     window._activeHoverLon = cellLon;
                     updateMapForMinute(clampedMinutes);
                 }
             });
 
-            // Compute local cell time based on UTC 0 timezone blocks for the tooltip
-            const cellOffsetMinutes = Math.trunc(cellLon / 15) * 60;
-            const cellAdjustedMinutes = (clampedMinutes - cellOffsetMinutes + 1440) % 1440;
-            const cellHour24 = Math.floor(cellAdjustedMinutes / 60);
-            const cellMinute = cellAdjustedMinutes % 60;
+            // Compute local cell time matching 5 AM universe base time and hourly timezone offsets (minutes preserved)
+            let cellOffsetHours = 0;
+            if (typeof getLocalTimezoneOffsetMinutes === 'function') {
+                cellOffsetHours = Math.trunc(getLocalTimezoneOffsetMinutes(targetPlaceName || activePlaceName, activeDayDateStr) / 60);
+            } else {
+                cellOffsetHours = Math.trunc(cellLon / 15);
+            }
+
+            const cellBaseAdj = (clampedMinutes - universeBaseMinute + 1440) % 1440;
+            const cellRawH24 = Math.floor(cellBaseAdj / 60);
+            const cellMin = cellBaseAdj % 60;
+            const cellHour24 = (cellRawH24 - cellOffsetHours + 24) % 24;
+
             const cellH12 = cellHour24 % 12 === 0 ? 12 : cellHour24 % 12;
             const cellAmpm = cellHour24 >= 12 ? 'PM' : 'AM';
-            const cellMinFormatted = String(cellMinute).padStart(2, '0');
+            const cellMinFormatted = String(cellMin).padStart(2, '0');
 
             const unitSymbol = metric === 'temp' ? '°' : ' mph';
             const latDir = cellLat >= 0 ? 'N' : 'S';
@@ -1828,25 +1854,35 @@ function updateChartMetric() {
     const values = []; 
     const segmentColors = [];
     
-    // UTC 0 baseline: longitude 0° is the starting point (offset = 0 minutes).
-    // Every 15 degrees shifts the timezone offset by whole 60-minute blocks (1 hour).
+    // Universe Base Time starting at 5:00 AM (300 minutes from midnight baseline)
+    const universeBaseMinute = 300; 
+
+    // Determine location-specific timezone offset (Hours only, leaving minutes completely untouched)
+    let locationOffsetHours = 0;
     const targetLon = currentLon !== null ? currentLon : -98.5795;
-    const dynamicOffsetMinutes = Math.round(targetLon / 15) * 60;
+    
+    if (typeof getLocalTimezoneOffsetMinutes === 'function') {
+        locationOffsetHours = Math.trunc(getLocalTimezoneOffsetMinutes(targetPlaceName || activePlaceName, activeDayDateStr) / 60);
+    } else {
+        locationOffsetHours = Math.trunc(targetLon / 15);
+    }
 
     // Loop through every minute of the day (0 to 1438, skipping 23:59 if desired)
     for (let totalMinutes = 0; totalMinutes < 1440; totalMinutes++) {
-        if (totalMinutes === 1439) continue; // matches original skip for 23:59
+        if (totalMinutes === 1439) continue;
 
-        // Shift baseline using the timezone offset starting from UTC 0
-        const adjustedMinutes = (totalMinutes - dynamicOffsetMinutes + 1440) % 1440;
+        // Shift ONLY the hours using integer hour offsets, leaving the minute counter absolute and intact
+        const baseAdjustedMinutes = (totalMinutes - universeBaseMinute + 1440) % 1440;
+        const rawHour24 = Math.floor(baseAdjustedMinutes / 60);
+        const minute = baseAdjustedMinutes % 60; // Minutes remain strictly anchored to the progression
 
-        const hour24 = Math.floor(adjustedMinutes / 60);
-        const minute = adjustedMinutes % 60;
+        // Apply hour shift from timezone/DST without modifying the minute value
+        const hour24 = (rawHour24 - locationOffsetHours + 24) % 24;
+
         const h12 = hour24 % 12 === 0 ? 12 : hour24 % 12;
         const ampm = hour24 >= 12 ? 'PM' : 'AM';
         const minFormatted = String(minute).padStart(2, '0');
 
-        // Format timezone-aware label retaining precise minute-by-minute progression
         labels.push(`${h12}:${minFormatted} ${ampm}`);
 
         let val = 0;
