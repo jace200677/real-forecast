@@ -1577,15 +1577,37 @@ function updateMapForMinute(totalMinutes) {
     const dLat = (latMax - latMin) / latSteps;
     const dLon = (lonMax - lonMin) / lonSteps;
 
-    // Retrieve weather events override from global scope instead of parameters
+    // Retrieve weather events override from global scope
     const weatherEventsOverride = window.activeWeatherEventsOverride || [];
+
+    // Helper function to parse hex/rgb color strings into RGB arrays for smooth square interpolation (lerp)
+    function parseColor(colorStr) {
+        if (!colorStr) return [0, 0, 0];
+        if (colorStr.startsWith('#')) {
+            let hex = colorStr.slice(1);
+            if (hex.length === 3) hex = hex.split('').map(c => c + c).join('');
+            const num = parseInt(hex, 16);
+            return [(num >> 16) & 255, (num >> 8) & 255, num & 255];
+        }
+        const match = colorStr.match(/\d+/g);
+        return match ? [parseInt(match[0]), parseInt(match[1]), parseInt(match[2])] : [0, 0, 0];
+    }
+
+    function lerpColor(c1, c2, factor) {
+        const rgb1 = parseColor(c1);
+        const rgb2 = parseColor(c2);
+        const r = Math.round(rgb1[0] + factor * (rgb2[0] - rgb1[0]));
+        const g = Math.round(rgb1[1] + factor * (rgb2[1] - rgb1[1]));
+        const b = Math.round(rgb1[2] + factor * (rgb2[2] - rgb1[2]));
+        return `rgb(${r},${g},${b})`;
+    }
 
     for (let i = 0; i < latSteps; i++) {
         for (let j = 0; j < lonSteps; j++) {
             const cellLat = latMin + (i + 0.5) * dLat;
             const cellLon = lonMin + (j + 0.5) * dLon;
 
-            // Anchor spatial profile strictly to coordinates like Ventusky
+            // Anchor spatial profile strictly to coordinates
             const fixedSpatialHash = Math.abs(Math.sin(cellLat * 12.9898 + cellLon * 78.233) * 43758.5453) % 1;
             const baseIndex = Math.floor(fixedSpatialHash * valuesArray.length);
             
@@ -1607,9 +1629,16 @@ function updateMapForMinute(totalMinutes) {
                 }
             }
 
-            // Resolve color directly derived from exact graph value scales and thematic color palettes
-            const cellColor = metric === 'temp' ? getTempColor(cellVal) : getWindColor(cellVal);
+            // Resolve dual base colors to enable square/bilinear color lerp blending across adjacent corners
+            const baseColor = metric === 'temp' ? getTempColor(cellVal) : getWindColor(cellVal);
+            const secondaryVal = valuesArray[(valueIndex + 1) % valuesArray.length];
+            const secondaryColor = metric === 'temp' ? getTempColor(secondaryVal) : getWindColor(secondaryVal);
+            
+            // Apply non-linear square distance factor interpolation for smooth tile gradients
+            const lerpFactor = Math.pow((cellLat - latMin) / (latMax - latMin), 2);
+            const cellColor = lerpColor(baseColor, secondaryColor, lerpFactor);
 
+            // Construct square geographic bounds
             const cellBounds = [
                 [cellLat - dLat / 2, cellLon - dLon / 2],
                 [cellLat + dLat / 2, cellLon + dLon / 2]
@@ -1619,14 +1648,18 @@ function updateMapForMinute(totalMinutes) {
                 color: cellColor,
                 weight: 0,
                 fillColor: cellColor,
-                fillOpacity: 0.45
+                fillOpacity: 0.55
             });
 
-            // Bind dynamic hover tooltip showcasing metrics and any custom weather overrides
+            // Bind coordinate-focused hover tooltips detailing precise lat/lon mapping values
             const unitSymbol = metric === 'temp' ? '°' : ' mph';
+            const latDir = cellLat >= 0 ? 'N' : 'S';
+            const lonDir = cellLon >= 0 ? 'E' : 'W';
+            const formattedCoords = `${Math.abs(cellLat).toFixed(2)}° ${latDir}, ${Math.abs(cellLon).toFixed(2)}° ${lonDir}`;
+            
             const tooltipText = cellLabelOverride ? 
-                `<b>${cellLabelOverride}</b><br/>Lat: ${cellLat.toFixed(2)}, Lon: ${cellLon.toFixed(2)}<br/>${metric.toUpperCase()}: ${cellVal.toFixed(1)}${unitSymbol}` :
-                `Lat: ${cellLat.toFixed(2)}, Lon: ${cellLon.toFixed(2)}<br/>${metric.toUpperCase()}: ${cellVal.toFixed(1)}${unitSymbol} (${h12}:${minFormatted} ${ampm})`;
+                `<b>${cellLabelOverride}</b><br/>📍 ${formattedCoords}<br/>${metric.toUpperCase()}: ${cellVal.toFixed(1)}${unitSymbol}` :
+                `📍 ${formattedCoords}<br/>${metric.toUpperCase()}: ${cellVal.toFixed(1)}${unitSymbol} (${h12}:${minFormatted} ${ampm})`;
 
             rect.bindTooltip(tooltipText, {
                 sticky: true,
