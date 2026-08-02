@@ -1597,17 +1597,23 @@ function updateMapForMinute(totalMinutes) {
             const cellLat = latMin + (i + 0.5) * dLat;
             const cellLon = lonMin + (j + 0.5) * dLon;
 
-            // 1) Universal Longitude & Latitude offset mapping for any arbitrary location on earth (independent of searched input)
+            // Compute local cell timezone offset based precisely on each tile's own longitude position (15 degrees per hour)
+            const cellOffsetHours = Math.trunc(cellLon / 15);
+
+            // Shift the timeline for each individual location/longitude chunk so its local time matches the graph progression
+            const cellTimeShiftMinutes = (clampedMinutes + (cellOffsetHours * 60) + 1440) % 1440;
+
+            // Map each specific longitude step directly to the data array index using the localized time offset
             const normalizedLon = (cellLon - lonMin) / (lonMax - lonMin);
             const rawLonIndex = Math.floor(normalizedLon * valuesArray.length);
             const baseLonIndex = Math.max(0, Math.min(rawLonIndex, valuesArray.length - 1));
 
-            // Factor in latitude progression so values shift smoothly across both north-south and east-west gradients
+            // Factor in latitude progression so values shift smoothly across north-south gradients
             const latNormalization = (cellLat - latMin) / (latMax - latMin);
             const spatialOffset = Math.floor(latNormalization * (valuesArray.length * 0.1));
 
-            // Align data index with graph timing, spatial longitude progression, and continuous latitudinal variation
-            let indexInDay = (baseLonIndex + spatialOffset + clampedMinutes) % valuesArray.length;
+            // Align data index with localized time offset matching graph timing per location
+            let indexInDay = (baseLonIndex + spatialOffset + cellTimeShiftMinutes) % valuesArray.length;
             if (indexInDay < 0) indexInDay += valuesArray.length;
             if (indexInDay >= valuesArray.length) indexInDay = valuesArray.length - 1;
             
@@ -1652,17 +1658,16 @@ function updateMapForMinute(totalMinutes) {
 
             // Trigger redraw when hovering across different longitudinal/timezone regions dynamically
             rect.on('mouseover', () => {
-                let cellOffsetHours = Math.trunc(cellLon / 15);
+                const hoverOffsetHours = Math.trunc(cellLon / 15);
                 const currentOffsetHours = window._activeHoverLon !== undefined ? Math.trunc(window._activeHoverLon / 15) : 0;
 
-                if (window._activeHoverLon === undefined || cellOffsetHours !== currentOffsetHours) {
+                if (window._activeHoverLon === undefined || hoverOffsetHours !== currentOffsetHours) {
                     window._activeHoverLon = cellLon;
                     updateMapForMinute(clampedMinutes);
                 }
             });
 
-            // Compute local cell time based specifically on the tile's own longitude position rather than searched location input
-            const cellOffsetHours = Math.trunc(cellLon / 15);
+            // Compute local cell time matching each tile's distinct longitude timezone offset
             const cellBaseAdj = (clampedMinutes - universeBaseMinute + 1440) % 1440;
             const cellRawH24 = Math.floor(cellBaseAdj / 60);
             const cellMin = cellBaseAdj % 60;
