@@ -682,7 +682,7 @@ function getMinuteValuesForDay(dateStr, searchQuery, placeName, apiDailyTemps, a
 
     // Dynamic localized peak values for MN locations
     const locationWindPeak = 7 + ((hash % 17) - 8);
-    const locationGustPeak = 30 + ((hash % 39) - 19);
+    const locationGustPeak = 20 + ((hash % 39) - 19);
 
     const temps = [];
     const winds = [];
@@ -837,8 +837,8 @@ const min2am = 2 * 60;
                         baseGust = Math.round(locationGustPeak + (baseHourGusts[23] - locationGustPeak) * progress);
                     }
                 } else {
-                    baseWind = 0;
-                    baseGust = 0;
+                    baseWind = Math.max(0, Math.round(baseWind));
+                    baseGust = Math.max(baseWind, Math.round(baseGust));
                 }
             } else if (exactOverride) {
                 let noonMin = 12 * 60;       
