@@ -607,13 +607,10 @@ async function loadWeatherForCoords(lat, lon, placeName, searchQuery) {
     document.getElementById("locationTitle").innerText = `${placeName} Forecast`;
     document.getElementById("locationSub").innerText = `Encrypted Coordinates: ${lat.toFixed(2)}°, ${lon.toFixed(2)}°`;
 
-    // NOAA strictly requires a custom User-Agent header
-    const headers = {
-        'User-Agent': 'WeatherApp/1.0 (contact@yourdomain.com)'
-    };
+    const headers = { 'User-Agent': 'WeatherApp/1.0 (contact@yourdomain.com)' };
 
     try {
-        // Step 1: Query NWS points API to retrieve the grid endpoints for coordinates
+        // Step 1: Get gridpoint metadata
         const pointRes = await fetch(`https://api.weather.gov/points/${lat},${lon}`, { headers });
         if (!pointRes.ok) {
             if (pointRes.status === 404) {
@@ -623,34 +620,33 @@ async function loadWeatherForCoords(lat, lon, placeName, searchQuery) {
         }
         const pointData = await pointRes.json();
 
-        // Extract daily and hourly forecast URLs from the grid metadata
-        const forecastUrl = pointData.properties.forecast;
-        const forecastHourlyUrl = pointData.properties.forecastHourly;
-
-        // Step 2: Fetch both daily and hourly forecasts in parallel
+        // Step 2: Fetch hourly and daily endpoints in parallel
         const [dailyRes, hourlyRes] = await Promise.all([
-            fetch(forecastUrl, { headers }),
-            fetch(forecastHourlyUrl, { headers })
+            fetch(pointData.properties.forecast, { headers }),
+            fetch(pointData.properties.forecastHourly, { headers })
         ]);
 
         if (!dailyRes.ok || !hourlyRes.ok) {
-            throw new Error("Failed to retrieve detailed forecast periods from NOAA.");
+            throw new Error("Failed to fetch forecast details from NOAA.");
         }
 
         const dailyData = await dailyRes.json();
         const hourlyData = await hourlyRes.json();
 
-        // Structure the payload to pass along to your parseAndRender function
-        const weatherData = {
-            daily: dailyData.properties.periods,    // Contains daily high/lows, short forecasts, icons
-            hourly: hourlyData.properties.periods,  // Contains hourly temperature, wind speed, direction
-            rawMetadata: pointData.properties
+        // Check if periods exist before assigning
+        const hourlyPeriods = hourlyData?.properties?.periods || [];
+        const dailyPeriods = dailyData?.properties?.periods || [];
+
+        // Save to active hourly global variable
+        activeHourlyData = hourlyPeriods;
+
+        // Pass standardized object to renderer
+        const formattedWeatherData = {
+            hourly: hourlyPeriods,
+            daily: dailyPeriods
         };
 
-        // Assign active hourly periods to match your original global variable structure
-        activeHourlyData = weatherData.hourly;
-
-        parseAndRender(weatherData, searchQuery, placeName);
+        parseAndRender(formattedWeatherData, searchQuery, placeName);
     } catch (err) {
         console.error(err);
         container.innerHTML = `<p>Error loading weather data: ${err.message || err}</p>`;
@@ -939,7 +935,6 @@ function parseAndRender(data, searchQuery, placeName) {
     }
 
     const daysOfWeek = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-    const daily = data.daily;
     const forecastData = [];
 
     const rawTargetDates = [
@@ -972,28 +967,67 @@ function parseAndRender(data, searchQuery, placeName) {
     const todayStr = `${now.getMonth() + 1}/${now.getDate()}/${now.getFullYear()}`;
     const currentMinuteIndex = now.getHours() * 60 + now.getMinutes();
 
+    // Helper: Normalize Open-Meteo vs NOAA data formats safely
+    const isNoaaFormat = Array.isArray(data.daily);
+    const dailyPeriods = isNoaaFormat ? data.daily : [];
+    const openMeteoDaily = !isNoaaFormat ? (data.daily || {}) : {};
+
+    // Helper: Extract numbers from strings like "12 mph" or "15 to 25 mph"
+    const parseWindSpeed = (speedStr) => {
+        if (typeof speedStr === 'number') return speedStr;
+        if (!speedStr) return 0;
+        const matches = speedStr.match(/\d+/g);
+        if (!matches) return 0;
+        return Math.max(...matches.map(Number));
+    };
+
     targetDates.forEach((dateStr, i) => {
         const [m, d, y] = dateStr.split("/").map(Number);
         const dateObj = new Date(y, m - 1, d);
         const dayLabel = i === 0 ? "Today" : daysOfWeek[dateObj.getDay()];
 
         let apiIndex = i;
-        if (daily.time) {
+        let apiHigh = 59;
+        let apiLow = 32;
+        let apiWind = 0;
+        let apiGusts = 0;
+        let apiCode = 0;
+        let noaaShortForecast = "";
+
+        if (isNoaaFormat) {
+            // Find corresponding NOAA period object matching the target date
             const formattedDate = `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
-            const foundApiIdx = daily.time.indexOf(formattedDate);
-            if (foundApiIdx !== -1) apiIndex = foundApiIdx;
+            const dayPeriod = dailyPeriods.find(p => p.startTime.startsWith(formattedDate) && p.isDaytime);
+            const nightPeriod = dailyPeriods.find(p => p.startTime.startsWith(formattedDate) && !p.isDaytime);
+
+            if (dayPeriod) {
+                apiHigh = dayPeriod.temperature ?? 59;
+                apiWind = parseWindSpeed(dayPeriod.windSpeed);
+                noaaShortForecast = dayPeriod.shortForecast || "";
+            }
+            if (nightPeriod) {
+                apiLow = nightPeriod.temperature ?? 32;
+            }
+        } else {
+            // Open-Meteo array parsing
+            if (openMeteoDaily.time) {
+                const formattedDate = `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+                const foundApiIdx = openMeteoDaily.time.indexOf(formattedDate);
+                if (foundApiIdx !== -1) apiIndex = foundApiIdx;
+            }
+            apiCode = openMeteoDaily.weather_code ? openMeteoDaily.weather_code[apiIndex] : 0;
+            apiHigh = Math.round((openMeteoDaily.temperature_2m_max && openMeteoDaily.temperature_2m_max[apiIndex]) || 59);
+            apiLow = Math.round((openMeteoDaily.temperature_2m_min && openMeteoDaily.temperature_2m_min[apiIndex]) || 32);
+            apiWind = Math.round((openMeteoDaily.wind_speed_10m_max && openMeteoDaily.wind_speed_10m_max[apiIndex]) || 0);
+            apiGusts = Math.round((openMeteoDaily.wind_gusts_10m_max && openMeteoDaily.wind_gusts_10m_max[apiIndex]) || 0);
         }
 
-        const apiCode = daily.weather_code ? daily.weather_code[apiIndex] : 0;
-        const apiHigh = Math.round((daily.temperature_2m_max && daily.temperature_2m_max[apiIndex]) || 59);
-        const apiLow = Math.round((daily.temperature_2m_min && daily.temperature_2m_min[apiIndex]) || 32);
-        const apiWind = Math.round((daily.wind_speed_10m_max && daily.wind_speed_10m_max[apiIndex]) || 0);
-        const apiGusts = Math.round((daily.wind_gusts_10m_max && daily.wind_gusts_10m_max[apiIndex]) || 0);
-        
         const minuteData = getMinuteValuesForDay(
             dateStr, searchQuery, placeName, 
-            { max: daily.temperature_2m_max, min: daily.temperature_2m_min }, 
-            daily.wind_speed_10m_max, daily.wind_gusts_10m_max, apiIndex
+            { max: isNoaaFormat ? [apiHigh] : openMeteoDaily.temperature_2m_max, min: isNoaaFormat ? [apiLow] : openMeteoDaily.temperature_2m_min }, 
+            isNoaaFormat ? [apiWind] : openMeteoDaily.wind_speed_10m_max, 
+            isNoaaFormat ? [apiGusts] : openMeteoDaily.wind_gusts_10m_max, 
+            apiIndex
         );
 
         const isMN = isMinnesotaLocation(searchQuery, placeName);
@@ -1021,25 +1055,28 @@ function parseAndRender(data, searchQuery, placeName) {
             cardGusts = Math.round(Math.max(...minuteData.gusts));
         }
 
+        // Determine raw condition string based on source
+        const defaultCondition = isNoaaFormat ? (noaaShortForecast || "Partly Cloudy") : (wmoConditions[apiCode] || "Partly Cloudy");
+
         if (dateStr === "7/31/2026") {
             if (isMN) {
                 rawCondition = "Thunderstorms";
                 note = `Thunderstorms (Evening Gusts to ${cardGusts} mph)`;
             } else {
-                rawCondition = wmoConditions[apiCode] || "Partly Cloudy";
+                rawCondition = defaultCondition;
                 note = `Live: ${rawCondition}`;
             }
         } else if (matchedOverride) {
             rawCondition = matchedOverride.rawCondition || "Windy";
             note = matchedOverride.condition;
         } else if (futureEventOverride) {
-            rawCondition = wmoConditions[apiCode] || "Partly Cloudy";
+            rawCondition = defaultCondition;
             note = `Building Event Trend`;
         } else if (hasPrevEvent) {
-            rawCondition = wmoConditions[apiCode] || "Partly Cloudy";
+            rawCondition = defaultCondition;
             note = `Post-Event Transition to Live Weather`;
         } else {
-            rawCondition = wmoConditions[apiCode] || "Partly Cloudy";
+            rawCondition = defaultCondition;
             note = `Live: ${rawCondition}`;
         }
 
@@ -1065,7 +1102,6 @@ function parseAndRender(data, searchQuery, placeName) {
 
     renderForecast(forecastData);
 }
-
 function renderForecast(forecastData) {
     const container = document.getElementById("forecastContainer");
     container.innerHTML = "";
