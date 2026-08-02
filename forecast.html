@@ -660,7 +660,7 @@ function getMinuteValuesForDay(dateStr, searchQuery, placeName, apiDailyTemps, a
             }
         }
     }
-    while (baseHourTemps.length < 24) { baseHourTemps.push(72); baseHourWinds.push(18); baseHourGusts.push(30); }
+    while (baseHourTemps.length < 24) { baseHourTemps.push(59); baseHourWinds.push(0); baseHourGusts.push(0); }
 
     const apiHigh = Math.round((apiDailyTemps.max && apiDailyTemps.max[dayIndex]) || 59);
     const apiLow = Math.round((apiDailyTemps.min && apiDailyTemps.min[dayIndex]) || 32);
