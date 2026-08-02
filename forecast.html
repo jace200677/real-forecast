@@ -1577,6 +1577,9 @@ function updateMapForMinute(totalMinutes) {
     const dLat = (latMax - latMin) / latSteps;
     const dLon = (lonMax - lonMin) / lonSteps;
 
+    // Retrieve weather events override from global scope instead of parameters
+    const weatherEventsOverride = window.activeWeatherEventsOverride || [];
+
     for (let i = 0; i < latSteps; i++) {
         for (let j = 0; j < lonSteps; j++) {
             const cellLat = latMin + (i + 0.5) * dLat;
@@ -1588,7 +1591,21 @@ function updateMapForMinute(totalMinutes) {
             
             // Advance data index dynamically matching graph progression over time
             const valueIndex = (baseIndex + clampedMinutes) % valuesArray.length;
-            const cellVal = valuesArray[valueIndex];
+            let cellVal = valuesArray[valueIndex];
+            let cellLabelOverride = null;
+
+            // Check if any weather events override apply to this cell/minute
+            for (const event of weatherEventsOverride) {
+                const matchesTime = clampedMinutes >= (event.startMinute || 0) && clampedMinutes <= (event.endMinute || 1439);
+                if (matchesTime) {
+                    const dist = Math.hypot(cellLat - event.lat, cellLon - event.lon);
+                    if (dist <= (event.radiusDeg || 5.0)) {
+                        cellVal = event.valueOverride !== undefined ? event.valueOverride : cellVal;
+                        cellLabelOverride = event.label || 'Weather Event';
+                        break;
+                    }
+                }
+            }
 
             // Resolve color directly derived from exact graph value scales and thematic color palettes
             const cellColor = metric === 'temp' ? getTempColor(cellVal) : getWindColor(cellVal);
@@ -1598,12 +1615,25 @@ function updateMapForMinute(totalMinutes) {
                 [cellLat + dLat / 2, cellLon + dLon / 2]
             ];
 
-            L.rectangle(cellBounds, {
+            const rect = L.rectangle(cellBounds, {
                 color: cellColor,
                 weight: 0,
                 fillColor: cellColor,
                 fillOpacity: 0.45
-            }).addTo(mapLayersGroup);
+            });
+
+            // Bind dynamic hover tooltip showcasing metrics and any custom weather overrides
+            const unitSymbol = metric === 'temp' ? '°' : ' mph';
+            const tooltipText = cellLabelOverride ? 
+                `<b>${cellLabelOverride}</b><br/>Lat: ${cellLat.toFixed(2)}, Lon: ${cellLon.toFixed(2)}<br/>${metric.toUpperCase()}: ${cellVal.toFixed(1)}${unitSymbol}` :
+                `Lat: ${cellLat.toFixed(2)}, Lon: ${cellLon.toFixed(2)}<br/>${metric.toUpperCase()}: ${cellVal.toFixed(1)}${unitSymbol} (${h12}:${minFormatted} ${ampm})`;
+
+            rect.bindTooltip(tooltipText, {
+                sticky: true,
+                direction: 'auto'
+            });
+
+            rect.addTo(mapLayersGroup);
         }
     }
 }
