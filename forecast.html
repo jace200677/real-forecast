@@ -1518,7 +1518,7 @@ function updateMapForMinute(totalMinutes) {
     const maxMinutes = 1439;
     const clampedMinutes = Math.max(0, Math.min(totalMinutes, maxMinutes));
 
-    // 1) Universe Base Time starting at 6:00 AM (360 minutes from midnight baseline)
+    // 1) Universe Base Time starting at 6:00 AM (360 minutes from midnight baseline) — matching updateChartMetric()
     const universeBaseMinute = 360;
 
     // 2) Determine location-specific timezone offset (Hours only, leaving minutes untouched)
@@ -1604,9 +1604,10 @@ function updateMapForMinute(totalMinutes) {
             const rawIndex = Math.floor(normalizedLon * valuesArray.length);
             const baseIndex = Math.max(0, Math.min(rawIndex, valuesArray.length - 1));
             
-            // Retain full minute-by-minute progression per cell
-            const valueIndex = (baseIndex + clampedMinutes) % valuesArray.length;
-            let cellVal = valuesArray[valueIndex];
+            // Align value index directly with totalMinutes (same as the chart loop uses indexInDay = totalMinutes)
+            let indexInDay = clampedMinutes;
+            if (indexInDay >= valuesArray.length) indexInDay = valuesArray.length - 1;
+            let cellVal = valuesArray[indexInDay];
             let cellLabelOverride = null;
 
             for (const event of weatherEventsOverride) {
@@ -1622,7 +1623,7 @@ function updateMapForMinute(totalMinutes) {
             }
 
             const baseColor = metric === 'temp' ? getTempColor(cellVal) : getWindColor(cellVal);
-            const secondaryVal = valuesArray[(valueIndex + 1) % valuesArray.length];
+            const secondaryVal = valuesArray[(indexInDay + 1) % valuesArray.length];
             const secondaryColor = metric === 'temp' ? getTempColor(secondaryVal) : getWindColor(secondaryVal);
             
             const lerpFactor = Math.pow((cellLat - latMin) / (latMax - latMin), 2);
