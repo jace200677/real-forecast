@@ -1513,188 +1513,183 @@ function initLeafletMap(dateStr) {
 }
 
 function updateMapForMinute(totalMinutes) {
-    if (!mapLayersGroup || !window.activeMinuteDataCache || !window.activeLeafletMap) return;
+    if (!mapLayersGroup || !window.activeMinuteDataCache || !window.activeLeafletMap) return;
 
-    // Clamp minutes between 12:00 AM (0) and 11:59 PM (1439)
-    const maxMinutes = 1439;
-    const clampedMinutes = Math.max(0, Math.min(totalMinutes, maxMinutes));
+    // Clamp minutes between 12:00 AM (0) and 11:59 PM (1439)
+    const maxMinutes = 1439;
+    const clampedMinutes = Math.max(0, Math.min(totalMinutes, maxMinutes));
 
-    // 1) Universe Base Time starting at 5:00 AM (300 minutes from midnight baseline)
-    const universeBaseMinute = 300;
+    // Universe Base Time starting at 6:00 AM (360 minutes from midnight baseline)
+    const universeBaseMinute = 360;
 
-    // 2) Determine location-specific timezone offset (Hours only, leaving minutes untouched)
-    // Uses location/DST helper function if available, otherwise falls back to longitude blocks
-    let locationOffsetHours = 0;
-    let dynamicOffsetMinutes = 0;
-    
-    if (window._activeHoverLon !== undefined && window._activeHoverLon !== null) {
-        if (typeof getLocalTimezoneOffsetMinutes === 'function') {
-            locationOffsetHours = Math.trunc(getLocalTimezoneOffsetMinutes(targetPlaceName || activePlaceName, activeDayDateStr) / 60);
-        } else {
-            locationOffsetHours = Math.trunc(window._activeHoverLon / 15);
-        }
-        dynamicOffsetMinutes = locationOffsetHours * 60;
-    }
+    // Top-level header label update using global/active search or fallback default
+    let locationOffsetHours = 0;
+    const targetLon = currentLon !== null ? currentLon : -98.5795;
+    
+    if (typeof getLocalTimezoneOffsetMinutes === 'function') {
+        locationOffsetHours = Math.trunc(getLocalTimezoneOffsetMinutes(targetPlaceName || activePlaceName, activeDayDateStr) / 60);
+    } else {
+        locationOffsetHours = Math.trunc(targetLon / 15);
+    }
 
-    // Shift ONLY the hours using integer hour offsets starting from 5:00 AM Universe Base Time, leaving minutes absolute
-    const baseAdjustedMinutes = (clampedMinutes - universeBaseMinute + 1440) % 1440;
-    const rawHour24 = Math.floor(baseAdjustedMinutes / 60);
-    const minute = baseAdjustedMinutes % 60; // Minutes remain strictly anchored to progression
+    const baseAdjustedMinutes = (clampedMinutes - universeBaseMinute + 1440) % 1440;
+    const rawHour24 = Math.floor(baseAdjustedMinutes / 60);
+    const minute = baseAdjustedMinutes % 60;
 
-    const hour24 = (rawHour24 - locationOffsetHours + 24) % 24;
-    const h12 = hour24 % 12 === 0 ? 12 : hour24 % 12;
-    const ampm = hour24 >= 12 ? 'PM' : 'AM';
-    const minFormatted = String(minute).padStart(2, '0');
-    
-    const timeLabelElem = document.getElementById("mapCurrentTimeLabel");
-    if (timeLabelElem) {
-        timeLabelElem.innerText = `${h12}:${minFormatted} ${ampm} (${clampedMinutes}m)`;
-    }
+    const hour24 = (rawHour24 - locationOffsetHours + 24) % 24;
+    const h12 = hour24 % 12 === 0 ? 12 : hour24 % 12;
+    const ampm = hour24 >= 12 ? 'PM' : 'AM';
+    const minFormatted = String(minute).padStart(2, '0');
+    
+    const timeLabelElem = document.getElementById("mapCurrentTimeLabel");
+    if (timeLabelElem) {
+        timeLabelElem.innerText = `${h12}:${minFormatted} ${ampm} (${clampedMinutes}m)`;
+    }
 
-    const metric = document.getElementById("metricSelector").value;
-    const valuesArray = metric === 'temp' ? window.activeMinuteDataCache.temps : 
-                        (metric === 'wind' ? window.activeMinuteDataCache.winds : window.activeMinuteDataCache.gusts);
+    const metric = document.getElementById("metricSelector").value;
+    const valuesArray = metric === 'temp' ? window.activeMinuteDataCache.temps : 
+                        (metric === 'wind' ? window.activeMinuteDataCache.winds : window.activeMinuteDataCache.gusts);
 
-    mapLayersGroup.clearLayers();
+    mapLayersGroup.clearLayers();
 
-    // Scale grid density globally across the entire planet based on Leaflet zoom level (limited bounds)
-    const currentZoom = window.activeLeafletMap.getZoom();
-    const minZoomLimit = 2;
-    const maxZoomLimit = 10;
-    const clampedZoom = Math.max(minZoomLimit, Math.min(currentZoom, maxZoomLimit));
+    // Scale grid density globally across the entire planet based on Leaflet zoom level
+    const currentZoom = window.activeLeafletMap.getZoom();
+    const minZoomLimit = 2;
+    const maxZoomLimit = 10;
+    const clampedZoom = Math.max(minZoomLimit, Math.min(currentZoom, maxZoomLimit));
 
-    const latSteps = Math.min(120, Math.max(16, Math.round(18 * Math.pow(1.3, clampedZoom - 3))));
-    const lonSteps = Math.min(200, Math.max(24, Math.round(28 * Math.pow(1.3, clampedZoom - 3))));
+    const latSteps = Math.min(120, Math.max(16, Math.round(18 * Math.pow(1.3, clampedZoom - 3))));
+    const lonSteps = Math.min(200, Math.max(24, Math.round(28 * Math.pow(1.3, clampedZoom - 3))));
 
-    const latMin = -90.0, latMax = 90.0;
-    const lonMin = -180.0, lonMax = 180.0;
+    const latMin = -90.0, latMax = 90.0;
+    const lonMin = -180.0, lonMax = 180.0;
 
-    const dLat = (latMax - latMin) / latSteps;
-    const dLon = (lonMax - lonMin) / lonSteps;
+    const dLat = (latMax - latMin) / latSteps;
+    const dLon = (lonMax - lonMin) / lonSteps;
 
-    // Retrieve weather events override from global scope
-    const weatherEventsOverride = window.activeWeatherEventsOverride || [];
+    // Retrieve weather events override from global scope
+    const weatherEventsOverride = window.activeWeatherEventsOverride || [];
 
-    function parseColor(colorStr) {
-        if (!colorStr) return [0, 0, 0];
-        if (colorStr.startsWith('#')) {
-            let hex = colorStr.slice(1);
-            if (hex.length === 3) hex = hex.split('').map(c => c + c).join('');
-            const num = parseInt(hex, 16);
-            return [(num >> 16) & 255, (num >> 8) & 255, num & 255];
-        }
-        const match = colorStr.match(/\d+/g);
-        return match ? [parseInt(match[0]), parseInt(match[1]), parseInt(match[2])] : [0, 0, 0];
-    }
+    function parseColor(colorStr) {
+        if (!colorStr) return [0, 0, 0];
+        if (colorStr.startsWith('#')) {
+            let hex = colorStr.slice(1);
+            if (hex.length === 3) hex = hex.split('').map(c => c + c).join('');
+            const num = parseInt(hex, 16);
+            return [(num >> 16) & 255, (num >> 8) & 255, num & 255];
+        }
+        const match = colorStr.match(/\d+/g);
+        return match ? [parseInt(match[0]), parseInt(match[1]), parseInt(match[2])] : [0, 0, 0];
+    }
 
-    function lerpColor(c1, c2, factor) {
-        const rgb1 = parseColor(c1);
-        const rgb2 = parseColor(c2);
-        const r = Math.round(rgb1[0] + factor * (rgb2[0] - rgb1[0]));
-        const g = Math.round(rgb1[1] + factor * (rgb2[1] - rgb1[1]));
-        const b = Math.round(rgb1[2] + factor * (rgb2[2] - rgb1[2]));
-        return `rgb(${r},${g},${b})`;
-    }
+    function lerpColor(c1, c2, factor) {
+        const rgb1 = parseColor(c1);
+        const rgb2 = parseColor(c2);
+        const r = Math.round(rgb1[0] + factor * (rgb2[0] - rgb1[0]));
+        const g = Math.round(rgb1[1] + factor * (rgb2[1] - rgb1[1]));
+        const b = Math.round(rgb1[2] + factor * (rgb2[2] - rgb1[2]));
+        return `rgb(${r},${g},${b})`;
+    }
 
-    for (let i = 0; i < latSteps; i++) {
-        for (let j = 0; j < lonSteps; j++) {
-            const cellLat = latMin + (i + 0.5) * dLat;
-            const cellLon = lonMin + (j + 0.5) * dLon;
+    // Iterate through all latitude and longitude steps across the globe independently
+    for (let i = 0; i < latSteps; i++) {
+        for (let j = 0; j < lonSteps; j++) {
+            const cellLat = latMin + (i + 0.5) * dLat;
+            const cellLon = lonMin + (j + 0.5) * dLon;
 
-            const normalizedLon = (cellLon - lonMin) / (lonMax - lonMin);
-            const rawIndex = Math.floor(normalizedLon * valuesArray.length);
-            const baseIndex = Math.max(0, Math.min(rawIndex, valuesArray.length - 1));
-            
-            // Retain full minute-by-minute progression per cell
-            const valueIndex = (baseIndex + clampedMinutes) % valuesArray.length;
-            let cellVal = valuesArray[valueIndex];
-            let cellLabelOverride = null;
+            // 1) Compute cell-specific local timezone offset based on its own longitude tile position
+            const cellOffsetHours = Math.trunc(cellLon / 15);
 
-            for (const event of weatherEventsOverride) {
-                const matchesTime = clampedMinutes >= (event.startMinute || 0) && clampedMinutes <= (event.endMinute || 1439);
-                if (matchesTime) {
-                    const dist = Math.hypot(cellLat - event.lat, cellLon - event.lon);
-                    if (dist <= (event.radiusDeg || 5.0)) {
-                        cellVal = event.valueOverride !== undefined ? event.valueOverride : cellVal;
-                        cellLabelOverride = event.label || 'Weather Event';
-                        break;
-                    }
-                }
-            }
+            // 2) Map longitude across the cached dataset values array index range independently
+            const normalizedLon = (cellLon - lonMin) / (lonMax - lonMin);
+            const rawLonIndex = Math.floor(normalizedLon * valuesArray.length);
+            const baseLonIndex = Math.max(0, Math.min(rawLonIndex, valuesArray.length - 1));
 
-            const baseColor = metric === 'temp' ? getTempColor(cellVal) : getWindColor(cellVal);
-            const secondaryVal = valuesArray[(valueIndex + 1) % valuesArray.length];
-            const secondaryColor = metric === 'temp' ? getTempColor(secondaryVal) : getWindColor(secondaryVal);
-            
-            const lerpFactor = Math.pow((cellLat - latMin) / (latMax - latMin), 2);
-            const cellColor = lerpColor(baseColor, secondaryColor, lerpFactor);
+            // Factor in latitude progression for smooth north-south gradients
+            const latNormalization = (cellLat - latMin) / (latMax - latMin);
+            const spatialOffset = Math.floor(latNormalization * (valuesArray.length * 0.1));
 
-            const cellBounds = [
-                [cellLat - dLat / 2, cellLon - dLon / 2],
-                [cellLat + dLat / 2, cellLon + dLon / 2]
-            ];
+            // 3) Calculate index in day shifted dynamically by longitude/timezone offset and graph slider timing
+            const timezoneMinuteShift = cellOffsetHours * 60;
+            let indexInDay = (baseLonIndex + spatialOffset + clampedMinutes + timezoneMinuteShift) % valuesArray.length;
+            if (indexInDay < 0) indexInDay += valuesArray.length;
+            if (indexInDay >= valuesArray.length) indexInDay = valuesArray.length - 1;
+            
+            let cellVal = valuesArray[indexInDay];
+            let cellLabelOverride = null;
 
-            const rect = L.rectangle(cellBounds, {
-                color: cellColor,
-                weight: 0,
-                fillColor: cellColor,
-                fillOpacity: 0.55
-            });
+            for (const event of weatherEventsOverride) {
+                const matchesTime = clampedMinutes >= (event.startMinute || 0) && clampedMinutes <= (event.endMinute || 1439);
+                if (matchesTime) {
+                    const dist = Math.hypot(cellLat - event.lat, cellLon - event.lon);
+                    if (dist <= (event.radiusDeg || 5.0)) {
+                        cellVal = event.valueOverride !== undefined ? event.valueOverride : cellVal;
+                        cellLabelOverride = event.label || 'Weather Event';
+                        break;
+                    }
+                }
+            }
 
-            // Trigger redraw only when crossing an hourly timezone/DST block boundary
-            rect.on('mouseover', () => {
-                let cellOffsetHours = 0;
-                if (typeof getLocalTimezoneOffsetMinutes === 'function') {
-                    cellOffsetHours = Math.trunc(getLocalTimezoneOffsetMinutes(targetPlaceName || activePlaceName, activeDayDateStr) / 60);
-                } else {
-                    cellOffsetHours = Math.trunc(cellLon / 15);
-                }
+            const baseColor = metric === 'temp' ? getTempColor(cellVal) : getWindColor(cellVal);
+            const secondaryVal = valuesArray[(indexInDay + 1) % valuesArray.length];
+            const secondaryColor = metric === 'temp' ? getTempColor(secondaryVal) : getWindColor(secondaryVal);
+            
+            const latFactor = (cellLat - latMin) / (latMax - latMin);
+            const lonFactor = (cellLon - lonMin) / (lonMax - lonMin);
+            const lerpFactor = Math.pow(latFactor * 0.5 + lonFactor * 0.5, 2);
+            
+            const cellColor = lerpColor(baseColor, secondaryColor, lerpFactor);
+            const dynamicOpacity = Math.max(0.25, Math.min(0.75, 0.4 + 0.3 * Math.sin(latFactor * Math.PI) * Math.cos(lonFactor * Math.PI)));
 
-                const currentOffsetHours = window._activeHoverLon !== undefined ? 
-                    (typeof getLocalTimezoneOffsetMinutes === 'function' ? Math.trunc(getLocalTimezoneOffsetMinutes(targetPlaceName || activePlaceName, activeDayDateStr) / 60) : Math.trunc(window._activeHoverLon / 15)) : 0;
+            const cellBounds = [
+                [cellLat - dLat / 2, cellLon - dLon / 2],
+                [cellLat + dLat / 2, cellLon + dLon / 2]
+            ];
 
-                if (window._activeHoverLon === undefined || cellOffsetHours !== currentOffsetHours) {
-                    window._activeHoverLon = cellLon;
-                    updateMapForMinute(clampedMinutes);
-                }
-            });
+            const rect = L.rectangle(cellBounds, {
+                color: cellColor,
+                weight: 0,
+                fillColor: cellColor,
+                fillOpacity: dynamicOpacity
+            });
 
-            // Compute local cell time matching 5 AM universe base time and hourly timezone offsets (minutes preserved)
-            let cellOffsetHours = 0;
-            if (typeof getLocalTimezoneOffsetMinutes === 'function') {
-                cellOffsetHours = Math.trunc(getLocalTimezoneOffsetMinutes(targetPlaceName || activePlaceName, activeDayDateStr) / 60);
-            } else {
-                cellOffsetHours = Math.trunc(cellLon / 15);
-            }
+            rect.on('mouseover', () => {
+                const currentOffsetHours = window._activeHoverLon !== undefined ? Math.trunc(window._activeHoverLon / 15) : 0;
+                if (window._activeHoverLon === undefined || cellOffsetHours !== currentOffsetHours) {
+                    window._activeHoverLon = cellLon;
+                    updateMapForMinute(clampedMinutes);
+                }
+            });
 
-            const cellBaseAdj = (clampedMinutes - universeBaseMinute + 1440) % 1440;
-            const cellRawH24 = Math.floor(cellBaseAdj / 60);
-            const cellMin = cellBaseAdj % 60;
-            const cellHour24 = (cellRawH24 - cellOffsetHours + 24) % 24;
+            // Calculate exact local time string for this individual map grid cell
+            const cellBaseAdj = (clampedMinutes - universeBaseMinute + 1440) % 1440;
+            const cellRawH24 = Math.floor(cellBaseAdj / 60);
+            const cellMin = cellBaseAdj % 60;
+            const cellHour24 = (cellRawH24 - cellOffsetHours + 24) % 24;
 
-            const cellH12 = cellHour24 % 12 === 0 ? 12 : cellHour24 % 12;
-            const cellAmpm = cellHour24 >= 12 ? 'PM' : 'AM';
-            const cellMinFormatted = String(cellMin).padStart(2, '0');
+            const cellH12 = cellHour24 % 12 === 0 ? 12 : cellHour24 % 12;
+            const cellAmpm = cellHour24 >= 12 ? 'PM' : 'AM';
+            const cellMinFormatted = String(cellMin).padStart(2, '0');
 
-            const unitSymbol = metric === 'temp' ? '°' : ' mph';
-            const latDir = cellLat >= 0 ? 'N' : 'S';
-            const lonDir = cellLon >= 0 ? 'E' : 'W';
-            const formattedCoords = `${Math.abs(cellLat).toFixed(2)}° ${latDir}, ${Math.abs(cellLon).toFixed(2)}° ${lonDir}`;
-            
-            const tooltipText = cellLabelOverride ? 
-                `<b>${cellLabelOverride}</b><br/>📍 ${formattedCoords}<br/>${metric.toUpperCase()}: ${cellVal.toFixed(1)}${unitSymbol}` :
-                `📍 ${formattedCoords}<br/>${metric.toUpperCase()}: ${cellVal.toFixed(1)}${unitSymbol} (${cellH12}:${cellMinFormatted} ${cellAmpm})`;
+            const unitSymbol = metric === 'temp' ? '°' : ' mph';
+            const latDir = cellLat >= 0 ? 'N' : 'S';
+            const lonDir = cellLon >= 0 ? 'E' : 'W';
+            const formattedCoords = `${Math.abs(cellLat).toFixed(2)}° ${latDir}, ${Math.abs(cellLon).toFixed(2)}° ${lonDir}`;
+            
+            const tooltipText = cellLabelOverride ? 
+                `<b>${cellLabelOverride}</b><br/>📍 ${formattedCoords}<br/>${metric.toUpperCase()}: ${cellVal.toFixed(1)}${unitSymbol}` :
+                `📍 ${formattedCoords}<br/>${metric.toUpperCase()}: ${cellVal.toFixed(1)}${unitSymbol} (${cellH12}:${cellMinFormatted} ${cellAmpm})`;
 
-            rect.bindTooltip(tooltipText, {
-                sticky: true,
-                direction: 'auto'
-            });
+            rect.bindTooltip(tooltipText, {
+                sticky: true,
+                direction: 'auto'
+            });
 
-            rect.addTo(mapLayersGroup);
-        }
-    }
+            rect.addTo(mapLayersGroup);
+        }
+    }
 }
-
+   
 // Helper function to check if a given date or forecast day corresponds to "today"
 function isToday(dateObj) {
     const today = new Date();
@@ -1836,7 +1831,6 @@ function formatTimezoneAwareLabel(hour24, minute, longitude) {
 }
 
 // Updated Chart Metric Update Function utilizing timezone-adjusted graph times
-// Updated Chart Metric Update Function utilizing timezone-adjusted graph times
 function updateChartMetric() {
     if (!activeHourlyData || !activeDayDateStr) return;
     const metric = document.getElementById("metricSelector").value;
@@ -1846,100 +1840,62 @@ function updateChartMetric() {
     const foundIdx = targetDates.indexOf(activeDayDateStr);
     if (foundIdx !== -1) dayIndex = foundIdx;
 
-    const [m, d, y] = activeDayDateStr.split("/").map(Number);
-    const formattedDate = `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+    const dummyTempsMax = { max: [72,72,72,72,72,72,72,72], min: [52,52,52,52,52,52,52,52] };
+    const dummyWinds = [18,18,18,18,18,18,18,18];
+    const dummyGusts = [30,30,30,30,30,30,30,30];
 
-    let labels = [];
-    let dataValues = [];
+    const minuteData = getMinuteValuesForDay(activeDayDateStr, activeSearchQuery, activePlaceName, dummyTempsMax, dummyWinds, dummyGusts, dayIndex);
 
-    const minuteValues = window.currentMinuteData || { 
-        temps: new Array(1440).fill(59), 
-        winds: new Array(1440).fill(10), 
-        gusts: new Array(1440).fill(15) 
-    };
+    const labels = []; 
+    const values = []; 
+    const segmentColors = [];
+    
+    // Universe Base Time starting at 6:00 AM (360 minutes from midnight baseline)
+    const universeBaseMinute = 360; 
 
-    const rawValues = metric === 'temp' ? minuteValues.temps : 
-                      (metric === 'wind' ? minuteValues.winds : minuteValues.gusts);
-
-    for (let h = 0; h < 24; h++) {
-        for (let min = 0; min < 60; min++) {
-            if (h === 23 && min === 59) continue;
-            let index = h * 60 + min;
-            if (index >= rawValues.length) index = rawValues.length - 1;
-
-            if (min === 0) {
-                let h12 = h % 12 === 0 ? 12 : h % 12;
-                let ampm = h >= 12 ? 'PM' : 'AM';
-                labels.push(`${h12}:00 ${ampm}`);
-            } else {
-                labels.push('');
-            }
-            dataValues.push(rawValues[index]);
-        }
+    // Determine location-specific timezone offset (Hours only, leaving minutes completely untouched)
+    let locationOffsetHours = 0;
+    const targetLon = currentLon !== null ? currentLon : -98.5795;
+    
+    if (typeof getLocalTimezoneOffsetMinutes === 'function') {
+        locationOffsetHours = Math.trunc(getLocalTimezoneOffsetMinutes(targetPlaceName || activePlaceName, activeDayDateStr) / 60);
+    } else {
+        locationOffsetHours = Math.trunc(targetLon / 15);
     }
 
-    const ctx = document.getElementById('forecastChart').getContext('2d');
-    if (chartInstance) {
-        chartInstance.destroy();
+    // Loop through every minute of the day (0 to 1438, skipping 23:59 if desired)
+    for (let totalMinutes = 0; totalMinutes < 1440; totalMinutes++) {
+        if (totalMinutes === 1439) continue;
+
+        // Shift ONLY the hours using integer hour offsets, leaving the minute counter absolute and intact
+        const baseAdjustedMinutes = (totalMinutes - universeBaseMinute + 1440) % 1440;
+        const rawHour24 = Math.floor(baseAdjustedMinutes / 60);
+        const minute = baseAdjustedMinutes % 60; // Minutes remain strictly anchored to the progression
+
+        // Apply hour shift from timezone/DST without modifying the minute value
+        const hour24 = (rawHour24 - locationOffsetHours + 24) % 24;
+
+        const h12 = hour24 % 12 === 0 ? 12 : hour24 % 12;
+        const ampm = hour24 >= 12 ? 'PM' : 'AM';
+        const minFormatted = String(minute).padStart(2, '0');
+
+        labels.push(`${h12}:${minFormatted} ${ampm}`);
+
+        let val = 0;
+        let indexInDay = totalMinutes;
+        if (indexInDay >= minuteData.temps.length) indexInDay = minuteData.temps.length - 1;
+
+        if (metric === "temp") val = minuteData.temps[indexInDay];
+        else if (metric === "wind") val = minuteData.winds[indexInDay];
+        else if (metric === "gusts") val = minuteData.gusts[indexInDay];
+
+        let color = metric === 'temp' ? getTempColor(val) : getWindColor(val);
+        values.push(val);
+        segmentColors.push(color);
     }
-
-    let chartColor = '#00a8cc';
-    if (metric === 'temp') chartColor = '#ff9500';
-    else if (metric === 'wind') chartColor = '#30b0c7';
-    else if (metric === 'gusts') chartColor = '#ff3b30';
-
-    chartInstance = new Chart(ctx, {
-        type: 'line',
-        data: {
-            labels: labels,
-            datasets: [{
-                label: metric === 'temp' ? 'Temperature (°F)' : (metric === 'wind' ? 'Wind Speed (mph)' : 'Wind Gusts (mph)'),
-                data: dataValues,
-                borderColor: chartColor,
-                backgroundColor: hexToRgba(chartColor, 0.15),
-                borderWidth: 2,
-                fill: true,
-                tension: 0.3,
-                pointRadius: 0,
-                pointHoverRadius: 5
-            }]
-        },
-        options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            plugins: {
-                legend: { display: false },
-                tooltip: {
-                    mode: 'index',
-                    intersect: false,
-                    callbacks: {
-                        title: function(tooltipItems) {
-                            let idx = tooltipItems[0].dataIndex;
-                            let hr = Math.floor(idx / 60);
-                            let mn = idx % 60;
-                            let h12 = hr % 12 === 0 ? 12 : hr % 12;
-                            let ampm = hr >= 12 ? 'PM' : 'AM';
-                            return `${h12}:${String(mn).padStart(2, '0')} ${ampm} on ${activeDayDateStr}`;
-                        }
-                    }
-                }
-            },
-            scales: {
-                x: {
-                    grid: { color: '#222' },
-                    ticks: {
-                        color: '#888',
-                        maxTicksLimit: 12,
-                        autoSkip: true
-                    }
-                },
-                y: {
-                    grid: { color: '#222' },
-                    ticks: { color: '#888' }
-                }
-            }
-        }
-    });
+    
+    const labelName = metric === 'temp' ? "Temperature (°F)" : (metric === 'wind' ? "Wind Speed (mph)" : "Wind Gusts (mph)");
+    renderChart(labels, values, segmentColors, labelName, metric);
 }
 
 function renderChart(labels, values, segmentColors, labelName, metric) {
