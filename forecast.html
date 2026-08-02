@@ -1518,13 +1518,14 @@ function updateMapForMinute(totalMinutes) {
     const maxMinutes = 1439;
     const clampedMinutes = Math.max(0, Math.min(totalMinutes, maxMinutes));
 
-    // Determine active longitude offset based on current hover position stored globally, or default to system/UTC offset
-    let dynamicOffsetMinutes = new Date().getTimezoneOffset(); // fallback local offset
+    // UTC 0 baseline: longitude 0° is the starting point (offset = 0 minutes).
+    // Every 15 degrees east/west shifts the timezone offset by +60 / -60 minutes cleanly.
+    let dynamicOffsetMinutes = 0; 
     if (window._activeHoverLon !== undefined && window._activeHoverLon !== null) {
-        dynamicOffsetMinutes = Math.round(-4 * window._activeHoverLon);
+        dynamicOffsetMinutes = Math.round(window._activeHoverLon / 15) * 60;
     }
 
-    // Shift minute baseline using the dynamic longitude-based timezone offset
+    // Shift minute baseline using the dynamic longitude-based timezone offset starting from UTC 0
     const adjustedMinutes = (clampedMinutes - dynamicOffsetMinutes + 1440) % 1440;
 
     const hour24 = Math.floor(adjustedMinutes / 60);
@@ -1627,24 +1628,14 @@ function updateMapForMinute(totalMinutes) {
                 fillOpacity: 0.55
             });
 
-            // FIX: Only update timezone/label if the hovered cell's longitude crosses into a new 15-degree timezone block.
-            // This completely eliminates the freezing recursive re-render loop.
+            // Only trigger full map redraw and hour/minute shift when crossing an actual 15° timezone block boundary
             rect.on('mouseover', () => {
-                const newOffset = Math.round(-4 * cellLon);
-                if (window._activeHoverLon === undefined || Math.round(-4 * window._activeHoverLon) !== newOffset) {
+                const newOffsetMinutes = Math.round(cellLon / 15) * 60;
+                const currentOffsetMinutes = window._activeHoverLon !== undefined ? Math.round(window._activeHoverLon / 15) * 60 : 0;
+
+                if (window._activeHoverLon === undefined || newOffsetMinutes !== currentOffsetMinutes) {
                     window._activeHoverLon = cellLon;
-                    
-                    // Safely update just the UI time label text element instead of rebuilding the entire map grid layers
-                    const updatedAdjustedMinutes = (clampedMinutes - newOffset + 1440) % 1440;
-                    const uHour24 = Math.floor(updatedAdjustedMinutes / 60);
-                    const uMinute = updatedAdjustedMinutes % 60;
-                    const uH12 = uHour24 % 12 === 0 ? 12 : uHour24 % 12;
-                    const uAmpm = uHour24 >= 12 ? 'PM' : 'AM';
-                    const uMinFormatted = String(uMinute).padStart(2, '0');
-                    
-                    if (timeLabelElem) {
-                        timeLabelElem.innerText = `${uH12}:${uMinFormatted} ${uAmpm} (${clampedMinutes}m)`;
-                    }
+                    updateMapForMinute(clampedMinutes); // Safe to call now because it only redraws on distinct timezone boundary crossings, preventing freezing loops.
                 }
             });
 
@@ -1827,28 +1818,38 @@ function updateChartMetric() {
     const values = []; 
     const segmentColors = [];
     
-    // Use active longitude or default to center coordinates
+    // UTC 0 baseline: longitude 0° is the starting point (offset = 0 minutes).
+    // Every 15 degrees shifts the timezone offset by whole 60-minute blocks (1 hour).
     const targetLon = currentLon !== null ? currentLon : -98.5795;
+    const dynamicOffsetMinutes = Math.round(targetLon / 15) * 60;
 
-    for (let hour = 0; hour < 24; hour++) {
-        for (let minute = 0; minute < 60; minute++) {
-            if (hour === 23 && minute === 59) continue;
+    // Loop through every minute of the day (0 to 1438, skipping 23:59 if desired)
+    for (let totalMinutes = 0; totalMinutes < 1440; totalMinutes++) {
+        if (totalMinutes === 1439) continue; // matches original skip for 23:59
 
-            // Pass targetLon to format timezone-based times dynamically across zone lines
-            labels.push(formatTimezoneAwareLabel(hour, minute, targetLon));
+        // Shift baseline using the timezone offset starting from UTC 0
+        const adjustedMinutes = (totalMinutes - dynamicOffsetMinutes + 1440) % 1440;
 
-            let val = 0;
-            let indexInDay = hour * 60 + minute;
-            if (indexInDay >= minuteData.temps.length) indexInDay = minuteData.temps.length - 1;
+        const hour24 = Math.floor(adjustedMinutes / 60);
+        const minute = adjustedMinutes % 60;
+        const h12 = hour24 % 12 === 0 ? 12 : hour24 % 12;
+        const ampm = hour24 >= 12 ? 'PM' : 'AM';
+        const minFormatted = String(minute).padStart(2, '0');
 
-            if (metric === "temp") val = minuteData.temps[indexInDay];
-            else if (metric === "wind") val = minuteData.winds[indexInDay];
-            else if (metric === "gusts") val = minuteData.gusts[indexInDay];
+        // Format timezone-aware label retaining precise minute-by-minute progression
+        labels.push(`${h12}:${minFormatted} ${ampm}`);
 
-            let color = metric === 'temp' ? getTempColor(val) : getWindColor(val);
-            values.push(val);
-            segmentColors.push(color);
-        }
+        let val = 0;
+        let indexInDay = totalMinutes;
+        if (indexInDay >= minuteData.temps.length) indexInDay = minuteData.temps.length - 1;
+
+        if (metric === "temp") val = minuteData.temps[indexInDay];
+        else if (metric === "wind") val = minuteData.winds[indexInDay];
+        else if (metric === "gusts") val = minuteData.gusts[indexInDay];
+
+        let color = metric === 'temp' ? getTempColor(val) : getWindColor(val);
+        values.push(val);
+        segmentColors.push(color);
     }
     
     const labelName = metric === 'temp' ? "Temperature (°F)" : (metric === 'wind' ? "Wind Speed (mph)" : "Wind Gusts (mph)");
