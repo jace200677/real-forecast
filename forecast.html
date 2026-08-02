@@ -1449,56 +1449,19 @@ function initLeafletMap(dateStr) {
 
         mapLayersGroup = L.layerGroup().addTo(map);
 
-        const targetDates = ["7/31/2026", "8/1/2026", "8/2/2026", "8/3/2026", "8/4/2026", "8/5/2026", "8/6/2026", "8/7/2026"];
-        
-        // Helper to format a Date object to "M/D/YYYY" string to match targetDates format
-        const formatDateString = (d) => `${d.getMonth() + 1}/${d.getDate()}/${d.getFullYear()}`;
-        
-        const todayStr = formatDateString(new Date());
-        const effectiveDateStr = dateStr || todayStr;
-
         let dayIndex = 0;
-        const foundIdx = targetDates.indexOf(effectiveDateStr);
-        if (foundIdx !== -1) {
-            dayIndex = foundIdx;
-        }
+        const targetDates = ["7/31/2026", "8/1/2026", "8/2/2026", "8/3/2026", "8/4/2026", "8/5/2026", "8/6/2026", "8/7/2026"];
+        const foundIdx = targetDates.indexOf(dateStr);
+        if (foundIdx !== -1) dayIndex = foundIdx;
 
         const dummyTempsMax = { max: [72,72,72,72,72,72,72,72], min: [52,52,52,52,52,52,52,52] };
         const dummyWinds = [18,18,18,18,18,18,18,18];
         const dummyGusts = [30,30,30,30,30,30,30,30];
 
         // Cache minute-by-minute data matching the active graph timeline
-        window.activeMinuteDataCache = getMinuteValuesForDay(effectiveDateStr, activeSearchQuery, activePlaceName, dummyTempsMax, dummyWinds, dummyGusts, dayIndex);
+        window.activeMinuteDataCache = getMinuteValuesForDay(dateStr, activeSearchQuery, activePlaceName, dummyTempsMax, dummyWinds, dummyGusts, dayIndex);
 
         addMinuteTimeSliderControl(map);
-
-        // Determine initial minute index: if it's today, calculate minute index corresponding to current time; otherwise start at 0 (12:00 AM)
-        let initialMinuteIndex = 0;
-        if (effectiveDateStr === todayStr) {
-            const now = new Date();
-            const currentMinutesFromMidnight = now.getHours() * 60 + now.getMinutes();
-            
-            const slider = document.getElementById("mapMinuteRange");
-            if (slider && window.activeMinuteDataCache && window.activeMinuteDataCache.length > 0) {
-                let closestIdx = 0;
-                let minDiff = Infinity;
-                window.activeMinuteDataCache.forEach((item, idx) => {
-                    const diff = Math.abs((item.minuteOffset || idx) - currentMinutesFromMidnight);
-                    if (diff < minDiff) {
-                        minDiff = diff;
-                        closestIdx = idx;
-                    }
-                });
-                initialMinuteIndex = closestIdx;
-                slider.value = initialMinuteIndex;
-            }
-        } else {
-            // Explicitly ensure slider element reflects 12:00 AM (index 0) if not today
-            const slider = document.getElementById("mapMinuteRange");
-            if (slider) {
-                slider.value = 0;
-            }
-        }
 
         // Update map rendering dynamically on zoom changes to scale global square sizes
         map.on('zoomend', () => {
@@ -1507,7 +1470,7 @@ function initLeafletMap(dateStr) {
             updateMapForMinute(currentMin);
         });
 
-        updateMapForMinute(initialMinuteIndex);
+        updateMapForMinute(0);
     }, 250);
 }
 
@@ -1680,36 +1643,6 @@ function updateMapForMinute(totalMinutes) {
         }
     }
 }
-
-// Helper function to check if a given date or forecast day corresponds to "today"
-function isToday(dateObj) {
-    const today = new Date();
-    return dateObj.getDate() === today.getDate() &&
-           dateObj.getMonth() === today.getMonth() &&
-           dateObj.getFullYear() === today.getFullYear();
-}
-
-// Automatically initialize map based on whether the selected forecast day is today or another day
-document.addEventListener("DOMContentLoaded", () => {
-    // Assuming you store or can fetch the currently selected forecast date object or flag. 
-    // Replace `window.activeForecastDate` with your actual active date variable/element.
-    const activeDate = window.activeForecastDate || new Date(); 
-    
-    let initialMinutes = 0; // Default to 12:00 AM for other days
-
-    if (isToday(activeDate)) {
-        // If it's today, start with the current time
-        const now = new Date();
-        initialMinutes = now.getHours() * 60 + now.getMinutes();
-    }
-
-    const timelineSlider = document.getElementById("timelineSlider"); // replace with your actual slider ID if applicable
-    if (timelineSlider) {
-        timelineSlider.value = initialMinutes;
-    }
-
-    updateMapForMinute(initialMinutes);
-});
 
 function addMinuteTimeSliderControl(map) {
     if (document.getElementById("mapSliderContainer")) return;
