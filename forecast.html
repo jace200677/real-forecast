@@ -681,8 +681,8 @@ function getMinuteValuesForDay(dateStr, searchQuery, placeName, apiDailyTemps, a
     const hash = Math.abs(getHashOffset(locationSeed));
 
     // Dynamic localized peak values for MN locations
-    const locationWindPeak = 66 + ((hash % 17) - 8);
-    const locationGustPeak = 124 + ((hash % 39) - 19);
+    const locationWindPeak = 7 + ((hash % 17) - 8);
+    const locationGustPeak = 19 + ((hash % 39) - 19);
 
     const temps = [];
     const winds = [];
