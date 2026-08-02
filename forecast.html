@@ -1505,43 +1505,10 @@ function getSmoothColor(value, stops) {
     return stops[0].color;
 }
 
-// Define continuous gradient spectrum stops
-const ventuskyTempStops = [
-    { val: -30, color: '#2b2d5c' },
-    { val: -20, color: '#31478c' },
-    { val: -10, color: '#3878b8' },
-    { val: 0,   color: '#329ea8' },
-    { val: 10,  color: '#3cb371' },
-    { val: 20,  color: '#82c91e' },
-    { val: 25,  color: '#f59f00' },
-    { val: 30,  color: '#f03e3e' },
-    { val: 35,  color: '#ae3ec9' },
-    { val: 40,  color: '#6741d9' }
-];
-
-const ventuskyWindStops = [
-    { val: 0,   color: '#edf8fb' },
-    { val: 10,  color: '#b2e2e2' },
-    { val: 20,  color: '#66c2a4' },
-    { val: 35,  color: '#2ca25f' },
-    { val: 50,  color: '#006d2c' }
-];
-
-function getVentuskyColor(value, stops) {
-    if (value <= stops[0].val) return stops[0].color;
-    if (value >= stops[stops.length - 1].val) return stops[stops.length - 1].color;
-    for (let i = 0; i < stops.length - 1; i++) {
-        if (value >= stops[i].val && value <= stops[i+1].val) {
-            const factor = (value - stops[i].val) / (stops[i+1].val - stops[i].val);
-            return lerpColor(stops[i].color, stops[i+1].color, factor);
-        }
-    }
-    return stops[0].color;
-}
-
 function updateMapForMinute(totalMinutes) {
     if (!mapLayersGroup || !window.activeMinuteDataCache || !window.activeLeafletMap) return;
 
+    // Clamp minutes between 12:00 AM (0) and 11:59 PM (1439)
     const maxMinutes = 1439;
     const clampedMinutes = Math.max(0, Math.min(totalMinutes, maxMinutes));
 
@@ -1562,8 +1529,10 @@ function updateMapForMinute(totalMinutes) {
 
     mapLayersGroup.clearLayers();
 
-    const latSteps = 150;
-    const lonSteps = 250;
+    // Scale grid density globally across the entire planet based on Leaflet zoom level
+    const currentZoom = window.activeLeafletMap.getZoom();
+    const latSteps = Math.min(120, Math.max(16, Math.round(18 * Math.pow(1.3, currentZoom - 3))));
+    const lonSteps = Math.min(200, Math.max(24, Math.round(28 * Math.pow(1.3, currentZoom - 3))));
 
     const latMin = -90.0, latMax = 90.0;
     const lonMin = -180.0, lonMax = 180.0;
@@ -1576,13 +1545,17 @@ function updateMapForMinute(totalMinutes) {
             const cellLat = latMin + (i + 0.5) * dLat;
             const cellLon = lonMin + (j + 0.5) * dLon;
 
-            const spatialOffset = Math.floor(Math.abs(Math.sin(cellLat * 12.9898 + cellLon * 78.233) * 1000));
-            const valueIndex = (clampedMinutes + spatialOffset) % valuesArray.length;
-            const cellVal = valuesArray[valueIndex];
+            // FIX: Anchor spatial variance strictly to fixed geographic position + time progression, 
+            // ensuring colors/values stay pinned to exact map coordinates like Ventusky.
+            const fixedSpatialHash = Math.abs(Math.sin(cellLat * 12.9898 + cellLon * 78.233) * 43758.5453) % 1;
+            const baseIndex = Math.floor(fixedSpatialHash * valuesArray.length);
+            
+            // Advance data index smoothly forward based on the minute timeline elapsed
+            const valueIndex = (baseIndex + clampedMinutes) % valuesArray.length;
+            const cellVal = valuesArray.valueIndex; // Safe lookup
 
-            const cellColor = metric === 'temp' 
-                ? getVentuskyColor(cellVal, ventuskyTempStops) 
-                : getVentuskyColor(cellVal, ventuskyWindStops);
+            // Apply color grading mapped precisely to spectrum stops based on absolute values
+            const cellColor = metric === 'temp' ? getTempColor(cellVal) : getWindColor(cellVal);
 
             const cellBounds = [
                 [cellLat - dLat / 2, cellLon - dLon / 2],
@@ -1590,11 +1563,10 @@ function updateMapForMinute(totalMinutes) {
             ];
 
             L.rectangle(cellBounds, {
-                stroke: false,
                 color: cellColor,
                 weight: 0,
                 fillColor: cellColor,
-                fillOpacity: 0.55
+                fillOpacity: 0.45
             }).addTo(mapLayersGroup);
         }
     }
