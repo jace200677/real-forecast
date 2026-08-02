@@ -662,10 +662,10 @@ function getMinuteValuesForDay(dateStr, searchQuery, placeName, apiDailyTemps, a
     }
     while (baseHourTemps.length < 24) { baseHourTemps.push(72); baseHourWinds.push(18); baseHourGusts.push(30); }
 
-    const apiHigh = Math.round((apiDailyTemps.max && apiDailyTemps.max[dayIndex]) || 72);
-    const apiLow = Math.round((apiDailyTemps.min && apiDailyTemps.min[dayIndex]) || 52);
-    const apiWind = Math.round(apiDailyWinds[dayIndex] || 18);
-    const apiGusts = Math.round(apiDailyGusts[dayIndex] || 30);
+    const apiHigh = Math.round((apiDailyTemps.max && apiDailyTemps.max[dayIndex]) || 59);
+    const apiLow = Math.round((apiDailyTemps.min && apiDailyTemps.min[dayIndex]) || 32);
+    const apiWind = Math.round(apiDailyWinds[dayIndex] || 0);
+    const apiGusts = Math.round(apiDailyGusts[dayIndex] || 0);
 
     const isMN = isMinnesotaLocation(searchQuery, placeName);
     const exactOverride = findRegionalOverride(dateStr, searchQuery, placeName, apiHigh, apiLow, apiWind, apiGusts);
