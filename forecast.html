@@ -1522,6 +1522,50 @@ const windStops = [
     { val: 80,  color: '#006d2c' }
 ];
 
+const ventuskyTempStops = [
+    { val: -30, color: '#2b2d5c' },
+    { val: -20, color: '#31478c' },
+    { val: -10, color: '#3878b8' },
+    { val: 0,   color: '#329ea8' },
+    { val: 10,  color: '#3cb371' },
+    { val: 20,  color: '#82c91e' },
+    { val: 25,  color: '#f59f00' },
+    { val: 30,  color: '#f03e3e' },
+    { val: 35,  color: '#ae3ec9' },
+    { val: 40,  color: '#6741d9' }
+];
+
+const ventuskyWindStops = [
+    { val: 0,   color: '#edf8fb' },
+    { val: 10,  color: '#b2e2e2' },
+    { val: 20,  color: '#66c2a4' },
+    { val: 35,  color: '#2ca25f' },
+    { val: 50,  color: '#006d2c' }
+];
+
+function lerpColor(hexA, hexB, amount) {
+    const ah = parseInt(hexA.replace(/#/g, ''), 16);
+    const ar = ah >> 16, ag = (ah >> 8) & 0xff, ab = ah & 0xff;
+    const bh = parseInt(hexB.replace(/#/g, ''), 16);
+    const br = bh >> 16, bg = (bh >> 8) & 0xff, bb = bh & 0xff;
+    const rr = Math.round(ar + amount * (br - ar));
+    const rg = Math.round(ag + amount * (bg - ag));
+    const rb = Math.round(ab + amount * (bb - ab));
+    return `#(((1 << 24) + (rr << 16) + (rg << 8) + rb).toString(16).slice(1)).replace(/[()]/g, '');
+}
+
+function getVentuskyColor(value, stops) {
+    if (value <= stops[0].val) return stops[0].color;
+    if (value >= stops[stops.length - 1].val) return stops[stops.length - 1].color;
+    for (let i = 0; i < stops.length - 1; i++) {
+        if (value >= stops[i].val && value <= stops[i+1].val) {
+            const factor = (value - stops[i].val) / (stops[i+1].val - stops[i].val);
+            return lerpColor(stops[i].color, stops[i+1].color, factor);
+        }
+    }
+    return stops[0].color;
+}
+
 function updateMapForMinute(totalMinutes) {
     if (!mapLayersGroup || !window.activeMinuteDataCache || !window.activeLeafletMap) return;
 
@@ -1545,7 +1589,6 @@ function updateMapForMinute(totalMinutes) {
 
     mapLayersGroup.clearLayers();
 
-    // Constant pixel-independent grid dimensions (removes zoom scaling dependency)
     const latSteps = 150;
     const lonSteps = 250;
 
@@ -1564,10 +1607,9 @@ function updateMapForMinute(totalMinutes) {
             const valueIndex = (clampedMinutes + spatialOffset) % valuesArray.length;
             const cellVal = valuesArray[valueIndex];
 
-            // Blend smoothly across gradient thresholds
             const cellColor = metric === 'temp' 
-                ? getSmoothColor(cellVal, tempStops) 
-                : getSmoothColor(cellVal, windStops);
+                ? getVentuskyColor(cellVal, ventuskyTempStops) 
+                : getVentuskyColor(cellVal, ventuskyWindStops);
 
             const cellBounds = [
                 [cellLat - dLat / 2, cellLon - dLon / 2],
@@ -1575,10 +1617,12 @@ function updateMapForMinute(totalMinutes) {
             ];
 
             L.rectangle(cellBounds, {
+                stroke: false,
                 color: cellColor,
                 weight: 0,
                 fillColor: cellColor,
-                fillOpacity: 0.5
+                fillOpacity: 0.55,
+                className: 'ventusky-smooth-tile'
             }).addTo(mapLayersGroup);
         }
     }
