@@ -1498,10 +1498,9 @@ function updateMapForMinute(totalMinutes) {
 
     mapLayersGroup.clearLayers();
 
-    // Scale grid density globally across the entire planet based on Leaflet zoom level
-    const currentZoom = window.activeLeafletMap.getZoom();
-    const latSteps = Math.min(120, Math.max(16, Math.round(18 * Math.pow(1.3, currentZoom - 3))));
-    const lonSteps = Math.min(200, Math.max(24, Math.round(28 * Math.pow(1.3, currentZoom - 3))));
+    // Fixed grid density independent of map zoom level to keep squares small
+    const latSteps = 120;
+    const lonSteps = 200;
 
     const latMin = -90.0, latMax = 90.0;
     const lonMin = -180.0, lonMax = 180.0;
