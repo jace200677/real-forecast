@@ -1,0 +1,623 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ventusky Live | Severe Pacific Front Tracker</title>
+    <style>
+        :root {
+            --bg-dark: #0f1423;
+            --panel-bg: rgba(22, 30, 49, 0.85);
+            --border-color: rgba(255, 255, 255, 0.12);
+            --accent-blue: #3b82f6;
+            --accent-red: #ef4444;
+            --accent-amber: #f59e0b;
+            --text-main: #f3f4f6;
+            --text-muted: #9ca3af;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+        }
+
+        body {
+            background-color: var(--bg-dark);
+            color: var(--text-main);
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        /* Top Header */
+        header {
+            height: 60px;
+            background: var(--panel-bg);
+            backdrop-filter: blur(10px);
+            border-bottom: 1px solid var(--border-color);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 1.5rem;
+            z-index: 100;
+        }
+
+        .logo-group {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+        }
+
+        .logo {
+            font-size: 1.4rem;
+            font-weight: 700;
+            letter-spacing: -0.5px;
+            color: #ffffff;
+            text-decoration: none;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .logo span {
+            color: var(--accent-blue);
+        }
+
+        .search-box input {
+            background: rgba(0, 0, 0, 0.3);
+            border: 1px solid var(--border-color);
+            padding: 0.5rem 1rem;
+            border-radius: 20px;
+            color: #fff;
+            width: 260px;
+            outline: none;
+            transition: all 0.2s;
+        }
+
+        .search-box input:focus {
+            border-color: var(--accent-blue);
+            width: 300px;
+        }
+
+        .model-selector {
+            display: flex;
+            background: rgba(0, 0, 0, 0.4);
+            padding: 3px;
+            border-radius: 8px;
+            border: 1px solid var(--border-color);
+        }
+
+        .model-btn {
+            background: none;
+            border: none;
+            color: var(--text-muted);
+            padding: 0.4rem 0.8rem;
+            font-size: 0.8rem;
+            font-weight: 600;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: 0.2s;
+        }
+
+        .model-btn.active {
+            background: var(--accent-blue);
+            color: #fff;
+        }
+
+        /* Main Workspace */
+        .workspace {
+            flex: 1;
+            position: relative;
+            display: flex;
+        }
+
+        /* Visual Canvas / Map Area */
+        #weather-canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: #0d121d;
+            z-index: 1;
+        }
+
+        /* Floating Controls & Overlays */
+        .layer-menu {
+            position: absolute;
+            top: 1.5rem;
+            left: 1.5rem;
+            z-index: 10;
+            background: var(--panel-bg);
+            backdrop-filter: blur(12px);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            padding: 0.75rem;
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.5);
+        }
+
+        .layer-btn {
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid transparent;
+            color: var(--text-main);
+            padding: 0.6rem 1rem;
+            border-radius: 8px;
+            cursor: pointer;
+            text-align: left;
+            font-size: 0.85rem;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            width: 160px;
+            transition: all 0.2s;
+        }
+
+        .layer-btn:hover {
+            background: rgba(255, 255, 255, 0.1);
+        }
+
+        .layer-btn.active {
+            border-color: var(--accent-blue);
+            background: rgba(59, 130, 246, 0.15);
+            font-weight: 600;
+        }
+
+        /* Severe Weather Card */
+        .weather-card {
+            position: absolute;
+            top: 1.5rem;
+            right: 1.5rem;
+            z-index: 10;
+            background: var(--panel-bg);
+            backdrop-filter: blur(12px);
+            border: 1px solid var(--border-color);
+            border-radius: 16px;
+            padding: 1.25rem;
+            width: 320px;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.5);
+        }
+
+        .alert-badge {
+            background: rgba(239, 68, 68, 0.2);
+            color: var(--accent-red);
+            border: 1px solid var(--accent-red);
+            font-size: 0.7rem;
+            font-weight: 700;
+            padding: 0.25rem 0.5rem;
+            border-radius: 4px;
+            text-transform: uppercase;
+            display: inline-block;
+            margin-bottom: 0.75rem;
+        }
+
+        .location-title {
+            font-size: 1.25rem;
+            font-weight: 700;
+            margin-bottom: 0.25rem;
+        }
+
+        .date-subtitle {
+            font-size: 0.8rem;
+            color: var(--text-muted);
+            margin-bottom: 1rem;
+        }
+
+        .metrics-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 0.75rem;
+            margin-bottom: 1rem;
+        }
+
+        .metric-item {
+            background: rgba(0, 0, 0, 0.25);
+            padding: 0.75rem;
+            border-radius: 8px;
+            border: 1px solid rgba(255, 255, 255, 0.05);
+        }
+
+        .metric-label {
+            font-size: 0.7rem;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            margin-bottom: 0.25rem;
+        }
+
+        .metric-value {
+            font-size: 1.1rem;
+            font-weight: 700;
+        }
+
+        .metric-value.temp { color: #60a5fa; }
+        .metric-value.wind { color: #f59e0b; }
+        .metric-value.gust { color: #ef4444; }
+
+        /* Terrain Toggle Section */
+        .terrain-box {
+            background: rgba(0, 0, 0, 0.3);
+            border-radius: 8px;
+            padding: 0.75rem;
+            border: 1px solid var(--border-color);
+        }
+
+        .terrain-header {
+            font-size: 0.75rem;
+            font-weight: 600;
+            margin-bottom: 0.5rem;
+            color: var(--text-muted);
+        }
+
+        .toggle-group {
+            display: flex;
+            gap: 0.5rem;
+        }
+
+        .toggle-btn {
+            flex: 1;
+            padding: 0.4rem;
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid var(--border-color);
+            color: var(--text-main);
+            border-radius: 6px;
+            font-size: 0.75rem;
+            cursor: pointer;
+            transition: 0.2s;
+        }
+
+        .toggle-btn.active {
+            background: var(--accent-blue);
+            border-color: var(--accent-blue);
+            font-weight: 600;
+        }
+
+        /* Bottom Timeline Controls */
+        .timeline-bar {
+            position: absolute;
+            bottom: 1.5rem;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 10;
+            width: 80%;
+            max-width: 900px;
+            background: var(--panel-bg);
+            backdrop-filter: blur(12px);
+            border: 1px solid var(--border-color);
+            border-radius: 16px;
+            padding: 1rem 1.5rem;
+            display: flex;
+            flex-direction: column;
+            gap: 0.75rem;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.5);
+        }
+
+        .timeline-controls {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+        }
+
+        .play-btn {
+            background: var(--accent-blue);
+            border: none;
+            color: white;
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.9rem;
+            transition: transform 0.2s;
+        }
+
+        .play-btn:hover {
+            transform: scale(1.05);
+        }
+
+        .slider-wrapper {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            gap: 0.25rem;
+        }
+
+        input[type="range"] {
+            width: 100%;
+            accent-color: var(--accent-blue);
+            cursor: pointer;
+        }
+
+        .timeline-labels {
+            display: flex;
+            justify-content: space-between;
+            font-size: 0.75rem;
+            color: var(--text-muted);
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Header Navigation -->
+    <header>
+        <div class="logo-group">
+            <a href="#" class="logo">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17.7 7.7a2.5 2.5 0 1 1 1.8 4.3H2"></path><path d="M9.6 4.6A2 2 0 1 1 11 8H2"></path><path d="M12.6 19.4A2 2 0 1 0 14 16H2"></path></svg>
+                Ventusky<span>Live</span>
+            </a>
+            <div class="search-box">
+                <input type="text" placeholder="Search location (e.g. Washington State)...">
+            </div>
+        </div>
+
+        <div class="model-selector">
+            <button class="model-btn active" onclick="setModel(this, 'HRRR')">HRRR</button>
+            <button class="model-btn" onclick="setModel(this, 'GFS')">GFS</button>
+            <button class="model-btn" onclick="setModel(this, 'ECMWF')">ECMWF</button>
+            <button class="model-btn" onclick="setModel(this, 'ICON')">ICON</button>
+        </div>
+    </header>
+
+    <!-- Interactive Map Workspace -->
+    <div class="workspace">
+        <canvas id="weather-canvas"></canvas>
+
+        <!-- Weather Overlay Controls -->
+        <div class="layer-menu">
+            <button class="layer-btn active" onclick="setLayer(this, 'wind')">
+                <span>Wind Speed</span>
+                <small>52 mph</small>
+            </button>
+            <button class="layer-btn" onclick="setLayer(this, 'gusts')">
+                <span>Wind Gusts</span>
+                <small>86 mph</small>
+            </button>
+            <button class="layer-btn" onclick="setLayer(this, 'temp')">
+                <span>Temperature</span>
+                <small>40°F</small>
+            </button>
+            <button class="layer-btn" onclick="setLayer(this, 'radar')">
+                <span>Live Radar</span>
+                <small>Active</small>
+            </button>
+        </div>
+
+        <!-- Live Metrics Card -->
+        <div class="weather-card">
+            <div class="alert-badge">Severe Cold Front Passing</div>
+            <div class="location-title" id="card-location">Washington State</div>
+            <div class="date-subtitle" id="card-date">August 2, 2026 - 18:00 UTC</div>
+
+            <div class="metrics-grid">
+                <div class="metric-item">
+                    <div class="metric-label">Sustained Wind</div>
+                    <div class="metric-value wind" id="val-wind">52 mph</div>
+                </div>
+                <div class="metric-item">
+                    <div class="metric-label">Peak Gusts</div>
+                    <div class="metric-value gust" id="val-gust">86 mph</div>
+                </div>
+                <div class="metric-item">
+                    <div class="metric-label">Air Temp</div>
+                    <div class="metric-value temp" id="val-temp">40°F</div>
+                </div>
+                <div class="metric-item">
+                    <div class="metric-label">Front Motion</div>
+                    <div class="metric-value">Eastward</div>
+                </div>
+            </div>
+
+            <!-- Microclimate & Surface Roughness Toggle -->
+            <div class="terrain-box">
+                <div class="terrain-header">TERRAIN / FRICTION MODIFIER</div>
+                <div class="toggle-group">
+                    <button class="toggle-btn active" onclick="setTerrain(this, 'open')">Open Plains</button>
+                    <button class="toggle-btn" onclick="setTerrain(this, 'forest')">Forest Canopy</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Bottom Timeline Slider -->
+        <div class="timeline-bar">
+            <div class="timeline-controls">
+                <button class="play-btn" id="play-btn" onclick="togglePlay()">▶</button>
+                <div class="slider-wrapper">
+                    <input type="range" id="time-slider" min="0" max="100" value="0" oninput="updateTime(this.value)">
+                    <div class="timeline-labels">
+                        <span>Aug 2 (WA Coast)</span>
+                        <span>Aug 3 (Rockies)</span>
+                        <span>Aug 4 (Plains)</span>
+                        <span>Aug 5 (Midwest)</span>
+                        <span>Aug 6 (East Coast)</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Interactive Dynamic Map Simulation Script -->
+    <script>
+        const canvas = document.getElementById('weather-canvas');
+        const ctx = canvas.getContext('2d');
+
+        let currentLayer = 'wind';
+        let currentTerrain = 'open';
+        let isPlaying = false;
+        let animationFrame;
+        let timeProgress = 0; // 0 to 100
+
+        // Base Meteorological State
+        let baseData = {
+            wind: 52,
+            gust: 86,
+            temp: 40
+        };
+
+        // Resize Canvas to Window
+        function resizeCanvas() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight - 60;
+        }
+        window.addEventListener('resize', resizeCanvas);
+        resizeCanvas();
+
+        // Particles System for Flowing Wind Simulation
+        const numParticles = 300;
+        const particles = [];
+        for (let i = 0; i < numParticles; i++) {
+            particles.push({
+                x: Math.random() * canvas.width,
+                y: Math.random() * canvas.height,
+                length: Math.random() * 20 + 10,
+                speed: Math.random() * 3 + 2
+            });
+        }
+
+        // Render Canvas Visuals
+        function renderMap() {
+            ctx.fillStyle = '#0d121d';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // Draw Storm Front Path (Moving West to East across screen)
+            const stormX = (canvas.width * 0.15) + (timeProgress / 100) * (canvas.width * 0.7);
+            
+            // Draw Cold Air Gradient Behind Front
+            const grad = ctx.createLinearGradient(stormX - 300, 0, stormX + 200, 0);
+            if (currentLayer === 'temp') {
+                grad.addColorStop(0, 'rgba(59, 130, 246, 0.4)'); // Cold Air (Blue)
+                grad.addColorStop(0.6, 'rgba(239, 68, 68, 0.3)'); // Frontal Zone
+                grad.addColorStop(1, 'rgba(245, 158, 11, 0.1)'); // Warm Air Ahead
+            } else if (currentLayer === 'gusts' || currentLayer === 'wind') {
+                grad.addColorStop(0, 'rgba(239, 68, 68, 0.05)');
+                grad.addColorStop(0.5, 'rgba(239, 68, 68, 0.5)'); // High Wind Zone
+                grad.addColorStop(1, 'rgba(59, 130, 246, 0.05)');
+            } else {
+                grad.addColorStop(0, 'rgba(16, 185, 129, 0.1)');
+                grad.addColorStop(0.5, 'rgba(16, 185, 129, 0.5)'); // Rain/Radar
+                grad.addColorStop(1, 'rgba(0, 0, 0, 0)');
+            }
+
+            ctx.fillStyle = grad;
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // Animate Wind Particles
+            ctx.strokeStyle = currentLayer === 'temp' ? 'rgba(147, 197, 253, 0.5)' : 'rgba(255, 255, 255, 0.6)';
+            ctx.lineWidth = 1.5;
+            
+            const speedFactor = (currentTerrain === 'open' ? 1.0 : 0.55) * (baseData.wind / 30);
+
+            particles.forEach(p => {
+                ctx.beginPath();
+                ctx.moveTo(p.x, p.y);
+                ctx.lineTo(p.x + p.length, p.y + (Math.sin(p.x * 0.01) * 5));
+                ctx.stroke();
+
+                p.x += p.speed * speedFactor;
+                if (p.x > canvas.width) {
+                    p.x = 0;
+                    p.y = Math.random() * canvas.height;
+                }
+            });
+
+            // Draw Front Line Indicator
+            ctx.setLineDash([8, 8]);
+            ctx.strokeStyle = '#ef4444';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.moveTo(stormX, 0);
+            ctx.lineTo(stormX - 50, canvas.height);
+            ctx.stroke();
+            ctx.setLineDash([]);
+
+            if (isPlaying) {
+                timeProgress = (timeProgress + 0.15) % 100;
+                document.getElementById('time-slider').value = timeProgress;
+                updateTime(timeProgress);
+            }
+
+            animationFrame = requestAnimationFrame(renderMap);
+        }
+
+        // Handle Interactive Control UI Updates
+        function updateTime(val) {
+            timeProgress = parseFloat(val);
+            
+            // Adjust Location Name based on Eastward Progression
+            const locLabel = document.getElementById('card-location');
+            const dateLabel = document.getElementById('card-date');
+
+            if (timeProgress < 20) {
+                locLabel.textContent = "Washington State";
+                dateLabel.textContent = "August 2, 2026 - 18:00 UTC";
+            } else if (timeProgress < 45) {
+                locLabel.textContent = "Northern Rockies";
+                dateLabel.textContent = "August 3, 2026 - 12:00 UTC";
+            } else if (timeProgress < 70) {
+                locLabel.textContent = "Central Plains";
+                dateLabel.textContent = "August 4, 2026 - 18:00 UTC";
+            } else if (timeProgress < 85) {
+                locLabel.textContent = "Great Lakes / Midwest";
+                dateLabel.textContent = "August 5, 2026 - 06:00 UTC";
+            } else {
+                locLabel.textContent = "US East Coast";
+                dateLabel.textContent = "August 6, 2026 - 15:00 UTC";
+            }
+
+            recalculateMetrics();
+        }
+
+        function setTerrain(btn, type) {
+            document.querySelectorAll('.terrain-box .toggle-btn').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            currentTerrain = type;
+            recalculateMetrics();
+        }
+
+        function setLayer(btn, layer) {
+            document.querySelectorAll('.layer-menu .layer-btn').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            currentLayer = layer;
+        }
+
+        function setModel(btn, model) {
+            document.querySelectorAll('.model-selector .model-btn').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+        }
+
+        function togglePlay() {
+            isPlaying = !isPlaying;
+            document.getElementById('play-btn').textContent = isPlaying ? '❚❚' : '▶';
+        }
+
+        function recalculateMetrics() {
+            let wind = baseData.wind;
+            let gust = baseData.gust;
+            let temp = baseData.temp;
+
+            // Apply Terrain Surface Friction Effects
+            if (currentTerrain === 'forest') {
+                wind = Math.round(wind * 0.65); // Forest canopy reduces wind speed
+                gust = Math.round(gust * 0.70);
+                temp = temp - 2; // Shaded/insulated microclimate
+            }
+
+            // Apply Eastward Air Mass Modification
+            const progressRatio = timeProgress / 100;
+            temp = Math.round(temp + (progressRatio * 18)); // Moderates as front moves east
+            
+            document.getElementById('val-wind').textContent = wind + ' mph';
+            document.getElementById('val-gust').textContent = gust + ' mph';
+            document.getElementById('val-temp').textContent = temp + '°F';
+        }
+
+        // Start Loop
+        renderMap();
+    </script>
+</body>
+</html>
