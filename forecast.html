@@ -1571,6 +1571,36 @@ function updateMapForMinute(totalMinutes) {
     }
 }
 
+// Helper function to check if a given date or forecast day corresponds to "today"
+function isToday(dateObj) {
+    const today = new Date();
+    return dateObj.getDate() === today.getDate() &&
+           dateObj.getMonth() === today.getMonth() &&
+           dateObj.getFullYear() === today.getFullYear();
+}
+
+// Automatically initialize map based on whether the selected forecast day is today or another day
+document.addEventListener("DOMContentLoaded", () => {
+    // Assuming you store or can fetch the currently selected forecast date object or flag. 
+    // Replace `window.activeForecastDate` with your actual active date variable/element.
+    const activeDate = window.activeForecastDate || new Date(); 
+    
+    let initialMinutes = 0; // Default to 12:00 AM for other days
+
+    if (isToday(activeDate)) {
+        // If it's today, start with the current time
+        const now = new Date();
+        initialMinutes = now.getHours() * 60 + now.getMinutes();
+    }
+
+    const timelineSlider = document.getElementById("timelineSlider"); // replace with your actual slider ID if applicable
+    if (timelineSlider) {
+        timelineSlider.value = initialMinutes;
+    }
+
+    updateMapForMinute(initialMinutes);
+});
+
 function addMinuteTimeSliderControl(map) {
     if (document.getElementById("mapSliderContainer")) return;
 
