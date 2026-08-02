@@ -1518,8 +1518,8 @@ function updateMapForMinute(totalMinutes) {
     const maxMinutes = 1439;
     const clampedMinutes = Math.max(0, Math.min(totalMinutes, maxMinutes));
 
-    // 1) Universe Base Time starting at 4:00 AM (240 minutes from midnight baseline)
-    const universeBaseMinute = 240;
+    // 1) Universe Base Time starting at 6:00 AM (360 minutes from midnight baseline)
+    const universeBaseMinute = 360;
 
     // 2) Determine location-specific timezone offset (Hours only, leaving minutes untouched)
     // Uses location/DST helper function if available, otherwise falls back to longitude blocks
@@ -1535,7 +1535,7 @@ function updateMapForMinute(totalMinutes) {
         dynamicOffsetMinutes = locationOffsetHours * 60;
     }
 
-    // Shift ONLY the hours using integer hour offsets starting from 4:00 AM Universe Base Time, leaving minutes absolute
+    // Shift ONLY the hours using integer hour offsets starting from 6:00 AM Universe Base Time, leaving minutes absolute
     const baseAdjustedMinutes = (clampedMinutes - universeBaseMinute + 1440) % 1440;
     const rawHour24 = Math.floor(baseAdjustedMinutes / 60);
     const minute = baseAdjustedMinutes % 60; // Minutes remain strictly anchored to progression
@@ -1658,7 +1658,7 @@ function updateMapForMinute(totalMinutes) {
                 }
             });
 
-            // Compute local cell time matching 4 AM universe base time and hourly timezone offsets (minutes preserved)
+            // Compute local cell time matching 6 AM universe base time and hourly timezone offsets (minutes preserved)
             let cellOffsetHours = 0;
             if (typeof getLocalTimezoneOffsetMinutes === 'function') {
                 cellOffsetHours = Math.trunc(getLocalTimezoneOffsetMinutes(targetPlaceName || activePlaceName, activeDayDateStr) / 60);
@@ -1854,8 +1854,8 @@ function updateChartMetric() {
     const values = []; 
     const segmentColors = [];
     
-    // Universe Base Time starting at 4:00 AM (240 minutes from midnight baseline)
-    const universeBaseMinute = 240; 
+    // Universe Base Time starting at 6:00 AM (360 minutes from midnight baseline)
+    const universeBaseMinute = 360; 
 
     // Determine location-specific timezone offset (Hours only, leaving minutes completely untouched)
     let locationOffsetHours = 0;
