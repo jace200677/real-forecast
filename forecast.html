@@ -1512,36 +1512,6 @@ function initLeafletMap(dateStr) {
 }
 
 // Linear interpolation helper between two hex colors
-function lerpColor(hexA, hexB, amount) {
-    const ah = parseInt(hexA.replace(/#/g, ''), 16);
-    const ar = ah >> 16, ag = (ah >> 8) & 0xff, ab = ah & 0xff;
-    
-    const bh = parseInt(hexB.replace(/#/g, ''), 16);
-    const br = bh >> 16, bg = (bh >> 8) & 0xff, bb = bh & 0xff;
-    
-    const rr = Math.round(ar + amount * (br - ar));
-    const rg = Math.round(ag + amount * (bg - ag));
-    const rb = Math.round(ab + amount * (bb - ab));
-    
-    return `#(((1 << 24) + (rr << 16) + (rg << 8) + rb).toString(16).slice(1));`.replace(/[()]/g, '');
-}
-
-// Multi-stop smooth gradient mapping (Ventusky style)
-function getSmoothColor(value, stops) {
-    if (value <= stops[0].val) return stops[0].color;
-    if (value >= stops[stops.length - 1].val) return stops[stops.length - 1].color;
-
-    for (let i = 0; i < stops.length - 1; i++) {
-        const currentStop = stops[i];
-        const nextStop = stops[i + 1];
-        if (value >= currentStop.val && value <= nextStop.val) {
-            const factor = (value - currentStop.val) / (nextStop.val - currentStop.val);
-            return lerpColor(currentStop.color, nextStop.color, factor);
-        }
-    }
-    return stops[0].color;
-}
-
 function updateMapForMinute(totalMinutes) {
     if (!mapLayersGroup || !window.activeMinuteDataCache || !window.activeLeafletMap) return;
 
@@ -1566,10 +1536,14 @@ function updateMapForMinute(totalMinutes) {
 
     mapLayersGroup.clearLayers();
 
-    // Scale grid density globally across the entire planet based on Leaflet zoom level
+    // Scale grid density globally across the entire planet based on Leaflet zoom level (limited bounds)
     const currentZoom = window.activeLeafletMap.getZoom();
-    const latSteps = Math.min(120, Math.max(16, Math.round(18 * Math.pow(1.3, currentZoom - 3))));
-    const lonSteps = Math.min(200, Math.max(24, Math.round(28 * Math.pow(1.3, currentZoom - 3))));
+    const minZoomLimit = 2;
+    const maxZoomLimit = 10;
+    const clampedZoom = Math.max(minZoomLimit, Math.min(currentZoom, maxZoomLimit));
+
+    const latSteps = Math.min(120, Math.max(16, Math.round(18 * Math.pow(1.3, clampedZoom - 3))));
+    const lonSteps = Math.min(200, Math.max(24, Math.round(28 * Math.pow(1.3, clampedZoom - 3))));
 
     const latMin = -90.0, latMax = 90.0;
     const lonMin = -180.0, lonMax = 180.0;
