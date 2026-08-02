@@ -518,31 +518,38 @@ async function fetchForecast() {
 
     container.innerHTML = "<p>Searching location securely...</p>";
     try {
-        const geoRes = await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(query)}&count=1&language=en&format=json`);
+        // Step 1: Geocode location name to Lat/Lon using OpenStreetMap Nominatim
+        const geoRes = await fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(query)}&format=json&limit=1`, {
+            headers: { 'User-Agent': 'WeatherApp/1.0 (contact@yourdomain.com)' }
+        });
         const geoData = await geoRes.json();
 
-        if (!geoData.results || geoData.results.length === 0) {
+        if (!geoData || geoData.length === 0) {
             container.innerHTML = "<p>Location not found. Please try another search.</p>";
             return;
         }
 
-        const place = geoData.results[0];
-        const securedCoords = LocationSecurityGuard.sanitizeCoordinates(place.latitude, place.longitude);
+        const place = geoData[0];
+        const rawLat = parseFloat(place.lat);
+        const rawLon = parseFloat(place.lon);
+
+        const securedCoords = LocationSecurityGuard.sanitizeCoordinates(rawLat, rawLon);
         currentLat = securedCoords.lat;
         currentLon = securedCoords.lon;
         
-        const locationParts = [place.name, place.admin1, place.country_code ? place.country_code.toUpperCase() : ''].filter(Boolean);
-        const placeName = locationParts.join(', ');
+        const placeName = place.display_name.split(',').slice(0, 3).join(', ');
 
         activeSearchQuery = query;
         activePlaceName = placeName;
+
+        // Step 2: Pass coordinates to load weather using the NOAA API
         loadWeatherForCoords(currentLat, currentLon, placeName, query);
     } catch (err) {
         console.error(err);
         container.innerHTML = `<p>Error loading weather data: ${err.message || err}</p>`;
     }
 }
-
+   
 function useCurrentLocation() {
     const container = document.getElementById("forecastContainer");
     if (!navigator.geolocation) {
@@ -600,22 +607,56 @@ async function loadWeatherForCoords(lat, lon, placeName, searchQuery) {
     document.getElementById("locationTitle").innerText = `${placeName} Forecast`;
     document.getElementById("locationSub").innerText = `Encrypted Coordinates: ${lat.toFixed(2)}°, ${lon.toFixed(2)}°`;
 
-    try {
-        const weatherUrl = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&hourly=temperature_2m,wind_speed_10m,wind_gusts_10m&daily=weather_code,temperature_2m_max,temperature_2m_min,wind_speed_10m_max,wind_gusts_10m_max&temperature_unit=fahrenheit&wind_speed_unit=mph&timezone=auto&forecast_days=10`;
-        
-        const weatherRes = await fetch(weatherUrl);
-        if (!weatherRes.ok) {
-            throw new Error(`HTTP ${weatherRes.status}: ${weatherRes.statusText || 'Failed to fetch weather data'}`);
-        }
-        const weatherData = await weatherRes.json();
+    // NOAA strictly requires a custom User-Agent header
+    const headers = {
+        'User-Agent': 'WeatherApp/1.0 (contact@yourdomain.com)'
+    };
 
+    try {
+        // Step 1: Query NWS points API to retrieve the grid endpoints for coordinates
+        const pointRes = await fetch(`https://api.weather.gov/points/${lat},${lon}`, { headers });
+        if (!pointRes.ok) {
+            if (pointRes.status === 404) {
+                throw new Error("Location outside NWS coverage. NOAA only covers US territories.");
+            }
+            throw new Error(`NOAA Metadata Error HTTP ${pointRes.status}`);
+        }
+        const pointData = await pointRes.json();
+
+        // Extract daily and hourly forecast URLs from the grid metadata
+        const forecastUrl = pointData.properties.forecast;
+        const forecastHourlyUrl = pointData.properties.forecastHourly;
+
+        // Step 2: Fetch both daily and hourly forecasts in parallel
+        const [dailyRes, hourlyRes] = await Promise.all([
+            fetch(forecastUrl, { headers }),
+            fetch(forecastHourlyUrl, { headers })
+        ]);
+
+        if (!dailyRes.ok || !hourlyRes.ok) {
+            throw new Error("Failed to retrieve detailed forecast periods from NOAA.");
+        }
+
+        const dailyData = await dailyRes.json();
+        const hourlyData = await hourlyRes.json();
+
+        // Structure the payload to pass along to your parseAndRender function
+        const weatherData = {
+            daily: dailyData.properties.periods,    // Contains daily high/lows, short forecasts, icons
+            hourly: hourlyData.properties.periods,  // Contains hourly temperature, wind speed, direction
+            rawMetadata: pointData.properties
+        };
+
+        // Assign active hourly periods to match your original global variable structure
         activeHourlyData = weatherData.hourly;
+
         parseAndRender(weatherData, searchQuery, placeName);
     } catch (err) {
         console.error(err);
         container.innerHTML = `<p>Error loading weather data: ${err.message || err}</p>`;
     }
 }
+   
 
 function getPreEventDateString(dateStr) {
     const [m, d, y] = dateStr.split("/").map(Number);
