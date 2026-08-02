@@ -925,6 +925,11 @@ function parseAndRender(data, searchQuery, placeName) {
         95: "Thunderstorms", 96: "Thunderstorms & Hail", 99: "Severe Thunderstorms"
     };
 
+    // Calculate current time index for today matching the graph value
+    const now = new Date();
+    const todayStr = `${now.getMonth() + 1}/${now.getDate()}/${now.getFullYear()}`;
+    const currentMinuteIndex = now.getHours() * 60 + now.getMinutes();
+
     targetDates.forEach((dateStr, i) => {
         const [m, d, y] = dateStr.split("/").map(Number);
         const dateObj = new Date(y, m - 1, d);
@@ -962,10 +967,18 @@ function parseAndRender(data, searchQuery, placeName) {
         let cardHigh, cardLow, cardWind, cardGusts, note, rawCondition;
         const hasEventInfluence = matchedOverride || futureEventOverride;
 
-        cardHigh = Math.max(...minuteData.temps);
-        cardLow = Math.min(...minuteData.temps);
-        cardWind = Math.max(...minuteData.winds);
-        cardGusts = Math.max(...minuteData.gusts);
+        // If it's today, pin the primary display values to the exact current time graph index value
+        if (dateStr === todayStr && currentMinuteIndex < minuteData.temps.length) {
+            cardHigh = Math.round(minuteData.temps[currentMinuteIndex]);
+            cardLow = Math.round(Math.min(...minuteData.temps)); // Keep daily low context
+            cardWind = Math.round(minuteData.winds[currentMinuteIndex]);
+            cardGusts = Math.round(minuteData.gusts[currentMinuteIndex]);
+        } else {
+            cardHigh = Math.round(Math.max(...minuteData.temps));
+            cardLow = Math.round(Math.min(...minuteData.temps));
+            cardWind = Math.round(Math.max(...minuteData.winds));
+            cardGusts = Math.round(Math.max(...minuteData.gusts));
+        }
 
         if (dateStr === "7/31/2026") {
             if (isMN) {
@@ -1004,7 +1017,8 @@ function parseAndRender(data, searchQuery, placeName) {
             gusts: cardGusts, 
             note: note, 
             iconUrl: iconUrl, 
-            maxGustScale: maxGustInForecast
+            maxGustScale: maxGustInForecast,
+            isToday: (dateStr === todayStr)
         });
     });
 
@@ -1015,7 +1029,6 @@ function renderForecast(forecastData) {
     const container = document.getElementById("forecastContainer");
     container.innerHTML = "";
 
-    // Create and insert the weather history button dynamically above or inside the render container
     let historyToggleBtn = document.getElementById("historyToggleBtn");
     if (!historyToggleBtn) {
         historyToggleBtn = document.createElement("button");
@@ -1057,7 +1070,8 @@ function renderForecast(forecastData) {
 
         const tempTitle = document.createElement("div");
         tempTitle.className = "section-title";
-        tempTitle.innerText = "Temperature";
+        // Dynamically label header if displaying current vs peak forecast metrics
+        tempTitle.innerText = item.isToday ? "Current Temp" : "Temperature";
 
         const highColor = getTempColor(item.high);
         const lowColor = getTempColor(item.low);
@@ -1069,7 +1083,9 @@ function renderForecast(forecastData) {
 
         const tempRange = document.createElement("div");
         tempRange.className = "metric-sub";
-        tempRange.innerHTML = `Low: <span style="color: ${lowColor}; font-weight: bold;">${item.low}°F</span>`;
+        tempRange.innerHTML = item.isToday 
+            ? `High/Low: <span style="color: ${highColor};">${item.high}°</span>/<span style="color: ${lowColor};">${item.low}°</span>`
+            : `Low: <span style="color: ${lowColor}; font-weight: bold;">${item.low}°F</span>`;
 
         const tempBar = document.createElement("div");
         tempBar.className = "bar";
@@ -1082,7 +1098,7 @@ function renderForecast(forecastData) {
 
         const windTitle = document.createElement("div");
         windTitle.className = "section-title";
-        windTitle.innerText = "Sustained Wind";
+        windTitle.innerText = item.isToday ? "Current Wind" : "Sustained Wind";
 
         const windColor = getWindColor(item.wind);
 
@@ -1094,7 +1110,7 @@ function renderForecast(forecastData) {
         const windSub = document.createElement("div");
         windSub.className = "metric-sub";
         windSub.style.color = "#aaa";
-        windSub.innerText = `Sustained`;
+        windSub.innerText = item.isToday ? "Live Speed" : "Sustained";
 
         const windBar = document.createElement("div");
         windBar.className = "bar";
@@ -1107,7 +1123,7 @@ function renderForecast(forecastData) {
 
         const gustTitle = document.createElement("div");
         gustTitle.className = "section-title";
-        gustTitle.innerText = "Peak Gusts";
+        gustTitle.innerText = item.isToday ? "Current Gusts" : "Peak Gusts";
 
         const gustColor = getWindColor(item.gusts);
 
