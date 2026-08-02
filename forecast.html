@@ -731,7 +731,7 @@ const min2am = 2 * 60;
                 const hash = Math.abs(getHashOffset(locationSeed));
                 
                 // Adjusted peak values based on confidence
-                const localWindPeak = 26 + ((hash % 10) - 5);   
+                const localWindPeak = 28 + ((hash % 10) - 5);   
                 const localGustPeak = 55 + ((hash % 15) - 7);    
 
                 // Target ending values after 9 PM down-trend
@@ -763,8 +763,8 @@ const min2am = 2 * 60;
                 const hash = Math.abs(getHashOffset(locationSeed));
                 
                 // Adjusted peak values based on confidence
-                const localWindPeak = 26 + ((hash % 10) - 5);   
-                const localGustPeak = 55 + ((hash % 15) - 7);    
+                const localWindPeak = 24 + ((hash % 10) - 5);   
+                const localGustPeak = 57 + ((hash % 15) - 7);    
 
                 // Target ending values after 9 PM down-trend
                 const targetEndWind = 5;
@@ -889,7 +889,6 @@ const min2am = 2 * 60;
 }
 
 function parseAndRender(data, searchQuery, placeName) {
-    // Reveal history button once search results are actively rendered
     const historyBtn = document.getElementById("historyToggleBtn");
     if (historyBtn) {
         historyBtn.style.display = "inline-block";
@@ -925,7 +924,6 @@ function parseAndRender(data, searchQuery, placeName) {
         95: "Thunderstorms", 96: "Thunderstorms & Hail", 99: "Severe Thunderstorms"
     };
 
-    // Calculate current time index for today matching the graph value
     const now = new Date();
     const todayStr = `${now.getMonth() + 1}/${now.getDate()}/${now.getFullYear()}`;
     const currentMinuteIndex = now.getHours() * 60 + now.getMinutes();
@@ -967,10 +965,9 @@ function parseAndRender(data, searchQuery, placeName) {
         let cardHigh, cardLow, cardWind, cardGusts, note, rawCondition;
         const hasEventInfluence = matchedOverride || futureEventOverride;
 
-        // If it's today, pin the primary display values to the exact current time graph index value
         if (dateStr === todayStr && currentMinuteIndex < minuteData.temps.length) {
             cardHigh = Math.round(minuteData.temps[currentMinuteIndex]);
-            cardLow = Math.round(Math.min(...minuteData.temps)); // Keep daily low context
+            cardLow = Math.round(Math.min(...minuteData.temps));
             cardWind = Math.round(minuteData.winds[currentMinuteIndex]);
             cardGusts = Math.round(minuteData.gusts[currentMinuteIndex]);
         } else {
@@ -1070,7 +1067,6 @@ function renderForecast(forecastData) {
 
         const tempTitle = document.createElement("div");
         tempTitle.className = "section-title";
-        // Dynamically label header if displaying current vs peak forecast metrics
         tempTitle.innerText = item.isToday ? "Current Temp" : "Temperature";
 
         const highColor = getTempColor(item.high);
@@ -1159,7 +1155,7 @@ function renderForecast(forecastData) {
         container.appendChild(card);
     });
 }
-
+   
 function openGraphModal(item) {
     // If opened from a history panel or archive list, target item might just have a dateStr
     const targetDateStr = typeof item === "string" ? item : (item.dateStr || item); 
