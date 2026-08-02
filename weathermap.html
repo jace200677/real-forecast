@@ -4,6 +4,10 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Ventusky Live | Severe Pacific Front Tracker</title>
+    
+    <!-- Leaflet CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+
     <style>
         :root {
             --bg-dark: #0f1423;
@@ -42,7 +46,7 @@
             align-items: center;
             justify-content: space-between;
             padding: 0 1.5rem;
-            z-index: 100;
+            z-index: 1000;
         }
 
         .logo-group {
@@ -114,15 +118,26 @@
             display: flex;
         }
 
-        /* Visual Canvas / Map Area */
+        /* Map Container */
+        #map {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 1;
+            background: #0d121d;
+        }
+
+        /* Visual Canvas Overlay */
         #weather-canvas {
             position: absolute;
             top: 0;
             left: 0;
             width: 100%;
             height: 100%;
-            background: #0d121d;
-            z-index: 1;
+            z-index: 2;
+            pointer-events: none; /* Let map interactions pass through */
         }
 
         /* Floating Controls & Overlays */
@@ -130,7 +145,7 @@
             position: absolute;
             top: 1.5rem;
             left: 1.5rem;
-            z-index: 10;
+            z-index: 500;
             background: var(--panel-bg);
             backdrop-filter: blur(12px);
             border: 1px solid var(--border-color);
@@ -173,7 +188,7 @@
             position: absolute;
             top: 1.5rem;
             right: 1.5rem;
-            z-index: 10;
+            z-index: 500;
             background: var(--panel-bg);
             backdrop-filter: blur(12px);
             border: 1px solid var(--border-color);
@@ -282,7 +297,7 @@
             bottom: 1.5rem;
             left: 50%;
             transform: translateX(-50%);
-            z-index: 10;
+            z-index: 500;
             width: 80%;
             max-width: 900px;
             background: var(--panel-bg);
@@ -364,8 +379,12 @@
         </div>
     </header>
 
-    <!-- Interactive Map Workspace -->
+    <!-- Interactive Workspace -->
     <div class="workspace">
+        <!-- Leaflet Map Container -->
+        <div id="map"></div>
+
+        <!-- Canvas Particle Overlay -->
         <canvas id="weather-canvas"></canvas>
 
         <!-- Weather Overlay Controls -->
@@ -441,8 +460,41 @@
         </div>
     </div>
 
-    <!-- Interactive Dynamic Map Simulation Script -->
+    <!-- Leaflet JS -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+    <!-- Dashboard & Animation Logic -->
     <script>
+        // --- 1. Leaflet Map Setup ---
+        const map = L.map('map', {
+            zoomControl: false,
+            attributionControl: false
+        }).setView([45.0, -100.0], 4); // Center over US Continental map
+
+        // Dark-themed tiles for Ventusky aesthetic
+        L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+            maxZoom: 19,
+            subdomains: 'abcd'
+        }).addTo(map);
+
+        // Track key locations along the frontal progression route
+        const frontWaypoints = [
+            { pct: 0, lat: 47.6062, lng: -122.3321, name: "Washington State" },
+            { pct: 25, lat: 46.8797, lng: -110.3626, name: "Northern Rockies" },
+            { pct: 50, lat: 41.8781, lng: -93.0977, name: "Central Plains" },
+            { pct: 75, lat: 41.8781, lng: -87.6298, name: "Great Lakes / Midwest" },
+            { pct: 100, lat: 40.7128, lng: -74.0060, name: "US East Coast" }
+        ];
+
+        // Marker for storm center
+        const stormMarker = L.circleMarker([47.6062, -122.3321], {
+            radius: 12,
+            color: '#ef4444',
+            fillColor: '#ef4444',
+            fillOpacity: 0.5
+        }).addTo(map);
+
+        // --- 2. Canvas Animation Overlay ---
         const canvas = document.getElementById('weather-canvas');
         const ctx = canvas.getContext('2d');
 
@@ -459,7 +511,6 @@
             temp: 40
         };
 
-        // Resize Canvas to Window
         function resizeCanvas() {
             canvas.width = window.innerWidth;
             canvas.height = window.innerHeight - 60;
@@ -468,7 +519,7 @@
         resizeCanvas();
 
         // Particles System for Flowing Wind Simulation
-        const numParticles = 300;
+        const numParticles = 250;
         const particles = [];
         for (let i = 0; i < numParticles; i++) {
             particles.push({
@@ -479,35 +530,36 @@
             });
         }
 
-        // Render Canvas Visuals
+        // Render Canvas Visual Overlay
         function renderMap() {
-            ctx.fillStyle = '#0d121d';
-            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-            // Draw Storm Front Path (Moving West to East across screen)
-            const stormX = (canvas.width * 0.15) + (timeProgress / 100) * (canvas.width * 0.7);
-            
-            // Draw Cold Air Gradient Behind Front
-            const grad = ctx.createLinearGradient(stormX - 300, 0, stormX + 200, 0);
+            // Calculate Storm Screen Coordinates from Leaflet Marker position
+            const markerLatLng = stormMarker.getLatLng();
+            const stormPos = map.latLngToContainerPoint(markerLatLng);
+
+            // Draw Gradient Front Overlay anchored to map coordinates
+            const grad = ctx.createRadialGradient(stormPos.x, stormPos.y, 10, stormPos.x, stormPos.y, 350);
             if (currentLayer === 'temp') {
-                grad.addColorStop(0, 'rgba(59, 130, 246, 0.4)'); // Cold Air (Blue)
-                grad.addColorStop(0.6, 'rgba(239, 68, 68, 0.3)'); // Frontal Zone
-                grad.addColorStop(1, 'rgba(245, 158, 11, 0.1)'); // Warm Air Ahead
+                grad.addColorStop(0, 'rgba(59, 130, 246, 0.45)');  // Cold Center
+                grad.addColorStop(0.7, 'rgba(239, 68, 68, 0.25)'); // Frontal Boundary
+                grad.addColorStop(1, 'rgba(0, 0, 0, 0)');
             } else if (currentLayer === 'gusts' || currentLayer === 'wind') {
-                grad.addColorStop(0, 'rgba(239, 68, 68, 0.05)');
-                grad.addColorStop(0.5, 'rgba(239, 68, 68, 0.5)'); // High Wind Zone
-                grad.addColorStop(1, 'rgba(59, 130, 246, 0.05)');
+                grad.addColorStop(0, 'rgba(239, 68, 68, 0.5)');   // High Wind Peak
+                grad.addColorStop(0.6, 'rgba(245, 158, 11, 0.2)');
+                grad.addColorStop(1, 'rgba(0, 0, 0, 0)');
             } else {
-                grad.addColorStop(0, 'rgba(16, 185, 129, 0.1)');
-                grad.addColorStop(0.5, 'rgba(16, 185, 129, 0.5)'); // Rain/Radar
+                grad.addColorStop(0, 'rgba(16, 185, 129, 0.5)');   // Radar reflectivity
                 grad.addColorStop(1, 'rgba(0, 0, 0, 0)');
             }
 
             ctx.fillStyle = grad;
-            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            ctx.beginPath();
+            ctx.arc(stormPos.x, stormPos.y, 350, 0, Math.PI * 2);
+            ctx.fill();
 
-            // Animate Wind Particles
-            ctx.strokeStyle = currentLayer === 'temp' ? 'rgba(147, 197, 253, 0.5)' : 'rgba(255, 255, 255, 0.6)';
+            // Animate Flowing Wind Particles
+            ctx.strokeStyle = currentLayer === 'temp' ? 'rgba(147, 197, 253, 0.6)' : 'rgba(255, 255, 255, 0.65)';
             ctx.lineWidth = 1.5;
             
             const speedFactor = (currentTerrain === 'open' ? 1.0 : 0.55) * (baseData.wind / 30);
@@ -515,7 +567,7 @@
             particles.forEach(p => {
                 ctx.beginPath();
                 ctx.moveTo(p.x, p.y);
-                ctx.lineTo(p.x + p.length, p.y + (Math.sin(p.x * 0.01) * 5));
+                ctx.lineTo(p.x + p.length, p.y + (Math.sin(p.x * 0.01) * 4));
                 ctx.stroke();
 
                 p.x += p.speed * speedFactor;
@@ -524,16 +576,6 @@
                     p.y = Math.random() * canvas.height;
                 }
             });
-
-            // Draw Front Line Indicator
-            ctx.setLineDash([8, 8]);
-            ctx.strokeStyle = '#ef4444';
-            ctx.lineWidth = 2;
-            ctx.beginPath();
-            ctx.moveTo(stormX, 0);
-            ctx.lineTo(stormX - 50, canvas.height);
-            ctx.stroke();
-            ctx.setLineDash([]);
 
             if (isPlaying) {
                 timeProgress = (timeProgress + 0.15) % 100;
@@ -544,11 +586,31 @@
             animationFrame = requestAnimationFrame(renderMap);
         }
 
-        // Handle Interactive Control UI Updates
+        // Redraw canvas on Leaflet map movement
+        map.on('move', () => {
+            if (!isPlaying) renderMap();
+        });
+
+        // --- 3. Interactive UI Controls ---
         function updateTime(val) {
             timeProgress = parseFloat(val);
             
-            // Adjust Location Name based on Eastward Progression
+            // Interpolate coordinates along trajectory points
+            const currentWaypointIndex = Math.min(
+                Math.floor((timeProgress / 100) * (frontWaypoints.length - 1)),
+                frontWaypoints.length - 2
+            );
+
+            const p1 = frontWaypoints[currentWaypointIndex];
+            const p2 = frontWaypoints[currentWaypointIndex + 1];
+            const segmentProgress = (timeProgress - p1.pct) / (p2.pct - p1.pct);
+
+            const interpolatedLat = p1.lat + (p2.lat - p1.lat) * segmentProgress;
+            const interpolatedLng = p1.lng + (p2.lng - p1.lng) * segmentProgress;
+
+            stormMarker.setLatLng([interpolatedLat, interpolatedLng]);
+
+            // Update Header & Location Labels
             const locLabel = document.getElementById('card-location');
             const dateLabel = document.getElementById('card-date');
 
@@ -600,16 +662,16 @@
             let gust = baseData.gust;
             let temp = baseData.temp;
 
-            // Apply Terrain Surface Friction Effects
+            // Surface Roughness Friction Effect
             if (currentTerrain === 'forest') {
-                wind = Math.round(wind * 0.65); // Forest canopy reduces wind speed
+                wind = Math.round(wind * 0.65);
                 gust = Math.round(gust * 0.70);
-                temp = temp - 2; // Shaded/insulated microclimate
+                temp = temp - 2;
             }
 
-            // Apply Eastward Air Mass Modification
+            // Temperature moderation as air mass moves eastward
             const progressRatio = timeProgress / 100;
-            temp = Math.round(temp + (progressRatio * 18)); // Moderates as front moves east
+            temp = Math.round(temp + (progressRatio * 18));
             
             document.getElementById('val-wind').textContent = wind + ' mph';
             document.getElementById('val-gust').textContent = gust + ' mph';
