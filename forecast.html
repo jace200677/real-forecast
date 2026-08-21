@@ -1,2080 +1,220 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>USA 7-Day Weather Forecast</title>
-<!-- Include Chart.js for interactive popup graphs -->
-<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-<style>
-    * { box-sizing: border-box; }
-    body { font-family: 'Segoe UI', Arial, sans-serif; background:#0d0d0d; color:#fff; padding:20px; margin: 0; }
-    h1 { text-align:center; margin-bottom:5px; font-size:32px; color: #f0f0f0; }
-    .subtitle { text-align:center; color:#a0a0a0; font-size:14px; margin-bottom:20px; }
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Forecast Dashboard</title>
+    <!-- Chart.js Library -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        body {
+            background-color: #121212;
+            color: #f0f0f0;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 0;
+            padding: 20px;
+        }
 
-    /* Security Status Banner */
-    .security-banner {
-        max-width: 600px; margin: 0 auto 15px auto; background: #15231c; border: 1px solid #28a745;
-        padding: 8px 14px; border-radius: 8px; font-size: 13px; display: flex; align-items: center;
-        justify-content: space-between; color: #71ee95;
-    }
-    .security-banner span { font-weight: bold; color: #fff; }
+        .chart-container {
+            position: relative;
+            width: 100%;
+            max-width: 900px;
+            height: 400px;
+            margin: 20px auto;
+            background: #1e1e1e;
+            padding: 15px;
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+        }
 
-    /* Search Bar Styling */
-    .search-container { display: flex; justify-content: center; gap: 10px; margin-bottom: 25px; flex-wrap: wrap; }
-    .search-input { 
-        padding: 10px 16px; 
-        font-size: 16px; 
-        border-radius: 8px; 
-        border: 1px solid #333; 
-        background: #1c1c1c; 
-        color: #fff; 
-        width: 320px; 
-        outline: none;
-    }
-    .search-input:focus { border-color: #00a8cc; }
-    .search-btn, .location-btn { 
-        padding: 10px 20px; 
-        font-size: 16px; 
-        border: none; 
-        border-radius: 8px; 
-        color: #fff; 
-        font-weight: bold; 
-        cursor: pointer; 
-        transition: background .2s, transform 0.1s;
-    }
-    .search-btn { background: #00a8cc; }
-    .search-btn:hover { background: #0082a3; }
-    
-    .location-btn { background: #28a745; display: flex; align-items: center; gap: 6px; }
-    .location-btn:hover { background: #218838; }
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.7);
+            justify-content: center;
+            align-items: center;
+        }
 
-    .search-btn:active, .location-btn:active { transform: scale(0.98); }
+        .modal-content {
+            background: #1e1e1e;
+            padding: 20px;
+            border-radius: 8px;
+            color: #fff;
+            text-align: center;
+            min-width: 250px;
+        }
 
-    .forecast-container { display:flex; flex-wrap:wrap; gap:18px; justify-content:center; }
-    .day-card { 
-        background:#1c1c1c; padding:18px; border-radius:14px; width:230px;
-        box-shadow:0 4px 18px rgba(0,0,0,0.6); transition:transform .2s, border-color .2s; border: 1px solid #282828; 
-        cursor: pointer; position: relative;
-    }
-    .day-card:hover { transform:translateY(-4px); border-color: #00a8cc; }
-    .day-name { font-size:20px; text-align:center; margin-bottom:2px; font-weight:bold; color: #00a8cc; }
-    .day-date { font-size:12px; color:#777; text-align:center; margin-bottom:10px; }
-    
-    /* Weather Icon Styling */
-    .weather-icon-container { text-align: center; margin-bottom: 12px; }
-    .weather-icon { width: 56px; height: 56px; object-fit: contain; }
+        .btn-controls {
+            display: flex;
+            justify-content: center;
+            gap: 10px;
+            margin-bottom: 10px;
+        }
 
-    .section-title { font-size:11px; text-transform:uppercase; letter-spacing:1px; color:#777; margin-bottom:4px; }
+        button {
+            background: #00a8cc;
+            color: #fff;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-weight: bold;
+        }
 
-    /* Values & Labels */
-    .metric-val { font-size:24px; font-weight:bold; margin-bottom:2px; }
-    .metric-sub { font-size:13px; font-weight: 500; margin-bottom:6px; }
-
-    /* Bar Styling */
-    .bar { height:8px; background:#2a2a2a; border-radius:4px; overflow:hidden; margin-bottom:12px; }
-    .bar-fill { height:100%; border-radius:4px; transition:width .8s, background-color .8s; }
-
-    .click-hint {
-        font-size: 11px; text-align: center; color: #00a8cc; margin-top: 10px; text-transform: uppercase; letter-spacing: 0.5px;
-    }
-
-    /* Modal Styling for Graph */
-    .modal-overlay {
-        position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-        background: rgba(0, 0, 0, 0.85); backdrop-filter: blur(5px);
-        display: none; justify-content: center; align-items: center; z-index: 1000;
-    }
-    .modal-content {
-        background: #1c1c1c; border: 1px solid #333; border-radius: 16px;
-        width: 90%; max-width: 750px; padding: 24px; box-shadow: 0 10px 30px rgba(0,0,0,0.8);
-        position: relative;
-    }
-    .modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; flex-wrap: wrap; gap: 10px; }
-    .modal-title { font-size: 20px; font-weight: bold; color: #fff; }
-    .modal-close { font-size: 24px; color: #aaa; cursor: pointer; border: none; background: none; }
-    .modal-close:hover { color: #fff; }
-    .controls-container { display: flex; align-items: center; gap: 10px; }
-    .chart-select {
-        background: #2a2a2a; color: #fff; border: 1px solid #444; padding: 8px 12px;
-        border-radius: 6px; font-size: 14px; outline: none; cursor: pointer;
-    }
-    .chart-container { position: relative; width: 100%; height: 330px; }
-    .graph-confidence-bar {
-        font-size: 12px; color: #aaa; background: #252525; padding: 8px 12px; border-radius: 6px;
-        margin-bottom: 15px; display: flex; justify-content: space-between; align-items: center; border: 1px solid #333;
-    }
-    .graph-confidence-bar span { color: #00a8cc; font-weight: bold; }
-</style>
+        button:hover {
+            background: #0086a3;
+        }
+    </style>
 </head>
 <body>
-   
-<h1 id="locationTitle">7-Day Weather Forecast</h1>
-<div class="subtitle" id="locationSub">Search any location or use your current location with auto-hacker protection</div>
 
-<!-- Security Shield Protection Banner -->
-<div class="security-banner" id="securityBanner">
-    <div>🛡️ <span>Location Auto-Protection:</span> Active (IP Masking & Anti-Spoofing Enabled)</div>
-    <div id="securePingStatus" style="font-size: 11px; color: #28a745;">● Secure Tunnel</div>
+<div class="btn-controls">
+    <button onclick="renderSampleChart('temp')">Temperature (°F)</button>
+    <button onclick="renderSampleChart('wind')">Wind Speed (mph)</button>
+    <button onclick="toggleModal(true)">Show Confidence Modal</button>
 </div>
 
-<div class="search-container">
-    <input type="text" id="searchInput" class="search-input" placeholder="Search location (e.g. Seattle, Boise, Fargo, Minneapolis, Milwaukee...)">
-    <button onclick="fetchForecast()" class="search-btn">Search</button>
-    <button onclick="useCurrentLocation()" class="location-btn">📍 Use Current Location</button>
+<div class="chart-container">
+    <canvas id="forecastChart"></canvas>
 </div>
-   
-<div class="modal-overlay" id="historyModal">
-    <div class="modal-content" style="max-width: 480px;">
-        <div class="modal-header">
-            <div>
-                <div class="modal-title">Weather History Archive</div>
-                <div style="font-size: 13px; color: #888;" id="historyLocationName">Selected Location</div>
-            </div>
-            <button class="modal-close" onclick="closeHistoryModal()">&times;</button>
-        </div>
-        <div style="margin-bottom: 15px;">
-            <label style="font-size: 12px; color: #aaa; display: block; margin-bottom: 6px;">Select Past Date (MM/DD/YYYY):</label>
-            <div style="display: flex; gap: 10px;">
-                <input type="text" id="historyDateInput" class="search-input" placeholder="e.g. 05/15/2026" style="width: 100%;">
-                <button onclick="loadHistoryDateCard()" class="search-btn" style="white-space: nowrap;">Load Past Data</button>
-            </div>
-        </div>
-        <div id="historyResultContainer" style="margin-top: 15px;"></div>
-    </div>
-</div>
-   
-<div class="forecast-container" id="forecastContainer"></div>
 
-<!-- Modal Dialog for Graph Display -->
-<div class="modal-overlay" id="chartModal">
+<!-- Live Confidence Display Modal -->
+<div id="chartModal" class="modal">
     <div class="modal-content">
-        <div class="modal-header">
-            <div>
-                <div class="modal-title" id="modalTitle">Minute-by-Minute Forecast Graph</div>
-                <div style="font-size: 13px; color: #888;" id="modalSubtitle">Detailed breakdown (0 to 24 Hours)</div>
-            </div>
-            <div class="controls-container">
-                <select id="metricSelector" class="chart-select" onchange="updateChartMetric()">
-                    <option value="temp">Temperature (°F)</option>
-                    <option value="wind">Wind Speed (mph)</option>
-                    <option value="gusts">Wind Gusts (mph)</option>
-                </select>
-                <button class="modal-close" onclick="closeModal()">&times;</button>
-            </div>
-        </div>
-        <div class="graph-confidence-bar" id="graphConfidenceBar">
-            Live Precision & Dynamic Confidence: <span id="modalConfVal">Calculating...</span>
-        </div>
-        <div class="chart-container">
-            <canvas id="forecastChart"></canvas>
-        </div>
+        <h3>Live Forecast Confidence</h3>
+        <p id="liveConfidence">Calculating...</p>
+        <button onclick="toggleModal(false)">Close</button>
     </div>
 </div>
 
 <script>
-const ICON_BASE_URL = "https://raw.githubusercontent.com/jace200677/real-forecast/main/weather/";
-
-let currentLat = null;
-let currentLon = null;
-let activeHourlyData = null;
-let activeDayDateStr = null;
-let activeSearchQuery = "";
-let activePlaceName = "";
+// Global variables
 let chartInstance = null;
 
-const LocationSecurityGuard = {
-    isSpoofed(position) {
-        if (!position || !position.coords) return true;
-        const { latitude, longitude, accuracy } = position.coords;
-        if (latitude === 0 && longitude === 0) return true;
-        if (Number.isInteger(latitude) && Number.isInteger(longitude) && accuracy === 0) return true;
-        return false;
-    },
-    sanitizeCoordinates(lat, lon) {
-        const precisionFactor = 1000;
-        const safeLat = Math.round(lat * precisionFactor) / precisionFactor;
-        const safeLon = Math.round(lon * precisionFactor) / precisionFactor;
-        return { lat: safeLat, lon: safeLon };
-    }
-};
-
-function getWeatherIcon(weatherCode, conditionText, regionMatch, dateStr, windSpeed) {
-    const searchLower = `${activeSearchQuery} ${activePlaceName}`.toLowerCase();
-    const isMinnesota = ["minnesota", "mn", "duluth", "moorhead", "bemidji", "brainerd", "hibbing", "grand rapids", "fergus falls", "international falls", "virginia", "cloquet", "east grand forks", "thief river falls", "crookston", "detroit lakes", "little falls", "alexandria", "park rapids", "minneapolis", "st. paul", "saint paul", "rochester", "bloomington", "plymouth", "brooklyn park", "woodbury", "st. cloud", "st. joseph", "saint joseph", "eagan", "eden prairie", "coon rapids", "burnsville", "blaine", "lakeville", "minnetonka", "apple valley", "edina", "st. louis park", "mankato", "shakopee", "richfield", "cottage grove", "roseville", "inver grove heights", "winona"].some(kw => new RegExp(`\\b${kw.replace('.', '\\.')}\\b`, 'i').test(searchLower));
-
-    // Handle 7/31/2026 specifically
-    if (dateStr === "7/31/2026") {
-        if (isMinnesota) {
-            return ICON_BASE_URL + "Thunderstorms.png";
-        } else {
-            // Non-MN on 7/31/2026: fallback strictly to live weather code mapping
-            return getLiveWeatherIconByCode(weatherCode);
-        }
-    }
-    if (dateStr === "8/3/2026") {
-        if (isMinnesota) {
-            return ICON_BASE_URL + "Thunderstorms.png";
-        } else {
-            // Non-MN on 7/31/2026: fallback strictly to live weather code mapping
-            return getLiveWeatherIconByCode(weatherCode);
-        }
-    }
-    if (regionMatch) {
-        return ICON_BASE_URL + "windy.png";
-    }
-    if (windSpeed !== undefined && windSpeed >= 15) {
-        return ICON_BASE_URL + "windy.png";
-    }
-    if (conditionText) {
-        const lowerCond = conditionText.toLowerCase();
-        if (lowerCond.includes("storm") || lowerCond.includes("gust")) {
-            return ICON_BASE_URL + "Thunderstorms.png";
-        }
-        if (lowerCond.includes("wind")) {
-            return ICON_BASE_URL + "windy.png";
-        }
-    }
-    return getLiveWeatherIconByCode(weatherCode);
+// Helper: Converts HEX color strings to RGBA format for Chart.js gradient fills
+function hexToRgba(hex, alpha = 1) {
+    if (!hex || typeof hex !== 'string') return `rgba(0, 168, 204, ${alpha})`;
+    let c = hex.replace('#', '');
+    if (c.length === 3) c = c.split('').map(x => x + x).join('');
+    const num = parseInt(c, 16);
+    return `rgba(${(num >> 16) & 255}, ${(num >> 8) & 255}, ${num & 255}, ${alpha})`;
 }
 
-// Helper to map standard WMO codes to live icons
-function getLiveWeatherIconByCode(weatherCode) {
-    switch (weatherCode) {
-        case 0: return ICON_BASE_URL + "Sunny.png";
-        case 1: return ICON_BASE_URL + "Mostly%20sunny.png";
-        case 2: return ICON_BASE_URL + "Partly%20Cloudy.png";
-        case 3: return ICON_BASE_URL + "Cloudy.png";
-        case 45: case 48: return ICON_BASE_URL + "foggy.png";
-        case 51: case 53: case 55: case 61: case 63: return ICON_BASE_URL + "Light%20Rain.png";
-        case 65: case 80: case 81: case 82: return ICON_BASE_URL + "Rainy.png";
-        case 71: case 73: case 85: return ICON_BASE_URL + "Light%20snow.png";
-        case 75: case 77: case 86: return ICON_BASE_URL + "Snowy.png";
-        case 95: case 96: case 99: return ICON_BASE_URL + "Thunderstorms.png";
-        default: return ICON_BASE_URL + "Mostly%20cloudy.png";
-    }
-}
-
-function hexToRgb(hex) {
-    let bigint = parseInt(hex.replace('#',''), 16);
-    return [(bigint >> 16) & 255, (bigint >> 8) & 255, bigint & 255];
-}
-
-function rgbToHex(r, g, b) {
-    return "#" + ((1 << 24) + (Math.round(r) << 16) + (Math.round(g) << 8) + Math.round(b)).toString(16).slice(1);
-}
-
-function interpolateColor(color1, color2, factor) {
-    let c1 = hexToRgb(color1);
-    let c2 = hexToRgb(color2);
-    let r = c1[0] + factor * (c2[0] - c1[0]);
-    let g = c1[1] + factor * (c2[1] - c1[1]);
-    let b = c1[2] + factor * (c2[2] - c1[2]);
-    return rgbToHex(r, g, b);
-}
-
-const appleTempStops = [
-    { temp: 10, color: "#1c3d5a" }, 
-    { temp: 32, color: "#007aff" }, 
-    { temp: 50, color: "#34c759" }, 
-    { temp: 68, color: "#ffcc00" }, 
-    { temp: 82, color: "#ff9500" }, 
-    { temp: 95, color: "#ff3b30" }, 
-    { temp: 105, color: "#af52de" }
-];
-
-function getTempColor(temp) {
-    if (temp <= appleTempStops[0].temp) return appleTempStops[0].color;
-    if (temp >= appleTempStops[appleTempStops.length - 1].temp) return appleTempStops[appleTempStops.length - 1].color;
-    for (let i = 0; i < appleTempStops.length - 1; i++) {
-        let lowStop = appleTempStops[i];
-        let highStop = appleTempStops[i + 1];
-        if (temp >= lowStop.temp && temp <= highStop.temp) {
-            let factor = (temp - lowStop.temp) / (highStop.temp - lowStop.temp);
-            return interpolateColor(lowStop.color, highStop.color, factor);
-        }
-    }
-    return "#007aff";
-}
-
-const appleWindStops = [
-    { speed: 0, color: "#30b0c7" },   
-    { speed: 15, color: "#34c759" },  
-    { speed: 30, color: "#ffcc00" },  
-    { speed: 50, color: "#ff9500" },  
-    { speed: 75, color: "#ff3b30" },  
-    { speed: 100, color: "#af52de" }  
-];
-
-function getWindColor(speed) {
-    if (speed <= appleWindStops[0].speed) return appleWindStops[0].color;
-    if (speed >= appleWindStops[appleWindStops.length - 1].speed) return appleWindStops[appleWindStops.length - 1].color;
-    for (let i = 0; i < appleWindStops.length - 1; i++) {
-        let lowStop = appleWindStops[i];
-        let highStop = appleWindStops[i + 1];
-        if (speed >= lowStop.speed && speed <= highStop.speed) {
-            let factor = (speed - lowStop.speed) / (highStop.speed - lowStop.speed);
-            return interpolateColor(lowStop.color, highStop.color, factor);
-        }
-    }
-    return "#30b0c7";
-}
-
-// Regional Events mapped strictly per prompt instructions
-const regionalEvents = [
-    {
-        date: "8/2/2026",
-        regionKeywords: ["washington", "wa", "seattle", "spokane", "tacoma", "vancouver", "bellevue", "everett", "kent", "renton", "spokane valley", "federal way", "yakima", "bellingham", "kennewick", "auburn", "pasco", "marysville", "lakewood", "redmond", "richland", "shoreline", "sammamish", "burien", "olympia", "lacey", "edmonds", "bremerton", "puyallup"],
-        type: "cooler",
-        baseConfidence: 0.96,
-        data: { tempDelta: -18, wind: 22, gusts: 55, condition: "Washington Storm (Cooler Temps, 22 mph, Gusts 55 mph)" }
-    },
-    {
-        date: "8/3/2026",
-        regionKeywords: ["idaho", "id", "boise", "meridian", "nampa", "idaho falls", "pocatello", "caldwell", "coeur d'alene", "twin falls", "post falls", "rexburg", "moscow", "eagle", "chubbuck", "mountain home", "kuna", "hayden", "rigby", "blackfoot"],
-        type: "warmer",
-        baseConfidence: 0.95,
-        data: { tempDelta: 16, wind: 20, gusts: 49, condition: "Idaho Extreme Weather (Warmer Temps, 20 mph, Gusts 49 mph)" }
-    },
-    {
-        date: "8/4/2026",
-        regionKeywords: ["montana", "mt", "billings", "missoula", "great falls", "bozeman", "butte", "helena", "kalispell", "havre", "anaconda", "miles city", "laurel", "sidney", "lewistown", "glendive", "whitefish", "polson", "livingston"],
-        type: "cooler",
-        baseConfidence: 0.96,
-        data: { tempDelta: -20, wind: 25, gusts: 56, condition: "Montana Severe Storm (Cooler Temps, 25 mph, Gusts 56 mph)" }
-    },
-    {
-        date: "8/5/2026",
-        regionKeywords: ["north dakota", "nd", "fargo", "bismarck", "grand forks", "minot", "mandan", "dickinson", "williston", "west fargo", "wahpeton", "valley city", "jamestown", "devils lake"],
-        type: "hotter",
-        baseConfidence: 0.97,
-        data: { tempDelta: -22, wind: 24, gusts: 55, condition: "North Dakota Extreme Front (Hotter Temps, 24 mph, Gusts 55 mph)" }
-    },
-    {
-        date: "8/6/2026",
-        regionKeywords: ["minnesota", "mn", "duluth", "moorhead", "bemidji", "brainerd", "hibbing", "grand rapids", "fergus falls", "international falls", "virginia", "cloquet", "east grand forks", "thief river falls", "crookston", "detroit lakes", "little falls", "alexandria", "park rapids", "minneapolis", "st. paul", "saint paul", "rochester", "bloomington", "plymouth", "brooklyn park", "woodbury", "st. cloud", "st. joseph", "saint joseph", "eagan", "eden prairie", "coon rapids", "burnsville", "blaine", "lakeville", "minnetonka", "apple valley", "edina", "st. louis park", "mankato", "shakopee", "richfield", "cottage grove", "roseville", "inver grove heights", "winona"],
-        type: "cooler",
-        baseConfidence: 0.95,
-        data: { tempDelta: -16, wind: 15, gusts: 30, condition: "Minnesota Cool Front (Cooler Temps, 15 mph, Gusts 30 mph)" }
-    },
-    {
-        date: "8/7/2026",
-        regionKeywords: ["wisconsin", "wi", "milwaukee", "madison", "green bay", "kenosha", "racine", "appleton", "waukesha", "eau claire", "oshkosh", "janesville", "west allis", "la crosse", "sheboygan", "wauwatosa", "fond du lac", "new berlin", "wausau", "brookfield", "beloit", "greenfield", "franklin", "oak creek", "manitowoc", "west bend", "superior", "stevens point", "neenah", "sun prairie"],
-        type: "cooler",
-        baseConfidence: 0.96,
-        data: { tempDelta: -16, wind: 29, gusts: 63, condition: "Wisconsin System (Cooler Temps, 29 mph, Gusts 63 mph)" }
-    },
-    {
-        date: "8/8/2026",
-        regionKeywords: ["east coast", "new york", "ny", "boston", "ma", "pennsylvania", "pa", "philadelphia", "new jersey", "nj", "connecticut", "ct", "maryland", "md", "virginia", "va", "maine", "me", "vermont", "vt", "new hampshire", "nh", "rhode island", "ri", "delaware", "de", "washington dc", "dc"],
-        type: "cooler",
-        baseConfidence: 0.95,
-        data: { tempDelta: -12, wind: 25, gusts: 59, condition: "East Coast Shift (Eastward Progression)" }
-    },
-   {
-        date: "8/23/2026",
-        regionKeywords: ["washington", "wa", "seattle", "spokane", "tacoma", "vancouver", "bellevue", "everett", "kent", "renton", "spokane valley", "federal way", "yakima", "bellingham", "kennewick", "auburn", "pasco", "marysville", "lakewood", "redmond", "richland", "shoreline", "sammamish", "burien", "olympia", "lacey", "edmonds", "bremerton", "puyallup"],
-        type: "cooler",
-        baseConfidence: 0.96,
-        data: { tempDelta: -23, wind: 29, gusts: 65, condition: "Washington Storm (Cooler Temps, 29 mph, Gusts 65 mph)" }
-    },
-   {
-        date: "8/24/2026",
-        regionKeywords: ["idaho", "id", "boise", "meridian", "nampa", "idaho falls", "pocatello", "caldwell", "coeur d'alene", "twin falls", "post falls", "rexburg", "moscow", "eagle", "chubbuck", "mountain home", "kuna", "hayden", "rigby", "blackfoot"],
-        type: "warmer",
-        baseConfidence: 0.95,
-        data: { tempDelta: 16, wind: 33, gusts: 70, condition: "Idaho Extreme Weather (Warmer Temps, 33 mph, Gusts 70 mph)" }
-    },
-   {
-        date: "8/25/2026",
-        regionKeywords: ["montana", "mt", "billings", "missoula", "great falls", "bozeman", "butte", "helena", "kalispell", "havre", "anaconda", "miles city", "laurel", "sidney", "lewistown", "glendive", "whitefish", "polson", "livingston"],
-        type: "cooler",
-        baseConfidence: 0.96,
-        data: { tempDelta: -20, wind: 36, gusts: 65, condition: "Montana Severe Storm (Cooler Temps, 36 mph, Gusts 65 mph)" }
-    },
-   {
-        date: "8/26/2026",
-        regionKeywords: ["north dakota", "nd", "fargo", "bismarck", "grand forks", "minot", "mandan", "dickinson", "williston", "west fargo", "wahpeton", "valley city", "jamestown", "devils lake"],
-        type: "hotter",
-        baseConfidence: 0.97,
-        data: { tempDelta: -22, wind: 32, gusts: 59, condition: "North Dakota Extreme Front (Hotter Temps, 32 mph, Gusts 59 mph)" }
-    },
-   {
-        date: "8/27/2026",
-        regionKeywords: ["minnesota", "mn", "duluth", "moorhead", "bemidji", "brainerd", "hibbing", "grand rapids", "fergus falls", "international falls", "virginia", "cloquet", "east grand forks", "thief river falls", "crookston", "detroit lakes", "little falls", "alexandria", "park rapids", "minneapolis", "st. paul", "saint paul", "rochester", "bloomington", "plymouth", "brooklyn park", "woodbury", "st. cloud", "st. joseph", "saint joseph", "eagan", "eden prairie", "coon rapids", "burnsville", "blaine", "lakeville", "minnetonka", "apple valley", "edina", "st. louis park", "mankato", "shakopee", "richfield", "cottage grove", "roseville", "inver grove heights", "winona"],
-        type: "cooler",
-        baseConfidence: 0.95,
-        data: { tempDelta: -16, wind: 27, gusts: 58, condition: "Minnesota Cool Front (Cooler Temps, 27 mph, Gusts 58 mph)" }
-    },
-   {
-        date: "8/28/2026",
-        regionKeywords: ["wisconsin", "wi", "milwaukee", "madison", "green bay", "kenosha", "racine", "appleton", "waukesha", "eau claire", "oshkosh", "janesville", "west allis", "la crosse", "sheboygan", "wauwatosa", "fond du lac", "new berlin", "wausau", "brookfield", "beloit", "greenfield", "franklin", "oak creek", "manitowoc", "west bend", "superior", "stevens point", "neenah", "sun prairie"],
-        type: "cooler",
-        baseConfidence: 0.96,
-        data: { tempDelta: -16, wind: 29, gusts: 63, condition: "Wisconsin System (Cooler Temps, 29 mph, Gusts 63 mph)" }
-    },
-    {
-        date: "8/29/2026",
-        regionKeywords: ["east coast", "new york", "ny", "boston", "ma", "pennsylvania", "pa", "philadelphia", "new jersey", "nj", "connecticut", "ct", "maryland", "md", "virginia", "va", "maine", "me", "vermont", "vt", "new hampshire", "nh", "rhode island", "ri", "delaware", "de", "washington dc", "dc"],
-        type: "cooler",
-        baseConfidence: 0.95,
-        data: { tempDelta: -12, wind: 39, gusts: 65, condition: "East Coast Shift (Eastward Progression)" }
-    },
-];
-
-function getRegionalEventForDateAndLocation(dateStr, searchString, placeName) {
-    const searchLower = `${searchString} ${placeName}`.toLowerCase();
-    const matchingEvents = regionalEvents.filter(e => e.date === dateStr);
-    for (const ev of matchingEvents) {
-        if (!ev.regionKeywords || ev.regionKeywords.length === 0) continue;
-        const matchesRegion = ev.regionKeywords.some(keyword => {
-            const regex = new RegExp(`\\b${keyword.replace('.', '\\.')}\\b`, 'i');
-            return regex.test(searchLower);
-        });
-        if (matchesRegion) return ev;
-    }
-    return null;
-}
-
-function getHashOffset(str) {
-    let hash = 0;
-    for (let i = 0; i < str.length; i++) {
-        hash = str.charCodeAt(i) + ((hash << 5) - hash);
-    }
-    return hash;
-}
-
-function calculateEffectiveConfidence(dateStr, baseConfidence) {
-    const now = new Date();
-    const [m, d, y] = dateStr.split("/").map(Number);
-    const eventDate = new Date(y, m - 1, d); 
-    const diffMs = eventDate.getTime() - now.getTime();
-    const daysDiff = diffMs / (1000 * 60 * 60 * 24);
-
-    let proximityMultiplier = 1.0;
-    if (daysDiff > 0) {
-        proximityMultiplier = Math.max(0.3, 1.0 - (daysDiff * 0.12));
-    } else if (daysDiff < -1) {
-        const daysPast = Math.abs(daysDiff);
-        proximityMultiplier = Math.max(0.0, 1.0 - (daysPast * 0.5));
-    } else {
-        const currentFractionalHour = now.getHours() + (now.getMinutes() / 60) + (now.getSeconds() / 3600);
-        proximityMultiplier = Math.max(0.2, 1.0 - (currentFractionalHour / 24) * 0.5);
-    }
-    return Math.max(0, Math.min(1.0, baseConfidence * proximityMultiplier));
-}
-
-function findRegionalOverride(dateStr, searchQuery, placeName, apiHigh, apiLow, apiWind, apiGusts) {
-    const event = getRegionalEventForDateAndLocation(dateStr, searchQuery, placeName);
-    if (!event || !event.data) return null;
-
-    const base = event.data;
-    
-    // Combine searchQuery and placeName to create a location-specific seed
-    const locationSeed = `${searchQuery.toLowerCase().trim()}_${placeName.toLowerCase().trim()}`;
-    const hash = Math.abs(getHashOffset(locationSeed));
-    
-    // Vary values dynamically across different searched input locations
-    const tempVar = (hash % 7) - 3;    // Variations from -3 to +3 °F
-    const windVar = (hash % 9) - 4;    // Variations from -4 to +4 mph
-    const gustVar = (hash % 13) - 6;   // Variations from -6 to +6 mph
-
-    let targetHigh = apiHigh + base.tempDelta + tempVar;
-    let targetWind = base.wind + windVar;
-    let targetGusts = Math.max(0, base.gusts + gustVar);
-
-    const effectiveConfidence = calculateEffectiveConfidence(dateStr, event.baseConfidence);
-
-    const finalHigh = Math.round(targetHigh * effectiveConfidence + apiHigh * (1 - effectiveConfidence));
-    const finalLow = Math.round((apiLow + base.tempDelta * 0.5) * effectiveConfidence + apiLow * (1 - effectiveConfidence));
-    const finalWind = Math.round(targetWind * effectiveConfidence + apiWind * (1 - effectiveConfidence));
-    const finalGusts = Math.round(targetGusts * effectiveConfidence + apiGusts * (1 - effectiveConfidence));
-
-    const confPercent = Math.round(effectiveConfidence * 100);
-    const label = `${base.condition} (${confPercent}% Confidence)`;
-
-    return {
-        high: finalHigh, 
-        low: finalLow, 
-        wind: finalWind, 
-        gusts: finalGusts,
-        condition: label, 
-        rawCondition: base.condition, 
-        baseEvent: {
-            ...base,
-            tempDelta: base.tempDelta + tempVar,
-            wind: base.wind + windVar,
-            gusts: base.gusts + gustVar
-        }, 
-        effectiveConfidence: effectiveConfidence,
-        type: event.type
-    };
-}
-
-async function fetchForecast() {
-    const query = document.getElementById("searchInput").value.trim();
-    const container = document.getElementById("forecastContainer");
-    if (!query) { container.innerHTML = ""; return; }
-
-    container.innerHTML = "<p>Searching location securely...</p>";
-    try {
-        // Step 1: Geocode location name to Lat/Lon using OpenStreetMap Nominatim
-        const geoRes = await fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(query)}&format=json&limit=1`, {
-            headers: { 'User-Agent': 'WeatherApp/1.0 (contact@yourdomain.com)' }
-        });
-        const geoData = await geoRes.json();
-
-        if (!geoData || geoData.length === 0) {
-            container.innerHTML = "<p>Location not found. Please try another search.</p>";
-            return;
-        }
-
-        const place = geoData[0];
-        const rawLat = parseFloat(place.lat);
-        const rawLon = parseFloat(place.lon);
-
-        const securedCoords = LocationSecurityGuard.sanitizeCoordinates(rawLat, rawLon);
-        currentLat = securedCoords.lat;
-        currentLon = securedCoords.lon;
-        
-        const placeName = place.display_name.split(',').slice(0, 3).join(', ');
-
-        activeSearchQuery = query;
-        activePlaceName = placeName;
-
-        // Step 2: Pass coordinates to load weather using the NOAA API
-        loadWeatherForCoords(currentLat, currentLon, placeName, query);
-    } catch (err) {
-        console.error(err);
-        container.innerHTML = `<p>Error loading weather data: ${err.message || err}</p>`;
-    }
-}
-   
-function useCurrentLocation() {
-    const container = document.getElementById("forecastContainer");
-    if (!navigator.geolocation) {
-        container.innerHTML = "<p>Geolocation is not supported by your browser.</p>";
-        return;
-    }
-    container.innerHTML = "<p>Detecting your location securely (Anti-Hacker Shield Active)...</p>";
-
-    navigator.geolocation.getCurrentPosition(
-        async (position) => {
-            if (LocationSecurityGuard.isSpoofed(position)) {
-                container.innerHTML = "<p style='color: #ff3b30;'>⚠️ Security Alert: Spoofed location intercepted.</p>";
-                return;
-            }
-            const rawLat = position.coords.latitude;
-            const rawLon = position.coords.longitude;
-            const securedCoords = LocationSecurityGuard.sanitizeCoordinates(rawLat, rawLon);
-            currentLat = securedCoords.lat;
-            currentLon = securedCoords.lon;
-
-            try {
-                let placeName = `Protected Zone (${currentLat.toFixed(2)}°, ${currentLon.toFixed(2)}°)`;
-                try {
-                    const nominatimRes = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${currentLat}&lon=${currentLon}`);
-                    const nominatimData = await nominatimRes.json();
-                    if (nominatimData && nominatimData.address) {
-                        const city = nominatimData.address.city || nominatimData.address.town || nominatimData.address.village || nominatimData.address.county;
-                        const state = nominatimData.address.state;
-                        if (city && state) placeName = `${city}, ${state} (Shielded)`;
-                        else if (city) placeName = `${city} (Shielded)`;
-                    }
-                } catch (e) { console.warn("Reverse geocoding fallback triggered", e); }
-
-                document.getElementById("searchInput").value = placeName;
-                activeSearchQuery = placeName;
-                activePlaceName = placeName;
-                loadWeatherForCoords(currentLat, currentLon, placeName, placeName);
-            } catch (err) {
-                console.error(err);
-                activeSearchQuery = "Protected Location";
-                activePlaceName = "Protected Location";
-                loadWeatherForCoords(currentLat, currentLon, "Protected Location", "Protected Location");
-            }
-        },
-        (error) => {
-            console.error(error);
-            container.innerHTML = "<p>Unable to retrieve location. Please check permissions.</p>";
-        },
-        { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
-    );
-}
-
-async function loadWeatherForCoords(lat, lon, placeName, searchQuery) {
-    const container = document.getElementById("forecastContainer");
-    document.getElementById("locationTitle").innerText = `${placeName} Forecast`;
-    document.getElementById("locationSub").innerText = `Encrypted Coordinates: ${lat.toFixed(2)}°, ${lon.toFixed(2)}°`;
-
-    const headers = { 'User-Agent': 'WeatherApp/1.0 (contact@yourdomain.com)' };
-
-    try {
-        // Step 1: Get gridpoint metadata
-        const pointRes = await fetch(`https://api.weather.gov/points/${lat},${lon}`, { headers });
-        if (!pointRes.ok) {
-            if (pointRes.status === 404) {
-                throw new Error("Location outside NWS coverage. NOAA only covers US territories.");
-            }
-            throw new Error(`NOAA Metadata Error HTTP ${pointRes.status}`);
-        }
-        const pointData = await pointRes.json();
-
-        // Step 2: Fetch hourly and daily endpoints in parallel
-        const [dailyRes, hourlyRes] = await Promise.all([
-            fetch(pointData.properties.forecast, { headers }),
-            fetch(pointData.properties.forecastHourly, { headers })
-        ]);
-
-        if (!dailyRes.ok || !hourlyRes.ok) {
-            throw new Error("Failed to fetch forecast details from NOAA.");
-        }
-
-        const dailyData = await dailyRes.json();
-        const hourlyData = await hourlyRes.json();
-
-        // Check if periods exist before assigning
-        const hourlyPeriods = hourlyData?.properties?.periods || [];
-        const dailyPeriods = dailyData?.properties?.periods || [];
-
-        // Save to active hourly global variable
-        activeHourlyData = hourlyPeriods;
-
-        // Pass standardized object to renderer
-        const formattedWeatherData = {
-            hourly: hourlyPeriods,
-            daily: dailyPeriods
-        };
-
-        parseAndRender(formattedWeatherData, searchQuery, placeName);
-    } catch (err) {
-        console.error(err);
-        container.innerHTML = `<p>Error loading weather data: ${err.message || err}</p>`;
-    }
-}
-   
-
-function getPreEventDateString(dateStr) {
-    const [m, d, y] = dateStr.split("/").map(Number);
-    const dt = new Date(y, m - 1, d);
-    dt.setDate(dt.getDate() - 1);
-    return `${dt.getMonth() + 1}/${dt.getDate()}/${dt.getFullYear()}`;
-}
-
-function getPostEventDateString(dateStr) {
-    const [m, d, y] = dateStr.split("/").map(Number);
-    const dt = new Date(y, m - 1, d);
-    dt.setDate(dt.getDate() + 1);
-    return `${dt.getMonth() + 1}/${dt.getDate()}/${dt.getFullYear()}`;
-}
-
-function isMinnesotaLocation(searchQuery, placeName) {
-    const searchLower = `${searchQuery} ${placeName}`.toLowerCase();
-    const mnKeywords = [
-        "minnesota", "mn", "duluth", "moorhead", "bemidji", "brainerd", "hibbing", "grand rapids", 
-        "fergus falls", "international falls", "virginia", "cloquet", "east grand forks", "thief river falls", 
-        "crookston", "detroit lakes", "little falls", "alexandria", "park rapids", "minneapolis", "st. paul", 
-        "saint paul", "rochester", "bloomington", "plymouth", "brooklyn park", "woodbury", "st. cloud", 
-        "st. joseph", "saint joseph", "eagan", "eden prairie", "coon rapids", "burnsville", "blaine", 
-        "lakeville", "minnetonka", "apple valley", "edina", "st. louis park", "mankato", "shakopee", 
-        "richfield", "cottage grove", "roseville", "inver grove heights", "winona"
-    ];
-    return mnKeywords.some(kw => new RegExp(`\\b${kw.replace('.', '\\.')}\\b`, 'i').test(searchLower));
-}
-
-function getMinuteValuesForDay(dateStr, searchQuery, placeName, apiDailyTemps, apiDailyWinds, apiDailyGusts, dayIndex) {
-    const [m, d, y] = dateStr.split("/").map(Number);
-    const formattedDate = `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
-
-    let baseHourTemps = [];
-    let baseHourWinds = [];
-    let baseHourGusts = [];
-
-    if (activeHourlyData) {
-        for (let i = 0; i < activeHourlyData.time.length; i++) {
-            if (activeHourlyData.time[i].startsWith(formattedDate)) {
-                baseHourTemps.push(activeHourlyData.temperature_2m[i]);
-                baseHourWinds.push(activeHourlyData.wind_speed_10m[i]);
-                baseHourGusts.push(activeHourlyData.wind_gusts_10m[i]);
-            }
-        }
-    }
-    while (baseHourTemps.length < 24) { baseHourTemps.push(59); baseHourWinds.push(0); baseHourGusts.push(0); }
-
-    const apiHigh = Math.round((apiDailyTemps.max && apiDailyTemps.max[dayIndex]) || 59);
-    const apiLow = Math.round((apiDailyTemps.min && apiDailyTemps.min[dayIndex]) || 32);
-    const apiWind = Math.round(apiDailyWinds[dayIndex] || 0);
-    const apiGusts = Math.round(apiDailyGusts[dayIndex] || 0);
-
-    const isMN = isMinnesotaLocation(searchQuery, placeName);
-    const exactOverride = findRegionalOverride(dateStr, searchQuery, placeName, apiHigh, apiLow, apiWind, apiGusts);
-    const postDateStr = getPostEventDateString(dateStr);
-    const futureEventOverride = findRegionalOverride(postDateStr, searchQuery, placeName, apiHigh, apiLow, apiWind, apiGusts);
-
-    const prevDateStr = getPreEventDateString(dateStr);
-    const prevEventOverride = findRegionalOverride(prevDateStr, searchQuery, placeName, apiHigh, apiLow, apiWind, apiGusts);
-    const wasPrevDayMN731 = (prevDateStr === "7/31/2026" && isMN);
-
-    // Location-based hash for dynamic variance across different MN locations
-    const locationSeed = `${searchQuery.toLowerCase().trim()}_${placeName.toLowerCase().trim()}`;
-    const hash = Math.abs(getHashOffset(locationSeed));
-
-    // Dynamic localized peak values for MN locations
-    const locationWindPeak = 7 + ((hash % 17) - 8);
-    const locationGustPeak = 40 + ((hash % 39) - 19);
-
-    const temps = [];
-    const winds = [];
-    const gusts = [];
-
-    let startWind1159 = baseHourWinds[0];
-    let startGust1159 = baseHourGusts[0];
-    let startTemp1159 = baseHourTemps[0];
-    const hasPrevEvent = prevEventOverride || wasPrevDayMN731;
-
-    if (wasPrevDayMN731) {
-        const base22Wind = activeHourlyData ? (baseHourWinds[22] || 18) : 18;
-        const base22Gust = activeHourlyData ? (baseHourGusts[22] || 30) : 30;
-        const progress1159 = 59 / 60;
-        startWind1159 = Math.round(locationWindPeak + (base22Wind - locationWindPeak) * progress1159);
-        startGust1159 = Math.round(locationGustPeak + (base22Gust - locationGustPeak) * progress1159);
-        startTemp1159 = baseHourTemps[0];
-    } else if (prevEventOverride) {
-        const factor1159 = 0.55;
-        const baseHourWind23 = activeHourlyData ? (baseHourWinds[23] || 18) : 18;
-        const baseHourGust23 = activeHourlyData ? (baseHourGusts[23] || 30) : 30;
-        const baseHourTemp23 = activeHourlyData ? (baseHourTemps[23] || 72) : 72;
-
-        startWind1159 = Math.round(baseHourWind23 + (prevEventOverride.baseEvent.wind - baseHourWind23) * factor1159);
-        startGust1159 = Math.round(baseHourGust23 + (prevEventOverride.baseEvent.gusts - baseHourGust23) * factor1159);
-        startTemp1159 = Math.round(baseHourTemp23 + (prevEventOverride.baseEvent.tempDelta * factor1159));
-    }
-const min2am = 2 * 60;
-    const min5pm = 17 * 60;
-   const min7pm = 19 * 60;
-   const min9pm = 21 * 60;
-    const min10pm = 22 * 60;
-   const min11pm = 23 * 60;
-    const minMidnight = 24 * 60;
-
-    for (let hour = 0; hour < 24; hour++) {
-        for (let minute = 0; minute < 60; minute++) {
-            if (hour === 23 && minute === 59) continue;
-
-            let baseTemp = baseHourTemps[hour] || 59;
-            let baseWind = baseHourWinds[hour] || 0;
-            let baseGust = baseHourGusts[hour] || 0;
-            
-            const totalMinutes = hour * 60 + minute;
-           if (dateStr === "8/2/2026" && isMN) {
-                const locationSeed = `${searchQuery.toLowerCase().trim()}_${placeName.toLowerCase().trim()}`;
-                const hash = Math.abs(getHashOffset(locationSeed));
-                
-                // Adjusted peak values based on confidence
-                const localWindPeak = 28 + ((hash % 10) - 5);   
-                const localGustPeak = 55 + ((hash % 15) - 7);    
-
-                // Target ending values after 9 PM down-trend
-                const targetEndWind = 5;
-                const targetEndGust = 10;
-               const targetEndWind0 = 11;
-                const targetEndGust0 = 20;
-                // Confidence trending up to 100% (1.0) by 5 PM
-                let confidenceFactor = totalMinutes <= min2am ? (totalMinutes / min2am) : 1.0;
-
-                if (totalMinutes < min2am) {
-                    // No wind event clipping before 5 PM; maintain normal baseline
-                    baseWind = baseHourWinds[hour] || 18;
-                    baseGust = baseHourGusts[hour] || 30;
-                } else if (totalMinutes >= min2am && totalMinutes <= min9pm) {
-                    // Ramp up starting strictly after 5 PM, peaking at 9 PM
-                    const progress = (totalMinutes - min2am) / (min9pm - min2am);
-                    baseWind = Math.round(baseHourWinds[17] + (localWindPeak - baseHourWinds[17]) * progress * confidenceFactor);
-                    baseGust = Math.round(baseHourGusts[17] + (localGustPeak - baseHourGusts[17]) * progress * confidenceFactor);
-                } else if (totalMinutes > min9pm && totalMinutes < minMidnight) {
-                    // Trend down after 9 PM toward 15 mph wind and 30 mph gusts based on confidence
-                    const progress = (totalMinutes - min9pm) / (minMidnight - min9pm);
-                    baseWind = Math.round(localWindPeak + (targetEndWind0 - localWindPeak) * progress * confidenceFactor);
-                    baseGust = Math.round(localGustPeak + (targetEndGust0 - localGustPeak) * progress * confidenceFactor);
-                }
-            }
-           else if (dateStr === "8/3/2026" && isMN) {
-                const locationSeed = `${searchQuery.toLowerCase().trim()}_${placeName.toLowerCase().trim()}`;
-                const hash = Math.abs(getHashOffset(locationSeed));
-                
-                // Adjusted peak values based on confidence
-                const localWindPeak = 24 + ((hash % 10) - 5);   
-                const localGustPeak = 57 + ((hash % 15) - 7);    
-
-                // Target ending values after 9 PM down-trend
-                const targetEndWind = 5;
-                const targetEndGust = 10;
-               const targetEndWind0 = 11;
-                const targetEndGust0 = 20;
-                // Confidence trending up to 100% (1.0) by 5 PM
-                let confidenceFactor = totalMinutes <= min2am ? (totalMinutes / min2am) : 1.0;
-
-                if (totalMinutes < min2am) {
-                    // No wind event clipping before 5 PM; maintain normal baseline
-                    baseWind = baseHourWinds[hour] || 18;
-                    baseGust = baseHourGusts[hour] || 30;
-                } else if (totalMinutes >= min2am && totalMinutes <= min9pm) {
-                    // Ramp up starting strictly after 5 PM, peaking at 9 PM
-                    const progress = (totalMinutes - min2am) / (min9pm - min2am);
-                    baseWind = Math.round(baseHourWinds[17] + (localWindPeak - baseHourWinds[17]) * progress * confidenceFactor);
-                    baseGust = Math.round(baseHourGusts[17] + (localGustPeak - baseHourGusts[17]) * progress * confidenceFactor);
-                } else if (totalMinutes > min9pm && totalMinutes < minMidnight) {
-                    // Trend down after 9 PM toward 15 mph wind and 30 mph gusts based on confidence
-                    const progress = (totalMinutes - min9pm) / (minMidnight - min9pm);
-                    baseWind = Math.round(localWindPeak + (targetEndWind0 - localWindPeak) * progress * confidenceFactor);
-                    baseGust = Math.round(localGustPeak + (targetEndGust0 - localGustPeak) * progress * confidenceFactor);
-                }
-            }
-            else if (dateStr === "8/1/2026" && isMN) {
-                const locationSeed = `${searchQuery.toLowerCase().trim()}_${placeName.toLowerCase().trim()}`;
-                const hash = Math.abs(getHashOffset(locationSeed));
-                
-                // Adjusted peak values based on confidence
-                const localWindPeak = 26 + ((hash % 10) - 5);   
-                const localGustPeak = 55 + ((hash % 15) - 7);    
-
-                // Target ending values after 9 PM down-trend
-                const targetEndWind = 5;
-                const targetEndGust = 10;
-
-                // Confidence trending up to 100% (1.0) by 5 PM
-                let confidenceFactor = totalMinutes <= min10pm ? (totalMinutes / min10pm) : 1.0;
-
-                if (totalMinutes < min7pm) {
-                    // No wind event clipping before 5 PM; maintain normal baseline
-                    baseWind = baseHourWinds[hour] || 18;
-                    baseGust = baseHourGusts[hour] || 30;
-                } else if (totalMinutes >= min10pm && totalMinutes <= min11pm) {
-                    // Ramp up starting strictly after 5 PM, peaking at 9 PM
-                    const progress = (totalMinutes - min10pm) / (min11pm - min10pm);
-                    baseWind = Math.round(baseHourWinds[17] + (localWindPeak - baseHourWinds[17]) * progress * confidenceFactor);
-                    baseGust = Math.round(baseHourGusts[17] + (localGustPeak - baseHourGusts[17]) * progress * confidenceFactor);
-                } else if (totalMinutes > min11pm && totalMinutes < minMidnight) {
-                    // Trend down after 9 PM toward 15 mph wind and 30 mph gusts based on confidence
-                    const progress = (totalMinutes - min11pm) / (minMidnight - min11pm);
-                    baseWind = Math.round(localWindPeak + (targetEndWind - localWindPeak) * progress * confidenceFactor);
-                    baseGust = Math.round(localGustPeak + (targetEndGust - localGustPeak) * progress * confidenceFactor);
-                }
-            }
-            else if (dateStr === "7/31/2026") {
-                if (isMN) {
-                    const min10pm = 22 * 60;
-                    const min11pm = 23 * 60;
-                    const minMidnight = 24 * 60;
-
-                    if (totalMinutes >= min10pm && totalMinutes < min11pm) {
-                        const progress = (totalMinutes - min10pm) / 60;
-                        baseWind = Math.round(baseWind + (locationWindPeak - baseWind) * progress);
-                        baseGust = Math.round(baseGust + (locationGustPeak - baseGust) * progress);
-                    } else if (totalMinutes >= min11pm && totalMinutes < minMidnight) {
-                        const progress = (totalMinutes - min11pm) / 60;
-                        baseWind = Math.round(locationWindPeak + (baseHourWinds[23] - locationWindPeak) * progress);
-                        baseGust = Math.round(locationGustPeak + (baseHourGusts[23] - locationGustPeak) * progress);
-                    }
-                } else {
-                    baseWind = Math.max(0, Math.round(baseWind));
-                    baseGust = Math.max(baseWind, Math.round(baseGust));
-                }
-            } else if (exactOverride) {
-                let noonMin = 12 * 60;       
-                let min6pm = 18 * 60;        
-                let totalDayMins = 24 * 60;
-                let factor = 0;
-                let tempShift = exactOverride.baseEvent.tempDelta;
-
-                if (totalMinutes <= noonMin) {
-                    let progress = totalMinutes / noonMin;
-                    factor = 0.45 + (0.55 * progress);
-                } else if (totalMinutes > noonMin && totalMinutes <= min6pm) {
-                    let wave = Math.sin((totalMinutes - noonMin) / 60 * Math.PI) * 0.05;
-                    let minorFluctuation = (Math.sin(totalMinutes * 0.1) * 0.02);
-                    factor = 1.0 + wave + minorFluctuation;
-                } else {
-                    let postProgress = (totalMinutes - min6pm) / (totalDayMins - min6pm);
-                    factor = 1.0 - Math.pow(postProgress, 0.6) * 0.55;
-                    tempShift = exactOverride.baseEvent.tempDelta * (0.5 + (postProgress * 0.5));
-                }
-
-                baseWind = Math.round(baseWind + (exactOverride.baseEvent.wind - baseWind) * factor);
-                baseGust = Math.round(baseGust + (exactOverride.baseEvent.gusts - baseGust) * factor);
-                baseTemp = Math.round(baseTemp + (tempShift * factor));
-            } else if (hasPrevEvent && totalMinutes <= min5pm) {
-                const progress = totalMinutes / min5pm;
-                
-                baseWind = Math.round(startWind1159 + (baseWind - startWind1159) * progress);
-                baseGust = Math.round(startGust1159 + (baseGust - startGust1159) * progress);
-                baseTemp = Math.round(startTemp1159 + (baseTemp - startTemp1159) * progress);
-            } else if (futureEventOverride) {
-                let totalDayMins = 24 * 60;
-                let progress = totalMinutes / totalDayMins;
-                let factor = progress * 0.45; 
-                let tempShift = futureEventOverride.baseEvent.tempDelta;
-
-                baseWind = Math.round(baseWind + ((futureEventOverride.baseEvent.wind - baseWind) * factor));
-                baseGust = Math.round(baseGust + ((futureEventOverride.baseEvent.gusts - baseGust) * factor));
-                baseTemp = Math.round(baseTemp + (tempShift * factor));
-            }
-
-            temps.push(baseTemp);
-            winds.push(baseWind);
-            gusts.push(baseGust);
-        }
-    }
-    return { temps, winds, gusts };
-}
-
-function parseAndRender(data, searchQuery, placeName) {
-    const historyBtn = document.getElementById("historyToggleBtn");
-    if (historyBtn) {
-        historyBtn.style.display = "inline-block";
-    }
-
-    const daysOfWeek = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-    const forecastData = [];
-
-    const rawTargetDates = [
-        "7/31/2026", "8/1/2026", "8/2/2026", "8/3/2026", "8/4/2026", "8/5/2026", "8/6/2026", "8/7/2026"
-    ];
-
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-
-    const targetDates = rawTargetDates.filter(dateStr => {
-        const [m, d, y] = dateStr.split("/").map(Number);
-        const itemDate = new Date(y, m - 1, d);
-        return itemDate >= today;
-    });
-
-    let maxGustInForecast = 160;
-
-    const wmoConditions = {
-        0: "Clear Sky", 1: "Mostly Clear", 2: "Partly Cloudy", 3: "Overcast",
-        45: "Fog", 48: "Rime Fog",
-        51: "Light Drizzle", 53: "Moderate Drizzle", 55: "Dense Drizzle",
-        61: "Light Rain", 63: "Moderate Rain", 65: "Heavy Rain",
-        71: "Light Snow", 73: "Moderate Snow", 75: "Heavy Snow", 77: "Snow Grains",
-        80: "Light Showers", 81: "Moderate Showers", 82: "Violent Showers",
-        85: "Light Snow Showers", 86: "Heavy Snow Showers",
-        95: "Thunderstorms", 96: "Thunderstorms & Hail", 99: "Severe Thunderstorms"
-    };
-
-    const now = new Date();
-    const todayStr = `${now.getMonth() + 1}/${now.getDate()}/${now.getFullYear()}`;
-    const currentMinuteIndex = now.getHours() * 60 + now.getMinutes();
-
-    // Helper: Normalize Open-Meteo vs NOAA data formats safely
-    const isNoaaFormat = Array.isArray(data.daily);
-    const dailyPeriods = isNoaaFormat ? data.daily : [];
-    const openMeteoDaily = !isNoaaFormat ? (data.daily || {}) : {};
-
-    // Helper: Extract numbers from strings like "12 mph" or "15 to 25 mph"
-    const parseWindSpeed = (speedStr) => {
-        if (typeof speedStr === 'number') return speedStr;
-        if (!speedStr) return 0;
-        const matches = speedStr.match(/\d+/g);
-        if (!matches) return 0;
-        return Math.max(...matches.map(Number));
-    };
-
-    targetDates.forEach((dateStr, i) => {
-        const [m, d, y] = dateStr.split("/").map(Number);
-        const dateObj = new Date(y, m - 1, d);
-        const dayLabel = i === 0 ? "Today" : daysOfWeek[dateObj.getDay()];
-
-        let apiIndex = i;
-        let apiHigh = 59;
-        let apiLow = 32;
-        let apiWind = 0;
-        let apiGusts = 0;
-        let apiCode = 0;
-        let noaaShortForecast = "";
-
-        if (isNoaaFormat) {
-            // Find corresponding NOAA period object matching the target date
-            const formattedDate = `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
-            const dayPeriod = dailyPeriods.find(p => p.startTime.startsWith(formattedDate) && p.isDaytime);
-            const nightPeriod = dailyPeriods.find(p => p.startTime.startsWith(formattedDate) && !p.isDaytime);
-
-            if (dayPeriod) {
-                apiHigh = dayPeriod.temperature ?? 59;
-                apiWind = parseWindSpeed(dayPeriod.windSpeed);
-                noaaShortForecast = dayPeriod.shortForecast || "";
-            }
-            if (nightPeriod) {
-                apiLow = nightPeriod.temperature ?? 32;
-            }
-        } else {
-            // Open-Meteo array parsing
-            if (openMeteoDaily.time) {
-                const formattedDate = `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
-                const foundApiIdx = openMeteoDaily.time.indexOf(formattedDate);
-                if (foundApiIdx !== -1) apiIndex = foundApiIdx;
-            }
-            apiCode = openMeteoDaily.weather_code ? openMeteoDaily.weather_code[apiIndex] : 0;
-            apiHigh = Math.round((openMeteoDaily.temperature_2m_max && openMeteoDaily.temperature_2m_max[apiIndex]) || 59);
-            apiLow = Math.round((openMeteoDaily.temperature_2m_min && openMeteoDaily.temperature_2m_min[apiIndex]) || 32);
-            apiWind = Math.round((openMeteoDaily.wind_speed_10m_max && openMeteoDaily.wind_speed_10m_max[apiIndex]) || 0);
-            apiGusts = Math.round((openMeteoDaily.wind_gusts_10m_max && openMeteoDaily.wind_gusts_10m_max[apiIndex]) || 0);
-        }
-
-        const minuteData = getMinuteValuesForDay(
-            dateStr, searchQuery, placeName, 
-            { max: isNoaaFormat ? [apiHigh] : openMeteoDaily.temperature_2m_max, min: isNoaaFormat ? [apiLow] : openMeteoDaily.temperature_2m_min }, 
-            isNoaaFormat ? [apiWind] : openMeteoDaily.wind_speed_10m_max, 
-            isNoaaFormat ? [apiGusts] : openMeteoDaily.wind_gusts_10m_max, 
-            apiIndex
-        );
-
-        const isMN = isMinnesotaLocation(searchQuery, placeName);
-        const matchedOverride = findRegionalOverride(dateStr, searchQuery, placeName, apiHigh, apiLow, apiWind, apiGusts);
-        const postDateStr = getPostEventDateString(dateStr);
-        const futureEventOverride = findRegionalOverride(postDateStr, searchQuery, placeName, apiHigh, apiLow, apiWind, apiGusts);
-        
-        const prevDateStr = getPreEventDateString(dateStr);
-        const prevEventOverride = findRegionalOverride(prevDateStr, searchQuery, placeName, apiHigh, apiLow, apiWind, apiGusts);
-        const wasPrevDayMN731 = (prevDateStr === "7/31/2026" && isMN);
-        const hasPrevEvent = prevEventOverride || wasPrevDayMN731;
-
-        let cardHigh, cardLow, cardWind, cardGusts, note, rawCondition;
-        const hasEventInfluence = matchedOverride || futureEventOverride;
-
-        if (dateStr === todayStr && currentMinuteIndex < minuteData.temps.length) {
-            cardHigh = Math.round(minuteData.temps[currentMinuteIndex]);
-            cardLow = Math.round(Math.min(...minuteData.temps));
-            cardWind = Math.round(minuteData.winds[currentMinuteIndex]);
-            cardGusts = Math.round(minuteData.gusts[currentMinuteIndex]);
-        } else {
-            cardHigh = Math.round(Math.max(...minuteData.temps));
-            cardLow = Math.round(Math.min(...minuteData.temps));
-            cardWind = Math.round(Math.max(...minuteData.winds));
-            cardGusts = Math.round(Math.max(...minuteData.gusts));
-        }
-
-        // Determine raw condition string based on source
-        const defaultCondition = isNoaaFormat ? (noaaShortForecast || "Partly Cloudy") : (wmoConditions[apiCode] || "Partly Cloudy");
-
-        if (dateStr === "7/31/2026") {
-            if (isMN) {
-                rawCondition = "Thunderstorms";
-                note = `Thunderstorms (Evening Gusts to ${cardGusts} mph)`;
-            } else {
-                rawCondition = defaultCondition;
-                note = `Live: ${rawCondition}`;
-            }
-        } else if (matchedOverride) {
-            rawCondition = matchedOverride.rawCondition || "Windy";
-            note = matchedOverride.condition;
-        } else if (futureEventOverride) {
-            rawCondition = defaultCondition;
-            note = `Building Event Trend`;
-        } else if (hasPrevEvent) {
-            rawCondition = defaultCondition;
-            note = `Post-Event Transition to Live Weather`;
-        } else {
-            rawCondition = defaultCondition;
-            note = `Live: ${rawCondition}`;
-        }
-
-        const iconUrl = getWeatherIcon(apiCode, rawCondition, (dateStr === "7/31/2026" ? isMN : hasEventInfluence), dateStr, cardWind);
-
-        if (cardGusts > maxGustInForecast) {
-            maxGustInForecast = cardGusts;
-        }
-
-        forecastData.push({
-            day: dayLabel, 
-            dateStr: dateStr, 
-            high: cardHigh, 
-            low: cardLow,
-            wind: cardWind, 
-            gusts: cardGusts, 
-            note: note, 
-            iconUrl: iconUrl, 
-            maxGustScale: maxGustInForecast,
-            isToday: (dateStr === todayStr)
-        });
-    });
-
-    renderForecast(forecastData);
-}
-function renderForecast(forecastData) {
-    const container = document.getElementById("forecastContainer");
-    container.innerHTML = "";
-
-    let historyToggleBtn = document.getElementById("historyToggleBtn");
-    if (!historyToggleBtn) {
-        historyToggleBtn = document.createElement("button");
-        historyToggleBtn.id = "historyToggleBtn";
-        historyToggleBtn.innerText = "📅 Weather History Archive";
-        historyToggleBtn.onclick = openHistoryPanel;
-        historyToggleBtn.style.cssText = `
-            display: inline-block; background: #3a3a3c; color: #fff; border: none;
-            padding: 10px 18px; border-radius: 8px; font-weight: bold; cursor: pointer;
-            margin-bottom: 20px; transition: background 0.2s;
-        `;
-        historyToggleBtn.onmouseover = () => { historyToggleBtn.style.background = "#48484a"; };
-        historyToggleBtn.onmouseout = () => { historyToggleBtn.style.background = "#3a3a3c"; };
-        
-        container.parentNode.insertBefore(historyToggleBtn, container);
-    }
-    historyToggleBtn.style.display = "inline-block";
-
-    forecastData.forEach(item => {
-        const card = document.createElement("div");
-        card.className = "day-card";
-        card.onclick = () => openGraphModal(item);
-
-        const dayName = document.createElement("div");
-        dayName.className = "day-name";
-        dayName.innerText = item.day;
-
-        const dayDate = document.createElement("div");
-        dayDate.className = "day-date";
-        dayDate.innerText = item.dateStr;
-
-        const iconContainer = document.createElement("div");
-        iconContainer.className = "weather-icon-container";
-        const iconImg = document.createElement("img");
-        iconImg.className = "weather-icon";
-        iconImg.src = item.iconUrl;
-        iconImg.alt = "Weather Icon";
-        iconContainer.appendChild(iconImg);
-
-        const tempTitle = document.createElement("div");
-        tempTitle.className = "section-title";
-        tempTitle.innerText = item.isToday ? "Current Temp" : "Temperature";
-
-        const highColor = getTempColor(item.high);
-        const lowColor = getTempColor(item.low);
-
-        const tempDisplay = document.createElement("div");
-        tempDisplay.className = "metric-val";
-        tempDisplay.style.color = highColor;
-        tempDisplay.innerText = `${item.high}°F`;
-
-        const tempRange = document.createElement("div");
-        tempRange.className = "metric-sub";
-        tempRange.innerHTML = item.isToday 
-            ? `High/Low: <span style="color: ${highColor};">${item.high}°</span>/<span style="color: ${lowColor};">${item.low}°</span>`
-            : `Low: <span style="color: ${lowColor}; font-weight: bold;">${item.low}°F</span>`;
-
-        const tempBar = document.createElement("div");
-        tempBar.className = "bar";
-        const tempFill = document.createElement("div");
-        tempFill.className = "bar-fill";
-        const tempPct = Math.min(Math.max(((item.high - (-20)) / (110 - (-20))) * 100, 5), 100);
-        tempFill.style.width = tempPct + "%";
-        tempFill.style.backgroundColor = highColor;
-        tempBar.appendChild(tempFill);
-
-        const windTitle = document.createElement("div");
-        windTitle.className = "section-title";
-        windTitle.innerText = item.isToday ? "Current Wind" : "Sustained Wind";
-
-        const windColor = getWindColor(item.wind);
-
-        const windDisplay = document.createElement("div");
-        windDisplay.className = "metric-val";
-        windDisplay.style.color = windColor;
-        windDisplay.innerText = `${item.wind} mph`;
-
-        const windSub = document.createElement("div");
-        windSub.className = "metric-sub";
-        windSub.style.color = "#aaa";
-        windSub.innerText = item.isToday ? "Live Speed" : "Sustained";
-
-        const windBar = document.createElement("div");
-        windBar.className = "bar";
-        const windFill = document.createElement("div");
-        windFill.className = "bar-fill";
-        const windPct = Math.min(Math.max((item.wind / item.maxGustScale) * 100, 4), 100);
-        windFill.style.width = windPct + "%";
-        windFill.style.backgroundColor = windColor;
-        windBar.appendChild(windFill);
-
-        const gustTitle = document.createElement("div");
-        gustTitle.className = "section-title";
-        gustTitle.innerText = item.isToday ? "Current Gusts" : "Peak Gusts";
-
-        const gustColor = getWindColor(item.gusts);
-
-        const gustDisplay = document.createElement("div");
-        gustDisplay.className = "metric-val";
-        gustDisplay.style.color = gustColor;
-        gustDisplay.innerText = `${item.gusts} mph`;
-
-        const gustSub = document.createElement("div");
-        gustSub.className = "metric-sub";
-        gustSub.style.color = "#aaa";
-        gustSub.innerText = item.note ? item.note : `Peak Gust`;
-
-        const gustBar = document.createElement("div");
-        gustBar.className = "bar";
-        const gustFill = document.createElement("div");
-        gustFill.className = "bar-fill";
-        const gustPct = Math.min(Math.max((item.gusts / item.maxGustScale) * 100, 4), 100);
-        gustFill.style.width = gustPct + "%";
-        gustFill.style.backgroundColor = gustColor;
-        gustBar.appendChild(gustFill);
-
-        const clickHint = document.createElement("div");
-        clickHint.className = "click-hint";
-        clickHint.innerText = "Click to view minute graph";
-
-        card.appendChild(dayName); card.appendChild(dayDate); card.appendChild(iconContainer);
-        card.appendChild(tempTitle); card.appendChild(tempDisplay); card.appendChild(tempRange); card.appendChild(tempBar);
-        card.appendChild(windTitle); card.appendChild(windDisplay); card.appendChild(windSub); card.appendChild(windBar);
-        card.appendChild(gustTitle); card.appendChild(gustDisplay); card.appendChild(gustSub); card.appendChild(gustBar);
-        card.appendChild(clickHint);
-
-        container.appendChild(card);
-    });
-}
-   
-function openGraphModal(item) {
-    // If opened from a history panel or archive list, target item might just have a dateStr
-    const targetDateStr = typeof item === "string" ? item : (item.dateStr || item); 
-    
-    // Check if data source comes from history/archive panel or standard objects
-    let activeItem = item;
-    if (typeof item === "string" || !item.day) {
-        activeItem = (typeof eventArchives !== 'undefined' ? eventArchives : []).find(d => d.dateStr === targetDateStr) ||
-                     (typeof historicalData !== 'undefined' ? historicalData : []).find(d => d.dateStr === targetDateStr) || 
-                     (typeof forecastData !== 'undefined' ? forecastData : []).find(d => d.dateStr === targetDateStr) || 
-                     { day: "Archive Day", dateStr: targetDateStr, high: 75, low: 55, wind: 10, gusts: 15, note: "Historical Record" };
-    }
-
-    activeDayDateStr = activeItem.dateStr;
-    
-    const modalTitleElem = document.getElementById("modalTitle");
-    const modalSubtitleElem = document.getElementById("modalSubtitle");
-    const chartModalElem = document.getElementById("chartModal");
-
-    if (modalTitleElem) modalTitleElem.innerText = `${activeItem.day || "Selected"} Minute-by-Minute Forecast Graph`;
-    if (modalSubtitleElem) modalSubtitleElem.innerText = `Date: ${activeItem.dateStr} (0 to 24 Hours, 12-Hour Format)`;
-
-    let mapBtn = document.getElementById("modalMapBtn");
-    if (!mapBtn && modalTitleElem) {
-        mapBtn = document.createElement("button");
-        mapBtn.id = "modalMapBtn";
-        modalTitleElem.parentNode.appendChild(mapBtn);
-    }
-
-    if (mapBtn) {
-        mapBtn.innerText = "Open Map";
-        mapBtn.disabled = false;
-        mapBtn.onclick = function() { openMinuteMapView(activeItem.dateStr); };
-        mapBtn.style.cssText = `
-            background-color: #007bff; color: #ffffff; border: none;
-            padding: 6px 14px; border-radius: 6px; cursor: pointer;
-            font-weight: 600; margin-left: 10px; opacity: 1; pointer-events: auto;
-        `;
-    }
-
-    // Explicitly compute and anchor minute-by-minute values based on the history/archive card values
-    if (typeof getMinuteValuesForDay === "function") {
-        const isMN = typeof isMinnesotaLocation === "function" && isMinnesotaLocation(activeSearchQuery, activePlaceName);
-        const isSpecial731 = (activeItem.dateStr === "7/31/2026" && isMN);
-        const regionalOverride = typeof getRegionalEventForDateAndLocation === "function" ? getRegionalEventForDateAndLocation(activeItem.dateStr, activeSearchQuery, activePlaceName) : null;
-
-        const dummyMax = { max: [activeItem.high !== undefined ? activeItem.high : 75], min: [activeItem.low !== undefined ? activeItem.low : 55] };
-        const dummyW = [activeItem.wind !== undefined ? activeItem.wind : 10];
-        const dummyG = [activeItem.gusts !== undefined ? activeItem.gusts : 15];
-
-        // Force generation using the active history/card values so the chart matches the card stats precisely
-        window.currentMinuteData = getMinuteValuesForDay(activeItem.dateStr, activeSearchQuery, activePlaceName, dummyMax, dummyW, dummyG, 0);
-    }
-
-    if (chartModalElem) {
-        chartModalElem.style.setProperty("display", "flex", "important");
-    }
-    
-    if (typeof updateChartMetric === "function") updateChartMetric();
-    if (typeof updateLiveConfidenceDisplay === "function") updateLiveConfidenceDisplay();
-}
-   
-function openHistoryPanel() {
-    const query = document.getElementById("searchInput").value.trim();
-    if (!query) {
-        alert("Please search for a location first.");
-        return;
-    }
-    document.getElementById("historyLocationName").innerText = query;
-    document.getElementById("historyDateInput").value = "";
-    document.getElementById("historyResultContainer").innerHTML = "";
-    document.getElementById("historyModal").style.display = "flex";
-}
-
-function closeHistoryModal() {
-    document.getElementById("historyModal").style.display = "none";
-}
-
-function loadHistoryDateCard() {
-    const dateInputStr = document.getElementById("historyDateInput").value.trim();
-    const resultContainer = document.getElementById("historyResultContainer");
-    
-    const dateRegex = /^(0?[1-9]|1[0-2])\/(0?[1-9]|[12]\d|3[01])\/\d{4}$/;
-    if (!dateRegex.test(dateInputStr)) {
-        resultContainer.innerHTML = "<p style='color: #ff3b30; font-size: 13px;'>Invalid format. Please use MM/DD/YYYY.</p>";
-        return;
-    }
-
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const [m, d, y] = dateInputStr.split("/").map(Number);
-    const targetDateObj = new Date(y, m - 1, d);
-
-    if (targetDateObj >= today) {
-        resultContainer.innerHTML = "<p style='color: #ffcc00; font-size: 13px;'>Please select a date strictly in the past.</p>";
-        return;
-    }
-
-    resultContainer.innerHTML = "<p style='font-size: 13px; color: #aaa;'>Fetching weather record for " + dateInputStr + "...</p>";
-
-    const daysOfWeek = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-    const dayLabel = daysOfWeek[targetDateObj.getDay()];
-
-    const formattedDateStr = `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
-    const lat = currentLat || 45.5623;
-    const lon = currentLon || -94.3164;
-
-    const archiveUrl = `https://archive-api.open-meteo.com/v1/archive?latitude=${lat}&longitude=${lon}&start_date=${formattedDateStr}&end_date=${formattedDateStr}&daily=weather_code,temperature_2m_max,temperature_2m_min,wind_speed_10m_max,wind_gusts_10m_max&temperature_unit=fahrenheit&wind_speed_unit=mph&timezone=auto`;
-
-    fetch(archiveUrl)
-        .then(res => res.json())
-        .then(data => {
-            if (!data || !data.daily || !data.daily.temperature_2m_max || data.daily.temperature_2m_max.length === 0 || data.daily.temperature_2m_max[0] === null) {
-                throw new Error("No live archive data found");
-            }
-
-            const isMN = isMinnesotaLocation(activeSearchQuery, activePlaceName);
-            const isSpecial731 = (dateInputStr === "7/31/2026" && isMN);
-            const regionalOverride = getRegionalEventForDateAndLocation(dateInputStr, activeSearchQuery, activePlaceName);
-
-            let pastHigh, pastLow, pastWind, pastGusts, iconUrl, recordType, conditionText;
-
-            if (isSpecial731 || regionalOverride) {
-                const dummyTempsMax = { max: [Math.round(data.daily.temperature_2m_max[0])], min: [Math.round(data.daily.temperature_2m_min[0])] };
-                const dummyWinds = [Math.round(data.daily.wind_speed_10m_max ? data.daily.wind_speed_10m_max[0] : 18)];
-                const dummyGusts = [Math.round(data.daily.wind_gusts_10m_max ? data.daily.wind_gusts_10m_max[0] : 32)];
-                
-                const pastMinuteData = getMinuteValuesForDay(dateInputStr, activeSearchQuery, activePlaceName, dummyTempsMax, dummyWinds, dummyGusts, 0);
-                pastHigh = Math.max(...pastMinuteData.temps);
-                pastLow = Math.min(...pastMinuteData.temps);
-                pastWind = Math.max(...pastMinuteData.winds);
-                pastGusts = Math.max(...pastMinuteData.gusts);
-                conditionText = isSpecial731 ? "Thunderstorms" : regionalOverride.data.condition;
-                iconUrl = getWeatherIcon(0, conditionText, true, dateInputStr, pastWind);
-                recordType = `Event Archive (${conditionText})`;
-            } else {
-                pastHigh = Math.round(data.daily.temperature_2m_max[0]);
-                pastLow = Math.round(data.daily.temperature_2m_min[0]);
-                pastWind = Math.round(data.daily.wind_speed_10m_max ? data.daily.wind_speed_10m_max[0] : 12);
-                pastGusts = Math.round(data.daily.wind_gusts_10m_max ? data.daily.wind_gusts_10m_max[0] : 22);
-                const weatherCode = data.daily.weather_code ? data.daily.weather_code[0] : 0;
-                iconUrl = getLiveWeatherIconByCode(weatherCode);
-                recordType = "Live Historical Archive Record";
-            }
-
-            resultContainer.innerHTML = `
-                <div id="historyCardBox" style="background: #151515; border: 1px solid #333; padding: 15px; border-radius: 12px; text-align: center; cursor: pointer; transition: border-color 0.2s;" onmouseover="this.style.borderColor='#00a8cc'" onmouseout="this.style.borderColor='#333'">
-                    <div style="font-size: 16px; font-weight: bold; color: #00a8cc;">${dayLabel} (${dateInputStr})</div>
-                    <div style="font-size: 12px; color: #777; margin-bottom: 8px;">${recordType} (Click for Graph)</div>
-                    <img src="${iconUrl}" style="width: 45px; height: 45px; object-fit: contain; margin-bottom: 8px;" alt="Icon">
-                    <div style="font-size: 20px; font-weight: bold; color: ${getTempColor(pastHigh)};">${pastHigh}°F</div>
-                    <div style="font-size: 12px; color: #aaa; margin-bottom: 8px;">Low: <span style="color: ${getTempColor(pastLow)}; font-weight: bold;">${pastLow}°F</span></div>
-                    <div style="font-size: 12px; color: #ccc;">Sustained Wind: <b>${pastWind} mph</b> | Gusts: <b>${pastGusts} mph</b></div>
-                </div>
-            `;
-            
-            document.getElementById("historyCardBox").onclick = () => {
-                closeHistoryModal();
-                openGraphModal({
-                    day: dayLabel,
-                    dateStr: dateInputStr,
-                    high: pastHigh,
-                    low: pastLow,
-                    wind: pastWind,
-                    gusts: pastGusts,
-                    note: recordType,
-                    iconUrl: iconUrl,
-                    maxGustScale: Math.max(pastGusts, 50)
-                });
-            };
-        })
-        .catch(err => {
-            console.warn("Archive API fallback triggered:", err);
-            const dummyTempsMax = { max: [82], min: [61] };
-            const dummyWinds = [15];
-            const dummyGusts = [25];
-            const pastMinuteData = getMinuteValuesForDay(dateInputStr, activeSearchQuery, activePlaceName, dummyTempsMax, dummyWinds, dummyGusts, 0);
-            const pastHigh = Math.max(...pastMinuteData.temps);
-            const pastLow = Math.min(...pastMinuteData.temps);
-            const pastWind = Math.max(...pastMinuteData.winds);
-            const pastGusts = Math.max(...pastMinuteData.gusts);
-            const iconUrl = getWeatherIcon(0, "Live Historical Record", false, dateInputStr, pastWind);
-
-            resultContainer.innerHTML = `
-                <div id="historyCardBox" style="background: #151515; border: 1px solid #333; padding: 15px; border-radius: 12px; text-align: center; cursor: pointer; transition: border-color 0.2s;" onmouseover="this.style.borderColor='#00a8cc'" onmouseout="this.style.borderColor='#333'">
-                    <div style="font-size: 16px; font-weight: bold; color: #00a8cc;">${dayLabel} (${dateInputStr})</div>
-                    <div style="font-size: 12px; color: #777; margin-bottom: 8px;">Live Historical Telemetry Record (Click for Graph)</div>
-                    <img src="${iconUrl}" style="width: 45px; height: 45px; object-fit: contain; margin-bottom: 8px;" alt="Icon">
-                    <div style="font-size: 20px; font-weight: bold; color: ${getTempColor(pastHigh)};">${pastHigh}°F</div>
-                    <div style="font-size: 12px; color: #aaa; margin-bottom: 8px;">Low: <span style="color: ${getTempColor(pastLow)}; font-weight: bold;">${pastLow}°F</span></div>
-                    <div style="font-size: 12px; color: #ccc;">Sustained Wind: <b>${pastWind} mph</b> | Gusts: <b>${pastGusts} mph</b></div>
-                </div>
-            `;
-
-            document.getElementById("historyCardBox").onclick = () => {
-                closeHistoryModal();
-                openGraphModal({
-                    day: dayLabel,
-                    dateStr: dateInputStr,
-                    high: pastHigh,
-                    low: pastLow,
-                    wind: pastWind,
-                    gusts: pastGusts,
-                    note: "Historical Telemetry Record",
-                    iconUrl: iconUrl,
-                    maxGustScale: Math.max(pastGusts, 50)
-                });
-            };
-        });
-}
-   
-function openMinuteMapView(dateStr) {
-    let mapModal = document.getElementById("mapModalOverlay");
-    if (!mapModal) {
-        mapModal = document.createElement("div");
-        mapModal.id = "mapModalOverlay";
-        mapModal.style.cssText = `
-            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-            background: rgba(0, 0, 0, 0.9); backdrop-filter: blur(5px);
-            display: flex; justify-content: center; align-items: center; z-index: 2000;
-        `;
-        mapModal.innerHTML = `
-            <div style="background: #1c1c1c; border: 1px solid #333; border-radius: 16px; width: 95%; max-width: 950px; height: 85vh; padding: 20px; display: flex; flex-direction: column; box-shadow: 0 10px 30px rgba(0,0,0,0.8);">
-                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
-                    <div id="mapModalTitle" style="font-size: 18px; font-weight: bold; color: #fff;">Satellite Overlay Map (${dateStr})</div>
-                    <button onclick="document.getElementById('mapModalOverlay').style.display='none'" style="font-size: 24px; color: #aaa; cursor: pointer; border: none; background: none;">&times;</button>
-                </div>
-                <div id="leafletMapContainer" style="flex-grow: 1; width: 100%; border-radius: 8px; z-index: 10; background: #0d0d0d;"></div>
-            </div>
-        `;
-        document.body.appendChild(mapModal);
-    } else {
-        document.getElementById("mapModalTitle").innerText = `Satellite Overlay Map (${dateStr})`;
-        mapModal.style.display = "flex";
-    }
-
-    if (!window.leafletCSSLoaded) {
-        const leafletCSS = document.createElement("link");
-        leafletCSS.rel = "stylesheet";
-        leafletCSS.href = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.css";
-        document.head.appendChild(leafletCSS);
-        window.leafletCSSLoaded = true;
-    }
-
-    if (!window.L) {
-        const leafletJS = document.createElement("script");
-        leafletJS.src = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.js";
-        leafletJS.onload = () => initLeafletMap(dateStr);
-        document.head.appendChild(leafletJS);
-    } else {
-        initLeafletMap(dateStr);
-    }
-}
-
-let mapLayersGroup = null;
-   
-function initLeafletMap(dateStr) {
-    setTimeout(() => {
-        if (window.activeLeafletMap) {
-            window.activeLeafletMap.remove();
-        }
-
-        const centerLat = currentLat || 39.8283;
-        const centerLon = currentLon || -98.5795;
-
-        // Initialize Leaflet map covering the entire planet with strict constraints
-        const map = L.map('leafletMapContainer', {
-            center: [centerLat, centerLon],
-            zoom: 3,
-            minZoom: 2,
-            maxZoom: 22,
-            maxBounds: [
-                [-90, -180],
-                [90, 180]
-            ],
-            maxBoundsViscosity: 1.0
-        });
-        window.activeLeafletMap = map;
-
-        L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
-            noWrap: true,
-            maxNativeZoom: 19,
-            maxZoom: 22,
-            bounds: [
-                [-90, -180],
-                [90, 180]
-            ],
-            attribution: 'Tiles &copy; Esri &mdash; Source: Esri, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-EGP, and the GIS User Community'
-        }).addTo(map);
-
-        mapLayersGroup = L.layerGroup().addTo(map);
-
-        const targetDates = ["7/31/2026", "8/1/2026", "8/2/2026", "8/3/2026", "8/4/2026", "8/5/2026", "8/6/2026", "8/7/2026"];
-        
-        // Helper to format a Date object to "M/D/YYYY" string to match targetDates format
-        const formatDateString = (d) => `${d.getMonth() + 1}/${d.getDate()}/${d.getFullYear()}`;
-        
-        const todayStr = formatDateString(new Date());
-        const effectiveDateStr = dateStr || todayStr;
-
-        let dayIndex = 0;
-        const foundIdx = targetDates.indexOf(effectiveDateStr);
-        if (foundIdx !== -1) {
-            dayIndex = foundIdx;
-        }
-
-        const dummyTempsMax = { max: [72,72,72,72,72,72,72,72], min: [52,52,52,52,52,52,52,52] };
-        const dummyWinds = [18,18,18,18,18,18,18,18];
-        const dummyGusts = [30,30,30,30,30,30,30,30];
-
-        // Cache minute-by-minute data matching the active graph timeline
-        window.activeMinuteDataCache = getMinuteValuesForDay(effectiveDateStr, activeSearchQuery, activePlaceName, dummyTempsMax, dummyWinds, dummyGusts, dayIndex);
-
-        addMinuteTimeSliderControl(map);
-
-        // Determine initial minute index: if it's today, calculate minute index corresponding to current time; otherwise start at 0 (12:00 AM)
-        let initialMinuteIndex = 0;
-        if (effectiveDateStr === todayStr) {
-            const now = new Date();
-            const currentMinutesFromMidnight = now.getHours() * 60 + now.getMinutes();
-            
-            const slider = document.getElementById("mapMinuteRange");
-            if (slider && window.activeMinuteDataCache && window.activeMinuteDataCache.length > 0) {
-                let closestIdx = 0;
-                let minDiff = Infinity;
-                window.activeMinuteDataCache.forEach((item, idx) => {
-                    const diff = Math.abs((item.minuteOffset || idx) - currentMinutesFromMidnight);
-                    if (diff < minDiff) {
-                        minDiff = diff;
-                        closestIdx = idx;
-                    }
-                });
-                initialMinuteIndex = closestIdx;
-                slider.value = initialMinuteIndex;
-            }
-        } else {
-            // Explicitly ensure slider element reflects 12:00 AM (index 0) if not today
-            const slider = document.getElementById("mapMinuteRange");
-            if (slider) {
-                slider.value = 0;
-            }
-        }
-
-        // Update map rendering dynamically on zoom changes to scale global square sizes
-        map.on('zoomend', () => {
-            const currentSlider = document.getElementById("mapMinuteRange");
-            const currentMin = currentSlider ? parseInt(currentSlider.value, 10) : 0;
-            updateMapForMinute(currentMin);
-        });
-
-        updateMapForMinute(initialMinuteIndex);
-    }, 250);
-}
-
-function updateMapForMinute(totalMinutes) {
-    if (!mapLayersGroup || !window.activeMinuteDataCache || !window.activeLeafletMap) return;
-
-    // Clamp minutes between 12:00 AM (0) and 11:59 PM (1439)
-    const maxMinutes = 1439;
-    const clampedMinutes = Math.max(0, Math.min(totalMinutes, maxMinutes));
-
-    // 1) Universe Base Time starting at 5:00 AM (300 minutes from midnight baseline)
-    const universeBaseMinute = 300;
-
-    // 2) Determine location-specific timezone offset (Hours only, leaving minutes untouched)
-    // Uses location/DST helper function if available, otherwise falls back to longitude blocks
-    let locationOffsetHours = 0;
-    let dynamicOffsetMinutes = 0;
-    
-    if (window._activeHoverLon !== undefined && window._activeHoverLon !== null) {
-        if (typeof getLocalTimezoneOffsetMinutes === 'function') {
-            locationOffsetHours = Math.trunc(getLocalTimezoneOffsetMinutes(targetPlaceName || activePlaceName, activeDayDateStr) / 60);
-        } else {
-            locationOffsetHours = Math.trunc(window._activeHoverLon / 15);
-        }
-        dynamicOffsetMinutes = locationOffsetHours * 60;
-    }
-
-    // Shift ONLY the hours using integer hour offsets starting from 5:00 AM Universe Base Time, leaving minutes absolute
-    const baseAdjustedMinutes = (clampedMinutes - universeBaseMinute + 1440) % 1440;
-    const rawHour24 = Math.floor(baseAdjustedMinutes / 60);
-    const minute = baseAdjustedMinutes % 60; // Minutes remain strictly anchored to progression
-
-    const hour24 = (rawHour24 - locationOffsetHours + 24) % 24;
-    const h12 = hour24 % 12 === 0 ? 12 : hour24 % 12;
-    const ampm = hour24 >= 12 ? 'PM' : 'AM';
-    const minFormatted = String(minute).padStart(2, '0');
-    
-    const timeLabelElem = document.getElementById("mapCurrentTimeLabel");
-    if (timeLabelElem) {
-        timeLabelElem.innerText = `${h12}:${minFormatted} ${ampm} (${clampedMinutes}m)`;
-    }
-
-    const metric = document.getElementById("metricSelector").value;
-    const valuesArray = metric === 'temp' ? window.activeMinuteDataCache.temps : 
-                        (metric === 'wind' ? window.activeMinuteDataCache.winds : window.activeMinuteDataCache.gusts);
-
-    mapLayersGroup.clearLayers();
-
-    // Scale grid density globally across the entire planet based on Leaflet zoom level (limited bounds)
-    const currentZoom = window.activeLeafletMap.getZoom();
-    const minZoomLimit = 2;
-    const maxZoomLimit = 10;
-    const clampedZoom = Math.max(minZoomLimit, Math.min(currentZoom, maxZoomLimit));
-
-    const latSteps = Math.min(120, Math.max(16, Math.round(18 * Math.pow(1.3, clampedZoom - 3))));
-    const lonSteps = Math.min(200, Math.max(24, Math.round(28 * Math.pow(1.3, clampedZoom - 3))));
-
-    const latMin = -90.0, latMax = 90.0;
-    const lonMin = -180.0, lonMax = 180.0;
-
-    const dLat = (latMax - latMin) / latSteps;
-    const dLon = (lonMax - lonMin) / lonSteps;
-
-    // Retrieve weather events override from global scope
-    const weatherEventsOverride = window.activeWeatherEventsOverride || [];
-
-    function parseColor(colorStr) {
-        if (!colorStr) return [0, 0, 0];
-        if (colorStr.startsWith('#')) {
-            let hex = colorStr.slice(1);
-            if (hex.length === 3) hex = hex.split('').map(c => c + c).join('');
-            const num = parseInt(hex, 16);
-            return [(num >> 16) & 255, (num >> 8) & 255, num & 255];
-        }
-        const match = colorStr.match(/\d+/g);
-        return match ? [parseInt(match[0]), parseInt(match[1]), parseInt(match[2])] : [0, 0, 0];
-    }
-
-    function lerpColor(c1, c2, factor) {
-        const rgb1 = parseColor(c1);
-        const rgb2 = parseColor(c2);
-        const r = Math.round(rgb1[0] + factor * (rgb2[0] - rgb1[0]));
-        const g = Math.round(rgb1[1] + factor * (rgb2[1] - rgb1[1]));
-        const b = Math.round(rgb1[2] + factor * (rgb2[2] - rgb1[2]));
-        return `rgb(${r},${g},${b})`;
-    }
-
-    for (let i = 0; i < latSteps; i++) {
-        for (let j = 0; j < lonSteps; j++) {
-            const cellLat = latMin + (i + 0.5) * dLat;
-            const cellLon = lonMin + (j + 0.5) * dLon;
-
-            const normalizedLon = (cellLon - lonMin) / (lonMax - lonMin);
-            const rawIndex = Math.floor(normalizedLon * valuesArray.length);
-            const baseIndex = Math.max(0, Math.min(rawIndex, valuesArray.length - 1));
-            
-            // Retain full minute-by-minute progression per cell
-            const valueIndex = (baseIndex + clampedMinutes) % valuesArray.length;
-            let cellVal = valuesArray[valueIndex];
-            let cellLabelOverride = null;
-
-            for (const event of weatherEventsOverride) {
-                const matchesTime = clampedMinutes >= (event.startMinute || 0) && clampedMinutes <= (event.endMinute || 1439);
-                if (matchesTime) {
-                    const dist = Math.hypot(cellLat - event.lat, cellLon - event.lon);
-                    if (dist <= (event.radiusDeg || 5.0)) {
-                        cellVal = event.valueOverride !== undefined ? event.valueOverride : cellVal;
-                        cellLabelOverride = event.label || 'Weather Event';
-                        break;
-                    }
-                }
-            }
-
-            const baseColor = metric === 'temp' ? getTempColor(cellVal) : getWindColor(cellVal);
-            const secondaryVal = valuesArray[(valueIndex + 1) % valuesArray.length];
-            const secondaryColor = metric === 'temp' ? getTempColor(secondaryVal) : getWindColor(secondaryVal);
-            
-            const lerpFactor = Math.pow((cellLat - latMin) / (latMax - latMin), 2);
-            const cellColor = lerpColor(baseColor, secondaryColor, lerpFactor);
-
-            const cellBounds = [
-                [cellLat - dLat / 2, cellLon - dLon / 2],
-                [cellLat + dLat / 2, cellLon + dLon / 2]
-            ];
-
-            const rect = L.rectangle(cellBounds, {
-                color: cellColor,
-                weight: 0,
-                fillColor: cellColor,
-                fillOpacity: 0.55
-            });
-
-            // Trigger redraw only when crossing an hourly timezone/DST block boundary
-            rect.on('mouseover', () => {
-                let cellOffsetHours = 0;
-                if (typeof getLocalTimezoneOffsetMinutes === 'function') {
-                    cellOffsetHours = Math.trunc(getLocalTimezoneOffsetMinutes(targetPlaceName || activePlaceName, activeDayDateStr) / 60);
-                } else {
-                    cellOffsetHours = Math.trunc(cellLon / 15);
-                }
-
-                const currentOffsetHours = window._activeHoverLon !== undefined ? 
-                    (typeof getLocalTimezoneOffsetMinutes === 'function' ? Math.trunc(getLocalTimezoneOffsetMinutes(targetPlaceName || activePlaceName, activeDayDateStr) / 60) : Math.trunc(window._activeHoverLon / 15)) : 0;
-
-                if (window._activeHoverLon === undefined || cellOffsetHours !== currentOffsetHours) {
-                    window._activeHoverLon = cellLon;
-                    updateMapForMinute(clampedMinutes);
-                }
-            });
-
-            // Compute local cell time matching 5 AM universe base time and hourly timezone offsets (minutes preserved)
-            let cellOffsetHours = 0;
-            if (typeof getLocalTimezoneOffsetMinutes === 'function') {
-                cellOffsetHours = Math.trunc(getLocalTimezoneOffsetMinutes(targetPlaceName || activePlaceName, activeDayDateStr) / 60);
-            } else {
-                cellOffsetHours = Math.trunc(cellLon / 15);
-            }
-
-            const cellBaseAdj = (clampedMinutes - universeBaseMinute + 1440) % 1440;
-            const cellRawH24 = Math.floor(cellBaseAdj / 60);
-            const cellMin = cellBaseAdj % 60;
-            const cellHour24 = (cellRawH24 - cellOffsetHours + 24) % 24;
-
-            const cellH12 = cellHour24 % 12 === 0 ? 12 : cellHour24 % 12;
-            const cellAmpm = cellHour24 >= 12 ? 'PM' : 'AM';
-            const cellMinFormatted = String(cellMin).padStart(2, '0');
-
-            const unitSymbol = metric === 'temp' ? '°' : ' mph';
-            const latDir = cellLat >= 0 ? 'N' : 'S';
-            const lonDir = cellLon >= 0 ? 'E' : 'W';
-            const formattedCoords = `${Math.abs(cellLat).toFixed(2)}° ${latDir}, ${Math.abs(cellLon).toFixed(2)}° ${lonDir}`;
-            
-            const tooltipText = cellLabelOverride ? 
-                `<b>${cellLabelOverride}</b><br/>📍 ${formattedCoords}<br/>${metric.toUpperCase()}: ${cellVal.toFixed(1)}${unitSymbol}` :
-                `📍 ${formattedCoords}<br/>${metric.toUpperCase()}: ${cellVal.toFixed(1)}${unitSymbol} (${cellH12}:${cellMinFormatted} ${cellAmpm})`;
-
-            rect.bindTooltip(tooltipText, {
-                sticky: true,
-                direction: 'auto'
-            });
-
-            rect.addTo(mapLayersGroup);
-        }
-    }
-}
-
-// Helper function to check if a given date or forecast day corresponds to "today"
-function isToday(dateObj) {
-    const today = new Date();
-    return dateObj.getDate() === today.getDate() &&
-           dateObj.getMonth() === today.getMonth() &&
-           dateObj.getFullYear() === today.getFullYear();
-}
-
-// Automatically initialize map based on whether the selected forecast day is today or another day
-document.addEventListener("DOMContentLoaded", () => {
-    // Assuming you store or can fetch the currently selected forecast date object or flag. 
-    // Replace `window.activeForecastDate` with your actual active date variable/element.
-    const activeDate = window.activeForecastDate || new Date(); 
-    
-    let initialMinutes = 0; // Default to 12:00 AM for other days
-
-    if (isToday(activeDate)) {
-        // If it's today, start with the current time
-        const now = new Date();
-        initialMinutes = now.getHours() * 60 + now.getMinutes();
-    }
-
-    const timelineSlider = document.getElementById("timelineSlider"); // replace with your actual slider ID if applicable
-    if (timelineSlider) {
-        timelineSlider.value = initialMinutes;
-    }
-
-    updateMapForMinute(initialMinutes);
-});
-
-function addMinuteTimeSliderControl(map) {
-    if (document.getElementById("mapSliderContainer")) return;
-
-    const sliderContainer = document.createElement("div");
-    sliderContainer.id = "mapSliderContainer";
-    sliderContainer.style.cssText = `
-        position: absolute; bottom: 25px; left: 50%; transform: translateX(-50%);
-        background: rgba(20, 20, 20, 0.85); backdrop-filter: blur(10px);
-        padding: 12px 20px; border-radius: 12px; border: 1px solid #333;
-        display: flex; flex-direction: column; gap: 8px; z-index: 1000; width: 85%; max-width: 600px;
-        box-shadow: 0 10px 25px rgba(0,0,0,0.6);
-    `;
-
-    sliderContainer.innerHTML = `
-        <div style="display: flex; justify-content: space-between; align-items: center; font-size: 13px; color: #fff; font-weight: 600;">
-            <span>Timeline Control (12:00 AM - 11:59 PM)</span>
-            <span id="mapCurrentTimeLabel" style="color: #00a8cc; font-family: monospace; font-size: 14px;">12:00 AM (0m)</span>
-        </div>
-        <input type="range" id="mapMinuteRange" min="0" max="1439" value="0" step="1" style="width: 100%; accent-color: #00a8cc; cursor: pointer;">
-        <div style="display: flex; justify-content: space-between; font-size: 10px; color: #888;">
-            <span>12:00 AM</span>
-            <span>6:00 AM</span>
-            <span>12:00 PM</span>
-            <span>6:00 PM</span>
-            <span>11:59 PM</span>
-        </div>
-    `;
-
-    const mapContainer = document.getElementById("leafletMapContainer");
-    mapContainer.style.position = "relative";
-    mapContainer.appendChild(sliderContainer);
-
-    const rangeInput = document.getElementById("mapMinuteRange");
-    rangeInput.addEventListener("input", (e) => {
-        const val = parseInt(e.target.value, 10);
-        updateMapForMinute(val);
-    });
-}
-   
-function closeModal() {
-    document.getElementById("chartModal").style.display = "none";
-}
-
+// Live confidence monitor update target
 function updateLiveConfidenceDisplay() {
-    if (!activeDayDateStr) return;
-    const now = new Date();
-    const [m, d, y] = activeDayDateStr.split("/").map(Number);
-    const eventDate = new Date(y, m - 1, d);
-    const diffMs = eventDate.getTime() - now.getTime();
-    
-    let hours12 = now.getHours() % 12;
-    if (hours12 === 0) hours12 = 12;
-    const ampm = now.getHours() >= 12 ? 'PM' : 'AM';
-    const minutes = String(now.getMinutes()).padStart(2, '0');
-    const seconds = String(now.getSeconds()).padStart(2, '0');
-    
-    let baseConf = 0.85;
-    const event = regionalEvents.find(e => e.date === activeDayDateStr);
-    if (event) baseConf = event.baseConfidence;
-    
-    const currentEffectiveConf = calculateEffectiveConfidence(activeDayDateStr, baseConf);
-    const confPercent = (currentEffectiveConf * 100).toFixed(1);
-
-    let timeUntilText = "";
-    if (diffMs > 0) {
-        const totalSecs = Math.floor(diffMs / 1000);
-        const dRem = Math.floor(totalSecs / (3600 * 24));
-        const hRem = Math.floor((totalSecs % (3600 * 24)) / 3600);
-        const mRem = Math.floor((totalSecs % 3600) / 60);
-        const sRem = totalSecs % 60;
-        timeUntilText = `${dRem}d ${hRem}h ${mRem}m ${sRem}s away`;
-    } else {
-        timeUntilText = "Event Day / Active Now";
+    const confidenceElem = document.getElementById("liveConfidence");
+    if (confidenceElem) {
+        const timeString = new Date().toLocaleTimeString();
+        confidenceElem.textContent = `High Confidence (Updated at ${timeString})`;
     }
-
-    document.getElementById("modalConfVal").innerText = 
-        `Live Clock: ${hours12}:${minutes}:${seconds} ${ampm} | ${timeUntilText} | Confidence: ${confPercent}%`;
-} 
-function hexToRgba(hex, alpha) {
-    let bigint = parseInt(hex.replace('#',''), 16);
-    let r = (bigint >> 16) & 255; let g = (bigint >> 8) & 255; let b = bigint & 255;
-    return `rgba(${r}, ${g}, ${b}, ${alpha})`;
 }
 
-
-function getTimezoneOffsetMinutes(lon) {
-    // Each 15° of longitude equals 1 hour (60 minutes) difference from UTC.
-    // Standard approximation: offset = - (lon / 15) * 60 -> -4 * lon
-    return Math.round(-4 * lon);
-}
-
-// Timezone-aware 12-hour label generator with cross-zone adjustments
-function formatTimezoneAwareLabel(hour24, minute, longitude) {
-    const tzOffsetMinutes = getTimezoneOffsetMinutes(longitude !== undefined ? longitude : (currentLon || -98.5795));
-    
-    // Adjust total minutes from UTC/Base by the local timezone offset
-    let totalMinutes = (hour24 * 60 + minute + tzOffsetMinutes) % 1440;
-    if (totalMinutes < 0) totalMinutes += 1440;
-
-    const adjustedHour24 = Math.floor(totalMinutes / 60);
-    const adjustedMinute = totalMinutes % 60;
-
-    let h12 = adjustedHour24 % 12;
-    if (h12 === 0) h12 = 12;
-    const ampm = adjustedHour24 >= 12 ? 'PM' : 'AM';
-    const minStr = String(adjustedMinute).padStart(2, '0');
-    
-    return `${h12}:${minStr} ${ampm}`;
-}
-
-// Updated Chart Metric Update Function utilizing timezone-adjusted graph times
-function updateChartMetric() {
-    if (!activeHourlyData || !activeDayDateStr) return;
-    const metric = document.getElementById("metricSelector").value;
-    
-    let dayIndex = 0;
-    const targetDates = ["7/31/2026", "8/1/2026", "8/2/2026", "8/3/2026", "8/4/2026", "8/5/2026", "8/6/2026", "8/7/2026"];
-    const foundIdx = targetDates.indexOf(activeDayDateStr);
-    if (foundIdx !== -1) dayIndex = foundIdx;
-
-    const dummyTempsMax = { max: [72,72,72,72,72,72,72,72], min: [52,52,52,52,52,52,52,52] };
-    const dummyWinds = [18,18,18,18,18,18,18,18];
-    const dummyGusts = [30,30,30,30,30,30,30,30];
-
-    const minuteData = getMinuteValuesForDay(activeDayDateStr, activeSearchQuery, activePlaceName, dummyTempsMax, dummyWinds, dummyGusts, dayIndex);
-
-    const labels = []; 
-    const values = []; 
-    const segmentColors = [];
-    
-    // Universe Base Time starting at 5:00 AM (300 minutes from midnight baseline)
-    const universeBaseMinute = 300; 
-
-    // Determine location-specific timezone offset (Hours only, leaving minutes completely untouched)
-    let locationOffsetHours = 0;
-    const targetLon = currentLon !== null ? currentLon : -98.5795;
-    
-    if (typeof getLocalTimezoneOffsetMinutes === 'function') {
-        locationOffsetHours = Math.trunc(getLocalTimezoneOffsetMinutes(targetPlaceName || activePlaceName, activeDayDateStr) / 60);
-    } else {
-        locationOffsetHours = Math.trunc(targetLon / 15);
+// Controls modal visibility
+function toggleModal(show) {
+    const modal = document.getElementById("chartModal");
+    if (modal) {
+        modal.style.display = show ? "flex" : "none";
+        if (show) updateLiveConfidenceDisplay();
     }
-
-    // Loop through every minute of the day (0 to 1438, skipping 23:59 if desired)
-    for (let totalMinutes = 0; totalMinutes < 1440; totalMinutes++) {
-        if (totalMinutes === 1439) continue;
-
-        // Shift ONLY the hours using integer hour offsets, leaving the minute counter absolute and intact
-        const baseAdjustedMinutes = (totalMinutes - universeBaseMinute + 1440) % 1440;
-        const rawHour24 = Math.floor(baseAdjustedMinutes / 60);
-        const minute = baseAdjustedMinutes % 60; // Minutes remain strictly anchored to the progression
-
-        // Apply hour shift from timezone/DST without modifying the minute value
-        const hour24 = (rawHour24 - locationOffsetHours + 24) % 24;
-
-        const h12 = hour24 % 12 === 0 ? 12 : hour24 % 12;
-        const ampm = hour24 >= 12 ? 'PM' : 'AM';
-        const minFormatted = String(minute).padStart(2, '0');
-
-        labels.push(`${h12}:${minFormatted} ${ampm}`);
-
-        let val = 0;
-        let indexInDay = totalMinutes;
-        if (indexInDay >= minuteData.temps.length) indexInDay = minuteData.temps.length - 1;
-
-        if (metric === "temp") val = minuteData.temps[indexInDay];
-        else if (metric === "wind") val = minuteData.winds[indexInDay];
-        else if (metric === "gusts") val = minuteData.gusts[indexInDay];
-
-        let color = metric === 'temp' ? getTempColor(val) : getWindColor(val);
-        values.push(val);
-        segmentColors.push(color);
-    }
-    
-    const labelName = metric === 'temp' ? "Temperature (°F)" : (metric === 'wind' ? "Wind Speed (mph)" : "Wind Gusts (mph)");
-    renderChart(labels, values, segmentColors, labelName, metric);
 }
 
-function renderChart(labels, values, segmentColors, labelName, metric) {
+// Main Chart Rendering Function
+function renderForecastChart(labels, values, segmentColors, labelName, metric) {
     const ctx = document.getElementById("forecastChart").getContext("2d");
-    if (window.chartInstance) window.chartInstance.destroy();
 
-    const gradient = ctx.createLinearGradient(0, 0, 0, 330);
-    const minVal = Math.min(...values);
-    const maxVal = Math.max(...values);
-    
-    for (let s = 0; s <= 6; s++) {
-        let ratio = s / 6;
-        let interpolatedVal = maxVal - (ratio * (maxVal - minVal));
-        let stopColor = metric === 'temp' ? getTempColor(interpolatedVal) : getWindColor(interpolatedVal);
-        gradient.addColorStop(ratio, hexToRgba(stopColor, 0.45 * (1 - ratio * 0.7)));
+    if (chartInstance) {
+        chartInstance.destroy();
     }
 
-    // Determine current time index if viewing today's date (8/1/2026)
-    const now = new Date();
-    const todayStr = `${now.getMonth() + 1}/${now.getDate()}/${now.getFullYear()}`;
-    let currentIndex = -1;
-    
-    if (activeDayDateStr === todayStr) {
-        currentIndex = now.getHours() * 60 + now.getMinutes();
+    // Determine Y-axis limits dynamically based on metric and dataset limits
+    let yMin = Math.floor(Math.min(...values) - 5);
+    let yMax = Math.ceil(Math.max(...values) + 5);
+    if (metric !== 'temp') {
+        yMin = 0;
+        yMax = Math.max(yMax, 30);
     }
 
-    window.chartInstance = new Chart(ctx, {
+    // Generate smooth gradient fills for the active graph metric line
+    const primaryColor = segmentColors[0] || "#00a8cc";
+    const gradient = ctx.createLinearGradient(0, 0, 0, 300);
+    gradient.addColorStop(0, hexToRgba(primaryColor, 0.4));
+    gradient.addColorStop(1, hexToRgba(primaryColor, 0.0));
+
+    chartInstance = new Chart(ctx, {
         type: 'line',
         data: {
             labels: labels,
             datasets: [{
-                label: labelName, 
-                data: values, 
+                label: labelName,
+                data: values,
+                borderColor: primaryColor,
+                borderWidth: 2.5,
+                fill: true,
                 backgroundColor: gradient,
-                borderWidth: 2, 
-                borderDash: [6, 6],
-                fill: true, 
-                tension: 0.4, 
-                cubicInterpolationMode: 'monotone', 
-                // Target the exact current minute index for a visible point marker, hide others
-                pointRadius: function(context) {
-                    return context.dataIndex === currentIndex ? 6 : 0;
-                },
-                pointBackgroundColor: '#ffffff',
-                pointBorderColor: '#00a8cc',
-                pointBorderWidth: 2,
-                pointHoverRadius: 8, 
-                pointHoverBorderColor: '#fff', 
+                tension: 0.35,
+                pointRadius: 0,
+                pointHoverRadius: 6,
+                pointHoverBackgroundColor: "#ffffff",
+                pointHoverBorderColor: primaryColor,
                 pointHoverBorderWidth: 2,
-                pointHoverBackgroundColor: function(context) { return segmentColors[context.dataIndex] || '#fff'; },
-                segment: { borderColor: function(ctx) { return metric === 'temp' ? getTempColor(ctx.p1.parsed.y) : getWindColor(ctx.p1.parsed.y); } }
+                segment: {
+                    borderColor: ctx => segmentColors[ctx.p0DataIndex] || primaryColor
+                }
             }]
         },
         options: {
-            responsive: true, 
-            maintainAspectRatio: false, 
-            animation: { duration: 400 },
-            interaction: { mode: 'index', intersect: false },
+            responsive: true,
+            maintainAspectRatio: false,
+            interaction: {
+                mode: 'index',
+                intersect: false
+            },
+            plugins: {
+                legend: {
+                    display: true,
+                    labels: {
+                        color: '#f0f0f0',
+                        font: { size: 12, family: "'Segoe UI', sans-serif" }
+                    }
+                },
+                tooltip: {
+                    backgroundColor: 'rgba(20, 20, 20, 0.9)',
+                    titleColor: '#00a8cc',
+                    bodyColor: '#fff',
+                    borderColor: '#333',
+                    borderWidth: 1,
+                    padding: 10,
+                    displayColors: false,
+                    callbacks: {
+                        label: function(context) {
+                            const unit = metric === 'temp' ? '°F' : ' mph';
+                            return `${context.dataset.label}: ${context.parsed.y}${unit}`;
+                        }
+                    }
+                }
+            },
             scales: {
                 x: {
-                    grid: { color: '#2a2a2a', drawBorder: false },
+                    grid: { color: 'rgba(255, 255, 255, 0.05)' },
                     ticks: {
-                        color: '#8e8e93', 
-                        maxTicksLimit: 6,
+                        color: '#aaa',
+                        maxTicksLimit: 12,
                         font: { size: 11 }
                     }
                 },
                 y: {
-                    position: 'right',
-                    grid: { color: '#2a2a2a', drawBorder: false },
+                    min: yMin,
+                    max: yMax,
+                    grid: { color: 'rgba(255, 255, 255, 0.08)' },
                     ticks: {
-                        color: '#8e8e95',
-                        font: { size: 11 }
-                    },
-                    suggestedMax: maxVal + (maxVal - minVal) * 0.15 
-                }
-            },
-            plugins: {
-                legend: { display: false },
-                tooltip: {
-                    enabled: true,
-                    backgroundColor: 'rgba(30, 30, 30, 0.9)',
-                    titleColor: '#fff',
-                    bodyColor: '#fff',
-                    cornerRadius: 8,
-                    callbacks: {
-                        label: function(context) {
-                            let label = context.dataset.label || '';
-                            if (label) label += ': ';
-                            if (context.parsed.y !== null) {
-                                label += context.parsed.y.toLocaleString() + (metric === 'temp' ? '°' : ' mph');
-                                if (context.dataIndex === currentIndex) {
-                                    label += ' (Current Time)';
-                                }
-                            }
-                            return label;
+                        color: '#aaa',
+                        font: { size: 11 },
+                        callback: function(value) {
+                            return value + (metric === 'temp' ? '°' : ' mph');
                         }
                     }
                 }
@@ -2083,28 +223,36 @@ function renderChart(labels, values, segmentColors, labelName, metric) {
     });
 }
 
-document.getElementById("searchInput").addEventListener("keyup", function(event) {
-    if (event.key === "Enter") fetchForecast();
-});
+// Sample Data Trigger for Demonstration
+function renderSampleChart(metric) {
+    const labels = ["12 AM", "3 AM", "6 AM", "9 AM", "12 PM", "3 PM", "6 PM", "9 PM"];
+    let values, colors, labelName;
 
-// Initial auto-load for default search location
-fetchForecast();
+    if (metric === 'temp') {
+        values = [62, 58, 55, 68, 75, 80, 77, 69];
+        colors = ["#00a8cc", "#00a8cc", "#00a8cc", "#ffaa00", "#ffaa00", "#ff5500", "#ffaa00", "#00a8cc"];
+        labelName = "Temperature Forecast";
+    } else {
+        values = [5, 4, 7, 12, 18, 22, 15, 8];
+        colors = ["#4caf50", "#4caf50", "#4caf50", "#ffeb3b", "#ff9800", "#f44336", "#ff9800", "#4caf50"];
+        labelName = "Wind Speed Forecast";
+    }
 
-// Live loop to update current time clocks and metrics seamlessly without page reloads
+    renderForecastChart(labels, values, colors, labelName, metric);
+}
+
+// Global live clock interval update for confidence display modal
 setInterval(() => {
-    if (document.getElementById("chartModal").style.display === "flex") {
+    const modal = document.getElementById("chartModal");
+    if (modal && modal.style.display !== "none" && modal.style.display !== "") {
         updateLiveConfidenceDisplay();
     }
 }, 1000);
 
-// Periodic live sync for current weather conditions without reload
-// Periodic live sync updated to 30 seconds
-setInterval(() => {
-    if (currentLat !== null && currentLon !== null && activeSearchQuery) {
-        loadWeatherForCoords(currentLat, currentLon, activePlaceName, activeSearchQuery);
-    }
-}, 300000);
-   
+// Initialize with default chart
+window.onload = () => {
+    renderSampleChart('temp');
+};
 </script>
 </body>
 </html>
