@@ -2,9 +2,10 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>USA 7-Day Jace Fink DOS & WIS Forecast</title>
 <style>
-    body { font-family: 'Segoe UI', Arial, sans-serif; background:#0d0d0d; color:#fff; padding:20px; }
+    body { font-family: 'Segoe UI', Arial, sans-serif; background:#0d0d0d; color:#fff; padding:20px; margin: 0; }
     h1 { text-align:center; margin-bottom:5px; font-size:32px; }
     .subtitle { text-align:center; color:#888; font-size:14px; margin-bottom:20px; }
     
@@ -120,33 +121,58 @@ function getLerpColor(score) {
     return `rgb(${r}, ${g}, ${b})`;
 }
 
+// Enhanced WIS and DOS calculation accounting for Volume, PDS/Emergency Tags, and Severity
 function calculateNationalScores(alerts) {
     if (!alerts || alerts.length === 0) return { wis: 3, dos: 4 };
 
-    let rawScore = 0;
+    let rawWisScore = 0;
+    let highRiskBaseline = 0;
+
     alerts.forEach(alert => {
         const props = alert.properties || {};
         const event = (props.event || "").toLowerCase();
         const severity = (props.severity || "").toLowerCase();
+        const headline = (props.headline || "").toLowerCase();
+        const description = (props.description || "").toLowerCase();
 
         let points = 0;
-        if (severity === "extreme") points += 3;
-        else if (severity === "severe") points += 1.5;
-        else if (severity === "moderate") points += 0.5;
-        else if (severity === "minor") points += 0.1;
+        
+        // 1. Severity Multipliers
+        if (severity === "extreme") points += 4.0;
+        else if (severity === "severe") points += 2.0;
+        else if (severity === "moderate") points += 0.8;
+        else if (severity === "minor") points += 0.2;
 
-        if (event.includes("tornado")) points += 5;
-        if (event.includes("hurricane") || event.includes("tropical storm")) points += 6;
-        if (event.includes("blizzard") || event.includes("ice storm")) points += 3;
-        if (event.includes("flash flood")) points += 2;
-        if (event.includes("extreme wind") || event.includes("derecho")) points += 3;
+        // 2. Alert Types
+        if (event.includes("tornado")) points += 6;
+        if (event.includes("hurricane") || event.includes("tropical storm")) points += 7;
+        if (event.includes("blizzard") || event.includes("ice storm")) points += 3.5;
+        if (event.includes("flash flood")) points += 2.5;
+        if (event.includes("extreme wind") || event.includes("derecho")) points += 4;
         if (event.includes("red flag") || event.includes("fire")) points += 1;
 
-        rawScore += points;
+        // 3. High-Impact Tags (PDS, Tornado Emergency, Destructive)
+        const fullText = headline + " " + description;
+        if (fullText.includes("tornado emergency")) {
+            points += 50; // Massively boosts WIS score
+        } else if (fullText.includes("particularly dangerous situation") || fullText.includes("pds")) {
+            points += 20;
+        }
+        
+        if (fullText.includes("destructive")) {
+            points += 10;
+        }
+
+        // SPC Risk baseline weight estimation
+        if (event.includes("tornado watch") || event.includes("severe thunderstorm watch")) {
+            highRiskBaseline += 5;
+        }
+
+        rawWisScore += points;
     });
 
-    const currentWIS = Math.min(Math.round(rawScore / 45), 250);
-    const baseDOS = Math.min(Math.round(rawScore / 55), 250);
+    const currentWIS = Math.min(Math.round(rawWisScore / 40), 250);
+    const baseDOS = Math.min(Math.round((rawWisScore + highRiskBaseline) / 48), 250);
 
     return {
         wis: Math.max(currentWIS, 2),
@@ -202,21 +228,18 @@ function updateStreamStatus(wisScore) {
     }
 }
 
-// Generates dynamic scores based on hours and minutes (no seconds)
+// Generates dynamic scores based on hours and minutes
 function getDynamicScores73126() {
     const now = new Date();
     const minutes = now.getMinutes();
     const hours = now.getHours();
 
-    // Time factor based strictly on hours and minutes
     const timeFactor = (hours * 60 + minutes);
     const fluctuation = Math.sin(timeFactor / 15) * 4; 
 
-    // Peak score up to 56
     const basePeak = 52;
     const projectedScore = Math.min(Math.max(Math.round(basePeak + fluctuation), 10), 56);
 
-    // Stream chance up to 100%
     const streamFluctuation = Math.cos(timeFactor / 12) * 5;
     const baseChance = 95;
     const streamChance = Math.min(Math.max(Math.round(baseChance + streamFluctuation), 0), 100);
@@ -259,7 +282,7 @@ async function buildForecast() {
         let projectedScore;
         let streamChance;
         
-        // Dynamic calculation for 7/31/2026 (Minnesota Storm Threat)
+        // Custom scenario dates override
         if (year === 2026 && month === 7 && dateNum === 31) {
             const dynamicData = getDynamicScores73126();
             projectedScore = dynamicData.projectedScore;
@@ -275,7 +298,7 @@ async function buildForecast() {
             if (streamChance < 5) streamChance = 0;
         }
 
-        let videoLabel = "Video Unlikely";
+        let videoLabel = streamChance > 70 ? "Video Likely" : "Video Unlikely";
 
         dosForecast.push({
             day: dayLabel,
