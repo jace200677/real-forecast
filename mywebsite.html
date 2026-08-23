@@ -125,7 +125,7 @@
 <script>
 const IS_LIVE_ON_YOUTUBE = false; 
 let targetZoneOrPoint = null;
-let currentSearchState = null; // Stores state code if searched
+let currentSearchState = "mn"; // Default initialized for MN
 
 async function searchLocationForecast() {
     const query = document.getElementById("locationInput").value.trim();
@@ -484,15 +484,18 @@ async function buildForecast() {
             }
         }
 
-        // --- SPECIFIC OVERRIDE FOR 8/28/2026 ---
+        // --- SPECIFIC OVERRIDE FOR 8/28/2026 (MINNESOTA ONLY, DYNAMIC SPAN) ---
         if (year === 2026 && month === 8 && dateNum === 28) {
             const isMN = !currentSearchState || currentSearchState === "minnesota" || currentSearchState === "mn";
             if (isMN) {
-                tempLow = 37;
-                tempHigh = 65;
-                windMph = 28;
-                gustMph = 62;
-                weatherSummary = "Cool & High Winds";
+                // Allows local temperatures and wind speeds to vary higher/lower depending on local MN location data
+                tempLow = (gridPeriods && tempLow) ? tempLow : 37;
+                tempHigh = (gridPeriods && tempHigh) ? tempHigh : 65;
+                windMph = (gridPeriods && windMph) ? windMph : 28;
+                gustMph = (gridPeriods && gustMph) ? gustMph : 62;
+                if (!gridPeriods || gridPeriods.length === 0) {
+                    weatherSummary = "Cool & High Winds";
+                }
             }
         }
 
