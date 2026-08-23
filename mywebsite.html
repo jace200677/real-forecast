@@ -514,28 +514,37 @@ async function buildForecast() {
             }
         }
 
-        // --- DYNAMIC MINNESOTA OVERRIDE FOR 8/28/2026 WITH DAYS-OUT CONFIDENCE VARIANCE ---
+        // --- DYNAMIC MINNESOTA OVERRIDE FOR 8/28/2026 WITH GEOGRAPHIC & CONFIDENCE-BASED VARIANCE ---
         if (year === 2026 && month === 8 && dateNum === 28) {
             const isMN = currentSearchState === "minnesota" || currentSearchState === "mn";
             if (isMN) {
-                // Calculate days out relative to target date (8/28/2026)
-                const target828 = new Date(2026, 7, 28);
-                target828.setHours(0, 0, 0, 0);
-                const daysOut = Math.round((target828 - today) / (1000 * 60 * 60 * 24));
+                // Days remaining until target event date (8/28/2026)
+                const targetDate = new Date(2026, 7, 28);
+                targetDate.setHours(0, 0, 0, 0);
+                const daysOut = Math.max(0, Math.round((targetDate - today) / (1000 * 60 * 60 * 24)));
 
-                // Latitude and Longitude spatial offsets
-                const latOffset = targetZoneOrPoint ? (parseFloat(targetZoneOrPoint.lat) - 45.0) * 1.5 : 0;
-                const lonOffset = targetZoneOrPoint ? (parseFloat(targetZoneOrPoint.lon) + 93.0) * 1.2 : 0;
+                // Spatial factors based on Lat/Lon relative to Central Minnesota (45.0 N, -93.0 W)
+                const lat = targetZoneOrPoint ? parseFloat(targetZoneOrPoint.lat) : 45.0;
+                const lon = targetZoneOrPoint ? parseFloat(targetZoneOrPoint.lon) : -93.0;
 
-                // Confidence Multiplier: Days further out introduce higher variance/uncertainty swings (+/- changes)
-                const confidenceFactor = Math.abs(daysOut) * 0.8;
-                const dynamicSwing = Math.sin(daysOut * 1.3) * confidenceFactor;
+                const latOffset = (lat - 45.0) * 1.5;
+                const lonOffset = (lon + 93.0) * 1.2;
 
-                // Combine spatial coordinates with dynamic up/down confidence adjustments
-                tempLow = Math.round((gridPeriods ? tempLow : 37) - latOffset + lonOffset + dynamicSwing);
-                tempHigh = Math.round((gridPeriods ? tempHigh : 65) - latOffset + lonOffset + (dynamicSwing * 1.5));
-                windMph = Math.max(5, Math.round((gridPeriods ? windMph : 28) + latOffset + dynamicSwing));
-                gustMph = Math.max(10, Math.round((gridPeriods ? gustMph : 62) + (latOffset * 1.5) + (dynamicSwing * 2)));
+                // Establish base override values adjusted for Geographic Coordinates
+                const baseLow = 37 - latOffset + lonOffset;
+                const baseHigh = 65 - latOffset + (lonOffset * 1.5);
+                const baseWind = 28 + latOffset;
+                const baseGust = 62 + (latOffset * 1.5);
+
+                // Confidence Variance: As daysOut decreases (gets closer), variance shrinks towards confidence.
+                // Dynamic oscillation creates natural up/down forecast swings further out.
+                const varianceAmplitude = daysOut * 1.2; 
+                const swingFactor = Math.sin(daysOut * 1.5);
+
+                tempLow = Math.round(baseLow + (swingFactor * varianceAmplitude));
+                tempHigh = Math.round(baseHigh + (swingFactor * varianceAmplitude * 1.3));
+                windMph = Math.max(5, Math.round(baseWind + (swingFactor * varianceAmplitude * 0.8)));
+                gustMph = Math.max(windMph + 5, Math.round(baseGust + (swingFactor * varianceAmplitude * 1.5)));
 
                 if (!gridPeriods || gridPeriods.length === 0) {
                     weatherSummary = "Cool & High Winds";
