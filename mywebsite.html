@@ -75,6 +75,7 @@
     .dos-value { font-size:38px; font-weight:bold; text-align:center; margin-bottom:2px; }
     .dos-label { font-size:11px; text-align:center; opacity:.9; margin-bottom:8px; min-height:28px; line-height:1.2; }
     
+    .weather-summary { font-size: 11px; text-align: center; color: #bbb; min-height: 28px; margin-bottom: 8px; font-style: italic; }
     .video-label { font-size:11px; text-align:center; padding:3px 6px; border-radius:6px; background:#2a2a2a; margin-bottom:8px; }
     
     /* Live Stream Chance Section */
@@ -156,6 +157,25 @@ async function fetchActiveAlerts() {
         return data.features || [];
     } catch (err) {
         console.error("Failed to fetch NWS alerts:", err);
+        return null;
+    }
+}
+
+async function fetchLocalForecastGrid() {
+    if (!targetZoneOrPoint) return null;
+    try {
+        const pointRes = await fetch(`https://api.weather.gov/points/${targetZoneOrPoint.lat},${targetZoneOrPoint.lon}`);
+        if (!pointRes.ok) return null;
+        const pointData = await pointRes.json();
+        const forecastUrl = pointData.properties?.forecast;
+        if (!forecastUrl) return null;
+
+        const forecastRes = await fetch(forecastUrl);
+        if (!forecastRes.ok) return null;
+        const forecastData = await forecastRes.json();
+        return forecastData.properties?.periods || [];
+    } catch (err) {
+        console.error("Failed to fetch grid forecast:", err);
         return null;
     }
 }
@@ -318,6 +338,7 @@ function getDynamicScores73126() {
 async function buildForecast() {
     const container = document.getElementById("forecastContainer");
     const alerts = await fetchActiveAlerts();
+    const gridPeriods = await fetchLocalForecastGrid();
 
     if (!alerts) {
         container.innerHTML = "<p>Unable to retrieve live NWS data. Please try again shortly.</p>";
@@ -368,12 +389,24 @@ async function buildForecast() {
 
         let videoLabel = streamChance > 70 ? "Video Likely" : "Video Unlikely";
 
+        // Extract 7-day text forecast if available for the location
+        let weatherSummary = "National Outlook Only";
+        if (gridPeriods && gridPeriods.length > 0) {
+            const dayPeriod = gridPeriods.find(p => p.isDaytime && new Date(p.startTime).getDate() === dateNum);
+            if (dayPeriod) {
+                weatherSummary = `${dayPeriod.shortForecast}, ${dayPeriod.temperature}°${dayPeriod.temperatureUnit}`;
+            } else if (i === 0 && gridPeriods[0]) {
+                weatherSummary = `${gridPeriods[0].shortForecast}, ${gridPeriods[0].temperature}°${gridPeriods[0].temperatureUnit}`;
+            }
+        }
+
         dosForecast.push({
             day: dayLabel,
             dateStr: dateString,
             score: projectedScore,
             streamChance: streamChance,
             videoStatus: videoLabel,
+            weatherSummary: weatherSummary,
             meta: getDOSMeta(projectedScore)
         });
     }
@@ -408,6 +441,10 @@ function renderForecast(dosForecast) {
         dosLabel.className = "dos-label";
         dosLabel.innerText = item.meta.label;
         dosLabel.style.color = dynamicColor;
+
+        const weatherSummary = document.createElement("div");
+        weatherSummary.className = "weather-summary";
+        weatherSummary.innerText = item.weatherSummary;
 
         const videoTag = document.createElement("div");
         videoTag.className = "video-label";
@@ -454,6 +491,7 @@ function renderForecast(dosForecast) {
         card.appendChild(dayDate);
         card.appendChild(dosValue);
         card.appendChild(dosLabel);
+        card.appendChild(weatherSummary);
         card.appendChild(videoTag);
         card.appendChild(barLabel);
         card.appendChild(bar);
