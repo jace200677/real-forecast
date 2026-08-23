@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>USA 7-Day Jace Fink DOS & WIS Forecast</title>
+<title>USA 7-Day Weather Forecast</title>
 <style>
     body { font-family: 'Segoe UI', Arial, sans-serif; background:#0d0d0d; color:#fff; padding:20px; margin: 0; }
     h1 { text-align:center; margin-bottom:5px; font-size:32px; }
@@ -54,7 +54,7 @@
     }
     .status-box { text-align: center; flex: 1; }
     .status-title { font-size: 12px; color: #888; text-transform: uppercase; margin-bottom: 4px; }
-    .wis-val { font-size: 32px; font-weight: bold; }
+    .wis-val { font-size: 24px; font-weight: bold; color: #0088ff; }
     .stream-status { font-size: 18px; font-weight: bold; }
     .status-live { color: #ff0055; animation: pulse 1.5s infinite; }
     .status-standby { color: #ffaa00; }
@@ -67,32 +67,22 @@
     }
 
     .forecast-container { display:flex; flex-wrap:wrap; gap:18px; justify-content:center; }
-    .day-card { background:#1c1c1c; padding:18px; border-radius:14px; width:210px;
+    .day-card { background:#1c1c1c; padding:18px; border-radius:14px; width:220px;
                 box-shadow:0 0 18px rgba(0,0,0,0.6); transition:transform .2s; }
     .day-card:hover { transform:scale(1.05); }
     .day-name { font-size:20px; text-align:center; margin-bottom:2px; font-weight:bold; }
-    .day-date { font-size:12px; color:#777; text-align:center; margin-bottom:8px; }
-    .dos-value { font-size:38px; font-weight:bold; text-align:center; margin-bottom:2px; }
-    .dos-label { font-size:11px; text-align:center; opacity:.9; margin-bottom:8px; min-height:28px; line-height:1.2; }
+    .day-date { font-size:12px; color:#777; text-align:center; margin-bottom:12px; }
+    .temp-value { font-size:32px; font-weight:bold; text-align:center; margin-bottom:4px; color: #0088ff; }
+    .weather-short { font-size:13px; text-align:center; font-weight: 600; margin-bottom:8px; min-height:32px; line-height:1.2; color: #e0e0e0; }
     
-    .video-label { font-size:11px; text-align:center; padding:3px 6px; border-radius:6px; background:#2a2a2a; margin-bottom:8px; }
-    
-    /* Live Stream Chance Section */
-    .stream-chance-container { margin-top: 10px; font-size: 11px; text-align: center; }
-    .stream-chance-title { color: #aaa; text-transform: uppercase; letter-spacing: 0.5px; font-size: 10px; }
-    .stream-chance-val { font-size: 14px; font-weight: bold; color: #0088ff; margin-bottom: 4px; }
-
-    /* Progress Bars */
-    .bar-label { font-size: 9px; color: #666; text-transform: uppercase; margin-bottom: 2px; }
-    .bar { height:8px; background:#2a2a2a; border-radius:6px; overflow:hidden; margin-bottom: 8px; }
-    .bar-fill { height:100%; transition: width .5s, background-color .5s; }
-    .bar-fill-stream { height:100%; background: #0088ff; transition: width .5s; }
+    .wind-label { font-size:11px; text-align:center; padding:4px 6px; border-radius:6px; background:#2a2a2a; margin-bottom:10px; color: #aaa; }
+    .detailed-desc { font-size: 11px; color: #888; line-height: 1.3; text-align: center; margin-top: 8px; border-top: 1px solid #2a2a2a; padding-top: 8px; }
 </style>
 </head>
 <body>
 
-<h1>USA 7-Day Daily Outlook Score (DOS)</h1>
-<div class="subtitle">Based on the Jace Fink National Weather Impact Index</div>
+<h1>USA 7-Day Weather Forecast</h1>
+<div class="subtitle">Live NWS Local Weather Data</div>
 
 <!-- Location Search UI -->
 <div class="search-container">
@@ -100,11 +90,11 @@
     <button onclick="searchLocationForecast()" class="search-button">Get 7 Day Forecast</button>
 </div>
 
-<!-- Live Status & WIS Header -->
+<!-- Live Status Header -->
 <div class="status-banner">
     <div class="status-box">
-        <div class="status-title">Current WIS Score</div>
-        <div class="wis-val" id="currentWis">--</div>
+        <div class="status-title">Current Location</div>
+        <div class="wis-val" id="currentLocation">National Overview</div>
     </div>
     <div class="status-box">
         <div class="status-title">Stream Status</div>
@@ -112,18 +102,18 @@
     </div>
 </div>
 
-<div class="forecast-container" id="forecastContainer">Loading live NOAA hazard data...</div>
+<div class="forecast-container" id="forecastContainer">Loading live NOAA weather data...</div>
 
 <script>
 const IS_LIVE_ON_YOUTUBE = false; 
-let targetZoneOrPoint = null;
+let targetZoneOrPoint = { lat: "44.9778", lon: "-93.2650" }; // Default: Minneapolis
 
 async function searchLocationForecast() {
     const query = document.getElementById("locationInput").value.trim();
     if (!query) return;
 
     const container = document.getElementById("forecastContainer");
-    container.innerHTML = "Searching location and calculating forecast...";
+    container.innerHTML = "Searching location and fetching 7-day forecast...";
 
     try {
         const geoUrl = `https://nominatim.openstreetmap.org/search?format=json&countrycodes=us&q=${encodeURIComponent(query)}`;
@@ -134,6 +124,7 @@ async function searchLocationForecast() {
             const lat = parseFloat(geoData[0].lat).toFixed(4);
             const lon = parseFloat(geoData[0].lon).toFixed(4);
             targetZoneOrPoint = { lat, lon };
+            document.getElementById("currentLocation").innerText = geoData[0].display_name.split(',')[0];
             buildForecast();
         } else {
             container.innerHTML = "<p>Location not found. Please try again with a valid US city or zip code.</p>";
@@ -144,121 +135,28 @@ async function searchLocationForecast() {
     }
 }
 
-async function fetchActiveAlerts() {
+async function fetchWeatherForecast() {
     try {
-        let url = "https://api.weather.gov/alerts/active";
-        if (targetZoneOrPoint) {
-            url = `https://api.weather.gov/alerts/active?point=${targetZoneOrPoint.lat},${targetZoneOrPoint.lon}`;
-        }
-        const response = await fetch(url);
-        if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
-        const data = await response.json();
-        return data.features || [];
+        // Step 1: Get gridpoint endpoint
+        const pointUrl = `https://api.weather.gov/points/${targetZoneOrPoint.lat},${targetZoneOrPoint.lon}`;
+        const pointRes = await fetch(pointUrl);
+        if (!pointRes.ok) throw new Error("Failed to fetch point data");
+        const pointData = await pointRes.json();
+        
+        // Step 2: Fetch actual 7-day daily forecast periods
+        const forecastUrl = pointData.properties.forecast;
+        const forecastRes = await fetch(forecastUrl);
+        if (!forecastRes.ok) throw new Error("Failed to fetch forecast data");
+        const forecastData = await forecastRes.json();
+        
+        return forecastData.properties.periods || [];
     } catch (err) {
-        console.error("Failed to fetch NWS alerts:", err);
+        console.error("Failed to fetch NWS forecast:", err);
         return null;
     }
 }
 
-function getLerpColor(score) {
-    const stops = [
-        { score: 0,   r: 0,   g: 255, b: 119 },
-        { score: 30,  r: 255, g: 255, b: 0 },
-        { score: 60,  r: 255, g: 170, b: 0 },
-        { score: 90,  r: 255, g: 0,   b: 85 },
-        { score: 120, r: 212, g: 0,   b: 255 }
-    ];
-
-    if (score <= stops[0].score) return `rgb(${stops[0].r}, ${stops[0].g}, ${stops[0].b})`;
-    if (score >= stops[stops.length - 1].score) {
-        const last = stops[stops.length - 1];
-        return `rgb(${last.r}, ${last.g}, ${last.b})`;
-    }
-
-    let i = 0;
-    while (score > stops[i + 1].score) i++;
-
-    const lower = stops[i];
-    const upper = stops[i + 1];
-    const factor = (score - lower.score) / (upper.score - lower.score);
-
-    const r = Math.round(lower.r + factor * (upper.r - lower.r));
-    const g = Math.round(lower.g + factor * (upper.g - lower.g));
-    const b = Math.round(lower.b + factor * (upper.b - lower.b));
-
-    return `rgb(${r}, ${g}, ${b})`;
-}
-
-// Enhanced WIS and DOS calculation accounting for Volume, PDS/Emergency Tags, and Severity
-function calculateNationalScores(alerts) {
-    if (!alerts || alerts.length === 0) return { wis: 3, dos: 4 };
-
-    let rawWisScore = 0;
-    let highRiskBaseline = 0;
-
-    alerts.forEach(alert => {
-        const props = alert.properties || {};
-        const event = (props.event || "").toLowerCase();
-        const severity = (props.severity || "").toLowerCase();
-        const headline = (props.headline || "").toLowerCase();
-        const description = (props.description || "").toLowerCase();
-
-        let points = 0;
-        
-        // 1. Severity Multipliers
-        if (severity === "extreme") points += 4.0;
-        else if (severity === "severe") points += 2.0;
-        else if (severity === "moderate") points += 0.8;
-        else if (severity === "minor") points += 0.2;
-
-        // 2. Alert Types
-        if (event.includes("tornado")) points += 6;
-        if (event.includes("hurricane") || event.includes("tropical storm")) points += 7;
-        if (event.includes("blizzard") || event.includes("ice storm")) points += 3.5;
-        if (event.includes("flash flood")) points += 2.5;
-        if (event.includes("extreme wind") || event.includes("derecho")) points += 4;
-        if (event.includes("red flag") || event.includes("fire")) points += 1;
-
-        // 3. High-Impact Tags (PDS, Tornado Emergency, Destructive)
-        const fullText = headline + " " + description;
-        if (fullText.includes("tornado emergency")) {
-            points += 50; // Massively boosts WIS score
-        } else if (fullText.includes("particularly dangerous situation") || fullText.includes("pds")) {
-            points += 20;
-        }
-        
-        if (fullText.includes("destructive")) {
-            points += 10;
-        }
-
-        // SPC Risk baseline weight estimation
-        if (event.includes("tornado watch") || event.includes("severe thunderstorm watch")) {
-            highRiskBaseline += 5;
-        }
-
-        rawWisScore += points;
-    });
-
-    const currentWIS = Math.min(Math.round(rawWisScore / 40), 250);
-    const baseDOS = Math.min(Math.round((rawWisScore + highRiskBaseline) / 48), 250);
-
-    return {
-        wis: Math.max(currentWIS, 2),
-        dos: Math.max(baseDOS, 3)
-    };
-}
-
-function getDOSMeta(score) {
-    if (score >= 150) return { label: "Potentially Historic Setup" };
-    if (score >= 125) return { label: "Extreme Event Potential" };
-    if (score >= 110) return { label: "Major Weather Event Potential" };
-    if (score >= 90)  return { label: "Significant Weather Likely" };
-    if (score >= 60)  return { label: "Weather Worth Watching" };
-    if (score >= 30)  return { label: "Some Weather Activity Expected" };
-    return { label: "Mostly Quiet Nationally" };
-}
-
-function updateStreamStatus(wisScore) {
+function updateStreamStatus() {
     const streamStatusEl = document.getElementById("streamStatus");
 
     if (IS_LIVE_ON_YOUTUBE) {
@@ -296,168 +194,55 @@ function updateStreamStatus(wisScore) {
     }
 }
 
-// Generates dynamic scores based on hours and minutes
-function getDynamicScores73126() {
-    const now = new Date();
-    const minutes = now.getMinutes();
-    const hours = now.getHours();
-
-    const timeFactor = (hours * 60 + minutes);
-    const fluctuation = Math.sin(timeFactor / 15) * 4; 
-
-    const basePeak = 52;
-    const projectedScore = Math.min(Math.max(Math.round(basePeak + fluctuation), 10), 56);
-
-    const streamFluctuation = Math.cos(timeFactor / 12) * 5;
-    const baseChance = 95;
-    const streamChance = Math.min(Math.max(Math.round(baseChance + streamFluctuation), 0), 100);
-
-    return { projectedScore, streamChance };
-}
-
 async function buildForecast() {
     const container = document.getElementById("forecastContainer");
-    const alerts = await fetchActiveAlerts();
+    const periods = await fetchWeatherForecast();
 
-    if (!alerts) {
-        container.innerHTML = "<p>Unable to retrieve live NWS data. Please try again shortly.</p>";
+    if (!periods || periods.length === 0) {
+        container.innerHTML = "<p>Unable to retrieve live NWS weather data. Please try again shortly.</p>";
         return;
     }
 
-    const { wis, dos } = calculateNationalScores(alerts);
-    
-    const wisEl = document.getElementById("currentWis");
-    wisEl.innerText = wis;
-    wisEl.style.color = getLerpColor(wis);
-    
-    updateStreamStatus(wis);
+    updateStreamStatus();
 
-    const today = new Date();
-    const daysOfWeek = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-    const dosForecast = [];
-
-    for (let i = 0; i < 7; i++) {
-        const forecastDate = new Date();
-        forecastDate.setDate(today.getDate() + i);
-
-        const year = forecastDate.getFullYear();
-        const month = forecastDate.getMonth() + 1;
-        const dateNum = forecastDate.getDate();
-
-        const dayLabel = i === 0 ? "Today" : daysOfWeek[forecastDate.getDay()];
-        const dateString = `${month}/${dateNum}/${year}`;
-
-        let projectedScore;
-        let streamChance;
-        
-        // Custom scenario dates override
-        if (year === 2026 && month === 7 && dateNum === 31) {
-            const dynamicData = getDynamicScores73126();
-            projectedScore = dynamicData.projectedScore;
-            streamChance = dynamicData.streamChance;
-        } else if (year === 2026 && month === 8 && dateNum === 6) {
-            projectedScore = 200;
-            streamChance = 100;
-        } else {
-            const trendMultiplier = 1 + (Math.sin(i * 0.8) * 0.2);
-            projectedScore = Math.min(Math.max(Math.round(dos * trendMultiplier), 2), 150);
-            
-            streamChance = Math.min(Math.round((projectedScore / 90) * 100), 85);
-            if (streamChance < 5) streamChance = 0;
-        }
-
-        let videoLabel = streamChance > 70 ? "Video Likely" : "Video Unlikely";
-
-        dosForecast.push({
-            day: dayLabel,
-            dateStr: dateString,
-            score: projectedScore,
-            streamChance: streamChance,
-            videoStatus: videoLabel,
-            meta: getDOSMeta(projectedScore)
-        });
-    }
-
-    renderForecast(dosForecast);
+    // Group forecast daytime periods for a 7-day display
+    const dayPeriods = periods.filter(p => p.isDaytime).slice(0, 7);
+    renderForecast(dayPeriods);
 }
 
-function renderForecast(dosForecast) {
+function renderForecast(periods) {
     const container = document.getElementById("forecastContainer");
     container.innerHTML = "";
 
-    dosForecast.forEach(item => {
+    periods.forEach(item => {
         const card = document.createElement("div");
         card.className = "day-card";
 
-        const dynamicColor = getLerpColor(item.score);
-
         const dayName = document.createElement("div");
         dayName.className = "day-name";
-        dayName.innerText = item.day;
+        dayName.innerText = item.name;
 
-        const dayDate = document.createElement("div");
-        dayDate.className = "day-date";
-        dayDate.innerText = item.dateStr;
+        const tempVal = document.createElement("div");
+        tempVal.className = "temp-value";
+        tempVal.innerText = `${item.temperature}°${item.temperatureUnit}`;
 
-        const dosValue = document.createElement("div");
-        dosValue.className = "dos-value";
-        dosValue.innerText = item.score;
-        dosValue.style.color = dynamicColor;
+        const shortForecast = document.createElement("div");
+        shortForecast.className = "weather-short";
+        shortForecast.innerText = item.shortForecast;
 
-        const dosLabel = document.createElement("div");
-        dosLabel.className = "dos-label";
-        dosLabel.innerText = item.meta.label;
-        dosLabel.style.color = dynamicColor;
+        const windTag = document.createElement("div");
+        windTag.className = "wind-label";
+        windTag.innerText = `Wind: ${item.windDirection} ${item.windSpeed}`;
 
-        const videoTag = document.createElement("div");
-        videoTag.className = "video-label";
-        videoTag.innerText = item.videoStatus;
-
-        const barLabel = document.createElement("div");
-        barLabel.className = "bar-label";
-        barLabel.innerText = "DOS Score Bar";
-
-        const bar = document.createElement("div");
-        bar.className = "bar";
-
-        const barFill = document.createElement("div");
-        barFill.className = "bar-fill";
-        barFill.style.backgroundColor = dynamicColor;
-        const maxScale = 120;
-        barFill.style.width = Math.min((item.score / maxScale) * 100, 100) + "%";
-        bar.appendChild(barFill);
-
-        const streamContainer = document.createElement("div");
-        streamContainer.className = "stream-chance-container";
-
-        const streamTitle = document.createElement("div");
-        streamTitle.className = "stream-chance-title";
-        streamTitle.innerText = "Live Stream Chance";
-
-        const streamVal = document.createElement("div");
-        streamVal.className = "stream-chance-val";
-        streamVal.innerText = item.streamChance + "%";
-
-        const streamBar = document.createElement("div");
-        streamBar.className = "bar";
-
-        const streamBarFill = document.createElement("div");
-        streamBarFill.className = "bar-fill-stream";
-        streamBarFill.style.width = item.streamChance + "%";
-
-        streamBar.appendChild(streamBarFill);
-        streamContainer.appendChild(streamTitle);
-        streamContainer.appendChild(streamVal);
-        streamContainer.appendChild(streamBar);
+        const detailedDesc = document.createElement("div");
+        detailedDesc.className = "detailed-desc";
+        detailedDesc.innerText = item.detailedForecast;
 
         card.appendChild(dayName);
-        card.appendChild(dayDate);
-        card.appendChild(dosValue);
-        card.appendChild(dosLabel);
-        card.appendChild(videoTag);
-        card.appendChild(barLabel);
-        card.appendChild(bar);
-        card.appendChild(streamContainer);
+        card.appendChild(tempVal);
+        card.appendChild(shortForecast);
+        card.appendChild(windTag);
+        card.appendChild(detailedDesc);
 
         container.appendChild(card);
     });
