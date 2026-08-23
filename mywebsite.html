@@ -271,7 +271,7 @@ function getTempColor(tempF) {
     while (tempF > stops[i + 1].temp) i++;
     const lower = stops[i];
     const upper = stops[i + 1];
-    const factor = (tempF - lower.temp) / (upper.temp - lower.speed || 1);
+    const factor = (tempF - lower.temp) / (upper.temp - lower.temp);
     const r = Math.round(lower.r + factor * (upper.r - lower.r));
     const g = Math.round(lower.g + factor * (upper.g - lower.g));
     const b = Math.round(lower.b + factor * (upper.b - lower.b));
@@ -475,6 +475,25 @@ async function buildForecast() {
         } else if (year === 2026 && month === 8 && dateNum === 6) {
             projectedScore = 200;
             streamChance = 100;
+        } else if (year === 2026 && month === 8 && dateNum === 28) {
+            // --- BASE OVERRIDE DOS VALUE OF 93 FOR 8/28/2026 ADJUSTED BY LAT/LON & TIME PROXIMITY ---
+            const targetDate = new Date(2026, 7, 28);
+            targetDate.setHours(0, 0, 0, 0);
+            const daysOut = Math.max(0, Math.round((targetDate - today) / (1000 * 60 * 60 * 24)));
+
+            const lat = targetZoneOrPoint ? parseFloat(targetZoneOrPoint.lat) : 45.0;
+            const lon = targetZoneOrPoint ? parseFloat(targetZoneOrPoint.lon) : -93.0;
+
+            const latOffset = (lat - 45.0) * 2.5;
+            const lonOffset = (lon + 93.0) * 1.8;
+
+            const varianceAmplitude = daysOut * 1.5; 
+            const swingFactor = Math.sin(daysOut * 1.2);
+
+            const baseDos93 = 93;
+            projectedScore = Math.max(5, Math.round(baseDos93 + latOffset + lonOffset + (swingFactor * varianceAmplitude)));
+            
+            streamChance = Math.min(Math.round((projectedScore / 90) * 100), 95);
         } else {
             const trendMultiplier = 1 + (Math.sin(i * 0.8) * 0.2);
             projectedScore = Math.min(Math.max(Math.round(dos * trendMultiplier), 2), 150);
@@ -625,7 +644,7 @@ function renderForecast(dosForecast) {
         barFill.style.width = Math.min((item.score / maxScale) * 100, 100) + "%";
         bar.appendChild(barFill);
 
-        // --- TEMPERATURE RANGE BAR (Apple Weather Scale) ---
+        // --- TEMPERATURE RANGE BAR (Apple Weather Low to High Gradient) ---
         const tempStatRow = document.createElement("div");
         tempStatRow.className = "stat-row";
         tempStatRow.innerHTML = `<span>Temp Range</span><span class="stat-val">${item.tempLow}°F - ${item.tempHigh}°F</span>`;
@@ -636,7 +655,6 @@ function renderForecast(dosForecast) {
         const tempRangeFill = document.createElement("div");
         tempRangeFill.className = "range-bar-fill";
         
-        // Scale temperature range (-10F to 110F = 120 deg range)
         const minTempScale = -10;
         const totalTempSpan = 120;
         const lowPercent = Math.max(0, Math.min(100, ((item.tempLow - minTempScale) / totalTempSpan) * 100));
@@ -650,7 +668,7 @@ function renderForecast(dosForecast) {
         tempRangeFill.style.background = `linear-gradient(90deg, ${lowColor}, ${highColor})`;
         tempBar.appendChild(tempRangeFill);
 
-        // --- SUSTAINED WIND MPH BAR (Apple Weather Scale) ---
+        // --- SUSTAINED WIND MPH BAR (Apple Weather Dynamic Range 0 to Current Wind Speed) ---
         const windStatRow = document.createElement("div");
         windStatRow.className = "stat-row";
         const windColor = getWindColor(item.windMph);
@@ -659,13 +677,20 @@ function renderForecast(dosForecast) {
         const windBar = document.createElement("div");
         windBar.className = "bar";
 
-        const windFill = document.createElement("div");
-        windFill.className = "bar-fill";
-        windFill.style.backgroundColor = windColor;
-        windFill.style.width = Math.min(100, (item.windMph / 60) * 100) + "%";
-        windBar.appendChild(windFill);
+        const windRangeFill = document.createElement("div");
+        windRangeFill.className = "range-bar-fill";
+        
+        const minWindScale = 0;
+        const maxWindScale = 60;
+        const windHighPercent = Math.min(100, Math.max(5, (item.windMph / maxWindScale) * 100));
+        const windStartColor = getWindColor(minWindScale);
 
-        // --- WIND GUST MPH BAR (Apple Weather Scale) ---
+        windRangeFill.style.left = "0%";
+        windRangeFill.style.width = windHighPercent + "%";
+        windRangeFill.style.background = `linear-gradient(90deg, ${windStartColor}, ${windColor})`;
+        windBar.appendChild(windRangeFill);
+
+        // --- WIND GUST MPH BAR (Apple Weather Dynamic Range 0 to Current Gust Speed) ---
         const gustStatRow = document.createElement("div");
         gustStatRow.className = "stat-row";
         const gustColor = getWindColor(item.gustMph);
@@ -674,11 +699,17 @@ function renderForecast(dosForecast) {
         const gustBar = document.createElement("div");
         gustBar.className = "bar";
 
-        const gustFill = document.createElement("div");
-        gustFill.className = "bar-fill";
-        gustFill.style.backgroundColor = gustColor;
-        gustFill.style.width = Math.min(100, (item.gustMph / 75) * 100) + "%";
-        gustBar.appendChild(gustFill);
+        const gustRangeFill = document.createElement("div");
+        gustRangeFill.className = "range-bar-fill";
+        
+        const maxGustScale = 75;
+        const gustHighPercent = Math.min(100, Math.max(5, (item.gustMph / maxGustScale) * 100));
+        const gustStartColor = getWindColor(0);
+
+        gustRangeFill.style.left = "0%";
+        gustRangeFill.style.width = gustHighPercent + "%";
+        gustRangeFill.style.background = `linear-gradient(90deg, ${gustStartColor}, ${gustColor})`;
+        gustBar.appendChild(gustRangeFill);
 
         // Live Stream Chance
         const streamContainer = document.createElement("div");
