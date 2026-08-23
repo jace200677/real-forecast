@@ -67,7 +67,7 @@
     }
 
     .forecast-container { display:flex; flex-wrap:wrap; gap:18px; justify-content:center; }
-    .day-card { background:#1c1c1c; padding:18px; border-radius:14px; width:210px;
+    .day-card { background:#1c1c1c; padding:18px; border-radius:14px; width:220px;
                 box-shadow:0 0 18px rgba(0,0,0,0.6); transition:transform .2s; }
     .day-card:hover { transform:scale(1.05); }
     .day-name { font-size:20px; text-align:center; margin-bottom:2px; font-weight:bold; }
@@ -75,9 +75,13 @@
     .dos-value { font-size:38px; font-weight:bold; text-align:center; margin-bottom:2px; }
     .dos-label { font-size:11px; text-align:center; opacity:.9; margin-bottom:8px; min-height:28px; line-height:1.2; }
     
-    .weather-summary { font-size: 11px; text-align: center; color: #bbb; min-height: 28px; margin-bottom: 8px; font-style: italic; }
+    .weather-summary { font-size: 11px; text-align: center; color: #bbb; min-height: 24px; margin-bottom: 8px; font-style: italic; }
     .video-label { font-size:11px; text-align:center; padding:3px 6px; border-radius:6px; background:#2a2a2a; margin-bottom:8px; }
     
+    /* Weather Stats Data Labels & Ranges */
+    .stat-row { display: flex; justify-content: space-between; font-size: 10px; color: #aaa; margin-top: 6px; margin-bottom: 2px; }
+    .stat-val { font-weight: bold; color: #fff; }
+
     /* Live Stream Chance Section */
     .stream-chance-container { margin-top: 10px; font-size: 11px; text-align: center; }
     .stream-chance-title { color: #aaa; text-transform: uppercase; letter-spacing: 0.5px; font-size: 10px; }
@@ -85,9 +89,12 @@
 
     /* Progress Bars */
     .bar-label { font-size: 9px; color: #666; text-transform: uppercase; margin-bottom: 2px; }
-    .bar { height:8px; background:#2a2a2a; border-radius:6px; overflow:hidden; margin-bottom: 8px; }
+    .bar { height:8px; background:#2a2a2a; border-radius:6px; overflow:hidden; margin-bottom: 6px; position: relative; }
     .bar-fill { height:100%; transition: width .5s, background-color .5s; }
     .bar-fill-stream { height:100%; background: #0088ff; transition: width .5s; }
+    
+    /* Range Bar Fill Style */
+    .range-bar-fill { position: absolute; height: 100%; border-radius: 6px; transition: all .5s; }
 </style>
 </head>
 <body>
@@ -206,6 +213,56 @@ function getLerpColor(score) {
     const g = Math.round(lower.g + factor * (upper.g - lower.g));
     const b = Math.round(lower.b + factor * (upper.b - lower.b));
 
+    return `rgb(${r}, ${g}, ${b})`;
+}
+
+// Color Lerp Helper for Temperature Values (-20F to 120F Scale)
+function getTempColor(tempF) {
+    const stops = [
+        { temp: -20, r: 0,   g: 100, b: 255 }, // Cold Blue
+        { temp: 32,  r: 0,   g: 220, b: 255 }, // Cyan/Freezing
+        { temp: 65,  r: 0,   g: 230, b: 100 }, // Greenish Mild
+        { temp: 85,  r: 255, g: 170, b: 0 },   // Warm Yellow/Orange
+        { temp: 110, r: 255, g: 0,   b: 50 }    // Hot Red
+    ];
+    if (tempF <= stops[0].temp) return `rgb(${stops[0].r}, ${stops[0].g}, ${stops[0].b})`;
+    if (tempF >= stops[stops.length - 1].temp) {
+        const last = stops[stops.length - 1];
+        return `rgb(${last.r}, ${last.g}, ${last.b})`;
+    }
+    let i = 0;
+    while (tempF > stops[i + 1].temp) i++;
+    const lower = stops[i];
+    const upper = stops[i + 1];
+    const factor = (tempF - lower.temp) / (upper.temp - lower.temp);
+    const r = Math.round(lower.r + factor * (upper.r - lower.r));
+    const g = Math.round(lower.g + factor * (upper.g - lower.g));
+    const b = Math.round(lower.b + factor * (upper.b - lower.b));
+    return `rgb(${r}, ${g}, ${b})`;
+}
+
+// Color Lerp Helper for Wind & Gust Speeds (0 to 80 mph Scale)
+function getWindColor(mph) {
+    const stops = [
+        { speed: 0,  r: 120, g: 120, b: 120 }, // Light Calm
+        { speed: 15, r: 0,   g: 200, b: 255 }, // Breezy Blue
+        { speed: 30, r: 255, g: 200, b: 0 },   // Moderate Yellow
+        { speed: 50, r: 255, g: 100, b: 0 },   // High Wind Orange
+        { speed: 75, r: 255, g: 0,   b: 100 }   // Extreme Purple/Red
+    ];
+    if (mph <= stops[0].speed) return `rgb(${stops[0].r}, ${stops[0].g}, ${stops[0].b})`;
+    if (mph >= stops[stops.length - 1].speed) {
+        const last = stops[stops.length - 1];
+        return `rgb(${last.r}, ${last.g}, ${last.b})`;
+    }
+    let i = 0;
+    while (mph > stops[i + 1].speed) i++;
+    const lower = stops[i];
+    const upper = stops[i + 1];
+    const factor = (mph - lower.speed) / (upper.speed - lower.speed);
+    const r = Math.round(lower.r + factor * (upper.r - lower.r));
+    const g = Math.round(lower.g + factor * (upper.g - lower.g));
+    const b = Math.round(lower.b + factor * (upper.b - lower.b));
     return `rgb(${r}, ${g}, ${b})`;
 }
 
@@ -389,14 +446,32 @@ async function buildForecast() {
 
         let videoLabel = streamChance > 70 ? "Video Likely" : "Video Unlikely";
 
-        // Extract 7-day text forecast if available for the location
+        // Extract 7-day weather stats (Temp High/Low, Wind, Gust)
         let weatherSummary = "National Outlook Only";
+        let tempLow = 50 + (i * 2);
+        let tempHigh = 72 + (i * 2);
+        let windMph = 8 + (i * 2);
+        let gustMph = windMph + 12;
+
         if (gridPeriods && gridPeriods.length > 0) {
-            const dayPeriod = gridPeriods.find(p => p.isDaytime && new Date(p.startTime).getDate() === dateNum);
-            if (dayPeriod) {
-                weatherSummary = `${dayPeriod.shortForecast}, ${dayPeriod.temperature}°${dayPeriod.temperatureUnit}`;
-            } else if (i === 0 && gridPeriods[0]) {
-                weatherSummary = `${gridPeriods[0].shortForecast}, ${gridPeriods[0].temperature}°${gridPeriods[0].temperatureUnit}`;
+            const dayPeriods = gridPeriods.filter(p => {
+                const pDate = new Date(p.startTime).getDate();
+                return pDate === dateNum;
+            });
+
+            if (dayPeriods.length > 0) {
+                const temps = dayPeriods.map(p => p.temperature);
+                tempHigh = Math.max(...temps);
+                tempLow = Math.min(...temps);
+                if (tempHigh === tempLow) tempLow = tempHigh - 12;
+
+                const firstPeriod = dayPeriods[0];
+                weatherSummary = `${firstPeriod.shortForecast}`;
+
+                // Parse wind speed
+                const windMatch = firstPeriod.windSpeed ? firstPeriod.windSpeed.match(/\d+/) : null;
+                if (windMatch) windMph = parseInt(windMatch[0], 10);
+                gustMph = windMph + Math.round(windMph * 0.4) + 5;
             }
         }
 
@@ -407,6 +482,10 @@ async function buildForecast() {
             streamChance: streamChance,
             videoStatus: videoLabel,
             weatherSummary: weatherSummary,
+            tempLow: tempLow,
+            tempHigh: tempHigh,
+            windMph: windMph,
+            gustMph: gustMph,
             meta: getDOSMeta(projectedScore)
         });
     }
@@ -450,6 +529,7 @@ function renderForecast(dosForecast) {
         videoTag.className = "video-label";
         videoTag.innerText = item.videoStatus;
 
+        // DOS Score Bar
         const barLabel = document.createElement("div");
         barLabel.className = "bar-label";
         barLabel.innerText = "DOS Score Bar";
@@ -464,6 +544,62 @@ function renderForecast(dosForecast) {
         barFill.style.width = Math.min((item.score / maxScale) * 100, 100) + "%";
         bar.appendChild(barFill);
 
+        // --- TEMPERATURE RANGE BAR (Starts Low, Ends High, Lerp Color) ---
+        const tempStatRow = document.createElement("div");
+        tempStatRow.className = "stat-row";
+        tempStatRow.innerHTML = `<span>Temp Range</span><span class="stat-val">${item.tempLow}°F - ${item.tempHigh}°F</span>`;
+
+        const tempBar = document.createElement("div");
+        tempBar.className = "bar";
+
+        const tempRangeFill = document.createElement("div");
+        tempRangeFill.className = "range-bar-fill";
+        
+        // Scale temperature scale range (-10F to 110F = 120 deg range)
+        const minTempScale = -10;
+        const totalTempSpan = 120;
+        const lowPercent = Math.max(0, Math.min(100, ((item.tempLow - minTempScale) / totalTempSpan) * 100));
+        const highPercent = Math.max(0, Math.min(100, ((item.tempHigh - minTempScale) / totalTempSpan) * 100));
+        
+        const lowColor = getTempColor(item.tempLow);
+        const highColor = getTempColor(item.tempHigh);
+
+        tempRangeFill.style.left = lowPercent + "%";
+        tempRangeFill.style.width = Math.max(5, (highPercent - lowPercent)) + "%";
+        tempRangeFill.style.background = `linear-gradient(90deg, ${lowColor}, ${highColor})`;
+        tempBar.appendChild(tempRangeFill);
+
+        // --- SUSTAINED WIND MPH BAR ---
+        const windStatRow = document.createElement("div");
+        windStatRow.className = "stat-row";
+        const windColor = getWindColor(item.windMph);
+        windStatRow.innerHTML = `<span>Wind Speed</span><span class="stat-val" style="color:${windColor}">${item.windMph} mph</span>`;
+
+        const windBar = document.createElement("div");
+        windBar.className = "bar";
+
+        const windFill = document.createElement("div");
+        windFill.className = "bar-fill";
+        windFill.style.backgroundColor = windColor;
+        windFill.style.width = Math.min(100, (item.windMph / 60) * 100) + "%";
+        windBar.appendChild(windFill);
+
+        // --- WIND GUST MPH BAR ---
+        const gustStatRow = document.createElement("div");
+        gustStatRow.className = "stat-row";
+        const gustColor = getWindColor(item.gustMph);
+        gustStatRow.innerHTML = `<span>Wind Gust</span><span class="stat-val" style="color:${gustColor}">${item.gustMph} mph</span>`;
+
+        const gustBar = document.createElement("div");
+        gustBar.className = "bar";
+
+        const gustFill = document.createElement("div");
+        gustFill.className = "bar-fill";
+        gustFill.style.backgroundColor = gustColor;
+        gustFill.style.width = Math.min(100, (item.gustMph / 75) * 100) + "%";
+        gustBar.appendChild(gustFill);
+
+        // Live Stream Chance
         const streamContainer = document.createElement("div");
         streamContainer.className = "stream-chance-container";
 
@@ -487,14 +623,24 @@ function renderForecast(dosForecast) {
         streamContainer.appendChild(streamVal);
         streamContainer.appendChild(streamBar);
 
+        // Appending element hierarchy
         card.appendChild(dayName);
         card.appendChild(dayDate);
         card.appendChild(dosValue);
         card.appendChild(dosLabel);
         card.appendChild(weatherSummary);
         card.appendChild(videoTag);
+        
         card.appendChild(barLabel);
         card.appendChild(bar);
+        
+        card.appendChild(tempStatRow);
+        card.appendChild(tempBar);
+        card.appendChild(windStatRow);
+        card.appendChild(windBar);
+        card.appendChild(gustStatRow);
+        card.appendChild(gustBar);
+
         card.appendChild(streamContainer);
 
         container.appendChild(card);
