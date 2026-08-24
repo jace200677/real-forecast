@@ -687,6 +687,13 @@ async function buildForecast() {
         const month = forecastDate.getMonth() + 1;
         const dateNum = forecastDate.getDate();
 
+        // --- CONFIDENCE OVER TIME CALCULATIONS ---
+        // Days out ranges from 0 (Today) to 6.
+        // Confidence Factor ranges from 1.00 (Today/100% confidence) down to 0.40 (7 days out/40% confidence).
+        const daysOut = i; 
+        const confidenceFactor = Math.max(0.4, 1.0 - (daysOut * 0.1)); 
+        const uncertaintyVariance = (1 - confidenceFactor) * 10; // Greater swing margin further out
+
         const dayLabel = i === 0 ? "Today" : daysOfWeek[forecastDate.getDay()];
         const dateString = `${month}/${dateNum}/${year}`;
 
@@ -720,87 +727,80 @@ async function buildForecast() {
             }
         }
 
-       if (year === 2026 && month === 8 && dateNum === 23) {
-    // Calculate geographic offsets from base coordinates (45.0, -93.0)
-    const lat = targetZoneOrPoint ? parseFloat(targetZoneOrPoint.lat) : 45.0;
-    const lon = targetZoneOrPoint ? parseFloat(targetZoneOrPoint.lon) : -93.0;
+        // --- SPECIFIC OVERRIDES ---
+        if (year === 2026 && month === 8 && dateNum === 23) {
+            const lat = targetZoneOrPoint ? parseFloat(targetZoneOrPoint.lat) : 45.0;
+            const lon = targetZoneOrPoint ? parseFloat(targetZoneOrPoint.lon) : -93.0;
 
-    const latOffset = (lat - 45.0) * 1.5;
-    const lonOffset = (lon + 93.0) * 0.8;
+            const latOffset = (lat - 45.0) * 1.5;
+            const lonOffset = (lon + 93.0) * 0.8;
 
-    // Retrieve live high temperature, with a geo-adjusted floor of 75°F or higher
-    let liveHigh = null;
-    if (gridPeriods && gridPeriods.length > 0) {
-        const dayPeriods = gridPeriods.filter(p => {
-            const pDate = new Date(p.startTime).getDate();
-            return pDate === dateNum;
-        });
+            let liveHigh = null;
+            if (gridPeriods && gridPeriods.length > 0) {
+                const dayPeriods = gridPeriods.filter(p => {
+                    const pDate = new Date(p.startTime).getDate();
+                    return pDate === dateNum;
+                });
 
-        if (dayPeriods.length > 0) {
-            const temps = dayPeriods.map(p => p.temperature);
-            liveHigh = Math.max(...temps);
-        }
-    }
+                if (dayPeriods.length > 0) {
+                    const temps = dayPeriods.map(p => p.temperature);
+                    liveHigh = Math.max(...temps);
+                }
+            }
 
-    // Dynamic high calculation: guarantees a minimum threshold of 75°F scaling with coordinates
-    const calculatedHigh = Math.round(75 - (latOffset * 1.2) + (lonOffset * 0.6));
-    const targetHighFloor = Math.max(75, calculatedHigh);
-    tempHigh = liveHigh !== null ? Math.max(liveHigh, targetHighFloor) : targetHighFloor;
+            const calculatedHigh = Math.round(75 - (latOffset * 1.2) + (lonOffset * 0.6));
+            const targetHighFloor = Math.max(75, calculatedHigh);
+            tempHigh = liveHigh !== null ? Math.max(liveHigh, targetHighFloor) : targetHighFloor;
 
-    // Dynamic low calculation: caps low at maximum 41°F based on latitude and longitude
-    const dynamicLow = Math.round(48 - (latOffset * 1.8) + (lonOffset * 0.5));
-    tempLow = Math.min(dynamicLow, 48);
+            const dynamicLow = Math.round(48 - (latOffset * 1.8) + (lonOffset * 0.5));
+            tempLow = Math.min(dynamicLow, 48);
 
-    // Standard DOS projection logic
-    const trendMultiplier = 1 + (Math.sin(i * 0.8) * 0.2);
-    projectedScore = Math.min(Math.max(Math.round(dos * trendMultiplier), 2), 150);
-    streamChance = Math.min(Math.round((projectedScore / 90) * 100), 85);
-    if (streamChance < 5) streamChance = 0;
+            // Confidence Boost for 8/23/2026: Scores stabilize as daysOut reaches 0
+            const trendMultiplier = 1 + (Math.sin(i * 0.8) * 0.2 * (1 - confidenceFactor));
+            const baseScore = Math.round(dos * trendMultiplier);
+            
+            // Higher confidence increases the baseline floor score
+            const confidenceBoost = Math.round((1 - confidenceFactor) * 5);
+            projectedScore = Math.min(Math.max(baseScore + confidenceBoost, 2), 150);
+            
+            streamChance = Math.min(Math.round((projectedScore / 90) * 100 * confidenceFactor), 85);
+            if (streamChance < 5) streamChance = 0;
 
-}
-        
-          else if (year === 2026 && month === 8 && dateNum === 6) {
+        } else if (year === 2026 && month === 8 && dateNum === 6) {
             projectedScore = 200;
             streamChance = 100;
-        } else if (year === 2026 && month === 8 && dateNum === 27) {
-            // --- 8/27/2026 MN OVERRIDE LOGIC ---
-            const targetDate = new Date(2026, 7, 27);
-            targetDate.setHours(0, 0, 0, 0);
-            const daysOut = Math.max(0, Math.round((targetDate - today) / (1000 * 60 * 60 * 24)));
 
+        } else if (year === 2026 && month === 8 && dateNum === 27) {
             const lat = targetZoneOrPoint ? parseFloat(targetZoneOrPoint.lat) : 45.0;
             const lon = targetZoneOrPoint ? parseFloat(targetZoneOrPoint.lon) : -93.0;
 
             const latOffset = (lat - 45.0) * 1.8;
             const lonOffset = (lon + 93.0) * 1.2;
 
-            // Confidence gain strictly increases DOS as event gets closer
-            const confidenceBoost = Math.max(0, (7 - daysOut) * 3.5);
+            // Strict Confidence Gain: Increases boost directly as daysOut decreases (closer to event)
+            const confidenceBoost = Math.max(0, (7 - daysOut) * 4.5);
             const latLonAdjustment = Math.abs(latOffset) + Math.abs(lonOffset);
 
-            // Minimum DOS score of 46; strictly only goes UP
             const baseDos46 = 46;
             projectedScore = Math.max(baseDos46, Math.round(baseDos46 + confidenceBoost + latLonAdjustment));
 
-            // Dynamic base winds: 18 mph / 42 mph gusts adjusted by geo/time parameters
             const windTrend = (7 - daysOut) * 0.8;
             windMph = Math.max(18, Math.round(18 + windTrend + (latOffset * 0.5)));
             gustMph = Math.max(42, Math.round(42 + (windTrend * 1.5) + (latOffset * 0.8)));
 
-            streamChance = Math.min(Math.round((projectedScore / 80) * 100), 95);
+            // High confidence tightens streamChance to 95% ceiling
+            streamChance = Math.min(Math.round(((projectedScore / 80) * 100) * (0.8 + (confidenceFactor * 0.2))), 95);
             weatherSummary = projectedScore > 65 ? "High Winds & Severe T-Storms" : "Windy w/ T-Storm Potential";
-        } else if (year === 2026 && month === 8 && dateNum === 28) {
-            const targetDate = new Date(2026, 7, 28);
-            targetDate.setHours(0, 0, 0, 0);
-            const daysOut = Math.max(0, Math.round((targetDate - today) / (1000 * 60 * 60 * 24)));
 
+        } else if (year === 2026 && month === 8 && dateNum === 28) {
             const lat = targetZoneOrPoint ? parseFloat(targetZoneOrPoint.lat) : 45.0;
             const lon = targetZoneOrPoint ? parseFloat(targetZoneOrPoint.lon) : -93.0;
 
             const latOffset = (lat - 45.0) * 2.5;
             const lonOffset = (lon + 93.0) * 1.8;
 
-            const varianceAmplitude = daysOut * 1.5; 
+            // Variance collapses as confidence increases (daysOut decreases)
+            const varianceAmplitude = daysOut * 1.5 * (1 - confidenceFactor); 
             const swingFactor = Math.sin(daysOut * 1.2);
 
             const baseDos93 = 93;
@@ -822,11 +822,14 @@ async function buildForecast() {
             if (conditionSwing > 1.5) weatherSummary = "Windy w/ T-Storms";
             else if (conditionSwing < -1.5) weatherSummary = "Cloudy & Breezy";
             else weatherSummary = "Cloudy, T-Storms & Windy";
+
         } else {
-            const trendMultiplier = 1 + (Math.sin(i * 0.8) * 0.2);
+            // General Fallback Confidence Scaling
+            const trendMultiplier = 1 + (Math.sin(i * 0.8) * 0.2 * (1 / confidenceFactor));
             projectedScore = Math.min(Math.max(Math.round(dos * trendMultiplier), 2), 150);
             
-            streamChance = Math.min(Math.round((projectedScore / 90) * 100), 85);
+            // Adjust stream chance weighted by confidence factor
+            streamChance = Math.min(Math.round(((projectedScore / 90) * 100) * confidenceFactor), 85);
             if (streamChance < 5) streamChance = 0;
         }
 
@@ -845,13 +848,13 @@ async function buildForecast() {
             tempHigh: tempHigh,
             windMph: windMph,
             gustMph: gustMph,
-            meta: getDOSMeta(projectedScore)
+            meta: getDOSMeta(projectedScore),
+            confidence: Math.round(confidenceFactor * 100) // Added for optional UI exposure
         });
     }
 
     renderForecast(dosForecast);
 }
-
 // --- HELPER TO GENERATE FULL COLOR SCALE GRADIENTS ---
 function getDosGradientCss(targetScore, maxScale = 120) {
     const stops = [
