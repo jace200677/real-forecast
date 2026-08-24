@@ -1589,7 +1589,7 @@ function drawForecastCanvasGraph(item, mode, canvas, activeX = null, prevItem = 
             return getAppleWindColor(speed);
         }
         
-        // Fallback LERP color scale (Calm -> Breezy -> Strong -> Extreme)
+        // Fallback LERP color scale
         if (speed <= 5)  return lerpColor("#00c8ff", "#0088ff", speed / 5);
         if (speed <= 15) return lerpColor("#0088ff", "#00ffaa", (speed - 5) / 10);
         if (speed <= 25) return lerpColor("#00ffaa", "#ffaa00", (speed - 15) / 10);
@@ -1807,46 +1807,6 @@ function drawForecastCanvasGraph(item, mode, canvas, activeX = null, prevItem = 
         }
     };
 
-    // Lerp-colored wind line helper (evaluates speed per segment to match wind bars)
-    const drawLerpWindLine = (pts, lineWidth, getYVal, getSpeedVal, fillUnder = false) => {
-        for (let i = 0; i < pts.length - 1; i++) {
-            const p1 = pts[i];
-            const p2 = pts[i + 1];
-
-            const speed1 = getSpeedVal(p1);
-            const speed2 = getSpeedVal(p2);
-            const avgSpeed = (speed1 + speed2) / 2;
-
-            const color = getDynamicWindColor(avgSpeed);
-            const isDashed = isToday && p1.minute < currentMinutes;
-
-            const y1 = getYVal(p1);
-            const y2 = getYVal(p2);
-
-            if (fillUnder) {
-                ctx.beginPath();
-                ctx.moveTo(p1.x, height - padBottom);
-                ctx.lineTo(p1.x, y1);
-                ctx.lineTo(p2.x, y2);
-                ctx.lineTo(p2.x, height - padBottom);
-                ctx.closePath();
-                ctx.fillStyle = color;
-                ctx.globalAlpha = 0.15;
-                ctx.fill();
-                ctx.globalAlpha = 1.0;
-            }
-
-            ctx.beginPath();
-            ctx.setLineDash(isDashed ? [4, 4] : []);
-            ctx.strokeStyle = color;
-            ctx.lineWidth = lineWidth;
-            ctx.moveTo(p1.x, y1);
-            ctx.lineTo(p2.x, y2);
-            ctx.stroke();
-            ctx.setLineDash([]);
-        }
-    };
-
     // --- RENDER SELECTED GRAPH MODE ---
     if (mode === "temp") {
         const allTemps = points.map(p => p.temp);
@@ -1888,6 +1848,7 @@ function drawForecastCanvasGraph(item, mode, canvas, activeX = null, prevItem = 
         }
 
     } else if (mode === "wind") {
+        const allWinds = points.map(p => p.wind);
         const allGusts = points.map(p => p.gust);
         const minY = 0; 
         const maxY = Math.max(10, Math.max(...allGusts) + 5);
@@ -1895,9 +1856,19 @@ function drawForecastCanvasGraph(item, mode, canvas, activeX = null, prevItem = 
         const getWindY = (p) => padTop + graphHeight - ((p.wind - minY) / (maxY - minY)) * graphHeight;
         const getGustY = (p) => padTop + graphHeight - ((p.gust - minY) / (maxY - minY)) * graphHeight;
 
-        // Render wind and gust lines continuously colored via lerp evaluation
-        drawLerpWindLine(points, 2.5, getWindY, (p) => p.wind, true);
-        drawLerpWindLine(points, 2.0, getGustY, (p) => p.gust, false);
+        // Vertical linear gradient for Wind Line (Top = max speed color, Bottom = min speed color)
+        const windGrad = ctx.createLinearGradient(0, padTop, 0, height - padBottom);
+        windGrad.addColorStop(0, getDynamicWindColor(Math.max(...allWinds)));
+        windGrad.addColorStop(1, getDynamicWindColor(Math.min(...allWinds)));
+
+        // Vertical linear gradient for Gust Line (Top = max speed color, Bottom = min speed color)
+        const gustGrad = ctx.createLinearGradient(0, padTop, 0, height - padBottom);
+        gustGrad.addColorStop(0, getDynamicWindColor(Math.max(...allGusts)));
+        gustGrad.addColorStop(1, getDynamicWindColor(Math.min(...allGusts)));
+
+        // Draw paths using standard segmented line and linear vertical gradient
+        drawSegmentedLine(points, windGrad, 2.5, getWindY, true);
+        drawSegmentedLine(points, gustGrad, 2.0, getGustY, false);
 
         if (isToday) {
             const currentX = padLeft + (currentMinutes / 1439) * graphWidth;
