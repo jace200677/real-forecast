@@ -720,7 +720,7 @@ async function buildForecast() {
             }
         }
 
-        if (year === 2026 && month === 8 && dateNum === 23) {
+       if (year === 2026 && month === 8 && dateNum === 23) {
     // Calculate geographic offsets from base coordinates (45.0, -93.0)
     const lat = targetZoneOrPoint ? parseFloat(targetZoneOrPoint.lat) : 45.0;
     const lon = targetZoneOrPoint ? parseFloat(targetZoneOrPoint.lon) : -93.0;
@@ -728,7 +728,8 @@ async function buildForecast() {
     const latOffset = (lat - 45.0) * 1.5;
     const lonOffset = (lon + 93.0) * 0.8;
 
-    // Retrieve or set live high temperature
+    // Retrieve live high temperature, with a geo-adjusted floor of 75°F or higher
+    let liveHigh = null;
     if (gridPeriods && gridPeriods.length > 0) {
         const dayPeriods = gridPeriods.filter(p => {
             const pDate = new Date(p.startTime).getDate();
@@ -737,11 +738,14 @@ async function buildForecast() {
 
         if (dayPeriods.length > 0) {
             const temps = dayPeriods.map(p => p.temperature);
-            tempHigh = Math.max(...temps);
+            liveHigh = Math.max(...temps);
         }
-    } else {
-        tempHigh = Math.round(78 - latOffset); // Default regional baseline high
     }
+
+    // Dynamic high calculation: guarantees a minimum threshold of 75°F scaling with coordinates
+    const calculatedHigh = Math.round(75 - (latOffset * 1.2) + (lonOffset * 0.6));
+    const targetHighFloor = Math.max(75, calculatedHigh);
+    tempHigh = liveHigh !== null ? Math.max(liveHigh, targetHighFloor) : targetHighFloor;
 
     // Dynamic low calculation: caps low at maximum 41°F based on latitude and longitude
     const dynamicLow = Math.round(41 - (latOffset * 1.8) + (lonOffset * 0.5));
