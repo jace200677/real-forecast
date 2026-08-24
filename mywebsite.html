@@ -1151,7 +1151,7 @@ function renderForecast(dosForecast) {
         dosRangeFill.style.background = getDosGradientCss(item.score, maxScale);
         bar.appendChild(dosRangeFill);
 
-        // --- FIXED SCALE TEMP BAR (-10°F to 120°F) ---
+        // --- FIXED SCALE TEMP BAR (STARTS AT tempLow, ENDS AT tempHigh) ---
         const tempStatRow = document.createElement("div");
         tempStatRow.className = "stat-row";
         const highTempColor = getAppleTempColor(item.tempHigh);
@@ -1166,9 +1166,13 @@ function renderForecast(dosForecast) {
         const fixedMinTemp = -10;
         const fixedMaxTemp = 120;
         const tempSpan = fixedMaxTemp - fixedMinTemp;
-        const tempWidthPercent = Math.min(100, Math.max(3, ((item.tempHigh - fixedMinTemp) / tempSpan) * 100));
 
-        tempRangeFill.style.left = "0%";
+        // Position 'left' starting at tempLow
+        const tempLeftPercent = Math.max(0, ((item.tempLow - fixedMinTemp) / tempSpan) * 100);
+        // Compute 'width' spanning from tempLow to tempHigh
+        const tempWidthPercent = Math.min(100 - tempLeftPercent, Math.max(3, ((item.tempHigh - item.tempLow) / tempSpan) * 100));
+
+        tempRangeFill.style.left = tempLeftPercent + "%";
         tempRangeFill.style.width = tempWidthPercent + "%";
         tempRangeFill.style.background = getTempGradientCss(item.tempHigh);
         tempBar.appendChild(tempRangeFill);
