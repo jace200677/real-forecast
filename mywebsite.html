@@ -1542,7 +1542,7 @@ function openForecastGraphModal(item, fullForecast = [], itemIndex = -1) {
         canvas.addEventListener("mousemove", (e) => updateScrubber(e.clientX));
         canvas.addEventListener("mouseleave", clearScrubber);
 
-        // Mobile Touch Listeners (Direct Dragging with Touch Prevention)
+        // Mobile Touch Listeners
         canvas.addEventListener("touchstart", (e) => {
             if (e.touches.length > 0) {
                 e.preventDefault();
@@ -1610,65 +1610,59 @@ function drawForecastCanvasGraph(item, mode, canvas, activeX = null, prevItem = 
     const graphWidth = width - padLeft - padRight;
     const graphHeight = height - padTop - padBottom;
 
-    const points = [];
+    // Direct Smooth Interpolation Helper (Cos-based)
+    const smoothStep = (v0, v1, t) => {
+        const factor = 0.5 * (1 - Math.cos(t * Math.PI));
+        return v0 + (v1 - v0) * factor;
+    };
 
-    // Key Diurnal Timing Anchors (Minutes from midnight)
-    const morningAnchorMin = 6 * 60;      // Sunrise / Morning Trough (~6:00 AM)
-    const peakMin = 15 * 60;               // Mid-Afternoon Peak (~3:00 PM)
-    const lateNightMin = 24 * 60;          // Midnight End of Day
+    // Calculate dynamic anchor points for temperatures
+    const morningLow = (prevItem && prevItem.tempLow !== undefined) ? prevItem.tempLow : item.tempLow;
+    const todayLow = item.tempLow;
+    const tomorrowLow = (nextItem && nextItem.tempLow !== undefined) ? nextItem.tempLow : item.tempLow;
 
-    // Determine target lows for morning and night using surrounding forecast days if available
-    const morningLow = (prevItem && prevItem.morningLow !== undefined) 
-        ? prevItem.morningLow 
-        : (prevItem ? prevItem.tempLow : item.tempLow);
-    const nightLow = item.tempLow;
-    
-    // Auto-detect winter inversion / cold front scenarios (morning high dropping to afternoon low)
-    const isWinterInversion = item.isWinterInversion || (item.tempHigh < morningLow || item.tempHigh < nightLow);
+    const prevHigh = prevItem ? prevItem.tempHigh : item.tempHigh;
+    const todayHigh = item.tempHigh;
 
+    // Detect Winter Cold Front / Inversion (High occurs in the morning / overnight)
+    const isWinterInversion = item.isWinterInversion || (item.tempHigh < morningLow);
+
+    // Dynamic temperature calculation function per minute
     const getInterpolatedTemp = (m) => {
         if (isWinterInversion) {
-            // Winter Cold Front / Inversion: High occurs in the morning and drops through the afternoon/night
-            const morningValue = prevItem ? prevItem.tempHigh : item.tempHigh;
-            const afternoonValue = item.tempLow;
-            const nightValue = nextItem ? nextItem.tempLow : item.tempLow;
-
-            if (m <= morningAnchorMin) {
-                const midnightStartTemp = Math.round((morningValue + (prevItem ? prevItem.tempLow : morningValue)) / 2);
-                const factor = 0.5 * (1 - Math.cos((m / morningAnchorMin) * Math.PI));
-                return Math.round(midnightStartTemp + (morningValue - midnightStartTemp) * factor);
-            } else if (m <= peakMin) {
-                const factor = 0.5 * (1 - Math.cos(((m - morningAnchorMin) / (peakMin - morningAnchorMin)) * Math.PI));
-                return Math.round(morningValue + (afternoonValue - morningValue) * factor);
-            } else {
-                const factor = 0.5 * (1 - Math.cos(((m - peakMin) / (lateNightMin - peakMin)) * Math.PI));
-                return Math.round(afternoonValue + (nightValue - afternoonValue) * factor);
+            // High is hit in early morning, steadily falls through afternoon into next day's low
+            const tStart = Math.round((prevHigh + todayHigh) / 2);
+            if (m <= 360) { // 12 AM -> 6 AM
+                return Math.round(smoothStep(tStart, todayHigh, m / 360));
+            } else if (m <= 900) { // 6 AM -> 3 PM
+                return Math.round(smoothStep(todayHigh, todayLow, (m - 360) / 540));
+            } else { // 3 PM -> 11:59 PM
+                return Math.round(smoothStep(todayLow, tomorrowLow, (m - 900) / 539));
             }
         } else {
-            // Standard Solar Diurnal Cycle: Trough at sunrise (6 AM), Peak at 3 PM, transitioning to night low
-            if (m <= morningAnchorMin) {
-                const prevHigh = prevItem ? prevItem.tempHigh : item.tempHigh;
-                const midnightStartTemp = Math.round((prevHigh + morningLow) / 2);
-                const factor = 0.5 * (1 + Math.cos((m / morningAnchorMin) * Math.PI));
-                return Math.round(morningLow + (midnightStartTemp - morningLow) * factor);
-            } else if (m <= peakMin) {
-                const factor = 0.5 * (1 - Math.cos(((m - morningAnchorMin) / (peakMin - morningAnchorMin)) * Math.PI));
-                return Math.round(morningLow + (item.tempHigh - morningLow) * factor);
-            } else {
-                const targetMidnightTemp = nextItem ? Math.round((item.tempHigh + nextItem.tempLow) / 2) : Math.round((item.tempHigh + nightLow) / 2);
-                const factor = 0.5 * (1 + Math.cos(((m - peakMin) / (lateNightMin - peakMin)) * Math.PI));
-                return Math.round(targetMidnightTemp + (item.tempHigh - targetMidnightTemp) * factor);
+            // Normal Solar Cycle: Starts overnight, reaches Morning Low (~6 AM), Peak (~3 PM), drops towards Tomorrow Low
+            const midnightTemp = Math.round((prevHigh + morningLow) / 2);
+            if (m <= 360) { // 12 AM -> 6 AM
+                return Math.round(smoothStep(midnightTemp, morningLow, m / 360));
+            } else if (m <= 900) { // 6 AM -> 3 PM
+                return Math.round(smoothStep(morningLow, todayHigh, (m - 360) / 540));
+            } else { // 3 PM -> 11:59 PM
+                const targetMidnight = Math.round((todayHigh + tomorrowLow) / 2);
+                return Math.round(smoothStep(todayHigh, targetMidnight, (m - 900) / 539));
             }
         }
     };
 
+    const points = [];
+    const peakMin = 15 * 60; // 3 PM
+
     for (let m = 0; m <= 1439; m += 15) {
         const x = padLeft + (m / 1439) * graphWidth;
 
-        // Dynamic Temperature Diurnal Cycle
+        // Dynamic Temperature
         const tempVal = getInterpolatedTemp(m);
 
-        // Wind/Gust Diurnal Cycle: Peak mixing during mid-afternoon (3 PM)
+        // Wind/Gust Diurnal Cycle
         const windRad = ((m - peakMin) / 1440) * Math.PI * 2;
         const windFactor = (Math.cos(windRad) + 1) / 2;
         const windVal = Math.round(item.windMph * (0.6 + 0.4 * windFactor));
@@ -1741,16 +1735,16 @@ function drawForecastCanvasGraph(item, mode, canvas, activeX = null, prevItem = 
 
     if (mode === "temp") {
         const allTemps = points.map(p => p.temp);
-        const minObservedTemp = Math.min(...allTemps);
-        const maxObservedTemp = Math.max(...allTemps);
-
-        const minY = Math.min(-10, minObservedTemp - 5);
-        const maxY = Math.max(120, maxObservedTemp + 5);
+        
+        // Dynamic Range Calculation (+5 / -5 Height Padding)
+        const minY = Math.min(...allTemps) - 5;
+        const maxY = Math.max(...allTemps) + 5;
+        
         const getY = (p) => padTop + graphHeight - ((p.temp - minY) / (maxY - minY)) * graphHeight;
 
         const fillGrad = ctx.createLinearGradient(0, padTop, 0, height - padBottom);
-        fillGrad.addColorStop(0, typeof getAppleTempColor === "function" ? getAppleTempColor(maxObservedTemp) : "#ff5500");
-        fillGrad.addColorStop(1, typeof getAppleTempColor === "function" ? getAppleTempColor(minObservedTemp) : "#0099ff");
+        fillGrad.addColorStop(0, typeof getAppleTempColor === "function" ? getAppleTempColor(Math.max(...allTemps)) : "#ff5500");
+        fillGrad.addColorStop(1, typeof getAppleTempColor === "function" ? getAppleTempColor(Math.min(...allTemps)) : "#0099ff");
 
         drawSegmentedLine(points, fillGrad, 3, getY, true);
 
@@ -1769,8 +1763,13 @@ function drawForecastCanvasGraph(item, mode, canvas, activeX = null, prevItem = 
         }
 
     } else if (mode === "wind") {
-        const minY = 0;
-        const maxY = Math.max(80, item.gustMph + 10);
+        const allGusts = points.map(p => p.gust);
+        const allWinds = points.map(p => p.wind);
+
+        // Dynamic Range Calculation (+5 / -5 Height Padding)
+        const minY = Math.max(0, Math.min(...allWinds) - 5);
+        const maxY = Math.max(...allGusts) + 5;
+
         const getWindY = (p) => padTop + graphHeight - ((p.wind - minY) / (maxY - minY)) * graphHeight;
         const getGustY = (p) => padTop + graphHeight - ((p.gust - minY) / (maxY - minY)) * graphHeight;
 
@@ -1801,8 +1800,12 @@ function drawForecastCanvasGraph(item, mode, canvas, activeX = null, prevItem = 
         }
 
     } else if (mode === "dos") {
-        const minY = 0;
-        const maxY = 120;
+        const allDos = points.map(p => p.dos);
+
+        // Dynamic Range Calculation (+5 / -5 Height Padding)
+        const minY = Math.max(0, Math.min(...allDos) - 5);
+        const maxY = Math.max(...allDos) + 5;
+
         const getDosY = (p) => padTop + graphHeight - ((p.dos - minY) / (maxY - minY)) * graphHeight;
 
         const dosGrad = ctx.createLinearGradient(0, padTop, 0, height - padBottom);
