@@ -245,8 +245,8 @@
             </div>
 
             <div class="form-group">
-                <label>Contact Email (Optional - used only for contests)</label>
-                <input type="email" name="contact_email" placeholder="you@example.com">
+                <label>Contact Email *</label>
+                <input type="email" name="contact_email" required placeholder="you@example.com">
             </div>
 
             <div class="form-group">
@@ -352,8 +352,16 @@ async function handleFormSubmit(event) {
     const form = event.target;
     const formData = new FormData(form);
 
-    uploadedFiles.forEach((file, index) => {
-        formData.append(`file_${index + 1}`, file);
+    // Extract sender email from form input (assumes an input with name="email")
+    const senderEmail = formData.get("email") || "Anonymous Sender";
+
+    // Formspree Metadata configuration
+    formData.append("_replyto", senderEmail);
+    formData.append("_subject", `New Weather Report sent from ${senderEmail}`);
+
+    // Explicitly append uploaded files
+    uploadedFiles.forEach((file) => {
+        formData.append("attachments[]", file);
     });
 
     try {
@@ -364,19 +372,18 @@ async function handleFormSubmit(event) {
         });
 
         if (response.ok) {
-            alert("Thank you! Your weather report and media have been sent to jacefink2@gmail.com.");
+            alert(`Thank you! Your weather report sent from ${senderEmail} has been delivered to jacefink2@gmail.com.`);
             form.reset();
             document.getElementById("filePreview").innerHTML = "";
             uploadedFiles = [];
             closeUploadModal();
         } else {
-            alert("Submission received via direct send queue.");
-            closeUploadModal();
+            const data = await response.json();
+            alert(data.errors ? data.errors.map(e => e.message).join(", ") : "Submission failed. Please check endpoint setup.");
         }
     } catch (err) {
         console.error("Submission failed:", err);
-        alert("Report sent directly to system.");
-        closeUploadModal();
+        alert("Network error. Could not reach reporting server.");
     } finally {
         submitBtn.innerText = "Send Direct Report";
         submitBtn.disabled = false;
