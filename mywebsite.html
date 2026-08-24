@@ -790,7 +790,7 @@ async function buildForecast() {
             streamChance = Math.min(Math.round((projectedScore / 90) * 100), 95);
 
             const baseLow = 57 - latOffset + lonOffset;
-            const baseHigh = 85 - latOffset + (lonOffset * 1.5);
+            const baseHigh = 103 - latOffset + (lonOffset * 1.5);
             const baseWind = 13 + latOffset;
             const baseGust = 32 + (latOffset * 1.5);
 
