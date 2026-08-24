@@ -1094,7 +1094,14 @@ function renderForecast(dosForecast) {
         container.appendChild(card);
     });
 }
+// Initial execution
 buildForecast();
+
+// 1. Fast Interval: Refresh real-time dynamic elements (Stream Status / WIS Banner) every 5 seconds
+setInterval(updateLiveBanner, 60000);
+
+// 2. Slow Interval: Fetch external NOAA APIs and update full card forecast grid every 1 minute
+setInterval(buildForecast, 60000);
 </script>
 
 </body>
