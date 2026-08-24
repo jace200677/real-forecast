@@ -624,11 +624,18 @@ function calculateNationalScores(alerts) {
         geoVariance -= 12;
     }
 
-    // Helper closure to strictly tie DOS to WIS output
+    // Helper closure to strictly tie DOS to raw WIS output before city-specific static overrides
     const formatOutput = (wisVal) => {
         const finalWIS = Math.max(wisVal, 0);
         const derivedDOS = Math.max(Math.min(Math.round(finalWIS * 1.2), 250), 3);
-        return { wis: finalWIS, dos: derivedDOS };
+        
+        let targetWIS = finalWIS;
+        if (isTower) targetWIS = 52;
+        else if (isVirginia) targetWIS = 43;
+        else if (isBabbitt) targetWIS = 54;
+        else if (isEmbarrass) targetWIS = 56;
+
+        return { wis: targetWIS, dos: derivedDOS };
     };
 
     // 8/24/2026 WIS Override (Enforced regardless of target location)
