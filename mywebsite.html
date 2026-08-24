@@ -1619,14 +1619,35 @@ function drawForecastCanvasGraph(item, mode, canvas, activeX = null, prevItem = 
     };
 
     // --- DYNAMIC TEMP ANCHOR CALCULATIONS ---
-    // 1. Yesterday's Low (Anchors 12:00 AM - 6:00 AM dip)
-    const morningLow = (prevItem && prevItem.tempLow !== undefined) ? prevItem.tempLow : item.tempLow;
+    // Helper to extract absolute lowest temp value from previous day's object/range
+    const getPreviousDayLowestTemp = (prev) => {
+        if (!prev) return item.tempLow;
+        
+        // 1. Array range checks
+        if (Array.isArray(prev.tempRange) && prev.tempRange.length > 0) {
+            return Math.min(...prev.tempRange);
+        }
+        if (Array.isArray(prev.temps) && prev.temps.length > 0) {
+            return Math.min(...prev.temps);
+        }
+        
+        // 2. Explicit key checks
+        if (prev.tempLowMin !== undefined) return prev.tempLowMin;
+        if (prev.tempMin !== undefined) return prev.tempMin;
+        if (prev.tempLow !== undefined) return prev.tempLow;
+        
+        // 3. Fallback
+        return item.tempLow;
+    };
+
+    // 1. Morning Low (Previous Day's lowest temperature value)
+    const morningLow = getPreviousDayLowestTemp(prevItem);
     
-    // 2. Today's Low & High (Anchors afternoon peak & trough)
+    // 2. Today's Low & High
     const todayLow = item.tempLow;
     const todayHigh = item.tempHigh;
     
-    // 3. Tomorrow's Low (Anchors 3:00 PM - 11:59 PM overnight drop)
+    // 3. Tomorrow's Low
     const tomorrowLow = (nextItem && nextItem.tempLow !== undefined) ? nextItem.tempLow : item.tempLow;
 
     // Surrounding High Anchors
@@ -1636,7 +1657,7 @@ function drawForecastCanvasGraph(item, mode, canvas, activeX = null, prevItem = 
     const midnightStartTemp = Math.round((prevHigh + morningLow) / 2);
     const midnightEndTemp = Math.round((todayHigh + tomorrowLow) / 2);
 
-    // Detect Winter Cold Front / Inversion (High occurs in the morning / overnight)
+    // Detect Winter Cold Front / Inversion
     const isWinterInversion = item.isWinterInversion || (item.tempHigh < morningLow);
 
     // --- DIURNAL FALLBACK CALCULATIONS ---
@@ -1652,13 +1673,13 @@ function drawForecastCanvasGraph(item, mode, canvas, activeX = null, prevItem = 
             }
         } else {
             if (m <= 360) {
-                // 12:00 AM to 6:00 AM: Cools from Midnight temp down to Morning Low
+                // 12:00 AM to 6:00 AM: Cools down to Previous Day's Low
                 return Math.round(smoothStep(midnightStartTemp, morningLow, m / 360));
             } else if (m <= 900) {
-                // 6:00 AM to 3:00 PM: Warms from Morning Low to Today's High Peak
+                // 6:00 AM to 3:00 PM: Warms from Morning Low to Today's High
                 return Math.round(smoothStep(morningLow, todayHigh, (m - 360) / 540));
             } else {
-                // 3:00 PM to 11:59 PM: Cools from Today's High toward Tomorrow's Low transition
+                // 3:00 PM to 11:59 PM: Cools toward Tomorrow's Low transition
                 return Math.round(smoothStep(todayHigh, midnightEndTemp, (m - 900) / 539));
             }
         }
@@ -1715,7 +1736,7 @@ function drawForecastCanvasGraph(item, mode, canvas, activeX = null, prevItem = 
     const getInterpolatedGust = (m) => getInterpolatedVal(m, 'gust', getDiurnalGust);
     const getInterpolatedDos = (m) => getInterpolatedVal(m, 'dos', getDiurnalDos);
 
-    // Build data points every 15 minutes across the 24-hour cycle
+    // Build points every 15 minutes across the 24-hour cycle
     const points = [];
     for (let m = 0; m <= 1439; m += 15) {
         const x = padLeft + (m / 1439) * graphWidth;
