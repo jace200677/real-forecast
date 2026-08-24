@@ -600,13 +600,12 @@ function calculateNationalScores(alerts) {
 
     const totalMinutes = hour * 60 + minute;
 
+    // Evaluates target coordinates if a user searched a location, otherwise defaults to Minnesota baseline
     const lat = targetZoneOrPoint ? parseFloat(targetZoneOrPoint.lat) : 45.0;
     const lon = targetZoneOrPoint ? parseFloat(targetZoneOrPoint.lon) : -93.0;
     const geoVariance = Math.round((lat - 45.0) * 0.5 + (lon + 93.0) * 0.3);
 
-    // 8/24/2026 WIS Override
-    // 8/24/2026 WIS Override
-    // 8/24/2026 WIS Override
+    // 8/24/2026 WIS Override (Enforced regardless of target location)
     if (year === 2026 && month === 8 && day === 24) {
         if (totalMinutes < 330) { // Before 5:30 AM
             currentWIS = Math.max(0, 5 + geoVariance);
@@ -619,8 +618,9 @@ function calculateNationalScores(alerts) {
             const decayProgress = (totalMinutes - 1080) / 360; 
             currentWIS = Math.max(0, Math.round(27 * (1 - decayProgress))) + geoVariance;
         }
+        return { wis: Math.max(currentWIS, 0), dos: Math.max(baseDOS, 3) };
     }
-    // 8/25/2026 WIS Override
+    // 8/25/2026 WIS Override (Enforced regardless of target location)
     else if (year === 2026 && month === 8 && day === 25) {
         if (totalMinutes < 120) { // Midnight to 2:00 AM (Continuation from 8/24)
             currentWIS = Math.max(0, 0 + geoVariance);
@@ -635,12 +635,14 @@ function calculateNationalScores(alerts) {
             const decayProgress = (totalMinutes - 1260) / 360; 
             currentWIS = Math.max(2, Math.round(57 - decayProgress * 55)) + geoVariance;
         }
+        return { wis: Math.max(currentWIS, 0), dos: Math.max(baseDOS, 3) };
     }
-    // 8/26/2026 Early Morning (until 3:00 AM decay from 8/25)
+    // 8/26/2026 Early Morning Decay Override
     else if (year === 2026 && month === 8 && day === 26 && totalMinutes < 180) {
         currentWIS = Math.max(2, 2 + geoVariance);
+        return { wis: Math.max(currentWIS, 0), dos: Math.max(baseDOS, 3) };
     }
-    // 8/27/2026 WIS Override
+    // 8/27/2026 WIS Override (Enforced regardless of target location)
     else if (year === 2026 && month === 8 && day === 27) {
         if (totalMinutes < 450) { // Before 7:30 AM
             currentWIS = Math.max(0, 23 + geoVariance);
@@ -653,8 +655,9 @@ function calculateNationalScores(alerts) {
             const decayProgress = (totalMinutes - 1080) / 360; 
             currentWIS = Math.max(60, Math.round(77 - decayProgress * 17)) + geoVariance;
         }
+        return { wis: Math.max(currentWIS, 0), dos: Math.max(baseDOS, 3) };
     }
-    // 8/28/2026 WIS Override
+    // 8/28/2026 WIS Override (Enforced regardless of target location)
     else if (year === 2026 && month === 8 && day === 28) {
         if (totalMinutes < 120) { // Midnight to 2:00 AM (Continuation from 8/27)
             currentWIS = Math.max(60, 60 + geoVariance);
@@ -669,8 +672,9 @@ function calculateNationalScores(alerts) {
             const decayProgress = (totalMinutes - 1080) / 360; 
             currentWIS = Math.max(0, Math.round(117 * (1 - decayProgress))) + geoVariance;
         }
+        return { wis: Math.max(currentWIS, 0), dos: Math.max(baseDOS, 3) };
     }
-    // 8/31/2026 WIS Override
+    // 8/31/2026 WIS Override (Enforced regardless of target location)
     else if (year === 2026 && month === 8 && day === 31) {
         if (totalMinutes < 450) { // Before 7:30 AM
             currentWIS = Math.max(0, 87 + geoVariance);
@@ -683,6 +687,7 @@ function calculateNationalScores(alerts) {
             const decayProgress = (totalMinutes - 1080) / 360; 
             currentWIS = Math.max(0, Math.round(137 * (1 - decayProgress))) + geoVariance;
         }
+        return { wis: Math.max(currentWIS, 0), dos: Math.max(baseDOS, 3) };
     }
 
     return {
@@ -690,7 +695,6 @@ function calculateNationalScores(alerts) {
         dos: Math.max(baseDOS, 3)
     };
 }
-
 function getDOSMeta(score) {
     if (score >= 150) return { label: "Potentially Historic Setup" };
     if (score >= 125) return { label: "Extreme Event Potential" };
