@@ -1619,29 +1619,51 @@ function drawForecastCanvasGraph(item, mode, canvas, activeX = null, prevItem = 
     };
 
     // --- DYNAMIC TEMP ANCHOR CALCULATIONS ---
-    // Helper to extract absolute lowest temp value from previous day's object/range
-    const getPreviousDayLowestTemp = (prev) => {
-        if (!prev) return item.tempLow;
+    // Helper to resolve previous day object (handles missing prevItem for current day)
+    const resolvePreviousItem = () => {
+        if (prevItem) return prevItem;
         
-        // 1. Array range checks
-        if (Array.isArray(prev.tempRange) && prev.tempRange.length > 0) {
-            return Math.min(...prev.tempRange);
-        }
-        if (Array.isArray(prev.temps) && prev.temps.length > 0) {
-            return Math.min(...prev.temps);
+        // Look up previous item from global forecast array if available
+        if (typeof forecastData !== "undefined" && Array.isArray(forecastData)) {
+            const idx = forecastData.findIndex(d => d.dateStr === item.dateStr);
+            if (idx > 0) return forecastData[idx - 1];
         }
         
-        // 2. Explicit key checks
-        if (prev.tempLowMin !== undefined) return prev.tempLowMin;
-        if (prev.tempMin !== undefined) return prev.tempMin;
-        if (prev.tempLow !== undefined) return prev.tempLow;
+        // Fallback to item property if embedded
+        return item.yesterdayItem || item.prevDay || null;
+    };
+
+    // Extract absolute lowest temp value from yesterday/previous item
+    const getPreviousDayLowestTemp = () => {
+        const prev = resolvePreviousItem();
         
-        // 3. Fallback
+        if (prev) {
+            // 1. Array range checks
+            if (Array.isArray(prev.tempRange) && prev.tempRange.length > 0) {
+                return Math.min(...prev.tempRange);
+            }
+            if (Array.isArray(prev.temps) && prev.temps.length > 0) {
+                return Math.min(...prev.temps);
+            }
+            
+            // 2. Explicit key checks
+            if (prev.tempLowMin !== undefined) return prev.tempLowMin;
+            if (prev.tempMin !== undefined) return prev.tempMin;
+            if (prev.tempLow !== undefined) return prev.tempLow;
+        }
+
+        // 3. Explicit yesterday fallback on current item
+        if (item.yesterdayTempLow !== undefined) return item.yesterdayTempLow;
+        if (item.yesterdayLow !== undefined) return item.yesterdayLow;
+        
+        // 4. Default fallback to today's low if yesterday's data is completely unavailable
         return item.tempLow;
     };
 
-    // 1. Morning Low (Previous Day's lowest temperature value)
-    const morningLow = getPreviousDayLowestTemp(prevItem);
+    const effectivePrevItem = resolvePreviousItem();
+
+    // 1. Morning Low (Anchored to yesterday's lowest value)
+    const morningLow = getPreviousDayLowestTemp();
     
     // 2. Today's Low & High
     const todayLow = item.tempLow;
@@ -1651,7 +1673,9 @@ function drawForecastCanvasGraph(item, mode, canvas, activeX = null, prevItem = 
     const tomorrowLow = (nextItem && nextItem.tempLow !== undefined) ? nextItem.tempLow : item.tempLow;
 
     // Surrounding High Anchors
-    const prevHigh = (prevItem && prevItem.tempHigh !== undefined) ? prevItem.tempHigh : item.tempHigh;
+    const prevHigh = (effectivePrevItem && effectivePrevItem.tempHigh !== undefined) 
+        ? effectivePrevItem.tempHigh 
+        : (item.yesterdayTempHigh !== undefined ? item.yesterdayTempHigh : item.tempHigh);
 
     // Midnight Derived Midpoints
     const midnightStartTemp = Math.round((prevHigh + morningLow) / 2);
