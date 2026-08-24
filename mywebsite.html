@@ -1110,6 +1110,63 @@ async function buildForecast() {
 
     renderForecast(dosForecast);
 }
+    function renderForecast(forecastData) {
+    const container = document.getElementById("forecastContainer");
+    if (!container) return;
+
+    if (!forecastData || forecastData.length === 0) {
+        container.innerHTML = "<p>No forecast data available.</p>";
+        return;
+    }
+
+    container.innerHTML = forecastData.map((item, index) => {
+        const tempColor = getAppleTempColor(item.tempHigh);
+        const dosColor = getLerpColor(item.score);
+        const windColor = getAppleWindColor(item.gustMph);
+
+        return `
+            <div class="day-card" onclick="openGraphModal(${index})">
+                <div class="day-name">${item.day}</div>
+                <div class="day-date">${item.dateStr}</div>
+                
+                <div class="dos-value" style="color: ${dosColor};">${item.score}</div>
+                <div class="dos-label" style="color: ${dosColor};">${item.meta.label}</div>
+                
+                <div class="weather-summary">${item.weatherSummary}</div>
+                
+                ${item.dinnerMenu ? `<div class="dinner-label">Dinner: ${item.dinnerMenu}</div>` : ''}
+                <div class="video-label">${item.videoStatus}</div>
+
+                <!-- Temperature Range Bar -->
+                <div class="stat-row">
+                    <span>Temp Range</span>
+                    <span class="stat-val" style="color: ${tempColor};">${item.tempLow}°F - ${item.tempHigh}°F</span>
+                </div>
+                <div class="bar">
+                    <div class="range-bar-fill" style="width: 100%; background: ${getTempRangeGradientCss(item.tempLow, item.tempHigh)};"></div>
+                </div>
+
+                <!-- Wind / Gust Bar -->
+                <div class="stat-row">
+                    <span>Wind / Gust</span>
+                    <span class="stat-val" style="color: ${windColor};">${item.windMph} / ${item.gustMph} mph</span>
+                </div>
+                <div class="bar">
+                    <div class="bar-fill" style="width: ${Math.min(100, (item.gustMph / 80) * 100)}%; background: ${getWindGradientCss(item.gustMph)};"></div>
+                </div>
+
+                <!-- Live Stream Chance Bar -->
+                <div class="stream-chance-container">
+                    <div class="stream-chance-title">Stream Chance (${item.confidence}% Conf)</div>
+                    <div class="stream-chance-val">${item.streamChance}%</div>
+                    <div class="bar">
+                        <div class="bar-fill-stream" style="width: ${item.streamChance}%; background: ${getStreamGradientCss(item.streamChance)};"></div>
+                    </div>
+                </div>
+            </div>
+        `;
+    }).join('');
+}
 // --- HELPER TO GENERATE FULL COLOR SCALE GRADIENTS ---
 function getDosGradientCss(targetScore, maxScale = 120) {
     const stops = [
@@ -1716,7 +1773,6 @@ function drawForecastCanvasGraph(item, mode, canvas, activeX = null, prevItem = 
         ctx.fillText(tooltipText, boxX + 8, 24);
     }
 }
-</script>
 // Initial execution
 buildForecast();
 
