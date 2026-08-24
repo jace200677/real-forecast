@@ -2,12 +2,13 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>USA 7-Day Jace Fink DOS & WIS Forecast</title>
 <style>
-    body { font-family: 'Segoe UI', Arial, sans-serif; background:#0d0d0d; color:#fff; padding:20px; margin: 0; }
-    h1 { text-align:center; margin-bottom:5px; font-size:32px; }
-    .subtitle { text-align:center; color:#888; font-size:14px; margin-bottom:20px; }
+    * { box-sizing: border-box; }
+    body { font-family: 'Segoe UI', Arial, sans-serif; background:#0d0d0d; color:#fff; padding: 15px; margin: 0; webkit-tap-highlight-color: transparent; }
+    h1 { text-align:center; margin-bottom:5px; font-size: clamp(22px, 5vw, 32px); }
+    .subtitle { text-align:center; color:#888; font-size: clamp(12px, 2.5vw, 14px); margin-bottom:20px; }
     
     /* Search Bar & Media Submit Button Styles */
     .search-container {
@@ -17,9 +18,10 @@
         max-width: 800px;
         margin: 0 auto 20px auto;
         flex-wrap: wrap;
+        width: 100%;
     }
     .search-input {
-        padding: 10px 14px;
+        padding: 12px 14px;
         border-radius: 8px;
         border: 1px solid #333;
         background: #1c1c1c;
@@ -30,29 +32,23 @@
         outline: none;
     }
     .search-input:focus { border-color: #0088ff; }
-    .search-button {
-        padding: 10px 20px;
+    .search-button, .upload-btn {
+        padding: 12px 20px;
         border-radius: 8px;
         border: none;
-        background: #0088ff;
         color: #fff;
         font-weight: bold;
         cursor: pointer;
         transition: background 0.2s;
+        font-size: 14px;
+        touch-action: manipulation;
+        flex: 1 1 auto;
+        text-align: center;
     }
-    .search-button:hover { background: #0066cc; }
-    
-    .upload-btn {
-        padding: 10px 20px;
-        border-radius: 8px;
-        border: none;
-        background: #22c55e;
-        color: #fff;
-        font-weight: bold;
-        cursor: pointer;
-        transition: background 0.2s;
-    }
-    .upload-btn:hover { background: #16a34a; }
+    .search-button { background: #0088ff; }
+    .search-button:hover, .search-button:active { background: #0066cc; }
+    .upload-btn { background: #22c55e; }
+    .upload-btn:hover, .upload-btn:active { background: #16a34a; }
 
     /* Modal / Pop-up Window Styles */
     .modal-overlay {
@@ -64,27 +60,29 @@
         justify-content: center;
         align-items: center;
         overflow-y: auto;
-        padding: 20px;
-        box-sizing: border-box;
+        padding: 15px;
     }
     .modal-content {
         background: #1c1c1c;
         border-radius: 14px;
-        padding: 24px;
+        padding: 20px;
         max-width: 550px;
         width: 100%;
         box-shadow: 0 0 25px rgba(0,0,0,0.8);
         position: relative;
         border: 1px solid #333;
+        margin: auto;
     }
     .close-modal {
         position: absolute;
         top: 15px; right: 15px;
-        font-size: 22px;
+        font-size: 24px;
         color: #888;
         cursor: pointer;
         background: none;
         border: none;
+        padding: 5px 10px;
+        touch-action: manipulation;
     }
     .close-modal:hover { color: #fff; }
 
@@ -95,12 +93,12 @@
     .form-group input[type="email"], 
     .form-group input[type="datetime-local"],
     .form-group textarea {
-        width: 100%; padding: 10px; border-radius: 6px;
+        width: 100%; padding: 12px; border-radius: 6px;
         border: 1px solid #333; background: #0d0d0d; color: #fff;
-        font-size: 13px; box-sizing: border-box; outline: none;
+        font-size: 14px; outline: none;
     }
     .form-group input:focus, .form-group textarea:focus { border-color: #0088ff; }
-    .form-group textarea { resize: vertical; height: 60px; }
+    .form-group textarea { resize: vertical; height: 70px; }
 
     /* Drag & Drop Area */
     .drop-zone {
@@ -111,17 +109,21 @@
         background: #121212;
         cursor: pointer;
         transition: border-color 0.2s, background 0.2s;
+        touch-action: manipulation;
     }
     .drop-zone.dragover { border-color: #0088ff; background: #1a2433; }
     .drop-zone p { margin: 0; font-size: 13px; color: #aaa; }
     .drop-zone-info { font-size: 11px; color: #666; margin-top: 4px; }
     .file-preview { margin-top: 10px; font-size: 11px; color: #4ade80; text-align: left; word-break: break-all; }
 
-    .checkbox-group { display: flex; align-items: center; gap: 8px; font-size: 11px; color: #aaa; margin-top: 15px; }
+    .checkbox-group { display: flex; align-items: center; gap: 8px; font-size: 12px; color: #aaa; margin-top: 15px; }
+    .checkbox-group input { width: 18px; height: 18px; }
+    
     .submit-form-btn {
-        width: 100%; padding: 12px; border-radius: 8px; border: none;
-        background: #0088ff; color: #fff; font-weight: bold; font-size: 14px;
+        width: 100%; padding: 14px; border-radius: 8px; border: none;
+        background: #0088ff; color: #fff; font-weight: bold; font-size: 15px;
         cursor: pointer; margin-top: 15px; transition: background 0.2s;
+        touch-action: manipulation;
     }
     .submit-form-btn:hover { background: #0066cc; }
 
@@ -136,11 +138,12 @@
         justify-content: space-between;
         align-items: center;
         box-shadow: 0 0 15px rgba(0,0,0,0.5);
+        gap: 10px;
     }
     .status-box { text-align: center; flex: 1; }
-    .status-title { font-size: 12px; color: #888; text-transform: uppercase; margin-bottom: 4px; }
-    .wis-val { font-size: 32px; font-weight: bold; }
-    .stream-status { font-size: 18px; font-weight: bold; }
+    .status-title { font-size: clamp(10px, 2.5vw, 12px); color: #888; text-transform: uppercase; margin-bottom: 4px; }
+    .wis-val { font-size: clamp(24px, 5vw, 32px); font-weight: bold; }
+    .stream-status { font-size: clamp(14px, 3.5vw, 18px); font-weight: bold; }
     .status-live { color: #ff0055; animation: pulse 1.5s infinite; }
     .status-standby { color: #ffaa00; }
     .status-off { color: #888888; }
@@ -151,17 +154,34 @@
         100% { opacity: 1; }
     }
 
-    .forecast-container { display:flex; flex-wrap:wrap; gap:18px; justify-content:center; }
-    .day-card { background:#1c1c1c; padding:18px; border-radius:14px; width:220px;
-                box-shadow:0 0 18px rgba(0,0,0,0.6); transition:transform .2s; }
-    .day-card:hover { transform:scale(1.05); }
+    .forecast-container { 
+        display: flex; 
+        flex-wrap: wrap; 
+        gap: 15px; 
+        justify-content: center; 
+        width: 100%;
+    }
+    .day-card { 
+        background: #1c1c1c; 
+        padding: 16px; 
+        border-radius: 14px; 
+        width: 100%;
+        max-width: 230px;
+        box-shadow: 0 0 18px rgba(0,0,0,0.6); 
+        transition: transform .2s; 
+        touch-action: manipulation;
+    }
+    @media (hover: hover) {
+        .day-card:hover { transform: scale(1.03); }
+    }
+    
     .day-name { font-size:20px; text-align:center; margin-bottom:2px; font-weight:bold; }
     .day-date { font-size:12px; color:#777; text-align:center; margin-bottom:8px; }
     .dos-value { font-size:38px; font-weight:bold; text-align:center; margin-bottom:2px; }
     .dos-label { font-size:11px; text-align:center; opacity:.9; margin-bottom:8px; min-height:28px; line-height:1.2; }
     
     .weather-summary { font-size: 11px; text-align: center; color: #bbb; min-height: 24px; margin-bottom: 8px; font-style: italic; }
-    .video-label { font-size:11px; text-align:center; padding:3px 6px; border-radius:6px; background:#2a2a2a; margin-bottom:8px; }
+    .video-label { font-size:11px; text-align:center; padding:4px 6px; border-radius:6px; background:#2a2a2a; margin-bottom:8px; }
     .dinner-label { font-size:11px; text-align:center; padding:4px 6px; border-radius:6px; background:#1b3320; color:#4ade80; font-weight:bold; margin-bottom:8px; }
 
     /* Weather Stats Data Labels & Ranges */
@@ -181,71 +201,87 @@
     
     /* Range Bar Fill Style */
     .range-bar-fill { position: absolute; height: 100%; border-radius: 6px; transition: all .5s; }
+    
     /* Traffic Map Modal Styles */
-.map-modal-overlay {
-    display: none;
-    position: fixed;
-    top: 0; left: 0; width: 100vw; height: 100vh;
-    background: rgba(0, 0, 0, 0.9);
-    z-index: 10000;
-    justify-content: center;
-    align-items: center;
-}
-.map-modal-content {
-    background: #1c1c1c;
-    border-radius: 14px;
-    padding: 20px;
-    width: 92%;
-    max-width: 900px;
-    height: 85vh;
-    display: flex;
-    flex-direction: column;
-    border: 1px solid #333;
-    position: relative;
-    box-shadow: 0 0 30px rgba(0,0,0,0.9);
-}
-.traffic-map-frame {
-    width: 100%;
-    flex: 1;
-    border-radius: 8px;
-    border: 1px solid #333;
-    background: #121212;
-    margin-top: 10px;
-    margin-bottom: 15px;
-}
-.map-controls {
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-    background: #121212;
-    padding: 12px 16px;
-    border-radius: 8px;
-    border: 1px solid #2a2a2a;
-}
-.time-slider-header {
-    display: flex;
-    justify-content: space-between;
-    font-size: 13px;
-    color: #aaa;
-    font-weight: bold;
-}
-.time-slider {
-    width: 100%;
-    accent-color: #0088ff;
-    cursor: pointer;
-}
-.traffic-btn {
-    background: #e11d48;
-    color: #fff;
-    border: none;
-    padding: 5px 12px;
-    border-radius: 6px;
-    font-size: 12px;
-    font-weight: bold;
-    cursor: pointer;
-    transition: background 0.2s;
-}
-.traffic-btn:hover { background: #be123c; }
+    .map-modal-overlay {
+        display: none;
+        position: fixed;
+        top: 0; left: 0; width: 100vw; height: 100vh;
+        background: rgba(0, 0, 0, 0.9);
+        z-index: 10000;
+        justify-content: center;
+        align-items: center;
+        padding: 10px;
+    }
+    .map-modal-content {
+        background: #1c1c1c;
+        border-radius: 14px;
+        padding: 16px;
+        width: 100%;
+        max-width: 900px;
+        height: 90vh;
+        display: flex;
+        flex-direction: column;
+        border: 1px solid #333;
+        position: relative;
+        box-shadow: 0 0 30px rgba(0,0,0,0.9);
+    }
+    .traffic-map-frame {
+        width: 100%;
+        flex: 1;
+        border-radius: 8px;
+        border: 1px solid #333;
+        background: #121212;
+        margin-top: 10px;
+        margin-bottom: 12px;
+    }
+    .map-controls {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        background: #121212;
+        padding: 12px;
+        border-radius: 8px;
+        border: 1px solid #2a2a2a;
+    }
+    .time-slider-header {
+        display: flex;
+        justify-content: space-between;
+        font-size: 12px;
+        color: #aaa;
+        font-weight: bold;
+        flex-wrap: wrap;
+        gap: 5px;
+    }
+    .time-slider {
+        width: 100%;
+        accent-color: #0088ff;
+        cursor: pointer;
+        height: 28px;
+        touch-action: manipulation;
+    }
+    .traffic-btn {
+        background: #e11d48;
+        color: #fff;
+        border: none;
+        padding: 8px 12px;
+        border-radius: 6px;
+        font-size: 12px;
+        font-weight: bold;
+        cursor: pointer;
+        transition: background 0.2s;
+        touch-action: manipulation;
+    }
+    .traffic-btn:hover { background: #be123c; }
+
+    /* Media queries for smaller screens */
+    @media (max-width: 600px) {
+        body { padding: 10px; }
+        .forecast-container { gap: 12px; }
+        .day-card { max-width: 100%; }
+        .search-container { flex-direction: column; }
+        .search-input, .search-button, .upload-btn { width: 100%; }
+    }
 </style>
 </head>
 <body>
@@ -287,7 +323,7 @@
             <div class="form-group">
                 <label>1. Upload Media (Max 4 Photos, 2 Videos up to 120s)</label>
                 <div class="drop-zone" id="dropZone" onclick="document.getElementById('mediaFileInput').click()">
-                    <p>Drag & Drop files, paste, or click to open camera/library</p>
+                    <p>Tap, Drag & Drop files, or paste to open camera/library</p>
                     <div class="drop-zone-info">Up to 4 photos + 2 videos (≤ 120 seconds each)</div>
                 </div>
                 <input type="file" id="mediaFileInput" name="attachments" multiple accept="image/*,video/*" style="display:none" onchange="handleFileSelect(event)">
@@ -333,11 +369,12 @@
         </form>
     </div>
 </div>
+
 <!-- Traffic Map Modal Window -->
 <div class="map-modal-overlay" id="trafficMapModal">
     <div class="map-modal-content">
         <button class="close-modal" onclick="closeTrafficMapModal()">&times;</button>
-        <h3 id="mapModalTitle" style="margin: 0; color: #fff;">Traffic Road Map Forecast</h3>
+        <h3 id="mapModalTitle" style="margin: 0; color: #fff; font-size: clamp(14px, 4vw, 18px);">Traffic Road Map Forecast</h3>
         <p id="mapModalSubtitle" style="margin: 4px 0 10px 0; font-size: 12px; color: #aaa;">Select time of day to simulate local traffic impact conditions.</p>
         
         <!-- Live Traffic Map Container -->
@@ -353,6 +390,7 @@
         </div>
     </div>
 </div>
+
 <script>
 const IS_LIVE_ON_YOUTUBE = false; 
 let targetZoneOrPoint = null;
@@ -389,7 +427,7 @@ dropZone.addEventListener("drop", (e) => {
 
 window.addEventListener('paste', e => {
     if (document.getElementById("uploadModal").style.display === "flex") {
-        if (e.clipboardData.files.length > 0) {
+        if (e.clipboardData && e.clipboardData.files.length > 0) {
             validateAndStoreFiles(e.clipboardData.files);
         }
     }
@@ -436,14 +474,11 @@ async function handleFormSubmit(event) {
     const form = event.target;
     const formData = new FormData(form);
 
-    // Extract sender email from form input (assumes an input with name="email")
-    const senderEmail = formData.get("email") || "Anonymous Sender";
+    const senderEmail = formData.get("contact_email") || "Anonymous Sender";
 
-    // Formspree Metadata configuration
     formData.append("_replyto", senderEmail);
     formData.append("_subject", `New Weather Report sent from ${senderEmail}`);
 
-    // Explicitly append uploaded files
     uploadedFiles.forEach((file) => {
         formData.append("attachments[]", file);
     });
@@ -456,7 +491,7 @@ async function handleFormSubmit(event) {
         });
 
         if (response.ok) {
-            alert(`Thank you! Your weather report sent from ${senderEmail} has been delivered to jacefink2@gmail.com.`);
+            alert(`Thank you! Your weather report sent from ${senderEmail} has been delivered.`);
             form.reset();
             document.getElementById("filePreview").innerHTML = "";
             uploadedFiles = [];
@@ -476,22 +511,17 @@ async function handleFormSubmit(event) {
 
 function getDinnerMenu(dateObj) {
     const month = dateObj.getMonth() + 1;
-    if (month === 6 || month === 7) return null; // Exclude June and July
+    if (month === 6 || month === 7) return null;
 
-    // Fixed absolute reference date: 8/23/2026
-    const startDate = new Date(2026, 7, 23); // Month is 0-indexed (7 = August)
+    const startDate = new Date(2026, 7, 23);
     startDate.setHours(0, 0, 0, 0);
 
     const target = new Date(dateObj);
     target.setHours(0, 0, 0, 0);
 
-    // Calculate exact difference in full days from start date
     const diffDays = Math.round((target - startDate) / (1000 * 60 * 60 * 24));
-
-    // Handle negative dates correctly using modulo math
     const cycleIndex = ((diffDays % 4) + 4) % 4;
 
-    // Days 0 & 1 -> Pizza | Days 2 & 3 -> Chicken Nuggets
     return (cycleIndex === 0 || cycleIndex === 1) ? "Pizza" : "Chicken Nuggets";
 }
 
@@ -510,7 +540,7 @@ async function searchLocationForecast() {
         if (geoData && geoData.length > 0) {
             const lat = parseFloat(geoData[0].lat).toFixed(4);
             const lon = parseFloat(geoData[0].lon).toFixed(4);
-            targetZoneOrPoint = { lat, lon };
+            targetZoneOrPoint = { lat, lon, name: geoData[0].display_name };
             
             const address = geoData[0].address || {};
             currentSearchState = address.state ? address.state.toLowerCase() : null;
@@ -589,57 +619,6 @@ function getLerpColor(score) {
     return `rgb(${r}, ${g}, ${b})`;
 }
 
-function getTempColor(tempF) {
-    const stops = [
-        { temp: -20, r: 160, g: 130, b: 255 },
-        { temp: 0,   r: 96,  g: 165, b: 250 },
-        { temp: 32,  r: 52,  g: 199, b: 89  },
-        { temp: 50,  r: 255, g: 204, b: 0  },
-        { temp: 70,  r: 255, g: 149, b: 0  },
-        { temp: 90,  r: 255, g: 59,  b: 48  },
-        { temp: 110, r: 175, g: 30,  b: 45  }
-    ];
-    if (tempF <= stops[0].temp) return `rgb(${stops[0].r}, ${stops[0].g}, ${stops[0].b})`;
-    if (tempF >= stops[stops.length - 1].temp) {
-        const last = stops[stops.length - 1];
-        return `rgb(${last.r}, ${last.g}, ${last.b})`;
-    }
-    let i = 0;
-    while (tempF > stops[i + 1].temp) i++;
-    const lower = stops[i];
-    const upper = stops[i + 1];
-    const factor = (tempF - lower.temp) / (upper.temp - lower.temp);
-    const r = Math.round(lower.r + factor * (upper.r - lower.r));
-    const g = Math.round(lower.g + factor * (upper.g - lower.g));
-    const b = Math.round(lower.b + factor * (upper.b - lower.b));
-    return `rgb(${r}, ${g}, ${b})`;
-}
-
-function getWindColor(mph) {
-    const stops = [
-        { speed: 0,  r: 142, g: 142, b: 147 },
-        { speed: 12, r: 52,  g: 199, b: 89  },
-        { speed: 25, r: 255, g: 204, b: 0  },
-        { speed: 40, r: 255, g: 149, b: 0  },
-        { speed: 58, r: 255, g: 59,  b: 48  },
-        { speed: 75, r: 175, g: 82,  b: 222 }
-    ];
-    if (mph <= stops[0].speed) return `rgb(${stops[0].r}, ${stops[0].g}, ${stops[0].b})`;
-    if (mph >= stops[stops.length - 1].speed) {
-        const last = stops[stops.length - 1];
-        return `rgb(${last.r}, ${last.g}, ${last.b})`;
-    }
-    let i = 0;
-    while (mph > stops[i + 1].speed) i++;
-    const lower = stops[i];
-    const upper = stops[i + 1];
-    const factor = (mph - lower.speed) / (upper.speed - lower.speed);
-    const r = Math.round(lower.r + factor * (upper.r - lower.r));
-    const g = Math.round(lower.g + factor * (upper.g - lower.g));
-    const b = Math.round(lower.b + factor * (upper.b - lower.b));
-    return `rgb(${r}, ${g}, ${b})`;
-}
-
 function calculateNationalScores(alerts) {
     let rawWisScore = 0;
     let highRiskBaseline = 0;
@@ -679,7 +658,6 @@ function calculateNationalScores(alerts) {
 
     let currentWIS = Math.min(Math.round(rawWisScore / 40), 250);
 
-    // --- TIME & LOCATION BASED WIS OVERRIDES ---
     const now = new Date();
     const cdtOptions = { timeZone: 'America/Chicago', year: 'numeric', month: 'numeric', day: 'numeric', hour: 'numeric', minute: 'numeric', hour12: false };
     const cdtParts = new Intl.DateTimeFormat('en-US', cdtOptions).formatToParts(now);
@@ -695,22 +673,17 @@ function calculateNationalScores(alerts) {
 
     const totalMinutes = hour * 60 + minute;
 
-    // Evaluates target coordinates if a user searched a location, otherwise defaults to Minnesota baseline
     const lat = typeof targetZoneOrPoint !== 'undefined' && targetZoneOrPoint ? parseFloat(targetZoneOrPoint.lat) : 45.0;
     const lon = typeof targetZoneOrPoint !== 'undefined' && targetZoneOrPoint ? parseFloat(targetZoneOrPoint.lon) : -93.0;
     const locationName = typeof targetZoneOrPoint !== 'undefined' && targetZoneOrPoint && targetZoneOrPoint.name ? targetZoneOrPoint.name.toLowerCase() : "";
 
     let geoVariance = Math.round((lat - 45.0) * 0.5 + (lon + 93.0) * 0.3);
 
-    // Specific location overrides & default fallbacks
     const isBabbitt = locationName.includes("babbitt") || (Math.abs(lat - 47.71) < 0.1 && Math.abs(lon - (-91.95)) < 0.1);
     const isEmbarrass = locationName.includes("embarrass") || (Math.abs(lat - 47.66) < 0.1 && Math.abs(lon - (-92.30)) < 0.1);
     const isVirginia = locationName.includes("virginia") || (Math.abs(lat - 47.52) < 0.1 && Math.abs(lon - (-92.53)) < 0.1);
     const isTower = locationName.includes("tower") || (Math.abs(lat - 47.80) < 0.1 && Math.abs(lon - (-92.37)) < 0.1);
 
-    
-
-    // Helper closure to strictly tie DOS to raw WIS output before city-specific static overrides
     const formatOutput = (wisVal) => {
         const finalWIS = Math.max(wisVal, 0);
         const derivedDOS = Math.max(Math.min(Math.round(finalWIS * 1.2), 250), 3);
@@ -724,85 +697,79 @@ function calculateNationalScores(alerts) {
         return { wis: targetWIS, dos: derivedDOS };
     };
 
-    // 8/24/2026 WIS Override (Enforced regardless of target location)
     if (year === 2026 && month === 8 && day === 24) {
-        if (totalMinutes < 330) { // Before 5:30 AM
+        if (totalMinutes < 330) {
             currentWIS = Math.max(0, 5 + geoVariance);
-        } else if (totalMinutes >= 330 && totalMinutes < 840) { // 5:30 AM to 2:00 PM ramp-up
+        } else if (totalMinutes >= 330 && totalMinutes < 840) {
             const progress = (totalMinutes - 330) / (840 - 330);
             currentWIS = Math.round(5 + progress * 22) + geoVariance;
-        } else if (totalMinutes >= 840 && totalMinutes <= 1080) { // 2:00 PM to 6:00 PM Peak
+        } else if (totalMinutes >= 840 && totalMinutes <= 1080) {
             currentWIS = 27 + geoVariance;
-        } else { // After 6:00 PM decaying to 2:00 AM (8/25)
+        } else {
             const decayProgress = (totalMinutes - 1080) / 360; 
             currentWIS = Math.max(0, Math.round(27 * (1 - decayProgress))) + geoVariance;
         }
         return formatOutput(currentWIS);
     }
-    // 8/25/2026 WIS Override (Enforced regardless of target location)
     else if (year === 2026 && month === 8 && day === 25) {
-        if (totalMinutes < 120) { // Midnight to 2:00 AM (Continuation from 8/24)
+        if (totalMinutes < 120) {
             currentWIS = Math.max(0, 0 + geoVariance);
-        } else if (totalMinutes >= 120 && totalMinutes < 660) { // Before 11:00 AM
+        } else if (totalMinutes >= 120 && totalMinutes < 660) {
             currentWIS = Math.max(0, 3 + geoVariance);
-        } else if (totalMinutes >= 660 && totalMinutes < 840) { // 11:00 AM to 2:00 PM ramp-up
+        } else if (totalMinutes >= 660 && totalMinutes < 840) {
             const progress = (totalMinutes - 660) / (840 - 660);
             currentWIS = Math.round(3 + progress * 54) + geoVariance;
-        } else if (totalMinutes >= 840 && totalMinutes <= 1260) { // 2:00 PM to 9:00 PM Peak
+        } else if (totalMinutes >= 840 && totalMinutes <= 1260) {
             currentWIS = 57 + geoVariance;
-        } else { // After 9:00 PM decaying to 3:00 AM (8/26)
+        } else {
             const decayProgress = (totalMinutes - 1260) / 360; 
             currentWIS = Math.max(2, Math.round(57 - decayProgress * 55)) + geoVariance;
         }
         return formatOutput(currentWIS);
     }
-    // 8/26/2026 Early Morning Decay Override
     else if (year === 2026 && month === 8 && day === 26 && totalMinutes < 180) {
         currentWIS = Math.max(2, 2 + geoVariance);
         return formatOutput(currentWIS);
     }
-    // 8/27/2026 WIS Override (Enforced regardless of target location)
     else if (year === 2026 && month === 8 && day === 27) {
-        if (totalMinutes < 450) { // Before 7:30 AM
+        if (totalMinutes < 450) {
             currentWIS = Math.max(0, 23 + geoVariance);
-        } else if (totalMinutes >= 450 && totalMinutes < 840) { // 7:30 AM to 2:00 PM ramp-up
+        } else if (totalMinutes >= 450 && totalMinutes < 840) {
             const progress = (totalMinutes - 450) / (840 - 450);
             currentWIS = Math.round(23 + progress * 54) + geoVariance;
-        } else if (totalMinutes >= 840 && totalMinutes <= 1080) { // 2:00 PM to 6:00 PM Peak
+        } else if (totalMinutes >= 840 && totalMinutes <= 1080) {
             currentWIS = 77 + geoVariance;
-        } else { // After 6:00 PM decaying to 2:00 AM (8/28)
+        } else {
             const decayProgress = (totalMinutes - 1080) / 360; 
             currentWIS = Math.max(60, Math.round(77 - decayProgress * 17)) + geoVariance;
         }
         return formatOutput(currentWIS);
     }
-    // 8/28/2026 WIS Override (Enforced regardless of target location)
     else if (year === 2026 && month === 8 && day === 28) {
-        if (totalMinutes < 120) { // Midnight to 2:00 AM (Continuation from 8/27)
+        if (totalMinutes < 120) {
             currentWIS = Math.max(60, 60 + geoVariance);
-        } else if (totalMinutes >= 120 && totalMinutes < 450) { // Before 7:30 AM
+        } else if (totalMinutes >= 120 && totalMinutes < 450) {
             currentWIS = Math.max(0, 60 + geoVariance);
-        } else if (totalMinutes >= 450 && totalMinutes < 840) { // 7:30 AM to 2:00 PM ramp-up
+        } else if (totalMinutes >= 450 && totalMinutes < 840) {
             const progress = (totalMinutes - 450) / (840 - 450);
             currentWIS = Math.round(60 + progress * 57) + geoVariance;
-        } else if (totalMinutes >= 840 && totalMinutes <= 1080) { // 2:00 PM to 6:00 PM Peak
+        } else if (totalMinutes >= 840 && totalMinutes <= 1080) {
             currentWIS = 117 + geoVariance;
-        } else { // After 6:00 PM decaying to 2:00 AM (8/29)
+        } else {
             const decayProgress = (totalMinutes - 1080) / 360; 
             currentWIS = Math.max(0, Math.round(117 * (1 - decayProgress))) + geoVariance;
         }
         return formatOutput(currentWIS);
     }
-    // 8/31/2026 WIS Override (Enforced regardless of target location)
     else if (year === 2026 && month === 8 && day === 31) {
-        if (totalMinutes < 450) { // Before 7:30 AM
+        if (totalMinutes < 450) {
             currentWIS = Math.max(0, 87 + geoVariance);
-        } else if (totalMinutes >= 450 && totalMinutes < 840) { // 7:30 AM to 2:00 PM ramp-up
+        } else if (totalMinutes >= 450 && totalMinutes < 840) {
             const progress = (totalMinutes - 450) / (840 - 450);
             currentWIS = Math.round(87 + progress * 50) + geoVariance;
-        } else if (totalMinutes >= 840 && totalMinutes <= 1080) { // 2:00 PM to 6:00 PM Peak
+        } else if (totalMinutes >= 840 && totalMinutes <= 1080) {
             currentWIS = 137 + geoVariance;
-        } else { // After 6:00 PM decaying to 2:00 AM (9/1)
+        } else {
             const decayProgress = (totalMinutes - 1080) / 360; 
             currentWIS = Math.max(0, Math.round(137 * (1 - decayProgress))) + geoVariance;
         }
@@ -811,6 +778,7 @@ function calculateNationalScores(alerts) {
 
     return formatOutput(currentWIS + geoVariance);
 }
+
 function getDOSMeta(score) {
     if (score >= 150) return { label: "Potentially Historic Setup" };
     if (score >= 125) return { label: "Extreme Event Potential" };
@@ -859,24 +827,6 @@ function updateStreamStatus(wisScore) {
     }
 }
 
-function getDynamicScores73126() {
-    const now = new Date();
-    const minutes = now.getMinutes();
-    const hours = now.getHours();
-
-    const timeFactor = (hours * 60 + minutes);
-    const fluctuation = Math.sin(timeFactor / 15) * 4; 
-
-    const basePeak = 52;
-    const projectedScore = Math.min(Math.max(Math.round(basePeak + fluctuation), 10), 56);
-
-    const streamFluctuation = Math.cos(timeFactor / 12) * 5;
-    const baseChance = 95;
-    const streamChance = Math.min(Math.max(Math.round(baseChance + streamFluctuation), 0), 100);
-
-    return { projectedScore, streamChance };
-}
-
 function getStreamThreshold(year, month, day) {
     if (year === 2026 && month === 8) {
         if (day === 24) return 60;
@@ -900,7 +850,6 @@ async function buildForecast() {
 
     const { wis, dos } = calculateNationalScores(alerts);
     
-    // Determine CDT Date for Stream Threshold lookup
     const now = new Date();
     const cdtOptions = { timeZone: 'America/Chicago', year: 'numeric', month: 'numeric', day: 'numeric' };
     const cdtParts = new Intl.DateTimeFormat('en-US', cdtOptions).formatToParts(now);
@@ -919,7 +868,6 @@ async function buildForecast() {
     
     updateStreamStatus(wis);
 
-    // Exact current timestamp for intra-day time calculations
     const today = new Date(now);
     today.setHours(0, 0, 0, 0);
     
@@ -934,7 +882,6 @@ async function buildForecast() {
         const forecastMonth = forecastDate.getMonth() + 1;
         const dateNum = forecastDate.getDate();
 
-        // --- TIME-OF-DAY & DAYS-OUT CONFIDENCE CALCULATION ---
         const targetDate = new Date(forecastDate);
         targetDate.setHours(12, 0, 0, 0);
 
@@ -976,7 +923,6 @@ async function buildForecast() {
             }
         }
 
-        // --- SPECIFIC OVERRIDES ---
         if (forecastYear === 2026 && forecastMonth === 8 && dateNum === 23) {
             const lat = targetZoneOrPoint ? parseFloat(targetZoneOrPoint.lat) : 45.0;
             const lon = targetZoneOrPoint ? parseFloat(targetZoneOrPoint.lon) : -93.0;
@@ -1206,14 +1152,13 @@ async function buildForecast() {
 
     renderForecast(dosForecast);
 }
-   function renderForecast(dosForecast) {
+
+function renderForecast(dosForecast) {
     const container = document.getElementById("forecastContainer");
     container.innerHTML = "";
     dosForecast.forEach((item, index) => {
         const card = document.createElement("div");
         card.className = "day-card";
-        card.style.cursor = "pointer";
-        // Open graph viewer modal on card click, passing forecast array & index for context
         card.addEventListener("click", () => {
             openForecastGraphModal(item, dosForecast, index);
         });
@@ -1238,7 +1183,7 @@ async function buildForecast() {
         const videoTag = document.createElement("div");
         videoTag.className = "video-label";
         videoTag.innerText = item.videoStatus;
-        // --- DOS SCORE BAR ---
+        
         const barLabel = document.createElement("div");
         barLabel.className = "bar-label";
         barLabel.innerText = "DOS Score Bar";
@@ -1253,7 +1198,7 @@ async function buildForecast() {
         dosRangeFill.style.width = Math.max(dosPercent, 2) + "%";
         dosRangeFill.style.background = getDosGradientCss(item.score, maxScale);
         bar.appendChild(dosRangeFill);
-        // --- FIXED SCALE TEMP BAR ---
+        
         const tempStatRow = document.createElement("div");
         tempStatRow.className = "stat-row";
         const highTempColor = getAppleTempColor(item.tempHigh);
@@ -1271,7 +1216,7 @@ async function buildForecast() {
         tempRangeFill.style.width = tempWidthPercent + "%";
         tempRangeFill.style.background = getTempRangeGradientCss(item.tempLow, item.tempHigh);
         tempBar.appendChild(tempRangeFill);
-        // --- FIXED SCALE WIND SPEED BAR ---
+        
         const windStatRow = document.createElement("div");
         windStatRow.className = "stat-row";
         const windColor = getAppleWindColor(item.windMph);
@@ -1287,7 +1232,7 @@ async function buildForecast() {
         windRangeFill.style.width = windWidthPercent + "%";
         windRangeFill.style.background = getWindGradientCss(item.windMph);
         windBar.appendChild(windRangeFill);
-        // --- FIXED SCALE WIND GUST BAR ---
+        
         const gustStatRow = document.createElement("div");
         gustStatRow.className = "stat-row";
         const gustColor = getAppleWindColor(item.gustMph);
@@ -1303,7 +1248,7 @@ async function buildForecast() {
         gustRangeFill.style.width = gustWidthPercent + "%";
         gustRangeFill.style.background = getWindGradientCss(item.gustMph);
         gustBar.appendChild(gustRangeFill);
-        // --- LIVE STREAM CHANCE GRADIENT BAR ---
+        
         const streamContainer = document.createElement("div");
         streamContainer.className = "stream-chance-container";
         const streamTitle = document.createElement("div");
@@ -1324,7 +1269,7 @@ async function buildForecast() {
         streamContainer.appendChild(streamTitle);
         streamContainer.appendChild(streamVal);
         streamContainer.appendChild(streamBar);
-        // --- ASSEMBLE CARD (NO INLINE GRAPH) ---
+        
         card.appendChild(dayName);
         card.appendChild(dayDate);
         card.appendChild(dosValue);
@@ -1351,27 +1296,28 @@ async function buildForecast() {
         container.appendChild(card);
     });
 }
-// --- GRAPH VIEWER & MODAL LOGIC WITH TOUCH & DRAG INTERACTION ---
-// Updated Graph Modal Generator (Injects Traffic Button Into Header)
+
 function openForecastGraphModal(item, fullForecast = [], itemIndex = -1) {
     let modal = document.getElementById("forecastGraphModal");
     if (!modal) {
         modal = document.createElement("div");
         modal.id = "forecastGraphModal";
-        modal.style.cssText = "position:fixed;top:0;left:0;width:100vw;height:100vh;background:rgba(0,0,0,0.85);z-index:9999;display:flex;align-items:center;justify-content:center;";
+        modal.style.cssText = "position:fixed;top:0;left:0;width:100vw;height:100vh;background:rgba(0,0,0,0.85);z-index:9999;display:flex;align-items:center;justify-content:center;padding:10px;";
         modal.innerHTML = `
-            <div style="background:#1e1e24;border-radius:12px;padding:20px;width:90%;max-width:700px;color:#fff;position:relative;box-shadow:0 8px 32px rgba(0,0,0,0.5);">
-                <button id="closeGraphModalBtn" style="position:absolute;top:15px;right:15px;background:none;border:none;color:#fff;font-size:20px;cursor:pointer;">✕</button>
-                <div style="display:flex;gap:12px;align-items:center;margin-bottom:15px;flex-wrap:wrap;">
-                    <h3 id="graphModalTitle" style="margin:0;">Forecast Graph</h3>
-                    <select id="graphTypeSelect" style="background:#2b2b36;color:#fff;border:1px solid #444;padding:4px 8px;border-radius:6px;cursor:pointer;">
+            <div style="background:#1e1e24;border-radius:12px;padding:16px;width:100%;max-width:700px;color:#fff;position:relative;box-shadow:0 8px 32px rgba(0,0,0,0.5);">
+                <button id="closeGraphModalBtn" style="position:absolute;top:12px;right:12px;background:none;border:none;color:#fff;font-size:24px;cursor:pointer;padding:5px;">✕</button>
+                <div style="display:flex;gap:10px;align-items:center;margin-bottom:12px;flex-wrap:wrap;padding-right:30px;">
+                    <h3 id="graphModalTitle" style="margin:0;font-size:clamp(14px, 4vw, 18px);">Forecast Graph</h3>
+                    <select id="graphTypeSelect" style="background:#2b2b36;color:#fff;border:1px solid #444;padding:6px 10px;border-radius:6px;cursor:pointer;font-size:13px;">
                         <option value="temp">Temperature</option>
                         <option value="wind">Wind & Gusts</option>
                         <option value="dos">DOS Score</option>
                     </select>
-                    <button class="traffic-btn" onclick="openTrafficMapModal()">🚦 Traffic Road Map Forecast</button>
+                    <button class="traffic-btn" onclick="openTrafficMapModal()">🚦 Traffic Road Map</button>
                 </div>
-                <canvas id="forecastGraphCanvas" width="650" height="320" style="width:100%;height:320px;background:#121216;border-radius:8px;cursor:crosshair;touch-action:none;"></canvas>
+                <div style="width:100%;aspect-ratio:2/1;min-height:220px;max-height:350px;">
+                    <canvas id="forecastGraphCanvas" style="width:100%;height:100%;background:#121216;border-radius:8px;cursor:crosshair;touch-action:none;display:block;"></canvas>
+                </div>
             </div>
         `;
         document.body.appendChild(modal);
@@ -1420,10 +1366,15 @@ function openForecastGraphModal(item, fullForecast = [], itemIndex = -1) {
     
     const currentMode = document.getElementById("graphTypeSelect").value || "temp";
     const modalCanvas = document.getElementById("forecastGraphCanvas");
-    drawForecastCanvasGraph(item, currentMode, modalCanvas, null, modal.prevItem, modal.nextItem);
+    
+    setTimeout(() => {
+        const rect = modalCanvas.getBoundingClientRect();
+        modalCanvas.width = rect.width * (window.devicePixelRatio || 1);
+        modalCanvas.height = rect.height * (window.devicePixelRatio || 1);
+        drawForecastCanvasGraph(item, currentMode, modalCanvas, null, modal.prevItem, modal.nextItem);
+    }, 50);
 }
 
-// --- TRAFFIC ROAD MAP FORECAST CONTROLLERS ---
 let activeMapItem = null;
 
 function openTrafficMapModal() {
@@ -1436,7 +1387,6 @@ function openTrafficMapModal() {
     const lat = targetZoneOrPoint ? targetZoneOrPoint.lat : "45.0000";
     const lon = targetZoneOrPoint ? targetZoneOrPoint.lon : "-93.0000";
     
-    // Embed OpenStreetMap / Bing Traffic layer bounding coordinates
     const iframe = document.getElementById("trafficMapFrame");
     iframe.src = `https://www.openstreetmap.org/export/embed.html?bbox=${parseFloat(lon)-0.15}%2C${parseFloat(lat)-0.15}%2C${parseFloat(lon)+0.15}%2C${parseFloat(lat)+0.15}&layer=mapnik`;
 
@@ -1460,29 +1410,27 @@ function updateTrafficTime(totalMinutes) {
 
     document.getElementById("timeSliderReadout").innerText = timeStr;
 
-    // Simulate traffic flow & weather hazard impact from minute-to-minute slider
     const impactEl = document.getElementById("trafficImpactReadout");
     
-    // Peak Rush Hours: 7:00 AM - 9:00 AM (420-540) & 4:00 PM - 6:30 PM (960-1110)
     const isMorningRush = totalMinutes >= 420 && totalMinutes <= 540;
     const isEveningRush = totalMinutes >= 960 && totalMinutes <= 1110;
     const isSevereWeather = activeMapItem && activeMapItem.score >= 80;
 
     if ((isMorningRush || isEveningRush) && isSevereWeather) {
-        impactEl.innerText = "Traffic Impact: HEAVY DELAYS (Severe Weather + Rush Hour)";
+        impactEl.innerText = "Impact: HEAVY DELAYS (Severe Weather + Rush)";
         impactEl.style.color = "#ef4444";
     } else if (isMorningRush || isEveningRush) {
-        impactEl.innerText = "Traffic Impact: MODERATE RUSH HOUR";
+        impactEl.innerText = "Impact: MODERATE RUSH HOUR";
         impactEl.style.color = "#f59e0b";
     } else if (isSevereWeather) {
-        impactEl.innerText = "Traffic Impact: SLOW (Weather Hazards)";
+        impactEl.innerText = "Impact: SLOW (Weather Hazards)";
         impactEl.style.color = "#f59e0b";
     } else {
-        impactEl.innerText = "Traffic Impact: NORMAL FLOW";
+        impactEl.innerText = "Impact: NORMAL FLOW";
         impactEl.style.color = "#4ade80";
     }
 }
-// --- HELPER TO GENERATE FULL COLOR SCALE GRADIENTS ---
+
 function getDosGradientCss(targetScore, maxScale = 120) {
     const stops = [
         { score: 0,   color: "rgb(0, 255, 119)" },
@@ -1500,7 +1448,6 @@ function getDosGradientCss(targetScore, maxScale = 120) {
             let pct = Math.round((stop.score / targetScore) * 100);
             gradientStops.push(`${stop.color} ${pct}%`);
         } else {
-            // Add final interpolated stop at exact current targetScore position
             let endColor = getLerpColor(targetScore);
             gradientStops.push(`${endColor} 100%`);
             break;
@@ -1513,10 +1460,10 @@ function getDosGradientCss(targetScore, maxScale = 120) {
 
 function getStreamGradientCss(chancePct) {
     const stops = [
-        { pct: 0,   color: "rgb(40, 50, 70)" },   // Low/Off
-        { pct: 30,  color: "rgb(0, 100, 200)" },  // Low-Mid
-        { pct: 60,  color: "rgb(0, 170, 255)" },  // Mid-High
-        { pct: 100, color: "rgb(0, 255, 200)" }   // High/Active
+        { pct: 0,   color: "rgb(40, 50, 70)" },   
+        { pct: 30,  color: "rgb(0, 100, 200)" },  
+        { pct: 60,  color: "rgb(0, 170, 255)" },  
+        { pct: 100, color: "rgb(0, 255, 200)" }   
     ];
 
     if (chancePct <= 0) return stops[0].color;
@@ -1527,8 +1474,6 @@ function getStreamGradientCss(chancePct) {
             let relativePct = Math.round((stop.pct / chancePct) * 100);
             gradientStops.push(`${stop.color} ${relativePct}%`);
         } else {
-            // Interpolate target end color
-            let lastLower = stops.filter(s => s.pct <= chancePct).pop();
             gradientStops.push(`${stop.color} 100%`);
             break;
         }
@@ -1538,33 +1483,25 @@ function getStreamGradientCss(chancePct) {
     return `linear-gradient(90deg, ${gradientStops.join(", ")})`;
 }
 
-// --- UPDATED RENDER FORECAST FUNCTION ---
-// --- UPDATED RENDER FORECAST FUNCTION WITH WIND/GUST COLOR FIXES ---
-// --- CONTINUOUS MULTI-STOP GRADIENT GENERATOR ---
 function getGradientFromLowToCurrent(currentVal, minScale, stops, getColorFn) {
-    // If at or below minimum scale, return solid base color
     if (currentVal <= minScale) {
         return `rgb(${stops[0].r}, ${stops[0].g}, ${stops[0].b})`;
     }
 
     let gradientStops = [];
     
-    // Iterate through color stops and add those within range
     for (let i = 0; i < stops.length; i++) {
         const stop = stops[i];
         if (stop.val <= currentVal) {
-            // Calculate relative percentage along the active fill bar width
             let pct = Math.round(((stop.val - minScale) / (currentVal - minScale)) * 100);
             gradientStops.push(`rgb(${stop.r}, ${stop.g}, ${stop.b}) ${pct}%`);
         } else {
-            // Append exact target color matching currentVal at 100% boundary
             const endColor = getColorFn(currentVal);
             gradientStops.push(`${endColor} 100%`);
             break;
         }
     }
 
-    // Fallback if currentVal exceeds all defined stop values
     if (gradientStops.length > 0 && !gradientStops[gradientStops.length - 1].includes("100%")) {
         const endColor = getColorFn(currentVal);
         gradientStops.push(`${endColor} 100%`);
@@ -1573,18 +1510,17 @@ function getGradientFromLowToCurrent(currentVal, minScale, stops, getColorFn) {
     if (gradientStops.length === 1) return gradientStops[0];
     return `linear-gradient(90deg, ${gradientStops.join(", ")})`;
 }
-// --- OFFICIAL APPLE WEATHER TEMPERATURE COLOR PALETTE (PURPLE INCLUDED) ---
-// --- RANGE GRADIENT GENERATOR (FROM tempLow TO tempHigh) ---
+
 function getAppleTempColor(tempF) {
     const stops = [
-        { temp: -10, r: 147, g: 51,  b: 234 }, // Deep Purple
-        { temp: 15,  r: 99,  g: 102, b: 241 }, // Indigo / Violet
-        { temp: 32,  r: 59,  g: 130, b: 246 }, // Dark Blue
-        { temp: 50,  r: 6,   g: 182, b: 212 }, // Cyan / Light Blue
-        { temp: 68,  r: 34,  g: 197, b: 94  }, // Green
-        { temp: 77,  r: 234, g: 179, b: 8   }, // Yellow
-        { temp: 86,  r: 249, g: 115, b: 22  }, // Orange
-        { temp: 120, r: 239, g: 68,  b: 68  }  // Red
+        { temp: -10, r: 147, g: 51,  b: 234 }, 
+        { temp: 15,  r: 99,  g: 102, b: 241 }, 
+        { temp: 32,  r: 59,  g: 130, b: 246 }, 
+        { temp: 50,  r: 6,   g: 182, b: 212 }, 
+        { temp: 68,  r: 34,  g: 197, b: 94  }, 
+        { temp: 77,  r: 234, g: 179, b: 8   }, 
+        { temp: 86,  r: 249, g: 115, b: 22  }, 
+        { temp: 120, r: 239, g: 68,  b: 68  }  
     ];
 
     if (tempF <= stops[0].temp) {
@@ -1608,58 +1544,55 @@ function getAppleTempColor(tempF) {
 
     return `rgb(${r}, ${g}, ${b})`;
 }
-// --- OFFICIAL APPLE WEATHER WIND COLOR PALETTE (BLUE BASE) ---
+
 function getAppleWindColor(mph) {
-    if (mph <= 3)  return "rgb(174, 198, 207)";  // Light Slate Blue / Calm
-    if (mph <= 10) return "rgb(96, 165, 250)";   // Soft Sky Blue / Light Breeze
-    if (mph <= 18) return "rgb(6, 182, 212)";    // Cyan / Moderate Breeze
-    if (mph <= 28) return "rgb(34, 197, 94)";    // Green / Strong Breeze
-    if (mph <= 40) return "rgb(234, 179, 8)";    // Yellow / Near Gale
-    if (mph <= 55) return "rgb(249, 115, 22)";   // Orange / Gale
-    if (mph <= 72) return "rgb(239, 68, 68)";    // Red / Strong Gale
-    return "rgb(168, 85, 247)";                  // Deep Purple / Storm & Hurricane
+    if (mph <= 3)  return "rgb(174, 198, 207)";  
+    if (mph <= 10) return "rgb(96, 165, 250)";   
+    if (mph <= 18) return "rgb(6, 182, 212)";    
+    if (mph <= 28) return "rgb(34, 197, 94)";    
+    if (mph <= 40) return "rgb(234, 179, 8)";    
+    if (mph <= 55) return "rgb(249, 115, 22)";   
+    if (mph <= 72) return "rgb(239, 68, 68)";    
+    return "rgb(168, 85, 247)";                  
 }
 
-// --- HELPER FOR WIND GRADIENT (0 MPH TO CURRENT MPH) ---
 function getWindGradientCss(currentMph) {
     const minWind = 0;
     const windStops = [
-        { val: 0,  r: 174, g: 198, b: 207 }, // Slate Blue
-        { val: 10, r: 96,  g: 165, b: 250 }, // Soft Sky Blue
-        { val: 18, r: 6,   g: 182, b: 212 }, // Cyan
-        { val: 28, r: 34,  g: 197, b: 94  }, // Green
-        { val: 40, r: 234, g: 179, b: 8   }, // Yellow
-        { val: 55, r: 249, g: 115, b: 22  }, // Orange
-        { val: 72, r: 239, g: 68,  b: 68  }, // Red
-        { val: 80, r: 168, g: 85,  b: 247 }  // Purple
+        { val: 0,  r: 174, g: 198, b: 207 }, 
+        { val: 10, r: 96,  g: 165, b: 250 }, 
+        { val: 18, r: 6,   g: 182, b: 212 }, 
+        { val: 28, r: 34,  g: 197, b: 94  }, 
+        { val: 40, r: 234, g: 179, b: 8   }, 
+        { val: 55, r: 249, g: 115, b: 22  }, 
+        { val: 72, r: 239, g: 68,  b: 68  }, 
+        { val: 80, r: 168, g: 85,  b: 247 }  
     ];
     return getGradientFromLowToCurrent(currentMph, minWind, windStops, getAppleWindColor);
 }
-// --- RANGE GRADIENT GENERATOR (FROM tempLow TO tempHigh) ---
+
 function getTempRangeGradientCss(tempLow, tempHigh) {
     if (tempLow >= tempHigh) {
         return getAppleTempColor(tempHigh);
     }
 
     const tempStops = [
-        { val: -10, r: 147, g: 51,  b: 234 }, // Deep Purple
-        { val: 15,  r: 99,  g: 102, b: 241 }, // Indigo
-        { val: 32,  r: 59,  g: 130, b: 246 }, // Dark Blue
-        { val: 50,  r: 6,   g: 182, b: 212 }, // Cyan
-        { val: 68,  r: 34,  g: 197, b: 94  }, // Green
-        { val: 77,  r: 234, g: 179, b: 8   }, // Yellow
-        { val: 86,  r: 249, g: 115, b: 22  }, // Orange
-        { val: 120, r: 239, g: 68,  b: 68  }  // Red
+        { val: -10, r: 147, g: 51,  b: 234 }, 
+        { val: 15,  r: 99,  g: 102, b: 241 }, 
+        { val: 32,  r: 59,  g: 130, b: 246 }, 
+        { val: 50,  r: 6,   g: 182, b: 212 }, 
+        { val: 68,  r: 34,  g: 197, b: 94  }, 
+        { val: 77,  r: 234, g: 179, b: 8   }, 
+        { val: 86,  r: 249, g: 115, b: 22  }, 
+        { val: 120, r: 239, g: 68,  b: 68  }  
     ];
 
     let gradientStops = [];
     const totalSpan = tempHigh - tempLow;
 
-    // Start stop at exact tempLow color
     const startColor = getAppleTempColor(tempLow);
     gradientStops.push(`${startColor} 0%`);
 
-    // Add intermediate color stops strictly within tempLow and tempHigh
     for (let i = 0; i < tempStops.length; i++) {
         const stop = tempStops[i];
         if (stop.val > tempLow && stop.val < tempHigh) {
@@ -1668,14 +1601,12 @@ function getTempRangeGradientCss(tempLow, tempHigh) {
         }
     }
 
-    // End stop at exact tempHigh color
     const endColor = getAppleTempColor(tempHigh);
     gradientStops.push(`${endColor} 100%`);
 
     return `linear-gradient(90deg, ${gradientStops.join(", ")})`;
 }
 
-// --- FULL UPDATED RENDER FORECAST FUNCTION ---
 function drawForecastCanvasGraph(item, mode, canvas, activeX = null, prevItem = null, nextItem = null) {
     if (!canvas) return;
     const ctx = canvas.getContext("2d");
@@ -1689,7 +1620,6 @@ function drawForecastCanvasGraph(item, mode, canvas, activeX = null, prevItem = 
         titleEl.innerText = `${item.day} (${item.dateStr}) - ${mode === "temp" ? "Temperature" : mode === "wind" ? "Wind & Gusts" : "DOS Score"}`;
     }
 
-    // --- TIME & TODAY CHECK ---
     const now = new Date();
     const cdtOptions = { timeZone: 'America/Chicago', year: 'numeric', month: 'numeric', day: 'numeric', hour: 'numeric', minute: 'numeric', hour12: false };
     const cdtParts = new Intl.DateTimeFormat('en-US', cdtOptions).formatToParts(now);
@@ -1707,22 +1637,20 @@ function drawForecastCanvasGraph(item, mode, canvas, activeX = null, prevItem = 
     const dateParts = item.dateStr.split('/').map(n => parseInt(n, 10));
     const isToday = (dateParts[0] === cdtMonth && dateParts[1] === cdtDay && dateParts[2] === cdtYear);
 
-    // --- LAYOUT PADDING ---
-    const padLeft = 50;
-    const padRight = 25;
-    const padTop = 35;
-    const padBottom = 40;
+    const scaleFactor = Math.min(width / 650, 1.5);
+    const padLeft = Math.round(45 * scaleFactor);
+    const padRight = Math.round(20 * scaleFactor);
+    const padTop = Math.round(30 * scaleFactor);
+    const padBottom = Math.round(35 * scaleFactor);
 
     const graphWidth = width - padLeft - padRight;
     const graphHeight = height - padTop - padBottom;
 
-    // Smooth Interpolation Helpers
     const smoothStep = (v0, v1, t) => {
         const factor = 0.5 * (1 - Math.cos(t * Math.PI));
         return v0 + (v1 - v0) * factor;
     };
 
-    // Color LERP helper function
     const lerpColor = (color1, color2, factor) => {
         const c1 = parseInt(color1.replace('#', ''), 16);
         const c2 = parseInt(color2.replace('#', ''), 16);
@@ -1737,13 +1665,11 @@ function drawForecastCanvasGraph(item, mode, canvas, activeX = null, prevItem = 
         return `#${((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1)}`;
     };
 
-    // Dynamic wind color interpolator across wind thresholds
     const getDynamicWindColor = (speed) => {
         if (typeof getAppleWindColor === "function") {
             return getAppleWindColor(speed);
         }
         
-        // Fallback LERP color scale
         if (speed <= 5)  return lerpColor("#00c8ff", "#0088ff", speed / 5);
         if (speed <= 15) return lerpColor("#0088ff", "#00ffaa", (speed - 5) / 10);
         if (speed <= 25) return lerpColor("#00ffaa", "#ffaa00", (speed - 15) / 10);
@@ -1751,7 +1677,6 @@ function drawForecastCanvasGraph(item, mode, canvas, activeX = null, prevItem = 
         return lerpColor("#ff3300", "#cc00ff", Math.min(1, (speed - 35) / 15));
     };
 
-    // --- DYNAMIC TEMP ANCHOR CALCULATIONS ---
     const resolvePreviousItem = () => {
         if (prevItem) return prevItem;
         
@@ -1813,7 +1738,6 @@ function drawForecastCanvasGraph(item, mode, canvas, activeX = null, prevItem = 
 
     const isWinterInversion = item.isWinterInversion || (item.tempHigh < morningLow);
 
-    // --- DIURNAL FALLBACK CALCULATIONS ---
     const getDiurnalTemp = (m) => {
         if (isWinterInversion) {
             const tStart = Math.round((prevHigh + todayHigh) / 2);
@@ -1855,7 +1779,6 @@ function drawForecastCanvasGraph(item, mode, canvas, activeX = null, prevItem = 
         return Math.round(item.score * (0.5 + 0.5 * dosFactor));
     };
 
-    // --- OVERRIDE EVENTS ENGINE ---
     const hasEvents = Array.isArray(item.overrideEvents) && item.overrideEvents.length > 0;
     const sortedEvents = hasEvents ? [...item.overrideEvents].sort((a, b) => a.minute - b.minute) : [];
 
@@ -1886,7 +1809,6 @@ function drawForecastCanvasGraph(item, mode, canvas, activeX = null, prevItem = 
     const getInterpolatedGust = (m) => getInterpolatedVal(m, 'gust', getDiurnalGust);
     const getInterpolatedDos = (m) => getInterpolatedVal(m, 'dos', getDiurnalDos);
 
-    // Build points every 15 minutes across the 24-hour cycle
     const points = [];
     for (let m = 0; m <= 1439; m += 15) {
         const x = padLeft + (m / 1439) * graphWidth;
@@ -1900,14 +1822,14 @@ function drawForecastCanvasGraph(item, mode, canvas, activeX = null, prevItem = 
         });
     }
 
-    // --- GRID AXES & TIME LABELS ---
     ctx.strokeStyle = "#2e2e38";
     ctx.lineWidth = 1;
     ctx.fillStyle = "#888";
-    ctx.font = "11px sans-serif";
+    ctx.font = `${Math.max(9, Math.round(11 * scaleFactor))}px sans-serif`;
     ctx.textAlign = "center";
 
-    for (let h = 0; h <= 24; h += 4) {
+    const hourStep = width < 400 ? 6 : 4;
+    for (let h = 0; h <= 24; h += hourStep) {
         const m = h === 24 ? 1439 : h * 60;
         const x = padLeft + (m / 1439) * graphWidth;
         ctx.beginPath();
@@ -1915,11 +1837,10 @@ function drawForecastCanvasGraph(item, mode, canvas, activeX = null, prevItem = 
         ctx.lineTo(x, height - padBottom);
         ctx.stroke();
 
-        let label = h === 0 ? "12AM" : h === 12 ? "12PM" : h === 24 ? "11:59PM" : (h > 12 ? h - 12 + "PM" : h + "AM");
-        ctx.fillText(label, x, height - padBottom + 18);
+        let label = h === 0 ? "12AM" : h === 12 ? "12PM" : h === 24 ? "12AM" : (h > 12 ? h - 12 + "PM" : h + "AM");
+        ctx.fillText(label, x, height - padBottom + 15 * scaleFactor);
     }
 
-    // Standard Line Drawing Helper
     const drawSegmentedLine = (pts, activeStyle, lineWidth, getYVal, fillUnder = false) => {
         const renderPath = (segmentPts, style, isDashed) => {
             if (segmentPts.length < 2) return;
@@ -1939,7 +1860,7 @@ function drawForecastCanvasGraph(item, mode, canvas, activeX = null, prevItem = 
             ctx.beginPath();
             ctx.setLineDash(isDashed ? [4, 4] : []);
             ctx.strokeStyle = style;
-            ctx.lineWidth = lineWidth;
+            ctx.lineWidth = lineWidth * scaleFactor;
             segmentPts.forEach((p, idx) => {
                 const y = getYVal(p);
                 if (idx === 0) ctx.moveTo(p.x, y);
@@ -1961,7 +1882,6 @@ function drawForecastCanvasGraph(item, mode, canvas, activeX = null, prevItem = 
         }
     };
 
-    // --- RENDER SELECTED GRAPH MODE ---
     if (mode === "temp") {
         const allTemps = points.map(p => p.temp);
         const minY = Math.min(...allTemps) - 5;
@@ -1981,7 +1901,7 @@ function drawForecastCanvasGraph(item, mode, canvas, activeX = null, prevItem = 
 
             ctx.fillStyle = "#ffffff";
             ctx.beginPath();
-            ctx.arc(currentX, currentY, 5, 0, Math.PI * 2);
+            ctx.arc(currentX, currentY, 5 * scaleFactor, 0, Math.PI * 2);
             ctx.fill();
             ctx.strokeStyle = "#000";
             ctx.lineWidth = 1.5;
@@ -1995,7 +1915,7 @@ function drawForecastCanvasGraph(item, mode, canvas, activeX = null, prevItem = 
                     const ey = padTop + graphHeight - ((ev.temp - minY) / (maxY - minY)) * graphHeight;
                     ctx.fillStyle = "#ffcc00";
                     ctx.beginPath();
-                    ctx.arc(ex, ey, 4, 0, Math.PI * 2);
+                    ctx.arc(ex, ey, 4 * scaleFactor, 0, Math.PI * 2);
                     ctx.fill();
                 }
             });
@@ -2011,11 +1931,8 @@ function drawForecastCanvasGraph(item, mode, canvas, activeX = null, prevItem = 
         const getWindY = (p) => padTop + graphHeight - ((p.wind - minSpeed) / (maxSpeed - minSpeed)) * graphHeight;
         const getGustY = (p) => padTop + graphHeight - ((p.gust - minSpeed) / (maxSpeed - minSpeed)) * graphHeight;
 
-        // Build precise height-relative color gradient mapped strictly to the graph Y-axis (minSpeed to maxSpeed)
         const createSpeedGradient = () => {
             const grad = ctx.createLinearGradient(0, height - padBottom, 0, padTop);
-            
-            // Generate color stops anchored directly to the graph scale (0 to maxSpeed)
             const steps = 20;
             for (let i = 0; i <= steps; i++) {
                 const ratio = i / steps;
@@ -2025,11 +1942,9 @@ function drawForecastCanvasGraph(item, mode, canvas, activeX = null, prevItem = 
             return grad;
         };
 
-        // Shared scale gradient ensures colors align 1:1 with Y-axis positions
         const windGrad = createSpeedGradient();
         const gustGrad = createSpeedGradient();
 
-        // Render continuous gradient lines
         drawSegmentedLine(points, windGrad, 2.5, getWindY, true);
         drawSegmentedLine(points, gustGrad, 2.0, getGustY, false);
 
@@ -2043,12 +1958,12 @@ function drawForecastCanvasGraph(item, mode, canvas, activeX = null, prevItem = 
 
             ctx.fillStyle = getDynamicWindColor(curWind);
             ctx.beginPath();
-            ctx.arc(currentX, windY, 5, 0, Math.PI * 2);
+            ctx.arc(currentX, windY, 5 * scaleFactor, 0, Math.PI * 2);
             ctx.fill();
 
             ctx.fillStyle = getDynamicWindColor(curGust);
             ctx.beginPath();
-            ctx.arc(currentX, gustY, 5, 0, Math.PI * 2);
+            ctx.arc(currentX, gustY, 5 * scaleFactor, 0, Math.PI * 2);
             ctx.fill();
         }
     } else if (mode === "dos") {
@@ -2071,12 +1986,11 @@ function drawForecastCanvasGraph(item, mode, canvas, activeX = null, prevItem = 
 
             ctx.fillStyle = "#ffffff";
             ctx.beginPath();
-            ctx.arc(currentX, currentY, 5, 0, Math.PI * 2);
+            ctx.arc(currentX, currentY, 5 * scaleFactor, 0, Math.PI * 2);
             ctx.fill();
         }
     }
 
-    // --- SCRUBBER TOOLTIP ---
     if (activeX !== null && activeX >= padLeft && activeX <= width - padRight) {
         const clampedX = Math.max(padLeft, Math.min(width - padRight, activeX));
         const ratio = (clampedX - padLeft) / graphWidth;
@@ -2106,12 +2020,12 @@ function drawForecastCanvasGraph(item, mode, canvas, activeX = null, prevItem = 
         if (mode === "temp") {
             tooltipText = `${timeStr} - ${hoveredTemp}°F${nearbyEvent ? ` (${nearbyEvent.label})` : ''}`;
         } else if (mode === "wind") {
-            tooltipText = `${timeStr} - Wind: ${hoveredWind} mph | Gust: ${hoveredGust} mph`;
+            tooltipText = `${timeStr} - W: ${hoveredWind} | G: ${hoveredGust} mph`;
         } else if (mode === "dos") {
             tooltipText = `${timeStr} - DOS: ${hoveredDos}`;
         }
 
-        ctx.font = "bold 12px sans-serif";
+        ctx.font = `bold ${Math.max(10, Math.round(12 * scaleFactor))}px sans-serif`;
         const textWidth = ctx.measureText(tooltipText).width;
         let boxX = clampedX - textWidth / 2 - 8;
         boxX = Math.max(padLeft, Math.min(width - padRight - textWidth - 16, boxX));
@@ -2121,25 +2035,34 @@ function drawForecastCanvasGraph(item, mode, canvas, activeX = null, prevItem = 
         ctx.lineWidth = 1;
         ctx.beginPath();
         if (typeof ctx.roundRect === "function") {
-            ctx.roundRect(boxX, 8, textWidth + 16, 24, 6);
+            ctx.roundRect(boxX, 6, textWidth + 16, 22 * scaleFactor, 6);
         } else {
-            ctx.rect(boxX, 8, textWidth + 16, 24);
+            ctx.rect(boxX, 6, textWidth + 16, 22 * scaleFactor);
         }
         ctx.fill();
         ctx.stroke();
 
         ctx.fillStyle = "#ffffff";
         ctx.textAlign = "left";
-        ctx.fillText(tooltipText, boxX + 8, 24);
+        ctx.fillText(tooltipText, boxX + 8, 20 * scaleFactor);
     }
 }
-// Initial execution
+
+window.addEventListener('resize', () => {
+    const modal = document.getElementById("forecastGraphModal");
+    if (modal && modal.style.display === "flex" && modal.currentItem) {
+        const modalCanvas = document.getElementById("forecastGraphCanvas");
+        const currentMode = document.getElementById("graphTypeSelect").value || "temp";
+        const rect = modalCanvas.getBoundingClientRect();
+        modalCanvas.width = rect.width * (window.devicePixelRatio || 1);
+        modalCanvas.height = rect.height * (window.devicePixelRatio || 1);
+        drawForecastCanvasGraph(modal.currentItem, currentMode, modalCanvas, modal.dragX, modal.prevItem, modal.nextItem);
+    }
+});
+
 buildForecast();
 
-// 1. Fast Interval: Refresh real-time dynamic elements (Stream Status / WIS Banner) every 5 seconds
-setInterval(updateLiveBanner, 60000);
-
-// 2. Slow Interval: Fetch external NOAA APIs and update full card forecast grid every 1 minute
+setInterval(updateStreamStatus, 60000);
 setInterval(buildForecast, 60000);
 </script>
 
