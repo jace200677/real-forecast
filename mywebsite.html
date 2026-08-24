@@ -1456,11 +1456,40 @@ function renderForecast(dosForecast) {
         streamContainer.appendChild(streamVal);
         streamContainer.appendChild(streamBar);
 
-        // --- CLICK AFFORDANCE HINT ---
-        const clickHint = document.createElement("div");
-        clickHint.className = "graph-hint";
-        clickHint.innerText = "Click to View Graph";
-        clickHint.style.cssText = "font-size: 11px; opacity: 0.7; text-align: center; margin-top: 8px; font-weight: bold;";
+        // --- INLINE GRAPH CONTAINER (POSITIONED IN RIGHT PLACE WITHIN CARD) ---
+        const inlineGraphContainer = document.createElement("div");
+        inlineGraphContainer.className = "inline-graph-container";
+        inlineGraphContainer.style.cssText = "margin-top: 12px; background: #121216; border-radius: 8px; padding: 10px; border: 1px solid #2e2e38;";
+        
+        const inlineGraphHeader = document.createElement("div");
+        inlineGraphHeader.style.cssText = "display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;";
+        inlineGraphHeader.innerHTML = `
+            <span style="font-size: 11px; font-weight: bold; color: #aaa;">Day Curve</span>
+            <select class="card-graph-select" style="background:#2b2b36; color:#fff; border:1px solid #444; font-size:10px; padding:2px 4px; border-radius:4px; cursor:pointer;">
+                <option value="temp">Temp</option>
+                <option value="wind">Wind</option>
+                <option value="dos">DOS Score</option>
+            </select>
+        `;
+        
+        const inlineCanvas = document.createElement("canvas");
+        inlineCanvas.width = 300;
+        inlineCanvas.height = 140;
+        inlineCanvas.style.cssText = "width: 100%; height: 140px; display: block;";
+
+        // Prevent modal pop-up when clicking directly on graph/select control
+        inlineGraphHeader.querySelector("select").addEventListener("click", (e) => e.stopPropagation());
+        inlineCanvas.addEventListener("click", (e) => e.stopPropagation());
+
+        inlineGraphContainer.appendChild(inlineGraphHeader);
+        inlineGraphContainer.appendChild(inlineCanvas);
+
+        inlineGraphHeader.querySelector("select").addEventListener("change", (e) => {
+            drawForecastCanvasGraph(item, e.target.value, inlineCanvas);
+        });
+
+        // Initial render for inline canvas
+        setTimeout(() => drawForecastCanvasGraph(item, "temp", inlineCanvas), 0);
 
         // --- ASSEMBLE CARD ---
         card.appendChild(dayName);
@@ -1488,13 +1517,13 @@ function renderForecast(dosForecast) {
         card.appendChild(gustBar);
 
         card.appendChild(streamContainer);
-        card.appendChild(clickHint);
+        card.appendChild(inlineGraphContainer);
 
         container.appendChild(card);
     });
 }
 
-// --- GRAPH VIEWER & MODAL LOGIC WITH DROP-DOWN, CANVAS & TIMELINE STYLING ---
+// --- GRAPH VIEWER & MODAL LOGIC WITH DROPDOWN OPTIONS ---
 function openForecastGraphModal(item) {
     let modal = document.getElementById("forecastGraphModal");
     if (!modal) {
@@ -1509,6 +1538,7 @@ function openForecastGraphModal(item) {
                     <select id="graphTypeSelect" style="background:#2b2b36;color:#fff;border:1px solid #444;padding:4px 8px;border-radius:6px;cursor:pointer;">
                         <option value="temp">Temperature</option>
                         <option value="wind">Wind & Gusts</option>
+                        <option value="dos">DOS Score</option>
                     </select>
                 </div>
                 <canvas id="forecastGraphCanvas" width="650" height="320" style="width:100%;height:320px;background:#121216;border-radius:8px;"></canvas>
@@ -1521,18 +1551,19 @@ function openForecastGraphModal(item) {
         });
 
         document.getElementById("graphTypeSelect").addEventListener("change", (e) => {
-            if (modal.currentItem) drawForecastCanvasGraph(modal.currentItem, e.target.value);
+            const canvas = document.getElementById("forecastGraphCanvas");
+            if (modal.currentItem && canvas) drawForecastCanvasGraph(modal.currentItem, e.target.value, canvas);
         });
     }
 
     modal.currentItem = item;
     modal.style.display = "flex";
     const currentMode = document.getElementById("graphTypeSelect").value || "temp";
-    drawForecastCanvasGraph(item, currentMode);
+    const modalCanvas = document.getElementById("forecastGraphCanvas");
+    drawForecastCanvasGraph(item, currentMode, modalCanvas);
 }
 
-function drawForecastCanvasGraph(item, mode) {
-    const canvas = document.getElementById("forecastGraphCanvas");
+function drawForecastCanvasGraph(item, mode, canvas) {
     if (!canvas) return;
     const ctx = canvas.getContext("2d");
     const width = canvas.width;
@@ -1541,7 +1572,9 @@ function drawForecastCanvasGraph(item, mode) {
     ctx.clearRect(0, 0, width, height);
 
     const titleEl = document.getElementById("graphModalTitle");
-    if (titleEl) titleEl.innerText = `${item.day} (${item.dateStr}) - ${mode === "temp" ? "Temperature" : "Wind"}`;
+    if (titleEl && canvas.id === "forecastGraphCanvas") {
+        titleEl.innerText = `${item.day} (${item.dateStr}) - ${mode === "temp" ? "Temperature" : mode === "wind" ? "Wind" : "DOS Score"}`;
+    }
 
     const now = new Date();
     const cdtOptions = { timeZone: 'America/Chicago', year: 'numeric', month: 'numeric', day: 'numeric', hour: 'numeric', minute: 'numeric', hour12: false };
@@ -1560,40 +1593,49 @@ function drawForecastCanvasGraph(item, mode) {
     const dateParts = item.dateStr.split('/').map(n => parseInt(n, 10));
     const isToday = (dateParts[0] === cdtMonth && dateParts[1] === cdtDay && dateParts[2] === cdtYear);
 
-    const padLeft = 45, padRight = 25, padTop = 35, padBottom = 40;
+    // Padding scales dynamically for modal vs inline card view
+    const isSmall = width < 400;
+    const padLeft = isSmall ? 30 : 45;
+    const padRight = isSmall ? 15 : 25;
+    const padTop = isSmall ? 20 : 35;
+    const padBottom = isSmall ? 25 : 40;
+
     const graphWidth = width - padLeft - padRight;
     const graphHeight = height - padTop - padBottom;
 
     // Minute-by-minute baseline generator (0 to 1439 mins)
     const points = [];
-    const peakMinute = 15 * 60; // 3:00 PM Peak for override events
+    const peakMinute = 15 * 60; // 3:00 PM Peak for high temp override
 
     for (let m = 0; m <= 1439; m += 15) {
         const x = padLeft + (m / 1439) * graphWidth;
-        let tempVal, windVal, gustVal;
 
-        // Dynamic diurnal temperature curve peaking at 3:00 PM (15:00)
+        // Dynamic diurnal temperature curve peaking at 3:00 PM (15:00) & hitting low at 3:00 AM (03:00)
         const rad = ((m - peakMinute + 360) / 1440) * Math.PI * 2;
         const tempFactor = (Math.cos(rad) + 1) / 2;
-        tempVal = Math.round(item.tempLow + (item.tempHigh - item.tempLow) * tempFactor);
+        const tempVal = Math.round(item.tempLow + (item.tempHigh - item.tempLow) * tempFactor);
 
-        // Wind curve
+        // Wind speed peaking during mid-day afternoon, matching exact card peak values
         const windRad = ((m - 720) / 1440) * Math.PI * 2;
         const windFactor = (Math.sin(windRad) + 1) / 2;
-        windVal = Math.round(item.windMph * (0.6 + 0.4 * windFactor));
-        gustVal = Math.round(item.gustMph * (0.65 + 0.35 * windFactor));
+        const windVal = Math.round(item.windMph * (0.6 + 0.4 * windFactor));
+        const gustVal = Math.round(item.gustMph * (0.65 + 0.35 * windFactor));
 
-        points.push({ minute: m, x: x, temp: tempVal, wind: windVal, gust: gustVal });
+        // DOS Score curve tracking card item.score at peak daytime
+        const dosVal = Math.round(item.score * (0.5 + 0.5 * tempFactor));
+
+        points.push({ minute: m, x: x, temp: tempVal, wind: windVal, gust: gustVal, dos: dosVal });
     }
 
     // Grid axes & Time Labels
     ctx.strokeStyle = "#2e2e38";
     ctx.lineWidth = 1;
     ctx.fillStyle = "#888";
-    ctx.font = "11px sans-serif";
+    ctx.font = isSmall ? "9px sans-serif" : "11px sans-serif";
     ctx.textAlign = "center";
 
-    for (let h = 0; h <= 24; h += 4) {
+    const stepHour = isSmall ? 6 : 4;
+    for (let h = 0; h <= 24; h += stepHour) {
         const m = h === 24 ? 1439 : h * 60;
         const x = padLeft + (m / 1439) * graphWidth;
         ctx.beginPath();
@@ -1602,38 +1644,30 @@ function drawForecastCanvasGraph(item, mode) {
         ctx.stroke();
 
         let label = h === 0 ? "12AM" : h === 12 ? "12PM" : h === 24 ? "11:59PM" : (h > 12 ? h - 12 + "PM" : h + "AM");
-        ctx.fillText(label, x, height - padBottom + 18);
+        ctx.fillText(label, x, height - padBottom + (isSmall ? 12 : 18));
     }
 
-    if (mode === "temp") {
-        const minY = Math.min(-10, item.tempLow - 5);
-        const maxY = Math.max(120, item.tempHigh + 5);
-        const getY = (val) => padTop + graphHeight - ((val - minY) / (maxY - minY)) * graphHeight;
+    // Helper method to draw segmented dotted (past) vs solid (future) lines
+    const drawSegmentedLine = (pts, strokeStyle, lineWidth, getYVal, fillUnder = false) => {
+        if (fillUnder) {
+            ctx.beginPath();
+            ctx.moveTo(pts[0].x, height - padBottom);
+            pts.forEach(p => ctx.lineTo(p.x, getYVal(p)));
+            ctx.lineTo(pts[pts.length - 1].x, height - padBottom);
+            ctx.closePath();
+            ctx.fillStyle = strokeStyle;
+            ctx.globalAlpha = 0.2;
+            ctx.fill();
+            ctx.globalAlpha = 1.0;
+        }
 
-        // Color Range Gradient for Temp Fill
-        const fillGrad = ctx.createLinearGradient(0, padTop, 0, height - padBottom);
-        fillGrad.addColorStop(0, typeof getAppleTempColor === "function" ? getAppleTempColor(item.tempHigh) : "#ff5500");
-        fillGrad.addColorStop(1, typeof getAppleTempColor === "function" ? getAppleTempColor(item.tempLow) : "#0099ff");
-
-        // Fill under line
-        ctx.beginPath();
-        ctx.moveTo(points[0].x, height - padBottom);
-        points.forEach(p => ctx.lineTo(p.x, getY(p.temp)));
-        ctx.lineTo(points[points.length - 1].x, height - padBottom);
-        ctx.closePath();
-        ctx.fillStyle = fillGrad;
-        ctx.globalAlpha = 0.25;
-        ctx.fill();
-        ctx.globalAlpha = 1.0;
-
-        // Draw Temp Linear Path (Dotted past vs continuous future if Today)
-        const drawSegment = (pts, isDashed) => {
+        const renderPath = (segmentPts, isDashed) => {
             ctx.beginPath();
             ctx.setLineDash(isDashed ? [4, 4] : []);
-            ctx.strokeStyle = fillGrad;
-            ctx.lineWidth = 3;
-            pts.forEach((p, idx) => {
-                const y = getY(p.temp);
+            ctx.strokeStyle = strokeStyle;
+            ctx.lineWidth = lineWidth;
+            segmentPts.forEach((p, idx) => {
+                const y = getYVal(p);
                 if (idx === 0) ctx.moveTo(p.x, y);
                 else ctx.lineTo(p.x, y);
             });
@@ -1642,25 +1676,37 @@ function drawForecastCanvasGraph(item, mode) {
         };
 
         if (isToday) {
-            const currentIdx = points.findIndex(p => p.minute >= currentMinutes);
-            const pastPts = points.slice(0, currentIdx + 1);
-            const futurePts = points.slice(currentIdx);
-            if (pastPts.length > 0) drawSegment(pastPts, true);
-            if (futurePts.length > 0) drawSegment(futurePts, false);
+            const currentIdx = pts.findIndex(p => p.minute >= currentMinutes);
+            const pastPts = pts.slice(0, currentIdx + 1);
+            const futurePts = pts.slice(currentIdx);
+            if (pastPts.length > 0) renderPath(pastPts, true);
+            if (futurePts.length > 0) renderPath(futurePts, false);
         } else {
-            drawSegment(points, false);
+            renderPath(pts, false);
         }
+    };
 
-        // Draw Dot & Time + Value label at Current Time
+    if (mode === "temp") {
+        const minY = Math.min(-10, item.tempLow - 5);
+        const maxY = Math.max(120, item.tempHigh + 5);
+        const getY = (p) => padTop + graphHeight - ((p.temp - minY) / (maxY - minY)) * graphHeight;
+
+        const fillGrad = ctx.createLinearGradient(0, padTop, 0, height - padBottom);
+        fillGrad.addColorStop(0, typeof getAppleTempColor === "function" ? getAppleTempColor(item.tempHigh) : "#ff5500");
+        fillGrad.addColorStop(1, typeof getAppleTempColor === "function" ? getAppleTempColor(item.tempLow) : "#0099ff");
+
+        drawSegmentedLine(points, fillGrad, 3, getY, true);
+
         if (isToday) {
             const currentX = padLeft + (currentMinutes / 1439) * graphWidth;
             const currentRad = ((currentMinutes - peakMinute + 360) / 1440) * Math.PI * 2;
             const currentTemp = Math.round(item.tempLow + (item.tempHigh - item.tempLow) * ((Math.cos(currentRad) + 1) / 2));
-            const currentY = getY(currentTemp);
+            const currentY = padTop + graphHeight - ((currentTemp - minY) / (maxY - minY)) * graphHeight;
 
+            // Dot 1: Current Time Dot
             ctx.fillStyle = "#ffffff";
             ctx.beginPath();
-            ctx.arc(currentX, currentY, 6, 0, Math.PI * 2);
+            ctx.arc(currentX, currentY, isSmall ? 4 : 6, 0, Math.PI * 2);
             ctx.fill();
             ctx.strokeStyle = "#000";
             ctx.lineWidth = 1.5;
@@ -1668,97 +1714,106 @@ function drawForecastCanvasGraph(item, mode) {
 
             const timeStr = `${cdtHour % 12 || 12}:${cdtMinute < 10 ? '0' : ''}${cdtMinute}${cdtHour >= 12 ? 'PM' : 'AM'}`;
             ctx.fillStyle = "#ffffff";
-            ctx.font = "bold 12px sans-serif";
-            ctx.fillText(`${timeStr}: ${currentTemp}°F`, currentX, currentY - 12);
+            ctx.font = isSmall ? "bold 9px sans-serif" : "bold 12px sans-serif";
+            ctx.fillText(`${timeStr}: ${currentTemp}°F`, currentX, currentY - (isSmall ? 8 : 12));
         }
-    } else {
-        // WIND & GUST GRAPH MODE
+
+        // Dot 2: History/Peak View Dot (At 3:00 PM Peak)
+        const peakX = padLeft + (peakMinute / 1439) * graphWidth;
+        const peakY = padTop + graphHeight - ((item.tempHigh - minY) / (maxY - minY)) * graphHeight;
+
+        ctx.fillStyle = "#ffcc00";
+        ctx.beginPath();
+        ctx.arc(peakX, peakY, isSmall ? 3 : 5, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillText(`Peak (3PM): ${item.tempHigh}°F`, peakX, peakY - (isSmall ? 6 : 10));
+
+    } else if (mode === "wind") {
         const minY = 0;
         const maxY = Math.max(80, item.gustMph + 10);
-        const getY = (val) => padTop + graphHeight - ((val - minY) / (maxY - minY)) * graphHeight;
+        const getWindY = (p) => padTop + graphHeight - ((p.wind - minY) / (maxY - minY)) * graphHeight;
+        const getGustY = (p) => padTop + graphHeight - ((p.gust - minY) / (maxY - minY)) * graphHeight;
 
-        // Fill under Wind Speed Line
-        ctx.beginPath();
-        ctx.moveTo(points[0].x, height - padBottom);
-        points.forEach(p => ctx.lineTo(p.x, getY(p.wind)));
-        ctx.lineTo(points[points.length - 1].x, height - padBottom);
-        ctx.closePath();
-        ctx.fillStyle = "#00bfff";
-        ctx.globalAlpha = 0.2;
-        ctx.fill();
-        ctx.globalAlpha = 1.0;
+        // Wind Speed line (With Fill)
+        drawSegmentedLine(points, "#00bfff", 2.5, getWindY, true);
 
-        // Draw Wind Speed Line (Filled under)
-        const drawWindLine = (pts, isDashed) => {
-            ctx.beginPath();
-            ctx.setLineDash(isDashed ? [4, 4] : []);
-            ctx.strokeStyle = "#00bfff";
-            ctx.lineWidth = 2.5;
-            pts.forEach((p, idx) => {
-                const y = getY(p.wind);
-                if (idx === 0) ctx.moveTo(p.x, y);
-                else ctx.lineTo(p.x, y);
-            });
-            ctx.stroke();
-            ctx.setLineDash([]);
-        };
+        // Wind Gust line (NO Fill)
+        drawSegmentedLine(points, "#ff4500", 2, getGustY, false);
 
-        // Draw Wind Gust Line (NO Fill)
-        const drawGustLine = (pts, isDashed) => {
-            ctx.beginPath();
-            ctx.setLineDash(isDashed ? [4, 4] : []);
-            ctx.strokeStyle = "#ff4500";
-            ctx.lineWidth = 2;
-            pts.forEach((p, idx) => {
-                const y = getY(p.gust);
-                if (idx === 0) ctx.moveTo(p.x, y);
-                else ctx.lineTo(p.x, y);
-            });
-            ctx.stroke();
-            ctx.setLineDash([]);
-        };
-
-        if (isToday) {
-            const currentIdx = points.findIndex(p => p.minute >= currentMinutes);
-            const pastPts = points.slice(0, currentIdx + 1);
-            const futurePts = points.slice(currentIdx);
-            
-            drawWindLine(pastPts, true);
-            drawWindLine(futurePts, false);
-            drawGustLine(pastPts, true);
-            drawGustLine(futurePts, false);
-        } else {
-            drawWindLine(points, false);
-            drawGustLine(points, false);
-        }
-
-        // Draw Dots & Current Value Labels for Wind & Gust
         if (isToday) {
             const currentX = padLeft + (currentMinutes / 1439) * graphWidth;
             const windRad = ((currentMinutes - 720) / 1440) * Math.PI * 2;
             const curWind = Math.round(item.windMph * (0.6 + 0.4 * ((Math.sin(windRad) + 1) / 2)));
             const curGust = Math.round(item.gustMph * (0.65 + 0.35 * ((Math.sin(windRad) + 1) / 2)));
 
-            const windY = getY(curWind);
-            const gustY = getY(curGust);
+            const windY = padTop + graphHeight - ((curWind - minY) / (maxY - minY)) * graphHeight;
+            const gustY = padTop + graphHeight - ((curGust - minY) / (maxY - minY)) * graphHeight;
 
-            // Wind Dot
+            // Current Time Dots
             ctx.fillStyle = "#00bfff";
             ctx.beginPath();
-            ctx.arc(currentX, windY, 5, 0, Math.PI * 2);
+            ctx.arc(currentX, windY, isSmall ? 3 : 5, 0, Math.PI * 2);
             ctx.fill();
 
-            // Gust Dot
             ctx.fillStyle = "#ff4500";
             ctx.beginPath();
-            ctx.arc(currentX, gustY, 5, 0, Math.PI * 2);
+            ctx.arc(currentX, gustY, isSmall ? 3 : 5, 0, Math.PI * 2);
             ctx.fill();
 
             const timeStr = `${cdtHour % 12 || 12}:${cdtMinute < 10 ? '0' : ''}${cdtMinute}${cdtHour >= 12 ? 'PM' : 'AM'}`;
             ctx.fillStyle = "#ffffff";
-            ctx.font = "bold 11px sans-serif";
-            ctx.fillText(`${timeStr} - Wind: ${curWind}mph | Gust: ${curGust}mph`, currentX, Math.min(windY, gustY) - 12);
+            ctx.font = isSmall ? "bold 8px sans-serif" : "bold 11px sans-serif";
+            ctx.fillText(`${timeStr} - W: ${curWind}mph | G: ${curGust}mph`, currentX, Math.min(windY, gustY) - (isSmall ? 6 : 12));
         }
+
+        // History View Peak Dot (Peak Wind at 12 PM)
+        const peakWindX = padLeft + (720 / 1439) * graphWidth;
+        const peakWindY = padTop + graphHeight - ((item.windMph - minY) / (maxY - minY)) * graphHeight;
+
+        ctx.fillStyle = "#00ffff";
+        ctx.beginPath();
+        ctx.arc(peakWindX, peakWindY, isSmall ? 3 : 4, 0, Math.PI * 2);
+        ctx.fill();
+
+    } else if (mode === "dos") {
+        // DOS SCORE GRAPH MODE BASED ON DOS SCORE
+        const minY = 0;
+        const maxY = 120;
+        const getDosY = (p) => padTop + graphHeight - ((p.dos - minY) / (maxY - minY)) * graphHeight;
+
+        const dosGrad = ctx.createLinearGradient(0, padTop, 0, height - padBottom);
+        dosGrad.addColorStop(0, typeof getLerpColor === "function" ? getLerpColor(item.score) : "#33ff55");
+        dosGrad.addColorStop(1, "#115522");
+
+        drawSegmentedLine(points, dosGrad, 3, getDosY, true);
+
+        if (isToday) {
+            const currentX = padLeft + (currentMinutes / 1439) * graphWidth;
+            const currentRad = ((currentMinutes - peakMinute + 360) / 1440) * Math.PI * 2;
+            const currentDos = Math.round(item.score * (0.5 + 0.5 * ((Math.cos(currentRad) + 1) / 2)));
+            const currentY = padTop + graphHeight - ((currentDos - minY) / (maxY - minY)) * graphHeight;
+
+            // Current Dot
+            ctx.fillStyle = "#ffffff";
+            ctx.beginPath();
+            ctx.arc(currentX, currentY, isSmall ? 4 : 6, 0, Math.PI * 2);
+            ctx.fill();
+
+            const timeStr = `${cdtHour % 12 || 12}:${cdtMinute < 10 ? '0' : ''}${cdtMinute}${cdtHour >= 12 ? 'PM' : 'AM'}`;
+            ctx.fillStyle = "#ffffff";
+            ctx.font = isSmall ? "bold 9px sans-serif" : "bold 12px sans-serif";
+            ctx.fillText(`${timeStr} DOS: ${currentDos}`, currentX, currentY - (isSmall ? 8 : 12));
+        }
+
+        // Peak DOS Score History Dot
+        const peakX = padLeft + (peakMinute / 1439) * graphWidth;
+        const peakY = padTop + graphHeight - ((item.score - minY) / (maxY - minY)) * graphHeight;
+
+        ctx.fillStyle = "#ffff00";
+        ctx.beginPath();
+        ctx.arc(peakX, peakY, isSmall ? 3 : 5, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillText(`Peak DOS: ${item.score}`, peakX, peakY - (isSmall ? 6 : 10));
     }
 }
 // --- UPDATED RENDER FORECAST FUNCTION ---
