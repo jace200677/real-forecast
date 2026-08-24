@@ -1619,7 +1619,9 @@ function drawForecastCanvasGraph(item, mode, canvas, activeX = null, prevItem = 
     const morningLow = getPreviousDayLowestTemp();
     const todayLow = item.tempLow;
     const todayHigh = item.tempHigh;
-    const tomorrowLow = (nextItem && nextItem.tempLow !== undefined) ? nextItem.tempLow : item.tempLow;
+    
+    // Tomorrow morning low temp explicitly set to today's low temp
+    const tomorrowLow = item.tempLow;
 
     const prevHigh = (effectivePrevItem && effectivePrevItem.tempHigh !== undefined) 
         ? effectivePrevItem.tempHigh 
@@ -1827,17 +1829,23 @@ function drawForecastCanvasGraph(item, mode, canvas, activeX = null, prevItem = 
         const getWindY = (p) => padTop + graphHeight - ((p.wind - minY) / (maxY - minY)) * graphHeight;
         const getGustY = (p) => padTop + graphHeight - ((p.gust - minY) / (maxY - minY)) * graphHeight;
 
+        const minWind = Math.min(...allWinds);
+        const maxWind = Math.max(...allWinds);
+        const minGust = Math.min(...allGusts);
+        const maxGust = Math.max(...allGusts);
+
+        // Wind color spectrum: lowest wind value (bottom) to peak wind value (top)
         const windGrad = ctx.createLinearGradient(0, height - padBottom, 0, padTop);
-        const gustGrad = ctx.createLinearGradient(0, height - padBottom, 0, padTop);
-
-        const baseWindColor = typeof getAppleWindColor === "function" ? getAppleWindColor(0) : "#00bfff";
-        const maxWindColor = typeof getAppleWindColor === "function" ? getAppleWindColor(Math.max(...allWinds)) : "#00bfff";
-        const maxGustColor = typeof getAppleWindColor === "function" ? getAppleWindColor(Math.max(...allGusts)) : "#ff4500";
-
+        const baseWindColor = typeof getAppleWindColor === "function" ? getAppleWindColor(minWind) : "#00bfff";
+        const maxWindColor = typeof getAppleWindColor === "function" ? getAppleWindColor(maxWind) : "#00bfff";
         windGrad.addColorStop(0, baseWindColor);
         windGrad.addColorStop(1, maxWindColor);
 
-        gustGrad.addColorStop(0, baseWindColor);
+        // Gust color spectrum: lowest gust value (bottom) to peak gust value (top)
+        const gustGrad = ctx.createLinearGradient(0, height - padBottom, 0, padTop);
+        const baseGustColor = typeof getAppleWindColor === "function" ? getAppleWindColor(minGust) : "#00bfff";
+        const maxGustColor = typeof getAppleWindColor === "function" ? getAppleWindColor(maxGust) : "#ff4500";
+        gustGrad.addColorStop(0, baseGustColor);
         gustGrad.addColorStop(1, maxGustColor);
 
         drawSegmentedLine(points, windGrad, 2.5, getWindY, true);
