@@ -1313,7 +1313,7 @@ function renderForecast(dosForecast) {
         card.className = "day-card";
         card.style.cursor = "pointer";
 
-        // Open graph viewer modal on card click
+        // Open graph viewer modal on card click, passing forecast array & index for context
         card.addEventListener("click", () => {
             openForecastGraphModal(item, dosForecast, index);
         });
@@ -1613,21 +1613,22 @@ function drawForecastCanvasGraph(item, mode, canvas, activeX = null, prevItem = 
     const points = [];
 
     // Key Diurnal Timing Anchors (Minutes from midnight)
-    const morningAnchorMin = 6 * 60;      // Morning Anchor (~6:00 AM)
+    const morningAnchorMin = 6 * 60;      // Sunrise / Morning Trough (~6:00 AM)
     const peakMin = 15 * 60;               // Mid-Afternoon Peak (~3:00 PM)
     const lateNightMin = 24 * 60;          // Midnight End of Day
 
-    // Detect Winter Inversion / Cold Front Scenarios:
-    // When morning temp exceeds afternoon temp or night temp exceeds afternoon temp.
-    const morningLow = (prevItem && prevItem.morningLow !== undefined) ? prevItem.morningLow : (prevItem ? prevItem.tempLow : item.tempLow);
+    // Determine target lows for morning and night using surrounding forecast days if available
+    const morningLow = (prevItem && prevItem.morningLow !== undefined) 
+        ? prevItem.morningLow 
+        : (prevItem ? prevItem.tempLow : item.tempLow);
     const nightLow = item.tempLow;
     
-    // Check if item contains explicit diurnal flags or fall back to seasonal pattern auto-detection
+    // Auto-detect winter inversion / cold front scenarios (morning high dropping to afternoon low)
     const isWinterInversion = item.isWinterInversion || (item.tempHigh < morningLow || item.tempHigh < nightLow);
 
     const getInterpolatedTemp = (m) => {
         if (isWinterInversion) {
-            // Non-standard Diurnal Cycle (e.g., Winter Fronts / Morning Highs)
+            // Winter Cold Front / Inversion: High occurs in the morning and drops through the afternoon/night
             const morningValue = prevItem ? prevItem.tempHigh : item.tempHigh;
             const afternoonValue = item.tempLow;
             const nightValue = nextItem ? nextItem.tempLow : item.tempLow;
@@ -1644,7 +1645,7 @@ function drawForecastCanvasGraph(item, mode, canvas, activeX = null, prevItem = 
                 return Math.round(afternoonValue + (nightValue - afternoonValue) * factor);
             }
         } else {
-            // Standard Solar Diurnal Cycle: Morning Low (Sunrise) -> Afternoon High (3 PM) -> Nighttime Low
+            // Standard Solar Diurnal Cycle: Trough at sunrise (6 AM), Peak at 3 PM, transitioning to night low
             if (m <= morningAnchorMin) {
                 const prevHigh = prevItem ? prevItem.tempHigh : item.tempHigh;
                 const midnightStartTemp = Math.round((prevHigh + morningLow) / 2);
@@ -1673,7 +1674,7 @@ function drawForecastCanvasGraph(item, mode, canvas, activeX = null, prevItem = 
         const windVal = Math.round(item.windMph * (0.6 + 0.4 * windFactor));
         const gustVal = Math.round(item.gustMph * (0.65 + 0.35 * windFactor));
 
-        // DOS Score Diurnal Cycle tracking daytime conditions
+        // DOS Score Diurnal Cycle
         const dosTempRad = ((m - peakMin) / 1440) * Math.PI * 2;
         const dosFactor = (Math.cos(dosTempRad) + 1) / 2;
         const dosVal = Math.round(item.score * (0.5 + 0.5 * dosFactor));
