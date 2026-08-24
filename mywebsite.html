@@ -545,44 +545,43 @@ function getWindColor(mph) {
 }
 
 function calculateNationalScores(alerts) {
-    if (!alerts || alerts.length === 0) return { wis: 3, dos: 4 };
-
     let rawWisScore = 0;
     let highRiskBaseline = 0;
 
-    alerts.forEach(alert => {
-        const props = alert.properties || {};
-        const event = (props.event || "").toLowerCase();
-        const severity = (props.severity || "").toLowerCase();
-        const headline = (props.headline || "").toLowerCase();
-        const description = (props.description || "").toLowerCase();
+    if (alerts && alerts.length > 0) {
+        alerts.forEach(alert => {
+            const props = alert.properties || {};
+            const event = (props.event || "").toLowerCase();
+            const severity = (props.severity || "").toLowerCase();
+            const headline = (props.headline || "").toLowerCase();
+            const description = (props.description || "").toLowerCase();
 
-        let points = 0;
-        
-        if (severity === "extreme") points += 4.0;
-        else if (severity === "severe") points += 2.0;
-        else if (severity === "moderate") points += 0.8;
-        else if (severity === "minor") points += 0.2;
+            let points = 0;
+            
+            if (severity === "extreme") points += 4.0;
+            else if (severity === "severe") points += 2.0;
+            else if (severity === "moderate") points += 0.8;
+            else if (severity === "minor") points += 0.2;
 
-        if (event.includes("tornado")) points += 6;
-        if (event.includes("hurricane") || event.includes("tropical storm")) points += 7;
-        if (event.includes("blizzard") || event.includes("ice storm")) points += 3.5;
-        if (event.includes("flash flood")) points += 2.5;
-        if (event.includes("extreme wind") || event.includes("derecho")) points += 4;
-        if (event.includes("red flag") || event.includes("fire")) points += 1;
+            if (event.includes("tornado")) points += 6;
+            if (event.includes("hurricane") || event.includes("tropical storm")) points += 7;
+            if (event.includes("blizzard") || event.includes("ice storm")) points += 3.5;
+            if (event.includes("flash flood")) points += 2.5;
+            if (event.includes("extreme wind") || event.includes("derecho")) points += 4;
+            if (event.includes("red flag") || event.includes("fire")) points += 1;
 
-        const fullText = headline + " " + description;
-        if (fullText.includes("tornado emergency")) points += 50;
-        else if (fullText.includes("particularly dangerous situation") || fullText.includes("pds")) points += 20;
-        if (fullText.includes("destructive")) points += 10;
+            const fullText = headline + " " + description;
+            if (fullText.includes("tornado emergency")) points += 50;
+            else if (fullText.includes("particularly dangerous situation") || fullText.includes("pds")) points += 20;
+            if (fullText.includes("destructive")) points += 10;
 
-        if (event.includes("tornado watch") || event.includes("severe thunderstorm watch")) highRiskBaseline += 5;
+            if (event.includes("tornado watch") || event.includes("severe thunderstorm watch")) highRiskBaseline += 5;
 
-        rawWisScore += points;
-    });
+            rawWisScore += points;
+        });
+    }
 
     let currentWIS = Math.min(Math.round(rawWisScore / 40), 250);
-    const baseDOS = Math.min(Math.round((rawWisScore + highRiskBaseline) / 48), 250);
 
     // --- TIME & LOCATION BASED WIS OVERRIDES ---
     const now = new Date();
@@ -601,9 +600,16 @@ function calculateNationalScores(alerts) {
     const totalMinutes = hour * 60 + minute;
 
     // Evaluates target coordinates if a user searched a location, otherwise defaults to Minnesota baseline
-    const lat = targetZoneOrPoint ? parseFloat(targetZoneOrPoint.lat) : 45.0;
-    const lon = targetZoneOrPoint ? parseFloat(targetZoneOrPoint.lon) : -93.0;
+    const lat = typeof targetZoneOrPoint !== 'undefined' && targetZoneOrPoint ? parseFloat(targetZoneOrPoint.lat) : 45.0;
+    const lon = typeof targetZoneOrPoint !== 'undefined' && targetZoneOrPoint ? parseFloat(targetZoneOrPoint.lon) : -93.0;
     const geoVariance = Math.round((lat - 45.0) * 0.5 + (lon + 93.0) * 0.3);
+
+    // Helper closure to strictly tie DOS to WIS output
+    const formatOutput = (wisVal) => {
+        const finalWIS = Math.max(wisVal, 0);
+        const derivedDOS = Math.max(Math.min(Math.round(finalWIS * 1.2), 250), 3);
+        return { wis: finalWIS, dos: derivedDOS };
+    };
 
     // 8/24/2026 WIS Override (Enforced regardless of target location)
     if (year === 2026 && month === 8 && day === 24) {
@@ -618,7 +624,7 @@ function calculateNationalScores(alerts) {
             const decayProgress = (totalMinutes - 1080) / 360; 
             currentWIS = Math.max(0, Math.round(27 * (1 - decayProgress))) + geoVariance;
         }
-        return { wis: Math.max(currentWIS, 0), dos: Math.max(baseDOS, 3) };
+        return formatOutput(currentWIS);
     }
     // 8/25/2026 WIS Override (Enforced regardless of target location)
     else if (year === 2026 && month === 8 && day === 25) {
@@ -635,12 +641,12 @@ function calculateNationalScores(alerts) {
             const decayProgress = (totalMinutes - 1260) / 360; 
             currentWIS = Math.max(2, Math.round(57 - decayProgress * 55)) + geoVariance;
         }
-        return { wis: Math.max(currentWIS, 0), dos: Math.max(baseDOS, 3) };
+        return formatOutput(currentWIS);
     }
     // 8/26/2026 Early Morning Decay Override
     else if (year === 2026 && month === 8 && day === 26 && totalMinutes < 180) {
         currentWIS = Math.max(2, 2 + geoVariance);
-        return { wis: Math.max(currentWIS, 0), dos: Math.max(baseDOS, 3) };
+        return formatOutput(currentWIS);
     }
     // 8/27/2026 WIS Override (Enforced regardless of target location)
     else if (year === 2026 && month === 8 && day === 27) {
@@ -655,7 +661,7 @@ function calculateNationalScores(alerts) {
             const decayProgress = (totalMinutes - 1080) / 360; 
             currentWIS = Math.max(60, Math.round(77 - decayProgress * 17)) + geoVariance;
         }
-        return { wis: Math.max(currentWIS, 0), dos: Math.max(baseDOS, 3) };
+        return formatOutput(currentWIS);
     }
     // 8/28/2026 WIS Override (Enforced regardless of target location)
     else if (year === 2026 && month === 8 && day === 28) {
@@ -672,7 +678,7 @@ function calculateNationalScores(alerts) {
             const decayProgress = (totalMinutes - 1080) / 360; 
             currentWIS = Math.max(0, Math.round(117 * (1 - decayProgress))) + geoVariance;
         }
-        return { wis: Math.max(currentWIS, 0), dos: Math.max(baseDOS, 3) };
+        return formatOutput(currentWIS);
     }
     // 8/31/2026 WIS Override (Enforced regardless of target location)
     else if (year === 2026 && month === 8 && day === 31) {
@@ -687,13 +693,10 @@ function calculateNationalScores(alerts) {
             const decayProgress = (totalMinutes - 1080) / 360; 
             currentWIS = Math.max(0, Math.round(137 * (1 - decayProgress))) + geoVariance;
         }
-        return { wis: Math.max(currentWIS, 0), dos: Math.max(baseDOS, 3) };
+        return formatOutput(currentWIS);
     }
 
-    return {
-        wis: Math.max(currentWIS, 0),
-        dos: Math.max(baseDOS, 3)
-    };
+    return formatOutput(currentWIS);
 }
 function getDOSMeta(score) {
     if (score >= 150) return { label: "Potentially Historic Setup" };
