@@ -1312,6 +1312,16 @@ function renderForecast(dosForecast) {
         const card = document.createElement("div");
         card.className = "day-card";
 
+        // Enable click event to open the graph viewer
+        card.style.cursor = "pointer";
+        card.addEventListener("click", () => {
+            if (typeof openGraphViewer === "function") {
+                openGraphViewer(item);
+            } else if (typeof showGraph === "function") {
+                showGraph(item);
+            }
+        });
+
         const dynamicColor = getLerpColor(item.score);
 
         const dayName = document.createElement("div");
@@ -1452,6 +1462,11 @@ function renderForecast(dosForecast) {
         streamContainer.appendChild(streamVal);
         streamContainer.appendChild(streamBar);
 
+        // --- CLICK TO VIEW GRAPH AFFORDANCE ---
+        const graphHint = document.createElement("div");
+        graphHint.className = "graph-hint-label";
+        graphHint.innerText = "Click to View Graph";
+
         // --- ASSEMBLE CARD ---
         card.appendChild(dayName);
         card.appendChild(dayDate);
@@ -1478,6 +1493,7 @@ function renderForecast(dosForecast) {
         card.appendChild(gustBar);
 
         card.appendChild(streamContainer);
+        card.appendChild(graphHint);
 
         container.appendChild(card);
     });
