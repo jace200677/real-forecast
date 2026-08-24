@@ -1040,32 +1040,7 @@ function getGradientFromLowToCurrent(currentVal, minScale, stops, getColorFn) {
     return `linear-gradient(90deg, ${gradientStops.join(", ")})`;
 }
 // --- OFFICIAL APPLE WEATHER TEMPERATURE COLOR PALETTE (PURPLE INCLUDED) ---
-function getAppleTempColor(tempF) {
-    if (tempF <= -10) return "rgb(147, 51, 234)";   // Deep Purple / Extreme Sub-Zero
-    if (tempF <= 15)  return "rgb(99, 102, 241)";   // Indigo-Purple / Severe Freeze
-    if (tempF <= 32)  return "rgb(59, 130, 246)";   // Dark Blue / Freezing
-    if (tempF <= 50)  return "rgb(6, 182, 212)";    // Cyan / Cool
-    if (tempF <= 68)  return "rgb(34, 197, 94)";    // Green / Mild
-    if (tempF <= 77)  return "rgb(234, 179, 8)";    // Yellow / Warm
-    if (tempF <= 86)  return "rgb(249, 115, 22)";   // Orange / Hot
-    return "rgb(239, 68, 68)";                     // Red / Extreme Heat
-}
-
-// --- HELPER FOR TEMP GRADIENT (LOW BOUND TO CURRENT TEMP) ---
-function getTempGradientCss(currentTemp) {
-    const minTemp = -10;
-    const tempStops = [
-        { val: -10, r: 147, g: 51,  b: 234 }, // Deep Purple
-        { val: 15,  r: 99,  g: 102, b: 241 }, // Indigo
-        { val: 32,  r: 59,  g: 130, b: 246 }, // Dark Blue
-        { val: 50,  r: 6,   g: 182, b: 212 }, // Cyan
-        { val: 68,  r: 34,  g: 197, b: 94  }, // Green
-        { val: 77,  r: 234, g: 179, b: 8   }, // Yellow
-        { val: 86,  r: 249, g: 115, b: 22  }, // Orange
-        { val: 120, r: 239, g: 68,  b: 68  }  // Red
-    ];
-    return getGradientFromLowToCurrent(currentTemp, minTemp, tempStops, getAppleTempColor);
-}
+// --- RANGE GRADIENT GENERATOR (FROM tempLow TO tempHigh) ---
 
 // --- OFFICIAL APPLE WEATHER WIND COLOR PALETTE (BLUE BASE) ---
 function getAppleWindColor(mph) {
@@ -1094,8 +1069,47 @@ function getWindGradientCss(currentMph) {
     ];
     return getGradientFromLowToCurrent(currentMph, minWind, windStops, getAppleWindColor);
 }
+// --- RANGE GRADIENT GENERATOR (FROM tempLow TO tempHigh) ---
+function getTempRangeGradientCss(tempLow, tempHigh) {
+    if (tempLow >= tempHigh) {
+        return getAppleTempColor(tempHigh);
+    }
 
-// --- UPDATED RENDER FORECAST FUNCTION ---
+    const tempStops = [
+        { val: -10, r: 147, g: 51,  b: 234 }, // Deep Purple
+        { val: 15,  r: 99,  g: 102, b: 241 }, // Indigo
+        { val: 32,  r: 59,  g: 130, b: 246 }, // Dark Blue
+        { val: 50,  r: 6,   g: 182, b: 212 }, // Cyan
+        { val: 68,  r: 34,  g: 197, b: 94  }, // Green
+        { val: 77,  r: 234, g: 179, b: 8   }, // Yellow
+        { val: 86,  r: 249, g: 115, b: 22  }, // Orange
+        { val: 120, r: 239, g: 68,  b: 68  }  // Red
+    ];
+
+    let gradientStops = [];
+    const totalSpan = tempHigh - tempLow;
+
+    // Start stop at exact tempLow color
+    const startColor = getAppleTempColor(tempLow);
+    gradientStops.push(`${startColor} 0%`);
+
+    // Add intermediate color stops strictly within tempLow and tempHigh
+    for (let i = 0; i < tempStops.length; i++) {
+        const stop = tempStops[i];
+        if (stop.val > tempLow && stop.val < tempHigh) {
+            let pct = Math.round(((stop.val - tempLow) / totalSpan) * 100);
+            gradientStops.push(`rgb(${stop.r}, ${stop.g}, ${stop.b}) ${pct}%`);
+        }
+    }
+
+    // End stop at exact tempHigh color
+    const endColor = getAppleTempColor(tempHigh);
+    gradientStops.push(`${endColor} 100%`);
+
+    return `linear-gradient(90deg, ${gradientStops.join(", ")})`;
+}
+
+// --- FULL UPDATED RENDER FORECAST FUNCTION ---
 function renderForecast(dosForecast) {
     const container = document.getElementById("forecastContainer");
     container.innerHTML = "";
@@ -1162,7 +1176,7 @@ function renderForecast(dosForecast) {
 
         const tempRangeFill = document.createElement("div");
         tempRangeFill.className = "range-bar-fill";
-        
+
         const fixedMinTemp = -10;
         const fixedMaxTemp = 120;
         const tempSpan = fixedMaxTemp - fixedMinTemp;
@@ -1174,7 +1188,7 @@ function renderForecast(dosForecast) {
 
         tempRangeFill.style.left = tempLeftPercent + "%";
         tempRangeFill.style.width = tempWidthPercent + "%";
-        tempRangeFill.style.background = getTempGradientCss(item.tempHigh);
+        tempRangeFill.style.background = getTempRangeGradientCss(item.tempLow, item.tempHigh);
         tempBar.appendChild(tempRangeFill);
 
         // --- FIXED SCALE WIND SPEED BAR (0 to 60 MPH) ---
@@ -1274,6 +1288,8 @@ function renderForecast(dosForecast) {
         container.appendChild(card);
     });
 }
+// --- UPDATED RENDER FORECAST FUNCTION ---
+
 // Initial execution
 buildForecast();
 
