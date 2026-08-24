@@ -1562,10 +1562,39 @@ function drawForecastCanvasGraph(item, mode, canvas, activeX = null, prevItem = 
     const graphWidth = width - padLeft - padRight;
     const graphHeight = height - padTop - padBottom;
 
-    // Smooth Interpolation Helper (Cosine-based)
+    // Smooth Interpolation Helpers
     const smoothStep = (v0, v1, t) => {
         const factor = 0.5 * (1 - Math.cos(t * Math.PI));
         return v0 + (v1 - v0) * factor;
+    };
+
+    // Color LERP helper function
+    const lerpColor = (color1, color2, factor) => {
+        const c1 = parseInt(color1.replace('#', ''), 16);
+        const c2 = parseInt(color2.replace('#', ''), 16);
+
+        const r1 = (c1 >> 16) & 0xff, g1 = (c1 >> 8) & 0xff, b1 = c1 & 0xff;
+        const r2 = (c2 >> 16) & 0xff, g2 = (c2 >> 8) & 0xff, b2 = c2 & 0xff;
+
+        const r = Math.round(r1 + factor * (r2 - r1));
+        const g = Math.round(g1 + factor * (g2 - g1));
+        const b = Math.round(b1 + factor * (b2 - b1));
+
+        return `#${((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1)}`;
+    };
+
+    // Dynamic wind color interpolator across wind thresholds
+    const getDynamicWindColor = (speed) => {
+        if (typeof getAppleWindColor === "function") {
+            return getAppleWindColor(speed);
+        }
+        
+        // Fallback LERP color scale (Calm -> Breezy -> Strong -> Extreme)
+        if (speed <= 5)  return lerpColor("#00c8ff", "#0088ff", speed / 5);
+        if (speed <= 15) return lerpColor("#0088ff", "#00ffaa", (speed - 5) / 10);
+        if (speed <= 25) return lerpColor("#00ffaa", "#ffaa00", (speed - 15) / 10);
+        if (speed <= 35) return lerpColor("#ffaa00", "#ff3300", (speed - 25) / 10);
+        return lerpColor("#ff3300", "#cc00ff", Math.min(1, (speed - 35) / 15));
     };
 
     // --- DYNAMIC TEMP ANCHOR CALCULATIONS ---
@@ -1619,8 +1648,6 @@ function drawForecastCanvasGraph(item, mode, canvas, activeX = null, prevItem = 
     const morningLow = getPreviousDayLowestTemp();
     const todayLow = item.tempLow;
     const todayHigh = item.tempHigh;
-    
-    // Tomorrow morning low temp explicitly set to today's low temp
     const tomorrowLow = item.tempLow;
 
     const prevHigh = (effectivePrevItem && effectivePrevItem.tempHigh !== undefined) 
@@ -1738,7 +1765,7 @@ function drawForecastCanvasGraph(item, mode, canvas, activeX = null, prevItem = 
         ctx.fillText(label, x, height - padBottom + 18);
     }
 
-    // --- PATH RENDERING HELPER ---
+    // Standard Line Drawing Helper
     const drawSegmentedLine = (pts, activeStyle, lineWidth, getYVal, fillUnder = false) => {
         const renderPath = (segmentPts, style, isDashed) => {
             if (segmentPts.length < 2) return;
@@ -1780,13 +1807,18 @@ function drawForecastCanvasGraph(item, mode, canvas, activeX = null, prevItem = 
         }
     };
 
-    // Dynamic wind/gust segment renderer that matches exact bar color function values
-    const drawDynamicColoredWindLine = (pts, lineWidth, getYVal, getValue, fillUnder = false) => {
-        const renderSegment = (p1, p2, isDashed) => {
-            const val1 = getValue(p1);
-            const val2 = getValue(p2);
-            const avgVal = (val1 + val2) / 2;
-            const segmentColor = typeof getAppleWindColor === "function" ? getAppleWindColor(avgVal) : "#00bfff";
+    // Lerp-colored wind line helper (evaluates speed per segment to match wind bars)
+    const drawLerpWindLine = (pts, lineWidth, getYVal, getSpeedVal, fillUnder = false) => {
+        for (let i = 0; i < pts.length - 1; i++) {
+            const p1 = pts[i];
+            const p2 = pts[i + 1];
+
+            const speed1 = getSpeedVal(p1);
+            const speed2 = getSpeedVal(p2);
+            const avgSpeed = (speed1 + speed2) / 2;
+
+            const color = getDynamicWindColor(avgSpeed);
+            const isDashed = isToday && p1.minute < currentMinutes;
 
             const y1 = getYVal(p1);
             const y2 = getYVal(p2);
@@ -1798,7 +1830,7 @@ function drawForecastCanvasGraph(item, mode, canvas, activeX = null, prevItem = 
                 ctx.lineTo(p2.x, y2);
                 ctx.lineTo(p2.x, height - padBottom);
                 ctx.closePath();
-                ctx.fillStyle = segmentColor;
+                ctx.fillStyle = color;
                 ctx.globalAlpha = 0.15;
                 ctx.fill();
                 ctx.globalAlpha = 1.0;
@@ -1806,19 +1838,12 @@ function drawForecastCanvasGraph(item, mode, canvas, activeX = null, prevItem = 
 
             ctx.beginPath();
             ctx.setLineDash(isDashed ? [4, 4] : []);
-            ctx.strokeStyle = segmentColor;
+            ctx.strokeStyle = color;
             ctx.lineWidth = lineWidth;
             ctx.moveTo(p1.x, y1);
             ctx.lineTo(p2.x, y2);
             ctx.stroke();
             ctx.setLineDash([]);
-        };
-
-        for (let i = 0; i < pts.length - 1; i++) {
-            const p1 = pts[i];
-            const p2 = pts[i + 1];
-            const isDashed = isToday && (p1.minute < currentMinutes);
-            renderSegment(p1, p2, isDashed);
         }
     };
 
@@ -1870,9 +1895,9 @@ function drawForecastCanvasGraph(item, mode, canvas, activeX = null, prevItem = 
         const getWindY = (p) => padTop + graphHeight - ((p.wind - minY) / (maxY - minY)) * graphHeight;
         const getGustY = (p) => padTop + graphHeight - ((p.gust - minY) / (maxY - minY)) * graphHeight;
 
-        // Render wind line & gust line with exact colors evaluated directly through getAppleWindColor()
-        drawDynamicColoredWindLine(points, 2.5, getWindY, (p) => p.wind, true);
-        drawDynamicColoredWindLine(points, 2, getGustY, (p) => p.gust, false);
+        // Render wind and gust lines continuously colored via lerp evaluation
+        drawLerpWindLine(points, 2.5, getWindY, (p) => p.wind, true);
+        drawLerpWindLine(points, 2.0, getGustY, (p) => p.gust, false);
 
         if (isToday) {
             const currentX = padLeft + (currentMinutes / 1439) * graphWidth;
@@ -1882,12 +1907,12 @@ function drawForecastCanvasGraph(item, mode, canvas, activeX = null, prevItem = 
             const windY = padTop + graphHeight - ((curWind - minY) / (maxY - minY)) * graphHeight;
             const gustY = padTop + graphHeight - ((curGust - minY) / (maxY - minY)) * graphHeight;
 
-            ctx.fillStyle = typeof getAppleWindColor === "function" ? getAppleWindColor(curWind) : "#00bfff";
+            ctx.fillStyle = getDynamicWindColor(curWind);
             ctx.beginPath();
             ctx.arc(currentX, windY, 5, 0, Math.PI * 2);
             ctx.fill();
 
-            ctx.fillStyle = typeof getAppleWindColor === "function" ? getAppleWindColor(curGust) : "#ff4500";
+            ctx.fillStyle = getDynamicWindColor(curGust);
             ctx.beginPath();
             ctx.arc(currentX, gustY, 5, 0, Math.PI * 2);
             ctx.fill();
