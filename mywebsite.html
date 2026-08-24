@@ -1585,6 +1585,7 @@ function drawForecastCanvasGraph(item, mode, canvas, activeX = null, prevItem = 
         titleEl.innerText = `${item.day} (${item.dateStr}) - ${mode === "temp" ? "Temperature" : mode === "wind" ? "Wind & Gusts" : "DOS Score"}`;
     }
 
+    // --- TIME & TODAY CHECK ---
     const now = new Date();
     const cdtOptions = { timeZone: 'America/Chicago', year: 'numeric', month: 'numeric', day: 'numeric', hour: 'numeric', minute: 'numeric', hour12: false };
     const cdtParts = new Intl.DateTimeFormat('en-US', cdtOptions).formatToParts(now);
@@ -1602,6 +1603,7 @@ function drawForecastCanvasGraph(item, mode, canvas, activeX = null, prevItem = 
     const dateParts = item.dateStr.split('/').map(n => parseInt(n, 10));
     const isToday = (dateParts[0] === cdtMonth && dateParts[1] === cdtDay && dateParts[2] === cdtYear);
 
+    // --- LAYOUT PADDING ---
     const padLeft = 50;
     const padRight = 25;
     const padTop = 35;
@@ -1610,24 +1612,34 @@ function drawForecastCanvasGraph(item, mode, canvas, activeX = null, prevItem = 
     const graphWidth = width - padLeft - padRight;
     const graphHeight = height - padTop - padBottom;
 
-    // Smooth Interpolation Helper (Cos-based)
+    // Smooth Interpolation Helper (Cosine-based)
     const smoothStep = (v0, v1, t) => {
         const factor = 0.5 * (1 - Math.cos(t * Math.PI));
         return v0 + (v1 - v0) * factor;
     };
 
-    // Calculate dynamic anchor points for temperatures
+    // --- DYNAMIC TEMP ANCHOR CALCULATIONS ---
+    // 1. Yesterday's Low (Anchors 12:00 AM - 6:00 AM dip)
     const morningLow = (prevItem && prevItem.tempLow !== undefined) ? prevItem.tempLow : item.tempLow;
+    
+    // 2. Today's Low & High (Anchors afternoon peak & trough)
     const todayLow = item.tempLow;
+    const todayHigh = item.tempHigh;
+    
+    // 3. Tomorrow's Low (Anchors 3:00 PM - 11:59 PM overnight drop)
     const tomorrowLow = (nextItem && nextItem.tempLow !== undefined) ? nextItem.tempLow : item.tempLow;
 
-    const prevHigh = prevItem ? prevItem.tempHigh : item.tempHigh;
-    const todayHigh = item.tempHigh;
+    // Surrounding High Anchors
+    const prevHigh = (prevItem && prevItem.tempHigh !== undefined) ? prevItem.tempHigh : item.tempHigh;
+
+    // Midnight Derived Midpoints
+    const midnightStartTemp = Math.round((prevHigh + morningLow) / 2);
+    const midnightEndTemp = Math.round((todayHigh + tomorrowLow) / 2);
 
     // Detect Winter Cold Front / Inversion (High occurs in the morning / overnight)
     const isWinterInversion = item.isWinterInversion || (item.tempHigh < morningLow);
 
-    // Diurnal default fallback calculation per minute
+    // --- DIURNAL FALLBACK CALCULATIONS ---
     const getDiurnalTemp = (m) => {
         if (isWinterInversion) {
             const tStart = Math.round((prevHigh + todayHigh) / 2);
@@ -1639,27 +1651,46 @@ function drawForecastCanvasGraph(item, mode, canvas, activeX = null, prevItem = 
                 return Math.round(smoothStep(todayLow, tomorrowLow, (m - 900) / 539));
             }
         } else {
-            const midnightTemp = Math.round((prevHigh + morningLow) / 2);
             if (m <= 360) {
-                return Math.round(smoothStep(midnightTemp, morningLow, m / 360));
+                // 12:00 AM to 6:00 AM: Cools from Midnight temp down to Morning Low
+                return Math.round(smoothStep(midnightStartTemp, morningLow, m / 360));
             } else if (m <= 900) {
+                // 6:00 AM to 3:00 PM: Warms from Morning Low to Today's High Peak
                 return Math.round(smoothStep(morningLow, todayHigh, (m - 360) / 540));
             } else {
-                const targetMidnight = Math.round((todayHigh + tomorrowLow) / 2);
-                return Math.round(smoothStep(todayHigh, targetMidnight, (m - 900) / 539));
+                // 3:00 PM to 11:59 PM: Cools from Today's High toward Tomorrow's Low transition
+                return Math.round(smoothStep(todayHigh, midnightEndTemp, (m - 900) / 539));
             }
         }
     };
 
+    const peakMin = 15 * 60; // 3:00 PM Peak
+
+    const getDiurnalWind = (m) => {
+        const windRad = ((m - peakMin) / 1440) * Math.PI * 2;
+        const windFactor = (Math.cos(windRad) + 1) / 2;
+        return Math.round(item.windMph * (0.6 + 0.4 * windFactor));
+    };
+
+    const getDiurnalGust = (m) => {
+        const windRad = ((m - peakMin) / 1440) * Math.PI * 2;
+        const windFactor = (Math.cos(windRad) + 1) / 2;
+        return Math.round(item.gustMph * (0.65 + 0.35 * windFactor));
+    };
+
+    const getDiurnalDos = (m) => {
+        const dosTempRad = ((m - peakMin) / 1440) * Math.PI * 2;
+        const dosFactor = (Math.cos(dosTempRad) + 1) / 2;
+        return Math.round(item.score * (0.5 + 0.5 * dosFactor));
+    };
+
     // --- OVERRIDE EVENTS ENGINE ---
-    // Format: item.overrideEvents = [{ minute: 0, temp: 40, wind: 5, gust: 10, dos: 30, label: "Front Hits" }, ...]
     const hasEvents = Array.isArray(item.overrideEvents) && item.overrideEvents.length > 0;
     const sortedEvents = hasEvents ? [...item.overrideEvents].sort((a, b) => a.minute - b.minute) : [];
 
     const getInterpolatedVal = (m, key, fallbackFn) => {
         if (!hasEvents) return fallbackFn(m);
 
-        // Exact event match
         const exact = sortedEvents.find(e => e.minute === m && e[key] !== undefined);
         if (exact) return exact[key];
 
@@ -1680,44 +1711,25 @@ function drawForecastCanvasGraph(item, mode, canvas, activeX = null, prevItem = 
     };
 
     const getInterpolatedTemp = (m) => getInterpolatedVal(m, 'temp', getDiurnalTemp);
-
-    const peakMin = 15 * 60; // 3 PM
-
-    const getDiurnalWind = (m) => {
-        const windRad = ((m - peakMin) / 1440) * Math.PI * 2;
-        const windFactor = (Math.cos(windRad) + 1) / 2;
-        return Math.round(item.windMph * (0.6 + 0.4 * windFactor));
-    };
-
-    const getDiurnalGust = (m) => {
-        const windRad = ((m - peakMin) / 1440) * Math.PI * 2;
-        const windFactor = (Math.cos(windRad) + 1) / 2;
-        return Math.round(item.gustMph * (0.65 + 0.35 * windFactor));
-    };
-
-    const getDiurnalDos = (m) => {
-        const dosTempRad = ((m - peakMin) / 1440) * Math.PI * 2;
-        const dosFactor = (Math.cos(dosTempRad) + 1) / 2;
-        return Math.round(item.score * (0.5 + 0.5 * dosFactor));
-    };
-
     const getInterpolatedWind = (m) => getInterpolatedVal(m, 'wind', getDiurnalWind);
     const getInterpolatedGust = (m) => getInterpolatedVal(m, 'gust', getDiurnalGust);
     const getInterpolatedDos = (m) => getInterpolatedVal(m, 'dos', getDiurnalDos);
 
+    // Build data points every 15 minutes across the 24-hour cycle
     const points = [];
     for (let m = 0; m <= 1439; m += 15) {
         const x = padLeft + (m / 1439) * graphWidth;
-
-        const tempVal = getInterpolatedTemp(m);
-        const windVal = getInterpolatedWind(m);
-        const gustVal = getInterpolatedGust(m);
-        const dosVal = getInterpolatedDos(m);
-
-        points.push({ minute: m, x: x, temp: tempVal, wind: windVal, gust: gustVal, dos: dosVal });
+        points.push({
+            minute: m,
+            x: x,
+            temp: getInterpolatedTemp(m),
+            wind: getInterpolatedWind(m),
+            gust: getInterpolatedGust(m),
+            dos: getInterpolatedDos(m)
+        });
     }
 
-    // Grid axes & Time Labels
+    // --- GRID AXES & TIME LABELS ---
     ctx.strokeStyle = "#2e2e38";
     ctx.lineWidth = 1;
     ctx.fillStyle = "#888";
@@ -1736,6 +1748,7 @@ function drawForecastCanvasGraph(item, mode, canvas, activeX = null, prevItem = 
         ctx.fillText(label, x, height - padBottom + 18);
     }
 
+    // --- PATH RENDERING HELPER ---
     const drawSegmentedLine = (pts, strokeStyle, lineWidth, getYVal, fillUnder = false) => {
         if (fillUnder) {
             ctx.beginPath();
@@ -1774,13 +1787,11 @@ function drawForecastCanvasGraph(item, mode, canvas, activeX = null, prevItem = 
         }
     };
 
+    // --- RENDER SELECTED GRAPH MODE ---
     if (mode === "temp") {
         const allTemps = points.map(p => p.temp);
-        
-        // Dynamic Range Calculation (+5 / -5 Height Padding)
         const minY = Math.min(...allTemps) - 5;
         const maxY = Math.max(...allTemps) + 5;
-        
         const getY = (p) => padTop + graphHeight - ((p.temp - minY) / (maxY - minY)) * graphHeight;
 
         const fillGrad = ctx.createLinearGradient(0, padTop, 0, height - padBottom);
@@ -1803,7 +1814,6 @@ function drawForecastCanvasGraph(item, mode, canvas, activeX = null, prevItem = 
             ctx.stroke();
         }
 
-        // Render Override Markers on graph if present
         if (hasEvents) {
             sortedEvents.forEach(ev => {
                 if (ev.temp !== undefined) {
@@ -1820,8 +1830,6 @@ function drawForecastCanvasGraph(item, mode, canvas, activeX = null, prevItem = 
     } else if (mode === "wind") {
         const allGusts = points.map(p => p.gust);
         const allWinds = points.map(p => p.wind);
-
-        // Dynamic Range Calculation (+5 / -5 Height Padding)
         const minY = Math.max(0, Math.min(...allWinds) - 5);
         const maxY = Math.max(...allGusts) + 5;
 
@@ -1855,11 +1863,8 @@ function drawForecastCanvasGraph(item, mode, canvas, activeX = null, prevItem = 
 
     } else if (mode === "dos") {
         const allDos = points.map(p => p.dos);
-
-        // Dynamic Range Calculation (+5 / -5 Height Padding)
         const minY = Math.max(0, Math.min(...allDos) - 5);
         const maxY = Math.max(...allDos) + 5;
-
         const getDosY = (p) => padTop + graphHeight - ((p.dos - minY) / (maxY - minY)) * graphHeight;
 
         const dosGrad = ctx.createLinearGradient(0, padTop, 0, height - padBottom);
@@ -1881,7 +1886,7 @@ function drawForecastCanvasGraph(item, mode, canvas, activeX = null, prevItem = 
         }
     }
 
-    // --- MOUSE & TOUCH SCRUBBER TOOLTIP ---
+    // --- SCRUBBER TOOLTIP ---
     if (activeX !== null && activeX >= padLeft && activeX <= width - padRight) {
         const clampedX = Math.max(padLeft, Math.min(width - padRight, activeX));
         const ratio = (clampedX - padLeft) / graphWidth;
@@ -1891,7 +1896,6 @@ function drawForecastCanvasGraph(item, mode, canvas, activeX = null, prevItem = 
         const m = Math.round(hoveredMinute % 60);
         const timeStr = `${h % 12 || 12}:${m < 10 ? '0' : ''}${m}${h >= 12 ? 'PM' : 'AM'}`;
 
-        // Vertical Scrubber Line
         ctx.strokeStyle = "rgba(255, 255, 255, 0.6)";
         ctx.lineWidth = 1;
         ctx.setLineDash([3, 3]);
@@ -1901,13 +1905,11 @@ function drawForecastCanvasGraph(item, mode, canvas, activeX = null, prevItem = 
         ctx.stroke();
         ctx.setLineDash([]);
 
-        // Interpolated Values for Scrubber
         const hoveredTemp = getInterpolatedTemp(hoveredMinute);
         const hoveredWind = getInterpolatedWind(hoveredMinute);
         const hoveredGust = getInterpolatedGust(hoveredMinute);
         const hoveredDos = getInterpolatedDos(hoveredMinute);
 
-        // Check if hovering near an event label
         const nearbyEvent = hasEvents ? sortedEvents.find(e => Math.abs(e.minute - hoveredMinute) <= 20 && e.label) : null;
 
         let tooltipText = "";
@@ -1919,7 +1921,6 @@ function drawForecastCanvasGraph(item, mode, canvas, activeX = null, prevItem = 
             tooltipText = `${timeStr} - DOS: ${hoveredDos}`;
         }
 
-        // Draw Scrubber Tooltip Badge
         ctx.font = "bold 12px sans-serif";
         const textWidth = ctx.measureText(tooltipText).width;
         let boxX = clampedX - textWidth / 2 - 8;
