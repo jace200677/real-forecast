@@ -674,8 +674,12 @@ async function buildForecast() {
     
     updateStreamStatus(wis);
 
-    const today = new Date();
+    // Exact current timestamp for intra-day time calculations
+    const now = new Date();
+    
+    const today = new Date(now);
     today.setHours(0, 0, 0, 0);
+    
     const daysOfWeek = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
     const dosForecast = [];
 
@@ -687,12 +691,18 @@ async function buildForecast() {
         const month = forecastDate.getMonth() + 1;
         const dateNum = forecastDate.getDate();
 
-        // --- CONFIDENCE OVER TIME CALCULATIONS ---
-        // Days out ranges from 0 (Today) to 6.
-        // Confidence Factor ranges from 1.00 (Today/100% confidence) down to 0.40 (7 days out/40% confidence).
-        const daysOut = i; 
-        const confidenceFactor = Math.max(0.4, 1.0 - (daysOut * 0.1)); 
-        const uncertaintyVariance = (1 - confidenceFactor) * 10; // Greater swing margin further out
+        // --- TIME-OF-DAY & DAYS-OUT CONFIDENCE CALCULATION ---
+        // Target mid-day (12:00 PM) for each forecast day to compute exact fractional days remaining
+        const targetDate = new Date(forecastDate);
+        targetDate.setHours(12, 0, 0, 0);
+
+        const hoursDifference = (targetDate - now) / (1000 * 60 * 60);
+        const exactDaysOut = Math.max(0, hoursDifference / 24);
+
+        // Confidence ranges smoothly from ~1.00 (Current/0 days out) down to 0.40 (7 days out)
+        // Adjusts in real-time as hours pass throughout the day
+        const confidenceFactor = Math.min(1.0, Math.max(0.4, 1.0 - (exactDaysOut * 0.085)));
+        const daysOut = i; // Retained for integer index references
 
         const dayLabel = i === 0 ? "Today" : daysOfWeek[forecastDate.getDay()];
         const dateString = `${month}/${dateNum}/${year}`;
@@ -755,11 +765,9 @@ async function buildForecast() {
             const dynamicLow = Math.round(48 - (latOffset * 1.8) + (lonOffset * 0.5));
             tempLow = Math.min(dynamicLow, 48);
 
-            // Confidence Boost for 8/23/2026: Scores stabilize as daysOut reaches 0
             const trendMultiplier = 1 + (Math.sin(i * 0.8) * 0.2 * (1 - confidenceFactor));
             const baseScore = Math.round(dos * trendMultiplier);
             
-            // Higher confidence increases the baseline floor score
             const confidenceBoost = Math.round((1 - confidenceFactor) * 5);
             projectedScore = Math.min(Math.max(baseScore + confidenceBoost, 2), 150);
             
@@ -777,18 +785,16 @@ async function buildForecast() {
             const latOffset = (lat - 45.0) * 1.8;
             const lonOffset = (lon + 93.0) * 1.2;
 
-            // Strict Confidence Gain: Increases boost directly as daysOut decreases (closer to event)
-            const confidenceBoost = Math.max(0, (7 - daysOut) * 4.5);
+            const confidenceBoost = Math.max(0, (7 - exactDaysOut) * 4.5);
             const latLonAdjustment = Math.abs(latOffset) + Math.abs(lonOffset);
 
             const baseDos46 = 46;
             projectedScore = Math.max(baseDos46, Math.round(baseDos46 + confidenceBoost + latLonAdjustment));
 
-            const windTrend = (7 - daysOut) * 0.8;
+            const windTrend = (7 - exactDaysOut) * 0.8;
             windMph = Math.max(18, Math.round(18 + windTrend + (latOffset * 0.5)));
             gustMph = Math.max(42, Math.round(42 + (windTrend * 1.5) + (latOffset * 0.8)));
 
-            // High confidence tightens streamChance to 95% ceiling
             streamChance = Math.min(Math.round(((projectedScore / 80) * 100) * (0.8 + (confidenceFactor * 0.2))), 95);
             weatherSummary = projectedScore > 65 ? "High Winds & Severe T-Storms" : "Windy w/ T-Storm Potential";
 
@@ -799,9 +805,8 @@ async function buildForecast() {
             const latOffset = (lat - 45.0) * 2.5;
             const lonOffset = (lon + 93.0) * 1.8;
 
-            // Variance collapses as confidence increases (daysOut decreases)
-            const varianceAmplitude = daysOut * 1.5 * (1 - confidenceFactor); 
-            const swingFactor = Math.sin(daysOut * 1.2);
+            const varianceAmplitude = exactDaysOut * 1.5 * (1 - confidenceFactor); 
+            const swingFactor = Math.sin(exactDaysOut * 1.2);
 
             const baseDos93 = 93;
             projectedScore = Math.max(5, Math.round(baseDos93 + latOffset + lonOffset + (swingFactor * varianceAmplitude)));
@@ -818,17 +823,15 @@ async function buildForecast() {
             windMph = Math.max(5, Math.round(baseWind + (swingFactor * varianceAmplitude * 0.8)));
             gustMph = Math.max(windMph + 5, Math.round(baseGust + (swingFactor * varianceAmplitude * 1.5)));
 
-            const conditionSwing = swingFactor * daysOut;
+            const conditionSwing = swingFactor * exactDaysOut;
             if (conditionSwing > 1.5) weatherSummary = "Windy w/ T-Storms";
             else if (conditionSwing < -1.5) weatherSummary = "Cloudy & Breezy";
             else weatherSummary = "Cloudy, T-Storms & Windy";
 
         } else {
-            // General Fallback Confidence Scaling
             const trendMultiplier = 1 + (Math.sin(i * 0.8) * 0.2 * (1 / confidenceFactor));
             projectedScore = Math.min(Math.max(Math.round(dos * trendMultiplier), 2), 150);
             
-            // Adjust stream chance weighted by confidence factor
             streamChance = Math.min(Math.round(((projectedScore / 90) * 100) * confidenceFactor), 85);
             if (streamChance < 5) streamChance = 0;
         }
@@ -849,7 +852,7 @@ async function buildForecast() {
             windMph: windMph,
             gustMph: gustMph,
             meta: getDOSMeta(projectedScore),
-            confidence: Math.round(confidenceFactor * 100) // Added for optional UI exposure
+            confidence: Math.round(confidenceFactor * 100)
         });
     }
 
