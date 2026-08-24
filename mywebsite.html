@@ -1857,26 +1857,23 @@ function drawForecastCanvasGraph(item, mode, canvas, activeX = null, prevItem = 
         const getWindY = (p) => padTop + graphHeight - ((p.wind - minSpeed) / (maxSpeed - minSpeed)) * graphHeight;
         const getGustY = (p) => padTop + graphHeight - ((p.gust - minSpeed) / (maxSpeed - minSpeed)) * graphHeight;
 
-        // Build precise height-relative color gradient helper
-        const createSpeedGradient = (speedMin, speedMax) => {
+        // Build precise height-relative color gradient mapped strictly to the graph Y-axis (minSpeed to maxSpeed)
+        const createSpeedGradient = () => {
             const grad = ctx.createLinearGradient(0, height - padBottom, 0, padTop);
-            const range = Math.max(1, speedMax - speedMin);
             
-            // Generate multiple color stops between min and max speed
-            const steps = 10;
+            // Generate color stops anchored directly to the graph scale (0 to maxSpeed)
+            const steps = 20;
             for (let i = 0; i <= steps; i++) {
                 const ratio = i / steps;
-                const speedVal = speedMin + ratio * range;
+                const speedVal = minSpeed + ratio * (maxSpeed - minSpeed);
                 grad.addColorStop(ratio, getDynamicWindColor(speedVal));
             }
             return grad;
         };
 
-        const currentMaxWind = Math.max(...allWinds);
-        const currentMaxGust = Math.max(...allGusts);
-
-        const windGrad = createSpeedGradient(minSpeed, currentMaxWind);
-        const gustGrad = createSpeedGradient(minSpeed, currentMaxGust);
+        // Shared scale gradient ensures colors align 1:1 with Y-axis positions
+        const windGrad = createSpeedGradient();
+        const gustGrad = createSpeedGradient();
 
         // Render continuous gradient lines
         drawSegmentedLine(points, windGrad, 2.5, getWindY, true);
