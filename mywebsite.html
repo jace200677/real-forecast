@@ -764,6 +764,17 @@ function getDynamicScores73126() {
     return { projectedScore, streamChance };
 }
 
+function getStreamThreshold(year, month, day) {
+    if (year === 2026 && month === 8) {
+        if (day === 24) return 60;
+        if (day === 25) return 55;
+        if (day === 27) return 75;
+        if (day === 28) return 103;
+        if (day === 31) return 120;
+    }
+    return 141.18;
+}
+
 async function buildForecast() {
     const container = document.getElementById("forecastContainer");
     const alerts = await fetchActiveAlerts();
@@ -776,15 +787,26 @@ async function buildForecast() {
 
     const { wis, dos } = calculateNationalScores(alerts);
     
+    // Determine CDT Date for Stream Threshold lookup
+    const now = new Date();
+    const cdtOptions = { timeZone: 'America/Chicago', year: 'numeric', month: 'numeric', day: 'numeric' };
+    const cdtParts = new Intl.DateTimeFormat('en-US', cdtOptions).formatToParts(now);
+    let year, month, day;
+    cdtParts.forEach(part => {
+        if (part.type === 'year') year = parseInt(part.value, 10);
+        if (part.type === 'month') month = parseInt(part.value, 10);
+        if (part.type === 'day') day = parseInt(part.value, 10);
+    });
+
+    const threshold = getStreamThreshold(year, month, day);
+
     const wisEl = document.getElementById("currentWis");
-    wisEl.innerText = wis;
+    wisEl.innerText = threshold !== null ? `${wis} / ${threshold}` : `${wis}`;
     wisEl.style.color = getLerpColor(wis);
     
     updateStreamStatus(wis);
 
     // Exact current timestamp for intra-day time calculations
-    const now = new Date();
-    
     const today = new Date(now);
     today.setHours(0, 0, 0, 0);
     
@@ -795,25 +817,21 @@ async function buildForecast() {
         const forecastDate = new Date();
         forecastDate.setDate(today.getDate() + i);
 
-        const year = forecastDate.getFullYear();
-        const month = forecastDate.getMonth() + 1;
+        const forecastYear = forecastDate.getFullYear();
+        const forecastMonth = forecastDate.getMonth() + 1;
         const dateNum = forecastDate.getDate();
 
         // --- TIME-OF-DAY & DAYS-OUT CONFIDENCE CALCULATION ---
-        // Target mid-day (12:00 PM) for each forecast day to compute exact fractional days remaining
         const targetDate = new Date(forecastDate);
         targetDate.setHours(12, 0, 0, 0);
 
         const hoursDifference = (targetDate - now) / (1000 * 60 * 60);
         const exactDaysOut = Math.max(0, hoursDifference / 24);
 
-        // Confidence ranges smoothly from ~1.00 (Current/0 days out) down to 0.40 (7 days out)
-        // Adjusts in real-time as hours pass throughout the day
         const confidenceFactor = Math.min(1.0, Math.max(0.4, 1.0 - (exactDaysOut * 0.085)));
-        const daysOut = i; // Retained for integer index references
 
         const dayLabel = i === 0 ? "Today" : daysOfWeek[forecastDate.getDay()];
-        const dateString = `${month}/${dateNum}/${year}`;
+        const dateString = `${forecastMonth}/${dateNum}/${forecastYear}`;
 
         let projectedScore;
         let streamChance;
@@ -846,7 +864,7 @@ async function buildForecast() {
         }
 
         // --- SPECIFIC OVERRIDES ---
-        if (year === 2026 && month === 8 && dateNum === 23) {
+        if (forecastYear === 2026 && forecastMonth === 8 && dateNum === 23) {
             const lat = targetZoneOrPoint ? parseFloat(targetZoneOrPoint.lat) : 45.0;
             const lon = targetZoneOrPoint ? parseFloat(targetZoneOrPoint.lon) : -93.0;
 
@@ -882,7 +900,7 @@ async function buildForecast() {
             streamChance = Math.min(Math.round((projectedScore / 90) * 100 * confidenceFactor), 85);
             if (streamChance < 5) streamChance = 0;
 
-        } else if (year === 2026 && month === 8 && dateNum === 24) {
+        } else if (forecastYear === 2026 && forecastMonth === 8 && dateNum === 24) {
             const lat = targetZoneOrPoint ? parseFloat(targetZoneOrPoint.lat) : 45.0;
             const lon = targetZoneOrPoint ? parseFloat(targetZoneOrPoint.lon) : -93.0;
 
@@ -912,7 +930,7 @@ async function buildForecast() {
             else if (conditionSwing < -1.5) weatherSummary = "Cloudy & Breezy";
             else weatherSummary = "Cloudy, T-Storms & Windy";
 
-        } else if (year === 2026 && month === 8 && dateNum === 25) {
+        } else if (forecastYear === 2026 && forecastMonth === 8 && dateNum === 25) {
             const lat = targetZoneOrPoint ? parseFloat(targetZoneOrPoint.lat) : 45.0;
             const lon = targetZoneOrPoint ? parseFloat(targetZoneOrPoint.lon) : -93.0;
 
@@ -942,11 +960,11 @@ async function buildForecast() {
             else if (conditionSwing < -1.5) weatherSummary = "Cloudy & Breezy";
             else weatherSummary = "Cloudy, T-Storms & Windy";
 
-        } else if (year === 2026 && month === 8 && dateNum === 6) {
+        } else if (forecastYear === 2026 && forecastMonth === 8 && dateNum === 6) {
             projectedScore = 200;
             streamChance = 100;
 
-        } else if (year === 2026 && month === 8 && dateNum === 27) {
+        } else if (forecastYear === 2026 && forecastMonth === 8 && dateNum === 27) {
             const lat = targetZoneOrPoint ? parseFloat(targetZoneOrPoint.lat) : 45.0;
             const lon = targetZoneOrPoint ? parseFloat(targetZoneOrPoint.lon) : -93.0;
 
@@ -966,7 +984,7 @@ async function buildForecast() {
             streamChance = Math.min(Math.round(((projectedScore / 80) * 100) * (0.8 + (confidenceFactor * 0.2))), 95);
             weatherSummary = projectedScore > 65 ? "High Winds & Severe T-Storms" : "Windy w/ T-Storm Potential";
 
-        } else if (year === 2026 && month === 8 && dateNum === 28) {
+        } else if (forecastYear === 2026 && forecastMonth === 8 && dateNum === 28) {
             const lat = targetZoneOrPoint ? parseFloat(targetZoneOrPoint.lat) : 45.0;
             const lon = targetZoneOrPoint ? parseFloat(targetZoneOrPoint.lon) : -93.0;
 
@@ -996,7 +1014,7 @@ async function buildForecast() {
             else if (conditionSwing < -1.5) weatherSummary = "Cloudy & Breezy";
             else weatherSummary = "Cloudy, T-Storms & Windy";
 
-        } else if (year === 2026 && month === 8 && dateNum === 31) {
+        } else if (forecastYear === 2026 && forecastMonth === 8 && dateNum === 31) {
             const lat = targetZoneOrPoint ? parseFloat(targetZoneOrPoint.lat) : 45.0;
             const lon = targetZoneOrPoint ? parseFloat(targetZoneOrPoint.lon) : -93.0;
 
