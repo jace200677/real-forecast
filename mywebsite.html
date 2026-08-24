@@ -612,17 +612,7 @@ function calculateNationalScores(alerts) {
     const isVirginia = locationName.includes("virginia") || (Math.abs(lat - 47.52) < 0.1 && Math.abs(lon - (-92.53)) < 0.1);
     const isTower = locationName.includes("tower") || (Math.abs(lat - 47.80) < 0.1 && Math.abs(lon - (-92.37)) < 0.1);
 
-    if (isTower) {
-        geoVariance += 18;
-    } else if (isVirginia) {
-        geoVariance += 7;
-    } else if (isEmbarrass) {
-        geoVariance += 2;
-    } else if (isBabbitt) {
-        geoVariance -= 3;
-    } else {
-        geoVariance -= 12;
-    }
+    
 
     // Helper closure to strictly tie DOS to raw WIS output before city-specific static overrides
     const formatOutput = (wisVal) => {
@@ -630,8 +620,8 @@ function calculateNationalScores(alerts) {
         const derivedDOS = Math.max(Math.min(Math.round(finalWIS * 1.2), 250), 3);
         
         let targetWIS = finalWIS;
-        if (isTower) targetWIS = 52;
-        else if (isVirginia) targetWIS = 43;
+        if (isTower) targetWIS = 62;
+        else if (isVirginia) targetWIS = 64;
         else if (isBabbitt) targetWIS = 54;
         else if (isEmbarrass) targetWIS = 56;
 
