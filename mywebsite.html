@@ -1581,7 +1581,6 @@ function drawForecastCanvasGraph(item, mode, canvas, activeX = null, prevItem = 
     };
 
     const getPreviousDayLowestTemp = () => {
-        // Targeted check for 8/24/2026: fallback to 48 baseline if override event exists
         if (item.dateStr === "8/24/2026" || item.dateStr === "08/24/2026") {
             const prev = resolvePreviousItem();
             if (prev && Array.isArray(prev.overrideEvents) && prev.overrideEvents.length > 0) {
@@ -1592,7 +1591,7 @@ function drawForecastCanvasGraph(item, mode, canvas, activeX = null, prevItem = 
                     return Math.min(...eventTemps);
                 }
             }
-            return 48; // Baseline fallback for 8/24/2026 morning low
+            return 48;
         }
 
         const prev = resolvePreviousItem();
@@ -1737,7 +1736,7 @@ function drawForecastCanvasGraph(item, mode, canvas, activeX = null, prevItem = 
         ctx.fillText(label, x, height - padBottom + 18);
     }
 
-    // --- UPDATED PATH RENDERING HELPER (Dashed before current time, Solid after current time, colored across whole graph) ---
+    // --- PATH RENDERING HELPER ---
     const drawSegmentedLine = (pts, activeStyle, lineWidth, getYVal, fillUnder = false) => {
         const renderPath = (segmentPts, style, isDashed) => {
             if (segmentPts.length < 2) return;
@@ -1772,12 +1771,9 @@ function drawForecastCanvasGraph(item, mode, canvas, activeX = null, prevItem = 
             const pastPts = pts.slice(0, Math.max(1, currentIdx + 1));
             const futurePts = pts.slice(Math.max(0, currentIdx));
 
-            // Dashed colored line before current time
             if (pastPts.length > 0) renderPath(pastPts, activeStyle, true);
-            // Solid colored line after current time
             if (futurePts.length > 0) renderPath(futurePts, activeStyle, false);
         } else {
-            // Non-today items render solid colored throughout
             renderPath(pts, activeStyle, false);
         }
     };
@@ -1825,13 +1821,12 @@ function drawForecastCanvasGraph(item, mode, canvas, activeX = null, prevItem = 
     } else if (mode === "wind") {
         const allGusts = points.map(p => p.gust);
         const allWinds = points.map(p => p.wind);
-        const minY = 0; // Fixed at 0 so colors and scale fade smoothly from baseline
+        const minY = 0; 
         const maxY = Math.max(10, Math.max(...allGusts) + 5);
 
         const getWindY = (p) => padTop + graphHeight - ((p.wind - minY) / (maxY - minY)) * graphHeight;
         const getGustY = (p) => padTop + graphHeight - ((p.gust - minY) / (maxY - minY)) * graphHeight;
 
-        // Dynamic 0-to-Max vertical gradients anchored to the canvas height
         const windGrad = ctx.createLinearGradient(0, height - padBottom, 0, padTop);
         const gustGrad = ctx.createLinearGradient(0, height - padBottom, 0, padTop);
 
@@ -1839,14 +1834,12 @@ function drawForecastCanvasGraph(item, mode, canvas, activeX = null, prevItem = 
         const maxWindColor = typeof getAppleWindColor === "function" ? getAppleWindColor(Math.max(...allWinds)) : "#00bfff";
         const maxGustColor = typeof getAppleWindColor === "function" ? getAppleWindColor(Math.max(...allGusts)) : "#ff4500";
 
-        // Smooth transition from 0 mph color (bottom) to peak value color (top)
         windGrad.addColorStop(0, baseWindColor);
         windGrad.addColorStop(1, maxWindColor);
 
         gustGrad.addColorStop(0, baseWindColor);
         gustGrad.addColorStop(1, maxGustColor);
 
-        // Render wind line (with subtle under-fill) and gust line
         drawSegmentedLine(points, windGrad, 2.5, getWindY, true);
         drawSegmentedLine(points, gustGrad, 2, getGustY, false);
 
@@ -1858,7 +1851,6 @@ function drawForecastCanvasGraph(item, mode, canvas, activeX = null, prevItem = 
             const windY = padTop + graphHeight - ((curWind - minY) / (maxY - minY)) * graphHeight;
             const gustY = padTop + graphHeight - ((curGust - minY) / (maxY - minY)) * graphHeight;
 
-            // Current time indicator dots matching dynamic colors at that speed
             ctx.fillStyle = typeof getAppleWindColor === "function" ? getAppleWindColor(curWind) : "#00bfff";
             ctx.beginPath();
             ctx.arc(currentX, windY, 5, 0, Math.PI * 2);
@@ -1868,7 +1860,8 @@ function drawForecastCanvasGraph(item, mode, canvas, activeX = null, prevItem = 
             ctx.beginPath();
             ctx.arc(currentX, gustY, 5, 0, Math.PI * 2);
             ctx.fill();
-        } else if (mode === "dos") {
+        }
+    } else if (mode === "dos") {
         const allDos = points.map(p => p.dos);
         const minY = Math.max(0, Math.min(...allDos) - 5);
         const maxY = Math.max(...allDos) + 5;
@@ -1937,7 +1930,11 @@ function drawForecastCanvasGraph(item, mode, canvas, activeX = null, prevItem = 
         ctx.strokeStyle = "#444";
         ctx.lineWidth = 1;
         ctx.beginPath();
-        ctx.roundRect(boxX, 8, textWidth + 16, 24, 6);
+        if (typeof ctx.roundRect === "function") {
+            ctx.roundRect(boxX, 8, textWidth + 16, 24, 6);
+        } else {
+            ctx.rect(boxX, 8, textWidth + 16, 24);
+        }
         ctx.fill();
         ctx.stroke();
 
