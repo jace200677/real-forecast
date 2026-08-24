@@ -602,7 +602,15 @@ function calculateNationalScores(alerts) {
     // Evaluates target coordinates if a user searched a location, otherwise defaults to Minnesota baseline
     const lat = typeof targetZoneOrPoint !== 'undefined' && targetZoneOrPoint ? parseFloat(targetZoneOrPoint.lat) : 45.0;
     const lon = typeof targetZoneOrPoint !== 'undefined' && targetZoneOrPoint ? parseFloat(targetZoneOrPoint.lon) : -93.0;
-    const geoVariance = Math.round((lat - 45.0) * 0.5 + (lon + 93.0) * 0.3);
+    const locationName = typeof targetZoneOrPoint !== 'undefined' && targetZoneOrPoint && targetZoneOrPoint.name ? targetZoneOrPoint.name.toLowerCase() : "";
+
+    let geoVariance = Math.round((lat - 45.0) * 0.5 + (lon + 93.0) * 0.3);
+
+    // Babbitt, MN specific offset (-3 reduction)
+    const isBabbitt = locationName.includes("babbitt") || (Math.abs(lat - 47.71) < 0.1 && Math.abs(lon - (-91.95)) < 0.1);
+    if (isBabbitt) {
+        geoVariance -= 3;
+    }
 
     // Helper closure to strictly tie DOS to WIS output
     const formatOutput = (wisVal) => {
@@ -696,7 +704,7 @@ function calculateNationalScores(alerts) {
         return formatOutput(currentWIS);
     }
 
-    return formatOutput(currentWIS);
+    return formatOutput(currentWIS + geoVariance);
 }
 function getDOSMeta(score) {
     if (score >= 150) return { label: "Potentially Historic Setup" };
