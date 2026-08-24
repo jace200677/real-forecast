@@ -605,11 +605,12 @@ function calculateNationalScores(alerts) {
     const geoVariance = Math.round((lat - 45.0) * 0.5 + (lon + 93.0) * 0.3);
 
     // 8/24/2026 WIS Override
+    // 8/24/2026 WIS Override
     if (year === 2026 && month === 8 && day === 24) {
-        if (totalMinutes < 450) { // Before 7:30 AM
+        if (totalMinutes < 390) { // Before 6:30 AM
             currentWIS = Math.max(0, 5 + geoVariance);
-        } else if (totalMinutes >= 450 && totalMinutes < 840) { // 7:30 AM to 2:00 PM ramp-up
-            const progress = (totalMinutes - 450) / (840 - 450);
+        } else if (totalMinutes >= 390 && totalMinutes < 840) { // 6:30 AM to 2:00 PM ramp-up
+            const progress = (totalMinutes - 390) / (840 - 390);
             currentWIS = Math.round(5 + progress * 22) + geoVariance;
         } else if (totalMinutes >= 840 && totalMinutes <= 1080) { // 2:00 PM to 6:00 PM Peak
             currentWIS = 27 + geoVariance;
@@ -617,7 +618,7 @@ function calculateNationalScores(alerts) {
             const decayProgress = (totalMinutes - 1080) / 360; 
             currentWIS = Math.max(0, Math.round(27 * (1 - decayProgress))) + geoVariance;
         }
-    } 
+    }
     // 8/25/2026 WIS Override
     else if (year === 2026 && month === 8 && day === 25) {
         if (totalMinutes < 120) { // Midnight to 2:00 AM (Continuation from 8/24)
