@@ -721,10 +721,37 @@ async function buildForecast() {
         }
 
         // --- SPECIFIC OVERRIDES ---
-        if (year === 2026 && month === 7 && dateNum === 31) {
-            const dynamicData = getDynamicScores73126();
-            projectedScore = dynamicData.projectedScore;
-            streamChance = dynamicData.streamChance;
+if (year === 2026 && month === 8 && dateNum === 23) {
+    // Check if live grid data exists for this location to set real forecast temps
+    if (gridPeriods && gridPeriods.length > 0) {
+        const dayPeriods = gridPeriods.filter(p => {
+            const pDate = new Date(p.startTime).getDate();
+            return pDate === dateNum;
+        });
+
+        if (dayPeriods.length > 0) {
+            const temps = dayPeriods.map(p => p.temperature);
+            tempHigh = Math.max(...temps);
+            tempLow = Math.min(...temps);
+            if (tempHigh === tempLow) tempLow = tempHigh - 12;
+        }
+    } else {
+        // Default regional fallback temperatures when live grid data is missing
+        const lat = targetZoneOrPoint ? parseFloat(targetZoneOrPoint.lat) : 45.0;
+        const lon = targetZoneOrPoint ? parseFloat(targetZoneOrPoint.lon) : -93.0;
+        
+        const latOffset = (lat - 45.0) * 1.5;
+        tempLow = Math.round(58 - latOffset);
+        tempHigh = Math.round(78 - latOffset);
+    }
+
+    // Retain or customize DOS score calculation for 8/23/2026
+    const trendMultiplier = 1 + (Math.sin(i * 0.8) * 0.2);
+    projectedScore = Math.min(Math.max(Math.round(dos * trendMultiplier), 2), 150);
+    streamChance = Math.min(Math.round((projectedScore / 90) * 100), 85);
+    if (streamChance < 5) streamChance = 0;
+
+}
         } else if (year === 2026 && month === 8 && dateNum === 6) {
             projectedScore = 200;
             streamChance = 100;
