@@ -1006,37 +1006,93 @@ function getStreamGradientCss(chancePct) {
 
 // --- UPDATED RENDER FORECAST FUNCTION ---
 // --- UPDATED RENDER FORECAST FUNCTION WITH WIND/GUST COLOR FIXES ---
-// --- HELPER FOR CONTINUOUS WIND COLOR GRADIENT ---
-function getWindGradientCss(currentMph, maxScaleMph) {
-    const stops = [
-        { speed: 0,  r: 142, g: 142, b: 147 },
-        { speed: 12, r: 52,  g: 199, b: 89  },
-        { speed: 25, r: 255, g: 204, b: 0  },
-        { speed: 40, r: 255, g: 149, b: 0  },
-        { speed: 58, r: 255, g: 59,  b: 48  },
-        { speed: 75, r: 175, g: 82,  b: 222 }
-    ];
-
-    if (currentMph <= 0) return `rgb(${stops[0].r}, ${stops[0].g}, ${stops[0].b})`;
+// --- CONTINUOUS MULTI-STOP GRADIENT GENERATOR ---
+function getGradientFromLowToCurrent(currentVal, minScale, stops, getColorFn) {
+    // If at or below minimum scale, return solid base color
+    if (currentVal <= minScale) {
+        return `rgb(${stops[0].r}, ${stops[0].g}, ${stops[0].b})`;
+    }
 
     let gradientStops = [];
     
-    // Add all intermediate color stops up to currentMph
+    // Iterate through color stops and add those within range
     for (let i = 0; i < stops.length; i++) {
         const stop = stops[i];
-        if (stop.speed <= currentMph) {
-            let pct = Math.round((stop.speed / currentMph) * 100);
+        if (stop.val <= currentVal) {
+            // Calculate relative percentage along the active fill bar width
+            let pct = Math.round(((stop.val - minScale) / (currentVal - minScale)) * 100);
             gradientStops.push(`rgb(${stop.r}, ${stop.g}, ${stop.b}) ${pct}%`);
         } else {
-            // Calculate final interpolated color at the exact current speed
-            const endColor = getWindColor(currentMph);
+            // Append exact target color matching currentVal at 100% boundary
+            const endColor = getColorFn(currentVal);
             gradientStops.push(`${endColor} 100%`);
             break;
         }
     }
 
+    // Fallback if currentVal exceeds all defined stop values
+    if (gradientStops.length > 0 && !gradientStops[gradientStops.length - 1].includes("100%")) {
+        const endColor = getColorFn(currentVal);
+        gradientStops.push(`${endColor} 100%`);
+    }
+
     if (gradientStops.length === 1) return gradientStops[0];
     return `linear-gradient(90deg, ${gradientStops.join(", ")})`;
+}
+// --- OFFICIAL APPLE WEATHER TEMPERATURE COLOR PALETTE (PURPLE INCLUDED) ---
+function getAppleTempColor(tempF) {
+    if (tempF <= -10) return "rgb(147, 51, 234)";   // Deep Purple / Extreme Sub-Zero
+    if (tempF <= 15)  return "rgb(99, 102, 241)";   // Indigo-Purple / Severe Freeze
+    if (tempF <= 32)  return "rgb(59, 130, 246)";   // Dark Blue / Freezing
+    if (tempF <= 50)  return "rgb(6, 182, 212)";    // Cyan / Cool
+    if (tempF <= 68)  return "rgb(34, 197, 94)";    // Green / Mild
+    if (tempF <= 77)  return "rgb(234, 179, 8)";    // Yellow / Warm
+    if (tempF <= 86)  return "rgb(249, 115, 22)";   // Orange / Hot
+    return "rgb(239, 68, 68)";                     // Red / Extreme Heat
+}
+
+// --- HELPER FOR TEMP GRADIENT (LOW BOUND TO CURRENT TEMP) ---
+function getTempGradientCss(currentTemp) {
+    const minTemp = -10;
+    const tempStops = [
+        { val: -10, r: 147, g: 51,  b: 234 }, // Deep Purple
+        { val: 15,  r: 99,  g: 102, b: 241 }, // Indigo
+        { val: 32,  r: 59,  g: 130, b: 246 }, // Dark Blue
+        { val: 50,  r: 6,   g: 182, b: 212 }, // Cyan
+        { val: 68,  r: 34,  g: 197, b: 94  }, // Green
+        { val: 77,  r: 234, g: 179, b: 8   }, // Yellow
+        { val: 86,  r: 249, g: 115, b: 22  }, // Orange
+        { val: 120, r: 239, g: 68,  b: 68  }  // Red
+    ];
+    return getGradientFromLowToCurrent(currentTemp, minTemp, tempStops, getAppleTempColor);
+}
+
+// --- OFFICIAL APPLE WEATHER WIND COLOR PALETTE (BLUE BASE) ---
+function getAppleWindColor(mph) {
+    if (mph <= 3)  return "rgb(174, 198, 207)";  // Light Slate Blue / Calm
+    if (mph <= 10) return "rgb(96, 165, 250)";   // Soft Sky Blue / Light Breeze
+    if (mph <= 18) return "rgb(6, 182, 212)";    // Cyan / Moderate Breeze
+    if (mph <= 28) return "rgb(34, 197, 94)";    // Green / Strong Breeze
+    if (mph <= 40) return "rgb(234, 179, 8)";    // Yellow / Near Gale
+    if (mph <= 55) return "rgb(249, 115, 22)";   // Orange / Gale
+    if (mph <= 72) return "rgb(239, 68, 68)";    // Red / Strong Gale
+    return "rgb(168, 85, 247)";                  // Deep Purple / Storm & Hurricane
+}
+
+// --- HELPER FOR WIND GRADIENT (0 MPH TO CURRENT MPH) ---
+function getWindGradientCss(currentMph) {
+    const minWind = 0;
+    const windStops = [
+        { val: 0,  r: 174, g: 198, b: 207 }, // Slate Blue
+        { val: 10, r: 96,  g: 165, b: 250 }, // Soft Sky Blue
+        { val: 18, r: 6,   g: 182, b: 212 }, // Cyan
+        { val: 28, r: 34,  g: 197, b: 94  }, // Green
+        { val: 40, r: 234, g: 179, b: 8   }, // Yellow
+        { val: 55, r: 249, g: 115, b: 22  }, // Orange
+        { val: 72, r: 239, g: 68,  b: 68  }, // Red
+        { val: 80, r: 168, g: 85,  b: 247 }  // Purple
+    ];
+    return getGradientFromLowToCurrent(currentMph, minWind, windStops, getAppleWindColor);
 }
 
 // --- UPDATED RENDER FORECAST FUNCTION ---
@@ -1076,7 +1132,7 @@ function renderForecast(dosForecast) {
         videoTag.className = "video-label";
         videoTag.innerText = item.videoStatus;
 
-        // --- FULL-SCALE GRADIENT DOS SCORE BAR ---
+        // --- DOS SCORE BAR ---
         const barLabel = document.createElement("div");
         barLabel.className = "bar-label";
         barLabel.innerText = "DOS Score Bar";
@@ -1095,10 +1151,11 @@ function renderForecast(dosForecast) {
         dosRangeFill.style.background = getDosGradientCss(item.score, maxScale);
         bar.appendChild(dosRangeFill);
 
-        // --- TEMPERATURE BAR ---
+        // --- FIXED SCALE TEMP BAR (-10°F to 120°F) ---
         const tempStatRow = document.createElement("div");
         tempStatRow.className = "stat-row";
-        tempStatRow.innerHTML = `<span>Temp Range</span><span class="stat-val">${item.tempLow}°F - ${item.tempHigh}°F</span>`;
+        const highTempColor = getAppleTempColor(item.tempHigh);
+        tempStatRow.innerHTML = `<span>Temp Range</span><span class="stat-val" style="color:${highTempColor}">${item.tempLow}°F - ${item.tempHigh}°F</span>`;
 
         const tempBar = document.createElement("div");
         tempBar.className = "bar";
@@ -1106,23 +1163,20 @@ function renderForecast(dosForecast) {
         const tempRangeFill = document.createElement("div");
         tempRangeFill.className = "range-bar-fill";
         
-        const minTempScale = -10;
-        const totalTempSpan = 120;
-        const lowPercent = Math.max(0, Math.min(100, ((item.tempLow - minTempScale) / totalTempSpan) * 100));
-        const highPercent = Math.max(0, Math.min(100, ((item.tempHigh - minTempScale) / totalTempSpan) * 100));
-        
-        const lowColor = getTempColor(item.tempLow);
-        const highColor = getTempColor(item.tempHigh);
+        const fixedMinTemp = -10;
+        const fixedMaxTemp = 120;
+        const tempSpan = fixedMaxTemp - fixedMinTemp;
+        const tempWidthPercent = Math.min(100, Math.max(3, ((item.tempHigh - fixedMinTemp) / tempSpan) * 100));
 
-        tempRangeFill.style.left = lowPercent + "%";
-        tempRangeFill.style.width = Math.max(5, (highPercent - lowPercent)) + "%";
-        tempRangeFill.style.background = `linear-gradient(90deg, ${lowColor}, ${highColor})`;
+        tempRangeFill.style.left = "0%";
+        tempRangeFill.style.width = tempWidthPercent + "%";
+        tempRangeFill.style.background = getTempGradientCss(item.tempHigh);
         tempBar.appendChild(tempRangeFill);
 
         // --- FIXED SCALE WIND SPEED BAR (0 to 60 MPH) ---
         const windStatRow = document.createElement("div");
         windStatRow.className = "stat-row";
-        const windColor = getWindColor(item.windMph);
+        const windColor = getAppleWindColor(item.windMph);
         windStatRow.innerHTML = `<span>Wind Speed</span><span class="stat-val" style="color:${windColor}">${item.windMph} mph</span>`;
 
         const windBar = document.createElement("div");
@@ -1131,18 +1185,18 @@ function renderForecast(dosForecast) {
         const windRangeFill = document.createElement("div");
         windRangeFill.className = "range-bar-fill";
         
-        const fixedMaxWindScale = 60; // Fixed upper limit
+        const fixedMaxWindScale = 60;
         const windWidthPercent = Math.min(100, Math.max(3, (item.windMph / fixedMaxWindScale) * 100));
 
         windRangeFill.style.left = "0%";
         windRangeFill.style.width = windWidthPercent + "%";
-        windRangeFill.style.background = getWindGradientCss(item.windMph, fixedMaxWindScale);
+        windRangeFill.style.background = getWindGradientCss(item.windMph);
         windBar.appendChild(windRangeFill);
 
         // --- FIXED SCALE WIND GUST BAR (0 to 80 MPH) ---
         const gustStatRow = document.createElement("div");
         gustStatRow.className = "stat-row";
-        const gustColor = getWindColor(item.gustMph);
+        const gustColor = getAppleWindColor(item.gustMph);
         gustStatRow.innerHTML = `<span>Wind Gust</span><span class="stat-val" style="color:${gustColor}">${item.gustMph} mph</span>`;
 
         const gustBar = document.createElement("div");
@@ -1151,12 +1205,12 @@ function renderForecast(dosForecast) {
         const gustRangeFill = document.createElement("div");
         gustRangeFill.className = "range-bar-fill";
         
-        const fixedMaxGustScale = 80; // Fixed upper limit
+        const fixedMaxGustScale = 80;
         const gustWidthPercent = Math.min(100, Math.max(3, (item.gustMph / fixedMaxGustScale) * 100));
 
         gustRangeFill.style.left = "0%";
         gustRangeFill.style.width = gustWidthPercent + "%";
-        gustRangeFill.style.background = getWindGradientCss(item.gustMph, fixedMaxGustScale);
+        gustRangeFill.style.background = getWindGradientCss(item.gustMph);
         gustBar.appendChild(gustRangeFill);
 
         // --- LIVE STREAM CHANCE GRADIENT BAR ---
