@@ -1825,17 +1825,30 @@ function drawForecastCanvasGraph(item, mode, canvas, activeX = null, prevItem = 
     } else if (mode === "wind") {
         const allGusts = points.map(p => p.gust);
         const allWinds = points.map(p => p.wind);
-        const minY = Math.max(0, Math.min(...allWinds) - 5);
-        const maxY = Math.max(...allGusts) + 5;
+        const minY = 0; // Fixed at 0 so colors and scale fade smoothly from baseline
+        const maxY = Math.max(10, Math.max(...allGusts) + 5);
 
         const getWindY = (p) => padTop + graphHeight - ((p.wind - minY) / (maxY - minY)) * graphHeight;
         const getGustY = (p) => padTop + graphHeight - ((p.gust - minY) / (maxY - minY)) * graphHeight;
 
-        const windColor = typeof getAppleWindColor === "function" ? getAppleWindColor(item.windMph) : "#00bfff";
-        const gustColor = typeof getAppleWindColor === "function" ? getAppleWindColor(item.gustMph) : "#ff4500";
+        // Dynamic 0-to-Max vertical gradients anchored to the canvas height
+        const windGrad = ctx.createLinearGradient(0, height - padBottom, 0, padTop);
+        const gustGrad = ctx.createLinearGradient(0, height - padBottom, 0, padTop);
 
-        drawSegmentedLine(points, windColor, 2.5, getWindY, true);
-        drawSegmentedLine(points, gustColor, 2, getGustY, false);
+        const baseWindColor = typeof getAppleWindColor === "function" ? getAppleWindColor(0) : "#00bfff";
+        const maxWindColor = typeof getAppleWindColor === "function" ? getAppleWindColor(Math.max(...allWinds)) : "#00bfff";
+        const maxGustColor = typeof getAppleWindColor === "function" ? getAppleWindColor(Math.max(...allGusts)) : "#ff4500";
+
+        // Smooth transition from 0 mph color (bottom) to peak value color (top)
+        windGrad.addColorStop(0, baseWindColor);
+        windGrad.addColorStop(1, maxWindColor);
+
+        gustGrad.addColorStop(0, baseWindColor);
+        gustGrad.addColorStop(1, maxGustColor);
+
+        // Render wind line (with subtle under-fill) and gust line
+        drawSegmentedLine(points, windGrad, 2.5, getWindY, true);
+        drawSegmentedLine(points, gustGrad, 2, getGustY, false);
 
         if (isToday) {
             const currentX = padLeft + (currentMinutes / 1439) * graphWidth;
@@ -1845,18 +1858,17 @@ function drawForecastCanvasGraph(item, mode, canvas, activeX = null, prevItem = 
             const windY = padTop + graphHeight - ((curWind - minY) / (maxY - minY)) * graphHeight;
             const gustY = padTop + graphHeight - ((curGust - minY) / (maxY - minY)) * graphHeight;
 
-            ctx.fillStyle = windColor;
+            // Current time indicator dots matching dynamic colors at that speed
+            ctx.fillStyle = typeof getAppleWindColor === "function" ? getAppleWindColor(curWind) : "#00bfff";
             ctx.beginPath();
             ctx.arc(currentX, windY, 5, 0, Math.PI * 2);
             ctx.fill();
 
-            ctx.fillStyle = gustColor;
+            ctx.fillStyle = typeof getAppleWindColor === "function" ? getAppleWindColor(curGust) : "#ff4500";
             ctx.beginPath();
             ctx.arc(currentX, gustY, 5, 0, Math.PI * 2);
             ctx.fill();
-        }
-
-    } else if (mode === "dos") {
+        } else if (mode === "dos") {
         const allDos = points.map(p => p.dos);
         const minY = Math.max(0, Math.min(...allDos) - 5);
         const maxY = Math.max(...allDos) + 5;
