@@ -1610,7 +1610,7 @@ function drawForecastCanvasGraph(item, mode, canvas, activeX = null, prevItem = 
     const graphWidth = width - padLeft - padRight;
     const graphHeight = height - padTop - padBottom;
 
-    // Direct Smooth Interpolation Helper (Cos-based)
+    // Smooth Interpolation Helper (Cos-based)
     const smoothStep = (v0, v1, t) => {
         const factor = 0.5 * (1 - Math.cos(t * Math.PI));
         return v0 + (v1 - v0) * factor;
@@ -1627,51 +1627,92 @@ function drawForecastCanvasGraph(item, mode, canvas, activeX = null, prevItem = 
     // Detect Winter Cold Front / Inversion (High occurs in the morning / overnight)
     const isWinterInversion = item.isWinterInversion || (item.tempHigh < morningLow);
 
-    // Dynamic temperature calculation function per minute
-    const getInterpolatedTemp = (m) => {
+    // Diurnal default fallback calculation per minute
+    const getDiurnalTemp = (m) => {
         if (isWinterInversion) {
-            // High is hit in early morning, steadily falls through afternoon into next day's low
             const tStart = Math.round((prevHigh + todayHigh) / 2);
-            if (m <= 360) { // 12 AM -> 6 AM
+            if (m <= 360) {
                 return Math.round(smoothStep(tStart, todayHigh, m / 360));
-            } else if (m <= 900) { // 6 AM -> 3 PM
+            } else if (m <= 900) {
                 return Math.round(smoothStep(todayHigh, todayLow, (m - 360) / 540));
-            } else { // 3 PM -> 11:59 PM
+            } else {
                 return Math.round(smoothStep(todayLow, tomorrowLow, (m - 900) / 539));
             }
         } else {
-            // Normal Solar Cycle: Starts overnight, reaches Morning Low (~6 AM), Peak (~3 PM), drops towards Tomorrow Low
             const midnightTemp = Math.round((prevHigh + morningLow) / 2);
-            if (m <= 360) { // 12 AM -> 6 AM
+            if (m <= 360) {
                 return Math.round(smoothStep(midnightTemp, morningLow, m / 360));
-            } else if (m <= 900) { // 6 AM -> 3 PM
+            } else if (m <= 900) {
                 return Math.round(smoothStep(morningLow, todayHigh, (m - 360) / 540));
-            } else { // 3 PM -> 11:59 PM
+            } else {
                 const targetMidnight = Math.round((todayHigh + tomorrowLow) / 2);
                 return Math.round(smoothStep(todayHigh, targetMidnight, (m - 900) / 539));
             }
         }
     };
 
-    const points = [];
+    // --- OVERRIDE EVENTS ENGINE ---
+    // Format: item.overrideEvents = [{ minute: 0, temp: 40, wind: 5, gust: 10, dos: 30, label: "Front Hits" }, ...]
+    const hasEvents = Array.isArray(item.overrideEvents) && item.overrideEvents.length > 0;
+    const sortedEvents = hasEvents ? [...item.overrideEvents].sort((a, b) => a.minute - b.minute) : [];
+
+    const getInterpolatedVal = (m, key, fallbackFn) => {
+        if (!hasEvents) return fallbackFn(m);
+
+        // Exact event match
+        const exact = sortedEvents.find(e => e.minute === m && e[key] !== undefined);
+        if (exact) return exact[key];
+
+        const prevEvent = [...sortedEvents].reverse().find(e => e.minute <= m && e[key] !== undefined);
+        const nextEvent = sortedEvents.find(e => e.minute >= m && e[key] !== undefined);
+
+        if (prevEvent && nextEvent) {
+            if (prevEvent.minute === nextEvent.minute) return prevEvent[key];
+            const t = (m - prevEvent.minute) / (nextEvent.minute - prevEvent.minute);
+            return Math.round(smoothStep(prevEvent[key], nextEvent[key], t));
+        } else if (prevEvent) {
+            return prevEvent[key];
+        } else if (nextEvent) {
+            return nextEvent[key];
+        }
+
+        return fallbackFn(m);
+    };
+
+    const getInterpolatedTemp = (m) => getInterpolatedVal(m, 'temp', getDiurnalTemp);
+
     const peakMin = 15 * 60; // 3 PM
 
+    const getDiurnalWind = (m) => {
+        const windRad = ((m - peakMin) / 1440) * Math.PI * 2;
+        const windFactor = (Math.cos(windRad) + 1) / 2;
+        return Math.round(item.windMph * (0.6 + 0.4 * windFactor));
+    };
+
+    const getDiurnalGust = (m) => {
+        const windRad = ((m - peakMin) / 1440) * Math.PI * 2;
+        const windFactor = (Math.cos(windRad) + 1) / 2;
+        return Math.round(item.gustMph * (0.65 + 0.35 * windFactor));
+    };
+
+    const getDiurnalDos = (m) => {
+        const dosTempRad = ((m - peakMin) / 1440) * Math.PI * 2;
+        const dosFactor = (Math.cos(dosTempRad) + 1) / 2;
+        return Math.round(item.score * (0.5 + 0.5 * dosFactor));
+    };
+
+    const getInterpolatedWind = (m) => getInterpolatedVal(m, 'wind', getDiurnalWind);
+    const getInterpolatedGust = (m) => getInterpolatedVal(m, 'gust', getDiurnalGust);
+    const getInterpolatedDos = (m) => getInterpolatedVal(m, 'dos', getDiurnalDos);
+
+    const points = [];
     for (let m = 0; m <= 1439; m += 15) {
         const x = padLeft + (m / 1439) * graphWidth;
 
-        // Dynamic Temperature
         const tempVal = getInterpolatedTemp(m);
-
-        // Wind/Gust Diurnal Cycle
-        const windRad = ((m - peakMin) / 1440) * Math.PI * 2;
-        const windFactor = (Math.cos(windRad) + 1) / 2;
-        const windVal = Math.round(item.windMph * (0.6 + 0.4 * windFactor));
-        const gustVal = Math.round(item.gustMph * (0.65 + 0.35 * windFactor));
-
-        // DOS Score Diurnal Cycle
-        const dosTempRad = ((m - peakMin) / 1440) * Math.PI * 2;
-        const dosFactor = (Math.cos(dosTempRad) + 1) / 2;
-        const dosVal = Math.round(item.score * (0.5 + 0.5 * dosFactor));
+        const windVal = getInterpolatedWind(m);
+        const gustVal = getInterpolatedGust(m);
+        const dosVal = getInterpolatedDos(m);
 
         points.push({ minute: m, x: x, temp: tempVal, wind: windVal, gust: gustVal, dos: dosVal });
     }
@@ -1762,6 +1803,20 @@ function drawForecastCanvasGraph(item, mode, canvas, activeX = null, prevItem = 
             ctx.stroke();
         }
 
+        // Render Override Markers on graph if present
+        if (hasEvents) {
+            sortedEvents.forEach(ev => {
+                if (ev.temp !== undefined) {
+                    const ex = padLeft + (ev.minute / 1439) * graphWidth;
+                    const ey = padTop + graphHeight - ((ev.temp - minY) / (maxY - minY)) * graphHeight;
+                    ctx.fillStyle = "#ffcc00";
+                    ctx.beginPath();
+                    ctx.arc(ex, ey, 4, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+            });
+        }
+
     } else if (mode === "wind") {
         const allGusts = points.map(p => p.gust);
         const allWinds = points.map(p => p.wind);
@@ -1781,9 +1836,8 @@ function drawForecastCanvasGraph(item, mode, canvas, activeX = null, prevItem = 
 
         if (isToday) {
             const currentX = padLeft + (currentMinutes / 1439) * graphWidth;
-            const windRad = ((currentMinutes - peakMin) / 1440) * Math.PI * 2;
-            const curWind = Math.round(item.windMph * (0.6 + 0.4 * ((Math.cos(windRad) + 1) / 2)));
-            const curGust = Math.round(item.gustMph * (0.65 + 0.35 * ((Math.cos(windRad) + 1) / 2)));
+            const curWind = getInterpolatedWind(currentMinutes);
+            const curGust = getInterpolatedGust(currentMinutes);
 
             const windY = padTop + graphHeight - ((curWind - minY) / (maxY - minY)) * graphHeight;
             const gustY = padTop + graphHeight - ((curGust - minY) / (maxY - minY)) * graphHeight;
@@ -1817,8 +1871,7 @@ function drawForecastCanvasGraph(item, mode, canvas, activeX = null, prevItem = 
 
         if (isToday) {
             const currentX = padLeft + (currentMinutes / 1439) * graphWidth;
-            const currentRad = ((currentMinutes - peakMin) / 1440) * Math.PI * 2;
-            const currentDos = Math.round(item.score * (0.5 + 0.5 * ((Math.cos(currentRad) + 1) / 2)));
+            const currentDos = getInterpolatedDos(currentMinutes);
             const currentY = padTop + graphHeight - ((currentDos - minY) / (maxY - minY)) * graphHeight;
 
             ctx.fillStyle = "#ffffff";
@@ -1850,19 +1903,16 @@ function drawForecastCanvasGraph(item, mode, canvas, activeX = null, prevItem = 
 
         // Interpolated Values for Scrubber
         const hoveredTemp = getInterpolatedTemp(hoveredMinute);
+        const hoveredWind = getInterpolatedWind(hoveredMinute);
+        const hoveredGust = getInterpolatedGust(hoveredMinute);
+        const hoveredDos = getInterpolatedDos(hoveredMinute);
 
-        const windRad = ((hoveredMinute - peakMin) / 1440) * Math.PI * 2;
-        const windFactor = (Math.cos(windRad) + 1) / 2;
-        const hoveredWind = Math.round(item.windMph * (0.6 + 0.4 * windFactor));
-        const hoveredGust = Math.round(item.gustMph * (0.65 + 0.35 * windFactor));
-
-        const dosTempRad = ((hoveredMinute - peakMin) / 1440) * Math.PI * 2;
-        const dosFactor = (Math.cos(dosTempRad) + 1) / 2;
-        const hoveredDos = Math.round(item.score * (0.5 + 0.5 * dosFactor));
+        // Check if hovering near an event label
+        const nearbyEvent = hasEvents ? sortedEvents.find(e => Math.abs(e.minute - hoveredMinute) <= 20 && e.label) : null;
 
         let tooltipText = "";
         if (mode === "temp") {
-            tooltipText = `${timeStr} - ${hoveredTemp}°F`;
+            tooltipText = `${timeStr} - ${hoveredTemp}°F${nearbyEvent ? ` (${nearbyEvent.label})` : ''}`;
         } else if (mode === "wind") {
             tooltipText = `${timeStr} - Wind: ${hoveredWind} mph | Gust: ${hoveredGust} mph`;
         } else if (mode === "dos") {
