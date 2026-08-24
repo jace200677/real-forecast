@@ -818,6 +818,63 @@ async function buildForecast() {
     renderForecast(dosForecast);
 }
 
+// --- HELPER TO GENERATE FULL COLOR SCALE GRADIENTS ---
+function getDosGradientCss(targetScore, maxScale = 120) {
+    const stops = [
+        { score: 0,   color: "rgb(0, 255, 119)" },
+        { score: 30,  color: "rgb(255, 255, 0)" },
+        { score: 60,  color: "rgb(255, 170, 0)" },
+        { score: 90,  color: "rgb(255, 0, 85)" },
+        { score: 120, color: "rgb(212, 0, 255)" }
+    ];
+
+    if (targetScore <= 0) return stops[0].color;
+
+    let gradientStops = [];
+    for (let stop of stops) {
+        if (stop.score <= targetScore) {
+            let pct = Math.round((stop.score / targetScore) * 100);
+            gradientStops.push(`${stop.color} ${pct}%`);
+        } else {
+            // Add final interpolated stop at exact current targetScore position
+            let endColor = getLerpColor(targetScore);
+            gradientStops.push(`${endColor} 100%`);
+            break;
+        }
+    }
+
+    if (gradientStops.length === 1) return gradientStops[0];
+    return `linear-gradient(90deg, ${gradientStops.join(", ")})`;
+}
+
+function getStreamGradientCss(chancePct) {
+    const stops = [
+        { pct: 0,   color: "rgb(40, 50, 70)" },   // Low/Off
+        { pct: 30,  color: "rgb(0, 100, 200)" },  // Low-Mid
+        { pct: 60,  color: "rgb(0, 170, 255)" },  // Mid-High
+        { pct: 100, color: "rgb(0, 255, 200)" }   // High/Active
+    ];
+
+    if (chancePct <= 0) return stops[0].color;
+
+    let gradientStops = [];
+    for (let stop of stops) {
+        if (stop.pct <= chancePct) {
+            let relativePct = Math.round((stop.pct / chancePct) * 100);
+            gradientStops.push(`${stop.color} ${relativePct}%`);
+        } else {
+            // Interpolate target end color
+            let lastLower = stops.filter(s => s.pct <= chancePct).pop();
+            gradientStops.push(`${stop.color} 100%`);
+            break;
+        }
+    }
+
+    if (gradientStops.length === 1) return gradientStops[0];
+    return `linear-gradient(90deg, ${gradientStops.join(", ")})`;
+}
+
+// --- UPDATED RENDER FORECAST FUNCTION ---
 function renderForecast(dosForecast) {
     const container = document.getElementById("forecastContainer");
     container.innerHTML = "";
@@ -854,7 +911,7 @@ function renderForecast(dosForecast) {
         videoTag.className = "video-label";
         videoTag.innerText = item.videoStatus;
 
-        // --- GRADIENT DOS SCORE BAR ---
+        // --- FIXED FULL-SCALE GRADIENT DOS SCORE BAR ---
         const barLabel = document.createElement("div");
         barLabel.className = "bar-label";
         barLabel.innerText = "DOS Score Bar";
@@ -867,11 +924,10 @@ function renderForecast(dosForecast) {
         
         const maxScale = 120;
         const dosPercent = Math.min((item.score / maxScale) * 100, 100);
-        const dosStartColor = getLerpColor(0); // Color at score 0 (Green)
 
         dosRangeFill.style.left = "0%";
-        dosRangeFill.style.width = dosPercent + "%";
-        dosRangeFill.style.background = `linear-gradient(90deg, ${dosStartColor}, ${dynamicColor})`;
+        dosRangeFill.style.width = Math.max(dosPercent, 2) + "%";
+        dosRangeFill.style.background = getDosGradientCss(item.score, maxScale);
         bar.appendChild(dosRangeFill);
 
         // --- TEMPERATURE BAR ---
@@ -941,7 +997,7 @@ function renderForecast(dosForecast) {
         gustRangeFill.style.background = `linear-gradient(90deg, ${gustStartColor}, ${gustColor})`;
         gustBar.appendChild(gustRangeFill);
 
-        // --- GRADIENT LIVE STREAM CHANCE BAR ---
+        // --- FIXED LIVE STREAM CHANCE GRADIENT BAR ---
         const streamContainer = document.createElement("div");
         streamContainer.className = "stream-chance-container";
 
@@ -959,20 +1015,16 @@ function renderForecast(dosForecast) {
         const streamRangeFill = document.createElement("div");
         streamRangeFill.className = "range-bar-fill";
         
-        // Gradient from low probability (muted blue/gray) to current percentage target (#0088ff)
-        const streamStartColor = "rgb(28, 60, 95)";
-        const streamEndColor = "rgb(0, 136, 255)";
-
         streamRangeFill.style.left = "0%";
-        streamRangeFill.style.width = item.streamChance + "%";
-        streamRangeFill.style.background = `linear-gradient(90deg, ${streamStartColor}, ${streamEndColor})`;
+        streamRangeFill.style.width = Math.max(item.streamChance, 2) + "%";
+        streamRangeFill.style.background = getStreamGradientCss(item.streamChance);
 
         streamBar.appendChild(streamRangeFill);
         streamContainer.appendChild(streamTitle);
         streamContainer.appendChild(streamVal);
         streamContainer.appendChild(streamBar);
 
-        // --- ASSEMBLE CARD ELEMENTS ---
+        // --- ASSEMBLE CARD ---
         card.appendChild(dayName);
         card.appendChild(dayDate);
         card.appendChild(dosValue);
@@ -1002,7 +1054,6 @@ function renderForecast(dosForecast) {
         container.appendChild(card);
     });
 }
-
 buildForecast();
 </script>
 
