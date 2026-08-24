@@ -748,8 +748,8 @@ async function buildForecast() {
     tempHigh = liveHigh !== null ? Math.max(liveHigh, targetHighFloor) : targetHighFloor;
 
     // Dynamic low calculation: caps low at maximum 41°F based on latitude and longitude
-    const dynamicLow = Math.round(51 - (latOffset * 1.8) + (lonOffset * 0.5));
-    tempLow = Math.min(dynamicLow, 51);
+    const dynamicLow = Math.round(48 - (latOffset * 1.8) + (lonOffset * 0.5));
+    tempLow = Math.min(dynamicLow, 48);
 
     // Standard DOS projection logic
     const trendMultiplier = 1 + (Math.sin(i * 0.8) * 0.2);
