@@ -854,6 +854,7 @@ function renderForecast(dosForecast) {
         videoTag.className = "video-label";
         videoTag.innerText = item.videoStatus;
 
+        // --- GRADIENT DOS SCORE BAR ---
         const barLabel = document.createElement("div");
         barLabel.className = "bar-label";
         barLabel.innerText = "DOS Score Bar";
@@ -861,13 +862,19 @@ function renderForecast(dosForecast) {
         const bar = document.createElement("div");
         bar.className = "bar";
 
-        const barFill = document.createElement("div");
-        barFill.className = "bar-fill";
-        barFill.style.backgroundColor = dynamicColor;
+        const dosRangeFill = document.createElement("div");
+        dosRangeFill.className = "range-bar-fill";
+        
         const maxScale = 120;
-        barFill.style.width = Math.min((item.score / maxScale) * 100, 100) + "%";
-        bar.appendChild(barFill);
+        const dosPercent = Math.min((item.score / maxScale) * 100, 100);
+        const dosStartColor = getLerpColor(0); // Color at score 0 (Green)
 
+        dosRangeFill.style.left = "0%";
+        dosRangeFill.style.width = dosPercent + "%";
+        dosRangeFill.style.background = `linear-gradient(90deg, ${dosStartColor}, ${dynamicColor})`;
+        bar.appendChild(dosRangeFill);
+
+        // --- TEMPERATURE BAR ---
         const tempStatRow = document.createElement("div");
         tempStatRow.className = "stat-row";
         tempStatRow.innerHTML = `<span>Temp Range</span><span class="stat-val">${item.tempLow}°F - ${item.tempHigh}°F</span>`;
@@ -891,6 +898,7 @@ function renderForecast(dosForecast) {
         tempRangeFill.style.background = `linear-gradient(90deg, ${lowColor}, ${highColor})`;
         tempBar.appendChild(tempRangeFill);
 
+        // --- WIND SPEED BAR ---
         const windStatRow = document.createElement("div");
         windStatRow.className = "stat-row";
         const windColor = getWindColor(item.windMph);
@@ -912,6 +920,7 @@ function renderForecast(dosForecast) {
         windRangeFill.style.background = `linear-gradient(90deg, ${windStartColor}, ${windColor})`;
         windBar.appendChild(windRangeFill);
 
+        // --- WIND GUST BAR ---
         const gustStatRow = document.createElement("div");
         gustStatRow.className = "stat-row";
         const gustColor = getWindColor(item.gustMph);
@@ -932,6 +941,7 @@ function renderForecast(dosForecast) {
         gustRangeFill.style.background = `linear-gradient(90deg, ${gustStartColor}, ${gustColor})`;
         gustBar.appendChild(gustRangeFill);
 
+        // --- GRADIENT LIVE STREAM CHANCE BAR ---
         const streamContainer = document.createElement("div");
         streamContainer.className = "stream-chance-container";
 
@@ -946,15 +956,23 @@ function renderForecast(dosForecast) {
         const streamBar = document.createElement("div");
         streamBar.className = "bar";
 
-        const streamBarFill = document.createElement("div");
-        streamBarFill.className = "bar-fill-stream";
-        streamBarFill.style.width = item.streamChance + "%";
+        const streamRangeFill = document.createElement("div");
+        streamRangeFill.className = "range-bar-fill";
+        
+        // Gradient from low probability (muted blue/gray) to current percentage target (#0088ff)
+        const streamStartColor = "rgb(28, 60, 95)";
+        const streamEndColor = "rgb(0, 136, 255)";
 
-        streamBar.appendChild(streamBarFill);
+        streamRangeFill.style.left = "0%";
+        streamRangeFill.style.width = item.streamChance + "%";
+        streamRangeFill.style.background = `linear-gradient(90deg, ${streamStartColor}, ${streamEndColor})`;
+
+        streamBar.appendChild(streamRangeFill);
         streamContainer.appendChild(streamTitle);
         streamContainer.appendChild(streamVal);
         streamContainer.appendChild(streamBar);
 
+        // --- ASSEMBLE CARD ELEMENTS ---
         card.appendChild(dayName);
         card.appendChild(dayDate);
         card.appendChild(dosValue);
