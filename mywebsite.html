@@ -720,9 +720,15 @@ async function buildForecast() {
             }
         }
 
-        // --- SPECIFIC OVERRIDES ---
-if (year === 2026 && month === 8 && dateNum === 23) {
-    // Check if live grid data exists for this location to set real forecast temps
+        if (year === 2026 && month === 8 && dateNum === 23) {
+    // Calculate geographic offsets from base coordinates (45.0, -93.0)
+    const lat = targetZoneOrPoint ? parseFloat(targetZoneOrPoint.lat) : 45.0;
+    const lon = targetZoneOrPoint ? parseFloat(targetZoneOrPoint.lon) : -93.0;
+
+    const latOffset = (lat - 45.0) * 1.5;
+    const lonOffset = (lon + 93.0) * 0.8;
+
+    // Retrieve or set live high temperature
     if (gridPeriods && gridPeriods.length > 0) {
         const dayPeriods = gridPeriods.filter(p => {
             const pDate = new Date(p.startTime).getDate();
@@ -732,25 +738,24 @@ if (year === 2026 && month === 8 && dateNum === 23) {
         if (dayPeriods.length > 0) {
             const temps = dayPeriods.map(p => p.temperature);
             tempHigh = Math.max(...temps);
-            tempLow = Math.min(...temps);
-            if (tempHigh === tempLow) tempLow = tempHigh - 12;
         }
     } else {
-        // Default regional fallback temperatures when live grid data is missing
-        const lat = targetZoneOrPoint ? parseFloat(targetZoneOrPoint.lat) : 45.0;
-        const lon = targetZoneOrPoint ? parseFloat(targetZoneOrPoint.lon) : -93.0;
-        
-        const latOffset = (lat - 45.0) * 1.5;
-        tempLow = Math.round(58 - latOffset);
-        tempHigh = Math.round(78 - latOffset);
+        tempHigh = Math.round(78 - latOffset); // Default regional baseline high
     }
 
-    // Retain or customize DOS score calculation for 8/23/2026
+    // Dynamic low calculation: caps low at maximum 41°F based on latitude and longitude
+    const dynamicLow = Math.round(41 - (latOffset * 1.8) + (lonOffset * 0.5));
+    tempLow = Math.min(dynamicLow, 41);
+
+    // Standard DOS projection logic
     const trendMultiplier = 1 + (Math.sin(i * 0.8) * 0.2);
     projectedScore = Math.min(Math.max(Math.round(dos * trendMultiplier), 2), 150);
     streamChance = Math.min(Math.round((projectedScore / 90) * 100), 85);
     if (streamChance < 5) streamChance = 0;
-        } else if (year === 2026 && month === 8 && dateNum === 6) {
+
+}
+        
+          else if (year === 2026 && month === 8 && dateNum === 6) {
             projectedScore = 200;
             streamChance = 100;
         } else if (year === 2026 && month === 8 && dateNum === 27) {
