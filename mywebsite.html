@@ -1005,6 +1005,7 @@ function getStreamGradientCss(chancePct) {
 }
 
 // --- UPDATED RENDER FORECAST FUNCTION ---
+// --- UPDATED RENDER FORECAST FUNCTION WITH WIND/GUST COLOR FIXES ---
 function renderForecast(dosForecast) {
     const container = document.getElementById("forecastContainer");
     container.innerHTML = "";
@@ -1041,7 +1042,7 @@ function renderForecast(dosForecast) {
         videoTag.className = "video-label";
         videoTag.innerText = item.videoStatus;
 
-        // --- FIXED FULL-SCALE GRADIENT DOS SCORE BAR ---
+        // --- FULL-SCALE GRADIENT DOS SCORE BAR ---
         const barLabel = document.createElement("div");
         barLabel.className = "bar-label";
         barLabel.innerText = "DOS Score Bar";
@@ -1084,7 +1085,7 @@ function renderForecast(dosForecast) {
         tempRangeFill.style.background = `linear-gradient(90deg, ${lowColor}, ${highColor})`;
         tempBar.appendChild(tempRangeFill);
 
-        // --- WIND SPEED BAR ---
+        // --- WIND SPEED BAR (FIXED COLOR TRANSITION) ---
         const windStatRow = document.createElement("div");
         windStatRow.className = "stat-row";
         const windColor = getWindColor(item.windMph);
@@ -1106,7 +1107,7 @@ function renderForecast(dosForecast) {
         windRangeFill.style.background = `linear-gradient(90deg, ${windStartColor}, ${windColor})`;
         windBar.appendChild(windRangeFill);
 
-        // --- WIND GUST BAR ---
+        // --- WIND GUST BAR (FIXED COLOR TRANSITION) ---
         const gustStatRow = document.createElement("div");
         gustStatRow.className = "stat-row";
         const gustColor = getWindColor(item.gustMph);
@@ -1127,7 +1128,7 @@ function renderForecast(dosForecast) {
         gustRangeFill.style.background = `linear-gradient(90deg, ${gustStartColor}, ${gustColor})`;
         gustBar.appendChild(gustRangeFill);
 
-        // --- FIXED LIVE STREAM CHANCE GRADIENT BAR ---
+        // --- LIVE STREAM CHANCE GRADIENT BAR ---
         const streamContainer = document.createElement("div");
         streamContainer.className = "stream-chance-container";
 
