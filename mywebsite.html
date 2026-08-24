@@ -1041,7 +1041,39 @@ function getGradientFromLowToCurrent(currentVal, minScale, stops, getColorFn) {
 }
 // --- OFFICIAL APPLE WEATHER TEMPERATURE COLOR PALETTE (PURPLE INCLUDED) ---
 // --- RANGE GRADIENT GENERATOR (FROM tempLow TO tempHigh) ---
+function getAppleTempColor(tempF) {
+    const stops = [
+        { temp: -10, r: 147, g: 51,  b: 234 }, // Deep Purple
+        { temp: 15,  r: 99,  g: 102, b: 241 }, // Indigo / Violet
+        { temp: 32,  r: 59,  g: 130, b: 246 }, // Dark Blue
+        { temp: 50,  r: 6,   g: 182, b: 212 }, // Cyan / Light Blue
+        { temp: 68,  r: 34,  g: 197, b: 94  }, // Green
+        { temp: 77,  r: 234, g: 179, b: 8   }, // Yellow
+        { temp: 86,  r: 249, g: 115, b: 22  }, // Orange
+        { temp: 120, r: 239, g: 68,  b: 68  }  // Red
+    ];
 
+    if (tempF <= stops[0].temp) {
+        return `rgb(${stops[0].r}, ${stops[0].g}, ${stops[0].b})`;
+    }
+    if (tempF >= stops[stops.length - 1].temp) {
+        const last = stops[stops.length - 1];
+        return `rgb(${last.r}, ${last.g}, ${last.b})`;
+    }
+
+    let i = 0;
+    while (tempF > stops[i + 1].temp) i++;
+
+    const lower = stops[i];
+    const upper = stops[i + 1];
+    const factor = (tempF - lower.temp) / (upper.temp - lower.temp);
+
+    const r = Math.round(lower.r + factor * (upper.r - lower.r));
+    const g = Math.round(lower.g + factor * (upper.g - lower.g));
+    const b = Math.round(lower.b + factor * (upper.b - lower.b));
+
+    return `rgb(${r}, ${g}, ${b})`;
+}
 // --- OFFICIAL APPLE WEATHER WIND COLOR PALETTE (BLUE BASE) ---
 function getAppleWindColor(mph) {
     if (mph <= 3)  return "rgb(174, 198, 207)";  // Light Slate Blue / Calm
