@@ -385,17 +385,22 @@ async function handleFormSubmit(event) {
 
 function getDinnerMenu(dateObj) {
     const month = dateObj.getMonth() + 1;
-    if (month === 6 || month === 7) return null;
+    if (month === 6 || month === 7) return null; // Exclude June and July
 
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    
+    // Fixed absolute reference date: 8/23/2026
+    const startDate = new Date(2026, 7, 23); // Month is 0-indexed (7 = August)
+    startDate.setHours(0, 0, 0, 0);
+
     const target = new Date(dateObj);
     target.setHours(0, 0, 0, 0);
 
-    const diffDays = Math.round((target - today) / (1000 * 60 * 60 * 24));
+    // Calculate exact difference in full days from start date
+    const diffDays = Math.round((target - startDate) / (1000 * 60 * 60 * 24));
+
+    // Handle negative dates correctly using modulo math
     const cycleIndex = ((diffDays % 4) + 4) % 4;
 
+    // Days 0 & 1 -> Pizza | Days 2 & 3 -> Chicken Nuggets
     return (cycleIndex === 0 || cycleIndex === 1) ? "Pizza" : "Chicken Nuggets";
 }
 
