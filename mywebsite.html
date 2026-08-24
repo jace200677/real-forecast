@@ -774,6 +774,36 @@ async function buildForecast() {
             streamChance = Math.min(Math.round((projectedScore / 90) * 100 * confidenceFactor), 85);
             if (streamChance < 5) streamChance = 0;
 
+        } else if (year === 2026 && month === 8 && dateNum === 25) {
+            const lat = targetZoneOrPoint ? parseFloat(targetZoneOrPoint.lat) : 45.0;
+            const lon = targetZoneOrPoint ? parseFloat(targetZoneOrPoint.lon) : -93.0;
+
+            const latOffset = (lat - 45.0) * 2.5;
+            const lonOffset = (lon + 93.0) * 1.8;
+
+            const varianceAmplitude = exactDaysOut * 1.5 * (1 - confidenceFactor); 
+            const swingFactor = Math.sin(exactDaysOut * 1.2);
+
+            const baseDos93 = 33;
+            projectedScore = Math.max(5, Math.round(baseDos93 + latOffset + lonOffset + (swingFactor * varianceAmplitude)));
+            
+            streamChance = Math.min(Math.round((projectedScore / 90) * 100), 95);
+
+            const baseLow = 57 - latOffset + lonOffset;
+            const baseHigh = 85 - latOffset + (lonOffset * 1.5);
+            const baseWind = 13 + latOffset;
+            const baseGust = 32 + (latOffset * 1.5);
+
+            tempLow = Math.round(baseLow + (swingFactor * varianceAmplitude));
+            tempHigh = Math.round(baseHigh + (swingFactor * varianceAmplitude * 1.3));
+            windMph = Math.max(5, Math.round(baseWind + (swingFactor * varianceAmplitude * 0.8)));
+            gustMph = Math.max(windMph + 5, Math.round(baseGust + (swingFactor * varianceAmplitude * 1.5)));
+
+            const conditionSwing = swingFactor * exactDaysOut;
+            if (conditionSwing > 1.5) weatherSummary = "Windy w/ T-Storms";
+            else if (conditionSwing < -1.5) weatherSummary = "Cloudy & Breezy";
+            else weatherSummary = "Cloudy, T-Storms & Windy";
+
         } else if (year === 2026 && month === 8 && dateNum === 6) {
             projectedScore = 200;
             streamChance = 100;
@@ -817,6 +847,36 @@ async function buildForecast() {
             const baseHigh = 65 - latOffset + (lonOffset * 1.5);
             const baseWind = 28 + latOffset;
             const baseGust = 62 + (latOffset * 1.5);
+
+            tempLow = Math.round(baseLow + (swingFactor * varianceAmplitude));
+            tempHigh = Math.round(baseHigh + (swingFactor * varianceAmplitude * 1.3));
+            windMph = Math.max(5, Math.round(baseWind + (swingFactor * varianceAmplitude * 0.8)));
+            gustMph = Math.max(windMph + 5, Math.round(baseGust + (swingFactor * varianceAmplitude * 1.5)));
+
+            const conditionSwing = swingFactor * exactDaysOut;
+            if (conditionSwing > 1.5) weatherSummary = "Windy w/ T-Storms";
+            else if (conditionSwing < -1.5) weatherSummary = "Cloudy & Breezy";
+            else weatherSummary = "Cloudy, T-Storms & Windy";
+
+        } else if (year === 2026 && month === 8 && dateNum === 31) {
+            const lat = targetZoneOrPoint ? parseFloat(targetZoneOrPoint.lat) : 45.0;
+            const lon = targetZoneOrPoint ? parseFloat(targetZoneOrPoint.lon) : -93.0;
+
+            const latOffset = (lat - 45.0) * 2.5;
+            const lonOffset = (lon + 93.0) * 1.8;
+
+            const varianceAmplitude = exactDaysOut * 1.5 * (1 - confidenceFactor); 
+            const swingFactor = Math.sin(exactDaysOut * 1.2);
+
+            const baseDos93 = 123;
+            projectedScore = Math.max(5, Math.round(baseDos93 + latOffset + lonOffset + (swingFactor * varianceAmplitude)));
+            
+            streamChance = Math.min(Math.round((projectedScore / 90) * 100), 95);
+
+            const baseLow = 74 - latOffset + lonOffset;
+            const baseHigh = 105 - latOffset + (lonOffset * 1.5);
+            const baseWind = 34 + latOffset;
+            const baseGust = 65 + (latOffset * 1.5);
 
             tempLow = Math.round(baseLow + (swingFactor * varianceAmplitude));
             tempHigh = Math.round(baseHigh + (swingFactor * varianceAmplitude * 1.3));
