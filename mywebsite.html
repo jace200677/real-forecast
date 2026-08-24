@@ -606,11 +606,12 @@ function calculateNationalScores(alerts) {
 
     // 8/24/2026 WIS Override
     // 8/24/2026 WIS Override
+    // 8/24/2026 WIS Override
     if (year === 2026 && month === 8 && day === 24) {
-        if (totalMinutes < 390) { // Before 6:30 AM
+        if (totalMinutes < 330) { // Before 5:30 AM
             currentWIS = Math.max(0, 5 + geoVariance);
-        } else if (totalMinutes >= 390 && totalMinutes < 840) { // 6:30 AM to 2:00 PM ramp-up
-            const progress = (totalMinutes - 390) / (840 - 390);
+        } else if (totalMinutes >= 330 && totalMinutes < 840) { // 5:30 AM to 2:00 PM ramp-up
+            const progress = (totalMinutes - 330) / (840 - 330);
             currentWIS = Math.round(5 + progress * 22) + geoVariance;
         } else if (totalMinutes >= 840 && totalMinutes <= 1080) { // 2:00 PM to 6:00 PM Peak
             currentWIS = 27 + geoVariance;
