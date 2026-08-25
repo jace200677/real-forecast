@@ -695,25 +695,37 @@ function calculateNationalScores(alerts) {
     else if (isBabbitt) baseTargetWIS = 54;
     else if (isEmbarrass) baseTargetWIS = 56;
 
+    // Determine the specific peak values during the ramp-up window
+    let peakTargetWIS = baseTargetWIS;
+    if (isTower) peakTargetWIS = 97;
+    else if (isVirginia) peakTargetWIS = 86;
+    else if (isBabbitt) peakTargetWIS = 74;
+    else if (isEmbarrass) peakTargetWIS = 76;
+
     let targetWIS = baseTargetWIS;
     
     const currentTime = typeof window !== 'undefined' && window._activeSimulationTime 
         ? new Date(window._activeSimulationTime) 
         : new Date("2026-08-24T20:12:00");
     
-    const startRampDown = new Date("2026-08-24T20:20:00").getTime();
-    const peakTime = new Date("2026-08-24T20:45:00").getTime();
+    const startRampUp = new Date("2026-08-24T20:20:00").getTime();
+    const peakTime = new Date("2026-08-24T20:30:00").getTime();
+    const endRampDown = new Date("2026-08-24T20:45:00").getTime();
     const currentMillis = currentTime.getTime();
 
-    if (currentMillis <= startRampDown) {
-        // Already at peak value before 8:20 PM
-        targetWIS = derivedDOS;
+    if (currentMillis <= startRampUp) {
+        // Before 8:20 PM: normal base target WIS value
+        targetWIS = baseTargetWIS;
     } else if (currentMillis <= peakTime) {
-        // Ramp down smoothly starting at 8:20 PM down towards the graph's standard DOS score by peak time (8:45 PM)
-        const progress = (currentMillis - startRampDown) / (peakTime - startRampDown);
-        targetWIS = Math.round(derivedDOS + (derivedDOS - derivedDOS) * progress);
+        // Ramp up from base target WIS to peak target WIS between 8:20 PM and 8:30 PM
+        const progress = (currentMillis - startRampUp) / (peakTime - startRampUp);
+        targetWIS = Math.round(baseTargetWIS + (peakTargetWIS - baseTargetWIS) * progress);
+    } else if (currentMillis <= endRampDown) {
+        // Ramp down smoothly from peak target WIS down to the graph's standard DOS score by 8:45 PM
+        const progress = (currentMillis - peakTime) / (endRampDown - peakTime);
+        targetWIS = Math.round(peakTargetWIS + (derivedDOS - peakTargetWIS) * progress);
     } else {
-        // After peak time (8:45 PM), strictly follow/mirror the DOS score value from the graph
+        // After peak time / ramp down (8:45 PM), strictly follow/mirror the DOS score value from the graph
         targetWIS = derivedDOS;
     }
 
