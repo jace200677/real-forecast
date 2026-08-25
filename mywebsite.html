@@ -1386,14 +1386,16 @@ function openTrafficMapModal() {
     
     const lat = targetZoneOrPoint ? parseFloat(targetZoneOrPoint.lat) : 45.3853;
     const lon = targetZoneOrPoint ? parseFloat(targetZoneOrPoint.lon) : -93.8864;
-    const locationName = targetZoneOrPoint && targetZoneOrPoint.name ? encodeURIComponent(targetZoneOrPoint.name) : `${lat},${lon}`;
     
-    // Format the date string safely for API consumption (fallback to live date: August 24, 2026)
-    const targetDateStr = activeMapItem.dateStr || "2026-08-24";
-
+    // Bounding box offsets for rendering regional road infrastructure
+    const bboxMinLon = (lon - 0.12).toFixed(4);
+    const bboxMinLat = (lat - 0.12).toFixed(4);
+    const bboxMaxLon = (lon + 0.12).toFixed(4);
+    const bboxMaxLat = (lat + 0.12).toFixed(4);
+    
     const iframe = document.getElementById("trafficMapFrame");
-    // Embeds the dedicated 15-minute interval traffic mapping and 7-day forecasting interface view
-    iframe.src = `https://www.traffic-planner.com/embed/map?q=${locationName}&lat=${lat}&lon=${lon}&date=${targetDateStr}&interval=15&forecast=7day`;
+    // Standard map embedding endpoint that cleanly renders inside iframe modals without paywalls
+    iframe.src = `https://www.openstreetmap.org/export/embed.html?bbox=${bboxMinLon}%2C${bboxMinLat}%2C${bboxMaxLon}%2C${bboxMaxLat}&layer=mapnik&marker=${lat}%2C${lon}`;
 
     const nowMinutes = new Date().getHours() * 60 + new Date().getMinutes();
     const snappedMinutes = Math.round(nowMinutes / 15) * 15;
@@ -1403,11 +1405,11 @@ function openTrafficMapModal() {
         slider.value = snappedMinutes;
     }
     
-    updateTrafficTime(snappedMinutes, new Date("2026-08-24T19:20:09"));
+    updateTrafficTime(snappedMinutes, new Date("2026-08-24T19:22:34"));
     
     document.getElementById("trafficMapModal").style.display = "flex";
 }
-
+   
 function closeTrafficMapModal() {
     document.getElementById("trafficMapModal").style.display = "none";
     document.getElementById("trafficMapFrame").src = "about:blank";
