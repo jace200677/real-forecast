@@ -2399,9 +2399,11 @@ window.addEventListener('resize', () => {
         modalCanvas.height = rect.height * (window.devicePixelRatio || 1);
         drawForecastCanvasGraph(modal.currentItem, currentMode, modalCanvas, modal.dragX, modal.prevItem, modal.nextItem);
     }
-});
-updateTrafficButtonState();
-setInterval(updateTrafficButtonState, 60000);
+});updateTrafficButtonState();
+
+// Optional: Keep it updated if the page stays open
+setInterval(updateTrafficButtonState, 1000);
+   
 buildForecast();
 setInterval(updateStreamStatus, 60000);
 setInterval(buildForecast, 60000);
