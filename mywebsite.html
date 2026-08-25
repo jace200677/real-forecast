@@ -1387,25 +1387,34 @@ function openTrafficMapModal() {
     const lat = targetZoneOrPoint ? parseFloat(targetZoneOrPoint.lat) : 45.3853;
     const lon = targetZoneOrPoint ? parseFloat(targetZoneOrPoint.lon) : -93.8864;
     
-    // Bounding box offsets for rendering regional road infrastructure
-    const bboxMinLon = (lon - 0.12).toFixed(4);
-    const bboxMinLat = (lat - 0.12).toFixed(4);
-    const bboxMaxLon = (lon + 0.12).toFixed(4);
-    const bboxMaxLat = (lat + 0.12).toFixed(4);
-    
     const iframe = document.getElementById("trafficMapFrame");
-    // Standard map embedding endpoint that cleanly renders inside iframe modals without paywalls
-    iframe.src = `https://www.openstreetmap.org/export/embed.html?bbox=${bboxMinLon}%2C${bboxMinLat}%2C${bboxMaxLon}%2C${bboxMaxLat}&layer=mapnik&marker=${lat}%2C${lon}`;
-
-    const nowMinutes = new Date().getHours() * 60 + new Date().getMinutes();
-    const snappedMinutes = Math.round(nowMinutes / 15) * 15;
     
+    // Determine whether the target date matches today (August 24, 2026)
+    const todayStr = "2026-08-24";
+    const isToday = activeMapItem.dateStr === todayStr;
+    
+    const now = new Date("2026-08-24T19:27:13");
+    const currentTotalMinutes = now.getHours() * 60 + now.getMinutes();
+    const snappedNowMinutes = Math.round(currentTotalMinutes / 15) * 15;
+
     const slider = document.getElementById("minuteTimeSlider");
+    const sliderMinutes = slider ? parseInt(slider.value) : snappedNowMinutes;
+
+    const isRightOnTime = isToday && (Math.abs(sliderMinutes - snappedNowMinutes) <= 15);
+
+    if (isRightOnTime) {
+        // Official Google Maps live traffic layer embed URL
+        iframe.src = `https://www.google.com/maps/embed?pb=!1m14!1m12!1m3!1d12000!2d${lon}!3d${lat}!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!5e0!3m2!1sen!2sus!4v1!5m2!1sen!2sus&layer=t`;
+    } else {
+        // Google Maps typical traffic / standard layer route profile URL for historical or forecasted blocks
+        iframe.src = `https://maps.google.com/maps?q=${lat},${lon}&z=13&output=embed`;
+    }
+
     if (slider) {
-        slider.value = snappedMinutes;
+        slider.value = sliderMinutes;
     }
     
-    updateTrafficTime(snappedMinutes, new Date("2026-08-24T19:22:34"));
+    updateTrafficTime(sliderMinutes, now);
     
     document.getElementById("trafficMapModal").style.display = "flex";
 }
