@@ -1433,7 +1433,7 @@ function openForecastGraphModal(item, fullForecast = [], itemIndex = -1) {
     
     const currentMode = document.getElementById("graphTypeSelect").value || "temp";
     const modalCanvas = document.getElementById("forecastGraphCanvas");
-    
+    updateTrafficButtonState();
     setTimeout(() => {
         const rect = modalCanvas.getBoundingClientRect();
         modalCanvas.width = rect.width * (window.devicePixelRatio || 1);
@@ -2399,7 +2399,7 @@ window.addEventListener('resize', () => {
         modalCanvas.height = rect.height * (window.devicePixelRatio || 1);
         drawForecastCanvasGraph(modal.currentItem, currentMode, modalCanvas, modal.dragX, modal.prevItem, modal.nextItem);
     }
-});updateTrafficButtonState();
+});
 
 // Optional: Keep it updated if the page stays open
 setInterval(updateTrafficButtonState, 1000);
