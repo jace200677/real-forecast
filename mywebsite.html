@@ -1372,8 +1372,13 @@ function openForecastGraphModal(item, fullForecast = [], itemIndex = -1) {
                     <h3 id="graphModalTitle" style="margin:0;font-size:clamp(14px, 4vw, 18px);">Forecast Graph</h3>
                     <select id="graphTypeSelect" style="background:#2b2b36;color:#fff;border:1px solid #444;padding:6px 10px;border-radius:6px;cursor:pointer;font-size:13px;">
                         <option value="temp">Temperature</option>
+                        <option value="feelsLike">Feels Like Temp</option>
                         <option value="wind">Wind & Gusts</option>
                         <option value="dos">DOS Score</option>
+                        <option value="pressure">Pressure</option>
+                        <option value="humidity">Humidity</option>
+                        <option value="uv">UV Index</option>
+                        <option value="precip">Precipitation Chance</option>
                     </select>
                     <button class="traffic-btn" onclick="openTrafficMapModal()">🚦 Traffic Road Map</button>
                 </div>
@@ -1436,7 +1441,7 @@ function openForecastGraphModal(item, fullForecast = [], itemIndex = -1) {
         drawForecastCanvasGraph(item, currentMode, modalCanvas, null, modal.prevItem, modal.nextItem);
     }, 50);
 }
-
+   
 let activeMapItem = null;
 
 function openTrafficMapModal() {
