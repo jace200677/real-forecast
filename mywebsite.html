@@ -1406,11 +1406,16 @@ function openTrafficMapModal() {
     }
 
     const updateIframeSource = () => {
-        // Correct Google Maps embed URL pattern with layer=t and correct center/zoom params
+        const targetHour = Math.floor(sliderMinutes / 60);
+        const targetMin = sliderMinutes % 60;
+        
+        // Dynamic map zoom scale calculation based on window._currentMapZoom (default zoom 15 -> ~3000 span)
+        const mapSpan = Math.round(3000 * Math.pow(2, 15 - window._currentMapZoom));
+
         if (isRightOnTime) {
-            iframe.src = `https://www.google.com/maps/embed?pb=!1m14!1m12!1m3!1d3000!2d${lon}!3d${lat}!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!5e0!3m2!1sen!2sus!4v1700000000000!5m2!1sen!2sus&layer=t`;
+            iframe.src = `https://www.google.com/maps/embed?pb=!1m14!1m12!1m3!1d${mapSpan}!2d${lon}!3d${lat}!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!5e0!3m2!1sen!2sus!4v1700000000000!5m2!1sen!2sus&layer=t`;
         } else {
-            iframe.src = `https://www.google.com/maps/embed?pb=!1m14!1m12!1m3!1d3000!2d${lon}!3d${lat}!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!5e0!3m2!1sen!2sus!4v1700000000000!5m2!1sen!2sus&layer=t`;
+            iframe.src = `https://www.google.com/maps/embed?pb=!1m14!1m12!1m3!1d${mapSpan}!2d${lon}!3d${lat}!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!5e0!3m2!1sen!2sus!4v1700000000000!5m2!1sen!2sus&layer=t&feature=traffic&time=${targetHour.toString().padStart(2, '0')}%3A${targetMin.toString().padStart(2, '0')}`;
         }
     };
 
@@ -1418,6 +1423,50 @@ function openTrafficMapModal() {
 
     if (slider) {
         slider.value = sliderMinutes;
+    }
+
+    // Interactive Overlay Layer to capture standard laptop trackpad scroll / wheel zoom directly without requiring Ctrl
+    let zoomOverlay = document.getElementById("mapScrollZoomOverlay");
+    const modalContainer = iframe.parentElement;
+
+    if (!zoomOverlay && modalContainer) {
+        modalContainer.style.position = "relative";
+        
+        zoomOverlay = document.createElement("div");
+        zoomOverlay.id = "mapScrollZoomOverlay";
+        zoomOverlay.style.position = "absolute";
+        zoomOverlay.style.top = "0";
+        zoomOverlay.style.left = "0";
+        zoomOverlay.style.width = "100%";
+        zoomOverlay.style.height = "100%";
+        zoomOverlay.style.zIndex = "999";
+        // Allow pointer events to pass through to buttons or controls, but intercept scroll/wheel actions
+        zoomOverlay.style.pointerEvents = "none";
+        
+        // Make iframe fill parent container correctly
+        iframe.style.width = "100%";
+        iframe.style.height = "100%";
+        iframe.style.border = "none";
+
+        modalContainer.appendChild(zoomOverlay);
+
+        // Listen to wheel events on the container for seamless laptop trackpad/scroll zooming
+        modalContainer.addEventListener("wheel", (e) => {
+            e.preventDefault();
+            if (e.deltaY < 0) {
+                // Scroll up / pinch out (Zoom in)
+                if (window._currentMapZoom < 20) {
+                    window._currentMapZoom++;
+                    updateIframeSource();
+                }
+            } else {
+                // Scroll down / pinch in (Zoom out)
+                if (window._currentMapZoom > 1) {
+                    window._currentMapZoom--;
+                    updateIframeSource();
+                }
+            }
+        }, { passive: false });
     }
 
     let zoomPanel = document.getElementById("mapZoomControlPanel");
@@ -1435,6 +1484,7 @@ function openTrafficMapModal() {
         zoomPanel.style.padding = "8px";
         zoomPanel.style.borderRadius = "8px";
         zoomPanel.style.boxShadow = "0 4px 12px rgba(0,0,0,0.4)";
+        zoomPanel.style.pointerEvents = "auto";
 
         const zoomInBtn = document.createElement("button");
         zoomInBtn.type = "button";
@@ -1465,9 +1515,7 @@ function openTrafficMapModal() {
         zoomPanel.appendChild(zoomInBtn);
         zoomPanel.appendChild(zoomOutBtn);
 
-        const modalContainer = iframe.parentElement;
         if (modalContainer) {
-            modalContainer.style.position = "relative";
             modalContainer.appendChild(zoomPanel);
         }
     }
