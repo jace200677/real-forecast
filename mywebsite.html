@@ -2475,11 +2475,7 @@ function updateTrafficButtonState() {
     }
 }
 
-// Run on page load and periodically to catch time shifts
-document.addEventListener('DOMContentLoaded', () => {
-    updateTrafficButtonState();
-    setInterval(updateTrafficButtonState, 60000);
-});
+
 window.addEventListener('resize', () => {
     const modal = document.getElementById("forecastGraphModal");
     if (modal && modal.style.display === "flex" && modal.currentItem) {
@@ -2493,6 +2489,8 @@ window.addEventListener('resize', () => {
 });
 
 buildForecast();
+updateTrafficButtonState();
+setInterval(updateTrafficButtonState, 60000);
 setInterval(updateStreamStatus, 60000);
 setInterval(buildForecast, 60000);
 setInterval(updateTrafficTime, 60000);
