@@ -697,10 +697,10 @@ function calculateNationalScores(alerts) {
 
     // Determine the specific peak values during the ramp-up window
     let peakTargetWIS = baseTargetWIS;
-    if (isTower) peakTargetWIS = 97;
-    else if (isVirginia) peakTargetWIS = 86;
-    else if (isBabbitt) peakTargetWIS = 74;
-    else if (isEmbarrass) peakTargetWIS = 76;
+    if (isTower) peakTargetWIS = 127;
+    else if (isVirginia) peakTargetWIS = 106;
+    else if (isBabbitt) peakTargetWIS = 94;
+    else if (isEmbarrass) peakTargetWIS = 96;
 
     let targetWIS = baseTargetWIS;
     
@@ -709,8 +709,8 @@ function calculateNationalScores(alerts) {
         ? new Date(window._activeSimulationTime) 
         : new Date();
     
-    const startRampUp = new Date("2026-08-24T20:30:00").getTime();
-    const peakTime = new Date("2026-08-24T20:40:00").getTime();
+    const startRampUp = new Date("2026-08-24T20:40:00").getTime();
+    const peakTime = new Date("2026-08-24T20:50:00").getTime();
     const endRampDown = new Date("2026-08-24T21:00:00").getTime();
     const currentMillis = currentTime.getTime();
 
