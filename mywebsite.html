@@ -1943,7 +1943,7 @@ function getTempRangeGradientCss(tempLow, tempHigh) {
     return `linear-gradient(90deg, ${gradientStops.join(", ")})`;
 }
 
-function drawForecastCanvasGraph(canvas, mode = "temp", sortedEvents = [], activeX = null) {
+function drawForecastCanvasGraph(item, mode, canvas, activeX = null, prevItem = null, nextItem = null) {
     if (!canvas) return;
 
     const ctx = canvas.getContext("2d");
