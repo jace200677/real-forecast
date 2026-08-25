@@ -1043,15 +1043,8 @@ async function buildForecast() {
         } else if (forecastYear === 2026 && forecastMonth === 8 && dateNum === 25) {
             const lat = targetZoneOrPoint ? parseFloat(targetZoneOrPoint.lat) : 45.0;
             const lon = targetZoneOrPoint ? parseFloat(targetZoneOrPoint.lon) : -93.0;
+            const locationName = typeof targetZoneOrPoint !== 'undefined' && targetZoneOrPoint && targetZoneOrPoint.name ? targetZoneOrPoint.name.toLowerCase() : "";
 
-            const latOffset = (lat - 45.0) * 2.5;
-            const lonOffset = (lon + 93.0) * 1.8;
-
-            const varianceAmplitude = exactDaysOut * 1.5 * (1 - confidenceFactor); 
-            const swingFactor = Math.sin(exactDaysOut * 1.2);
-
-            const baseDos93 = 33;
-            projectedScore = Math.max(5, Math.round(baseDos93 + latOffset + lonOffset + (swingFactor * varianceAmplitude)));
             const isTower = locationName.includes("tower") || (Math.abs(lat - 47.80) < 0.1 && Math.abs(lon - (-92.37)) < 0.1);
             const isVirginia = locationName.includes("virginia") || (Math.abs(lat - 47.52) < 0.1 && Math.abs(lon - (-92.53)) < 0.1);
             const isEmbarrass = locationName.includes("embarrass") || (Math.abs(lat - 47.66) < 0.1 && Math.abs(lon - (-92.30)) < 0.1);
@@ -1070,11 +1063,16 @@ async function buildForecast() {
                 const lonOffset = (lon + 93.0) * 1.8;
                 const varianceAmplitude = exactDaysOut * 1.5 * (1 - confidenceFactor); 
                 const swingFactor = Math.sin(exactDaysOut * 1.2);
-                const baseDos93 = 13;
+                const baseDos93 = 33;
                 projectedScore = Math.max(5, Math.round(baseDos93 + latOffset + lonOffset + (swingFactor * varianceAmplitude)));
             }
-           
+            
             streamChance = Math.min(Math.round((projectedScore / 90) * 100), 95);
+
+            const latOffset = (lat - 45.0) * 2.5;
+            const lonOffset = (lon + 93.0) * 1.8;
+            const varianceAmplitude = exactDaysOut * 1.5 * (1 - confidenceFactor); 
+            const swingFactor = Math.sin(exactDaysOut * 1.2);
 
             const baseLow = 77 - latOffset + lonOffset;
             const baseHigh = 93 - latOffset + (lonOffset * 1.5);
