@@ -1964,6 +1964,14 @@ function drawForecastCanvasGraph(canvas, mode = "temp", sortedEvents = [], activ
     const graphWidth = width - padLeft - padRight;
     const graphHeight = height - padTop - padBottom;
 
+    // Helper: Convert Hex color to RGBA for canvas gradients
+    const hexToRgba = (hex, alpha) => {
+        let c = hex.replace("#", "");
+        if (c.length === 3) c = c.split("").map(char => char + char).join("");
+        const num = parseInt(c, 16);
+        return `rgba(${(num >> 16) & 255}, ${(num >> 8) & 255}, ${num & 255}, ${alpha})`;
+    };
+
     // --- Diurnal Fallback Models (Minute 0 - 1439) ---
     const getDiurnalTemp = (m) => 65 + 15 * Math.sin(((m - 360) / 1440) * 2 * Math.PI);
     const getDiurnalWind = (m) => 8 + 6 * Math.sin(((m - 480) / 1440) * 2 * Math.PI);
@@ -2107,23 +2115,21 @@ function drawForecastCanvasGraph(canvas, mode = "temp", sortedEvents = [], activ
     const plotCurve = (getValFn, strokeStyle, fillGradient = null, dash = []) => {
         ctx.save();
         ctx.setLineDash(dash);
-        ctx.beginPath();
 
-        for (let m = 0; m <= 1440; m += 15) {
-            const x = mapX(m);
-            const y = mapY(getValFn(m));
-            if (m === 0) ctx.moveTo(x, y);
-            else ctx.lineTo(x, y);
-        }
-
+        // Render Area Fill
         if (fillGradient) {
-            ctx.lineTo(mapX(1440), mapY(yMin));
-            ctx.lineTo(mapX(0), mapY(yMin));
+            ctx.beginPath();
+            ctx.moveTo(mapX(0), padTop + graphHeight);
+            for (let m = 0; m <= 1440; m += 15) {
+                ctx.lineTo(mapX(m), mapY(getValFn(m)));
+            }
+            ctx.lineTo(mapX(1440), padTop + graphHeight);
             ctx.closePath();
             ctx.fillStyle = fillGradient;
             ctx.fill();
         }
 
+        // Render Line Stroke
         ctx.beginPath();
         for (let m = 0; m <= 1440; m += 15) {
             const x = mapX(m);
@@ -2143,7 +2149,7 @@ function drawForecastCanvasGraph(canvas, mode = "temp", sortedEvents = [], activ
     }
 
     const mainGradient = ctx.createLinearGradient(0, padTop, 0, padTop + graphHeight);
-    mainGradient.addColorStop(0, mainColor.replace(")", ", 0.35)").replace("rgb", "rgba").replace("#", "rgba(") + (mainColor.startsWith("#") ? "35" : ""));
+    mainGradient.addColorStop(0, hexToRgba(mainColor, 0.35));
     mainGradient.addColorStop(1, "rgba(0, 0, 0, 0)");
 
     plotCurve(getValueAtMinute, mainColor, mainGradient);
@@ -2183,21 +2189,29 @@ function drawForecastCanvasGraph(canvas, mode = "temp", sortedEvents = [], activ
         const text = `${timeStr} | ${(mode === "pressure") ? activeVal.toFixed(2) : Math.round(activeVal)}${unitLabel}`;
         ctx.font = `bold ${Math.round(11 * scaleFactor)}px 'Segoe UI', sans-serif`;
         const textWidth = ctx.measureText(text).width;
-        const tooltipX = Math.max(padLeft + 10, Math.min(width - padRight - textWidth - 20, clampedX - textWidth / 2 - 10));
-        const tooltipY = padTop + 10;
+        const boxWidth = textWidth + 20;
+        const boxHeight = 24 * scaleFactor;
+
+        const tooltipX = Math.max(padLeft, Math.min(width - padRight - boxWidth, clampedX - boxWidth / 2));
+        
+        // Dynamic vertical positioning: place above point unless constrained by top border
+        let tooltipY = pointY - boxHeight - 8;
+        if (tooltipY < padTop) {
+            tooltipY = pointY + 12;
+        }
 
         ctx.fillStyle = "rgba(18, 18, 24, 0.9)";
         ctx.strokeStyle = "#444455";
         ctx.lineWidth = 1;
         ctx.beginPath();
-        ctx.roundRect(tooltipX, tooltipY, textWidth + 20, 24 * scaleFactor, 6);
+        ctx.roundRect(tooltipX, tooltipY, boxWidth, boxHeight, 6);
         ctx.fill();
         ctx.stroke();
 
         ctx.fillStyle = "#ffffff";
-        ctx.textAlign = "left";
+        ctx.textAlign = "center";
         ctx.textBaseline = "middle";
-        ctx.fillText(text, tooltipX + 10, tooltipY + (12 * scaleFactor));
+        ctx.fillText(text, tooltipX + boxWidth / 2, tooltipY + boxHeight / 2);
     }
 }
 
