@@ -684,18 +684,41 @@ function calculateNationalScores(alerts) {
     const isVirginia = locationName.includes("virginia") || (Math.abs(lat - 47.52) < 0.1 && Math.abs(lon - (-92.53)) < 0.1);
     const isTower = locationName.includes("tower") || (Math.abs(lat - 47.80) < 0.1 && Math.abs(lon - (-92.37)) < 0.1);
 
-    const formatOutput = (wisVal) => {
-        const finalWIS = Math.max(wisVal, 0);
-        const derivedDOS = Math.max(Math.min(Math.round(finalWIS * 1.2), 250), 3);
-        
-        let targetWIS = finalWIS;
-        if (isTower) targetWIS = 77;
-        else if (isVirginia) targetWIS = 66;
-        else if (isBabbitt) targetWIS = 54;
-        else if (isEmbarrass) targetWIS = 56;
+   const formatOutput = (wisVal) => {
+    const finalWIS = Math.max(wisVal, 0);
+    let derivedDOS = Math.max(Math.min(Math.round(finalWIS * 1.2), 250), 3);
+    
+    // Determine the base pre-event target WIS value depending on location
+    let baseTargetWIS = finalWIS;
+    if (isTower) baseTargetWIS = 77;
+    else if (isVirginia) baseTargetWIS = 66;
+    else if (isBabbitt) baseTargetWIS = 54;
+    else if (isEmbarrass) baseTargetWIS = 56;
 
-        return { wis: targetWIS, dos: derivedDOS };
-    };
+    let targetWIS = baseTargetWIS;
+    
+    const currentTime = typeof window !== 'undefined' && window._activeSimulationTime 
+        ? new Date(window._activeSimulationTime) 
+        : new Date("2026-08-24T20:12:00");
+    
+    const startRampDown = new Date("2026-08-24T20:20:00").getTime();
+    const peakTime = new Date("2026-08-24T20:45:00").getTime();
+    const currentMillis = currentTime.getTime();
+
+    if (currentMillis <= startRampDown) {
+        // Already at peak value before 8:20 PM
+        targetWIS = derivedDOS;
+    } else if (currentMillis <= peakTime) {
+        // Ramp down smoothly starting at 8:20 PM down towards the graph's standard DOS score by peak time (8:45 PM)
+        const progress = (currentMillis - startRampDown) / (peakTime - startRampDown);
+        targetWIS = Math.round(derivedDOS + (derivedDOS - derivedDOS) * progress);
+    } else {
+        // After peak time (8:45 PM), strictly follow/mirror the DOS score value from the graph
+        targetWIS = derivedDOS;
+    }
+
+    return { wis: targetWIS, dos: derivedDOS };
+};
 
     if (year === 2026 && month === 8 && day === 24) {
         if (totalMinutes < 330) {
