@@ -1386,12 +1386,15 @@ function openTrafficMapModal() {
     
     const lat = targetZoneOrPoint ? targetZoneOrPoint.lat : "45.0000";
     const lon = targetZoneOrPoint ? targetZoneOrPoint.lon : "-93.0000";
+    const locationName = targetZoneOrPoint && targetZoneOrPoint.name ? encodeURIComponent(targetZoneOrPoint.name) : `${lat},${lon}`;
     
     const iframe = document.getElementById("trafficMapFrame");
-    iframe.src = `https://www.openstreetmap.org/export/embed.html?bbox=${parseFloat(lon)-0.15}%2C${parseFloat(lat)-0.15}%2C${parseFloat(lon)+0.15}%2C${parseFloat(lat)+0.15}&layer=mapnik`;
+    // Redirects map embedding source to Traffic-Planner.com with integrated location parameters and live date anchor
+    iframe.src = `https://www.traffic-planner.com/embed?q=${locationName}&lat=${lat}&lon=${lon}&date=2026-08-24&bbox=${parseFloat(lon)-0.15}%2C${parseFloat(lat)-0.15}%2C${parseFloat(lon)+0.15}%2C${parseFloat(lat)+0.15}`;
 
-    document.getElementById("minuteTimeSlider").value = 0;
-    updateTrafficTime(0);
+    const nowMinutes = new Date().getHours() * 60 + new Date().getMinutes();
+    document.getElementById("minuteTimeSlider").value = nowMinutes;
+    updateTrafficTime(nowMinutes);
     
     document.getElementById("trafficMapModal").style.display = "flex";
 }
@@ -1402,8 +1405,12 @@ function closeTrafficMapModal() {
 }
 
 function updateTrafficTime(totalMinutes, baseDateOverride = null) {
-    const hours = Math.floor(totalMinutes / 60);
-    const mins = totalMinutes % 60;
+    // Snap total minutes to the nearest 15-minute interval limit (0, 15, 30, 45)
+    const snappedMinutes = Math.round(totalMinutes / 15) * 15;
+    const normalizedMinutes = Math.min(Math.max(snappedMinutes, 0), 1439);
+
+    const hours = Math.floor(normalizedMinutes / 60);
+    const mins = normalizedMinutes % 60;
     const period = hours >= 12 ? "PM" : "AM";
     const displayHours = hours % 12 || 12;
     const timeStr = `${displayHours}:${mins < 10 ? '0' : ''}${mins} ${period}`;
@@ -1428,9 +1435,16 @@ function updateTrafficTime(totalMinutes, baseDateOverride = null) {
             const markerParam = urlObj.searchParams.get("marker");
             const bboxParam = urlObj.searchParams.get("bbox");
             const layerParam = urlObj.searchParams.get("layer");
+            const latParam = urlObj.searchParams.get("lat");
+            const lonParam = urlObj.searchParams.get("lon");
+
+            if (latParam && lonParam) {
+                derivedLat = parseFloat(latParam);
+                derivedLon = parseFloat(lonParam);
+            }
 
             if (layerParam) {
-                roadLayerType = layerParam; // e.g., 'mapnik', 'cyclemap', 'transportmap'
+                roadLayerType = layerParam;
             }
 
             if (markerParam) {
@@ -1456,55 +1470,52 @@ function updateTrafficTime(totalMinutes, baseDateOverride = null) {
     const dayOfWeek = workingDate.getDay(); // 0 = Sunday, 6 = Saturday
     const isWeekend = (dayOfWeek === 0 || dayOfWeek === 6);
 
-    const isMorningRush = !isWeekend && totalMinutes >= 420 && totalMinutes <= 540;   // 7:00 AM - 9:00 AM
-    const isEveningRush = !isWeekend && totalMinutes >= 960 && totalMinutes <= 1110; // 4:00 PM - 6:30 PM
-    const isLateNight = totalMinutes <= 300 || totalMinutes >= 1380;                 // 11:00 PM - 5:00 AM
+    const isMorningRush = !isWeekend && normalizedMinutes >= 420 && normalizedMinutes <= 540;   // 7:00 AM - 9:00 AM
+    const isEveningRush = !isWeekend && normalizedMinutes >= 960 && normalizedMinutes <= 1110; // 4:00 PM - 6:30 PM
+    const isLateNight = normalizedMinutes <= 300 || normalizedMinutes >= 1380;                 // 11:00 PM - 5:00 AM
 
     // 3. Location-based density and road layer weight evaluation
     let layerMultiplier = 1.0;
     if (roadLayerType === "transportmap" || roadLayerType === "cyclemap") {
-        layerMultiplier = 1.2; // Higher sensitivity for designated transit corridors
+        layerMultiplier = 1.2;
     }
 
-    // Universal regional density check (identifies major urban clusters anywhere by coordinate bounds)
-    const isMajorMetro = (Math.abs(derivedLat - 44.9778) < 0.8 && Math.abs(derivedLon - (-93.2650)) < 0.8) || // Twin Cities
-                         (Math.abs(derivedLat - 40.7128) < 0.8 && Math.abs(derivedLon - (-74.0060)) < 0.8) || // New York
-                         (Math.abs(derivedLat - 34.0522) < 0.8 && Math.abs(derivedLon - (-118.2437)) < 0.8); // Los Angeles
+    const isMajorMetro = (Math.abs(derivedLat - 44.9778) < 0.8 && Math.abs(derivedLon - (-93.2650)) < 0.8) || 
+                         (Math.abs(derivedLat - 40.7128) < 0.8 && Math.abs(derivedLon - (-74.0060)) < 0.8) || 
+                         (Math.abs(derivedLat - 34.0522) < 0.8 && Math.abs(derivedLon - (-118.2437)) < 0.8);
 
     let statusText = "";
     let statusColor = "#4ade80";
 
-    // Fallback chain: Explicit target name -> URL derived location coordinates -> Universal coordinates fallback
     const locationTag = (targetZoneOrPoint && targetZoneOrPoint.name) 
         ? targetZoneOrPoint.name 
         : `Coordinates [${derivedLat.toFixed(4)}°, ${derivedLon.toFixed(4)}°]`;
 
     if (isLateNight) {
-        statusText = `Road Density: NIGHTTIME CLEAR [Layer: ${roadLayerType}] (${locationTag})`;
+        statusText = `Traffic-Planner.com: 15-Min Block NIGHTTIME CLEAR (${locationTag})`;
         statusColor = "#38bdf8";
     } else if (isMorningRush || isEveningRush) {
         if (isMajorMetro && layerMultiplier > 1.0) {
-            statusText = `Road Density: CRITICAL TRANSIT CORRIDOR CONGESTION (${locationTag})`;
-            statusColor = "#dc2626"; // Deep Red
+            statusText = `Traffic-Planner.com: 15-Min Block CRITICAL TRANSIT CONGESTION (${locationTag})`;
+            statusColor = "#dc2626";
         } else if (isMajorMetro) {
-            statusText = `Road Density: HEAVY METRO CONGESTION (${locationTag})`;
+            statusText = `Traffic-Planner.com: 15-Min Block HEAVY METRO CONGESTION (${locationTag})`;
             statusColor = "#ef4444";
         } else {
-            statusText = `Road Density: CORRIDOR RUSH FLOW (${locationTag})`;
+            statusText = `Traffic-Planner.com: 15-Min Block CORRIDOR RUSH FLOW (${locationTag})`;
             statusColor = "#f59e0b";
         }
-    } else if (isWeekend && totalMinutes >= 720 && totalMinutes <= 1020) {
-        statusText = `Road Density: MODERATE WEEKEND TRAFFIC (${locationTag})`;
+    } else if (isWeekend && normalizedMinutes >= 720 && normalizedMinutes <= 1020) {
+        statusText = `Traffic-Planner.com: 15-Min Block MODERATE WEEKEND TRAFFIC (${locationTag})`;
         statusColor = "#fbbf24";
     } else {
-        statusText = `Road Density: NORMAL FREE-FLOW [Layer: ${roadLayerType}] (${locationTag})`;
+        statusText = `Traffic-Planner.com: 15-Min Block NORMAL FREE-FLOW (${locationTag})`;
         statusColor = "#4ade80";
     }
 
     impactEl.innerText = statusText;
     impactEl.style.color = statusColor;
 }
-
 function getDosGradientCss(targetScore, maxScale = 120) {
     const stops = [
         { score: 0,   color: "rgb(0, 255, 119)" },
