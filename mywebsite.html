@@ -1384,17 +1384,26 @@ function openTrafficMapModal() {
     activeMapItem = graphModal.currentItem;
     document.getElementById("mapModalTitle").innerText = `Traffic Forecast: ${activeMapItem.day} (${activeMapItem.dateStr})`;
     
-    const lat = targetZoneOrPoint ? targetZoneOrPoint.lat : "45.0000";
-    const lon = targetZoneOrPoint ? targetZoneOrPoint.lon : "-93.0000";
+    const lat = targetZoneOrPoint ? parseFloat(targetZoneOrPoint.lat) : 45.3853;
+    const lon = targetZoneOrPoint ? parseFloat(targetZoneOrPoint.lon) : -93.8864;
     const locationName = targetZoneOrPoint && targetZoneOrPoint.name ? encodeURIComponent(targetZoneOrPoint.name) : `${lat},${lon}`;
     
+    // Format the date string safely for API consumption (fallback to live date: August 24, 2026)
+    const targetDateStr = activeMapItem.dateStr || "2026-08-24";
+
     const iframe = document.getElementById("trafficMapFrame");
-    // Redirects map embedding source to Traffic-Planner.com with integrated location parameters and live date anchor
-    iframe.src = `https://www.traffic-planner.com/embed?q=${locationName}&lat=${lat}&lon=${lon}&date=2026-08-24&bbox=${parseFloat(lon)-0.15}%2C${parseFloat(lat)-0.15}%2C${parseFloat(lon)+0.15}%2C${parseFloat(lat)+0.15}`;
+    // Embeds the dedicated 15-minute interval traffic mapping and 7-day forecasting interface view
+    iframe.src = `https://www.traffic-planner.com/embed/map?q=${locationName}&lat=${lat}&lon=${lon}&date=${targetDateStr}&interval=15&forecast=7day`;
 
     const nowMinutes = new Date().getHours() * 60 + new Date().getMinutes();
-    document.getElementById("minuteTimeSlider").value = nowMinutes;
-    updateTrafficTime(nowMinutes);
+    const snappedMinutes = Math.round(nowMinutes / 15) * 15;
+    
+    const slider = document.getElementById("minuteTimeSlider");
+    if (slider) {
+        slider.value = snappedMinutes;
+    }
+    
+    updateTrafficTime(snappedMinutes, new Date("2026-08-24T19:20:09"));
     
     document.getElementById("trafficMapModal").style.display = "flex";
 }
