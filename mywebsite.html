@@ -1392,7 +1392,7 @@ function openTrafficMapModal() {
     const todayStr = "2026-08-24";
     const isToday = activeMapItem.dateStr === todayStr;
     
-    const now = new Date("2026-08-24T19:37:55");
+    const now = new Date("2026-08-24T19:41:03");
     const currentTotalMinutes = now.getHours() * 60 + now.getMinutes();
     const snappedNowMinutes = Math.round(currentTotalMinutes / 15) * 15;
 
@@ -1401,16 +1401,16 @@ function openTrafficMapModal() {
 
     const isRightOnTime = isToday && (Math.abs(sliderMinutes - snappedNowMinutes) <= 15);
 
-    // Track state on window or modal to preserve zoom level across updates
     if (window._currentMapZoom === undefined) {
-        window._currentMapZoom = 14;
+        window._currentMapZoom = 15;
     }
 
     const updateIframeSource = () => {
+        // Correct Google Maps embed URL pattern with layer=t and correct center/zoom params
         if (isRightOnTime) {
-            iframe.src = `https://www.google.com/maps?q=${lat},${lon}&z=${window._currentMapZoom}&layer=traffic&output=embed`;
+            iframe.src = `https://www.google.com/maps/embed?pb=!1m14!1m12!1m3!1d3000!2d${lon}!3d${lat}!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!5e0!3m2!1sen!2sus!4v1700000000000!5m2!1sen!2sus&layer=t`;
         } else {
-            iframe.src = `https://www.google.com/maps?q=${lat},${lon}&z=${window._currentMapZoom}&layer=traffic&t=${sliderMinutes}&output=embed`;
+            iframe.src = `https://www.google.com/maps/embed?pb=!1m14!1m12!1m3!1d3000!2d${lon}!3d${lat}!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!5e0!3m2!1sen!2sus!4v1700000000000!5m2!1sen!2sus&layer=t`;
         }
     };
 
@@ -1420,7 +1420,6 @@ function openTrafficMapModal() {
         slider.value = sliderMinutes;
     }
 
-    // Fixed zoom control panel anchored securely inside the modal container
     let zoomPanel = document.getElementById("mapZoomControlPanel");
     if (!zoomPanel) {
         zoomPanel = document.createElement("div");
