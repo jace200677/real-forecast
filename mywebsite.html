@@ -708,24 +708,24 @@ function calculateNationalScores(alerts) {
         ? new Date(window._activeSimulationTime) 
         : new Date("2026-08-24T20:12:00");
     
-    const startRampUp = new Date("2026-08-24T20:20:00").getTime();
-    const peakTime = new Date("2026-08-24T20:30:00").getTime();
-    const endRampDown = new Date("2026-08-24T20:45:00").getTime();
+    const startRampUp = new Date("2026-08-24T20:30:00").getTime();
+    const peakTime = new Date("2026-08-24T20:40:00").getTime();
+    const endRampDown = new Date("2026-08-24T21:00:00").getTime();
     const currentMillis = currentTime.getTime();
 
     if (currentMillis <= startRampUp) {
-        // Before 8:20 PM: normal base target WIS value
+        // Before 8:30 PM: maintain strict baseline base target WIS value
         targetWIS = baseTargetWIS;
     } else if (currentMillis <= peakTime) {
-        // Ramp up from base target WIS to peak target WIS between 8:20 PM and 8:30 PM
+        // Ramp up from base target WIS to peak target WIS between 8:30 PM and 8:40 PM
         const progress = (currentMillis - startRampUp) / (peakTime - startRampUp);
         targetWIS = Math.round(baseTargetWIS + (peakTargetWIS - baseTargetWIS) * progress);
     } else if (currentMillis <= endRampDown) {
-        // Ramp down smoothly from peak target WIS down to the graph's standard DOS score by 8:45 PM
+        // Ramp down smoothly from peak target WIS down to the graph's standard DOS score by 9:00 PM
         const progress = (currentMillis - peakTime) / (endRampDown - peakTime);
         targetWIS = Math.round(peakTargetWIS + (derivedDOS - peakTargetWIS) * progress);
     } else {
-        // After peak time / ramp down (8:45 PM), strictly follow/mirror the DOS score value from the graph
+        // After ramp-down window (9:00 PM), strictly follow/mirror the DOS score value from the graph
         targetWIS = derivedDOS;
     }
 
