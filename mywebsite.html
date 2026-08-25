@@ -2340,7 +2340,7 @@ function updateTrafficButtonState() {
         btn.classList.add('is-invisible');
         btn.removeAttribute('onclick');
     } else if (now >= blackoutStart && now < invisibleStart) {
-        // Greyed out state (between 9 AM and 10 AM on 8/25)
+        // Greyed out and disabled state (between 9 AM and 10 AM on 8/25)
         btn.disabled = true;
         btn.classList.add('is-disabled');
         btn.removeAttribute('onclick');
