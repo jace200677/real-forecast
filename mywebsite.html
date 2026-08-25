@@ -273,7 +273,14 @@
         touch-action: manipulation;
     }
     .traffic-btn:hover { background: #be123c; }
-
+   .traffic-btn:disabled, 
+.traffic-btn.is-disabled {
+    background-color: #e0e0e0;
+    color: #9e9e9e;
+    cursor: not-allowed;
+    opacity: 0.6;
+    pointer-events: none;
+}
     /* Media queries for smaller screens */
     @media (max-width: 600px) {
         body { padding: 10px; }
@@ -2309,7 +2316,32 @@ function drawForecastCanvasGraph(item, mode, canvas, activeX = null, prevItem = 
         ctx.fillText(tooltipText, boxX + 8, 20 * scaleFactor);
     }
 }
+function updateTrafficButtonState() {
+    const btn = document.querySelector('.traffic-btn');
+    if (!btn) return;
 
+    // Define time boundaries (UTC or local depending on your needs; 
+    // using local device time here)
+    const now = new Date();
+    const blackoutStart = new Date('2026-08-25T09:00:00');
+    const blackoutEnd = new Date('2026-08-26T14:00:00');
+
+    // Check if current time falls within the disabled window
+    if (now >= blackoutStart && now < blackoutEnd) {
+        btn.disabled = true;
+        btn.classList.add('is-disabled');
+        // Remove the onclick attribute so it cannot be triggered
+        btn.removeAttribute('onclick');
+    } else {
+        btn.disabled = false;
+        btn.classList.remove('is-disabled');
+        // Restore the onclick attribute if outside the blackout window
+        btn.setAttribute('onclick', 'openTrafficMapModal()');
+    }
+}
+
+// Run on page load
+document.addEventListener('DOMContentLoaded', updateTrafficButtonState);
 window.addEventListener('resize', () => {
     const modal = document.getElementById("forecastGraphModal");
     if (modal && modal.style.display === "flex" && modal.currentItem) {
@@ -2323,7 +2355,8 @@ window.addEventListener('resize', () => {
 });
 
 buildForecast();
-
+updateTrafficButtonState();
+setInterval(updateTrafficButtonState, 60000);
 setInterval(updateStreamStatus, 60000);
 setInterval(buildForecast, 60000);
 setInterval(updateTrafficTime, 60000);
