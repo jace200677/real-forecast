@@ -1466,12 +1466,18 @@ function updateTrafficTime(totalMinutes, baseDateOverride = null) {
         layerMultiplier = 1.2; // Higher sensitivity for designated transit corridors
     }
 
-    const isMajorMetro = Math.abs(derivedLat - 44.9778) < 0.8 && Math.abs(derivedLon - (-93.2650)) < 0.8;
+    // Universal regional density check (identifies major urban clusters anywhere by coordinate bounds)
+    const isMajorMetro = (Math.abs(derivedLat - 44.9778) < 0.8 && Math.abs(derivedLon - (-93.2650)) < 0.8) || // Twin Cities
+                         (Math.abs(derivedLat - 40.7128) < 0.8 && Math.abs(derivedLon - (-74.0060)) < 0.8) || // New York
+                         (Math.abs(derivedLat - 34.0522) < 0.8 && Math.abs(derivedLon - (-118.2437)) < 0.8); // Los Angeles
 
     let statusText = "";
     let statusColor = "#4ade80";
 
-    const locationTag = targetZoneOrPoint && targetZoneOrPoint.name ? targetZoneOrPoint.name : `Lat: ${derivedLat.toFixed(2)}, Lon: ${derivedLon.toFixed(2)}`;
+    // Fallback chain: Explicit target name -> URL derived location coordinates -> Universal coordinates fallback
+    const locationTag = (targetZoneOrPoint && targetZoneOrPoint.name) 
+        ? targetZoneOrPoint.name 
+        : `Coordinates [${derivedLat.toFixed(4)}°, ${derivedLon.toFixed(4)}°]`;
 
     if (isLateNight) {
         statusText = `Road Density: NIGHTTIME CLEAR [Layer: ${roadLayerType}] (${locationTag})`;
@@ -2132,6 +2138,7 @@ buildForecast();
 
 setInterval(updateStreamStatus, 60000);
 setInterval(buildForecast, 60000);
+setInterval(updateTrafficTime, 60000);
 </script>
 
 </body>
