@@ -281,6 +281,10 @@
     opacity: 0.6;
     pointer-events: none;
 }
+   .traffic-btn.is-invisible {
+    display: none;
+    /* Alternatively, use visibility: hidden; opacity: 0; if you want to reserve layout space */
+}
     /* Media queries for smaller screens */
     @media (max-width: 600px) {
         body { padding: 10px; }
@@ -2320,28 +2324,34 @@ function updateTrafficButtonState() {
     const btn = document.querySelector('.traffic-btn');
     if (!btn) return;
 
-    // Define time boundaries (UTC or local depending on your needs; 
-    // using local device time here)
     const now = new Date();
     const blackoutStart = new Date('2026-08-25T09:00:00');
+    const invisibleStart = new Date('2026-08-25T10:00:00');
     const blackoutEnd = new Date('2026-08-26T14:00:00');
 
-    // Check if current time falls within the disabled window
-    if (now >= blackoutStart && now < blackoutEnd) {
+    // Reset default classes/attributes first
+    btn.disabled = false;
+    btn.classList.remove('is-disabled', 'is-invisible');
+    btn.setAttribute('onclick', 'openTrafficMapModal()');
+
+    if (now >= invisibleStart && now < blackoutEnd) {
+        // Invisible state (after 10 AM on 8/25 until 2 PM on 8/26)
+        btn.disabled = true;
+        btn.classList.add('is-invisible');
+        btn.removeAttribute('onclick');
+    } else if (now >= blackoutStart && now < invisibleStart) {
+        // Greyed out state (between 9 AM and 10 AM on 8/25)
         btn.disabled = true;
         btn.classList.add('is-disabled');
-        // Remove the onclick attribute so it cannot be triggered
         btn.removeAttribute('onclick');
-    } else {
-        btn.disabled = false;
-        btn.classList.remove('is-disabled');
-        // Restore the onclick attribute if outside the blackout window
-        btn.setAttribute('onclick', 'openTrafficMapModal()');
     }
 }
 
-// Run on page load
-document.addEventListener('DOMContentLoaded', updateTrafficButtonState);
+// Run on page load and periodically to catch time shifts
+document.addEventListener('DOMContentLoaded', () => {
+    updateTrafficButtonState();
+    setInterval(updateTrafficButtonState, 60000);
+});
 window.addEventListener('resize', () => {
     const modal = document.getElementById("forecastGraphModal");
     if (modal && modal.style.display === "flex" && modal.currentItem) {
@@ -2355,8 +2365,6 @@ window.addEventListener('resize', () => {
 });
 
 buildForecast();
-updateTrafficButtonState();
-setInterval(updateTrafficButtonState, 60000);
 setInterval(updateStreamStatus, 60000);
 setInterval(buildForecast, 60000);
 setInterval(updateTrafficTime, 60000);
