@@ -1943,197 +1943,46 @@ function getTempRangeGradientCss(tempLow, tempHigh) {
     return `linear-gradient(90deg, ${gradientStops.join(", ")})`;
 }
 
-function drawForecastCanvasGraph(item, mode, canvas, activeX = null, prevItem = null, nextItem = null) {
+function drawForecastCanvasGraph(canvas, mode = "temp", sortedEvents = [], activeX = null) {
     if (!canvas) return;
-    const ctx = canvas.getContext("2d");
-    const width = canvas.width;
-    const height = canvas.height;
 
+    const ctx = canvas.getContext("2d");
+    const dpr = window.devicePixelRatio || 1;
+    const width = canvas.width / dpr;
+    const height = canvas.height / dpr;
+
+    // Reset transform & clear screen
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.clearRect(0, 0, width, height);
 
-    const modeLabels = {
-        temp: "Temperature",
-        wind: "Wind & Gusts",
-        dos: "DOS Score",
-        pressure: "Air Pressure",
-        visibility: "Visibility",
-        uv: "UV Index",
-        precip: "Precipitation",
-        humidity: "Humidity"
-    };
-
-    const titleEl = document.getElementById("graphModalTitle");
-    if (titleEl && canvas.id === "forecastGraphCanvas") {
-        titleEl.innerText = `${item.day} (${item.dateStr}) - ${modeLabels[mode] || "Forecast"}`;
-    }
-
-    const now = new Date();
-    const cdtOptions = { timeZone: 'America/Chicago', year: 'numeric', month: 'numeric', day: 'numeric', hour: 'numeric', minute: 'numeric', hour12: false };
-    const cdtParts = new Intl.DateTimeFormat('en-US', cdtOptions).formatToParts(now);
-    
-    let cdtYear, cdtMonth, cdtDay, cdtHour, cdtMinute;
-    cdtParts.forEach(p => {
-        if (p.type === 'year') cdtYear = parseInt(p.value, 10);
-        if (p.type === 'month') cdtMonth = parseInt(p.value, 10);
-        if (p.type === 'day') cdtDay = parseInt(p.value, 10);
-        if (p.type === 'hour') cdtHour = parseInt(p.value, 10);
-        if (p.type === 'minute') cdtMinute = parseInt(p.value, 10);
-    });
-
-    const currentMinutes = cdtHour * 60 + cdtMinute;
-    const dateParts = item.dateStr.split('/').map(n => parseInt(n, 10));
-    const isToday = (dateParts[0] === cdtMonth && dateParts[1] === cdtDay && dateParts[2] === cdtYear);
-
-    const scaleFactor = Math.min(width / 650, 1.5);
-    const padLeft = Math.round(45 * scaleFactor);
-    const padRight = Math.round(20 * scaleFactor);
-    const padTop = Math.round(30 * scaleFactor);
-    const padBottom = Math.round(35 * scaleFactor);
+    const scaleFactor = Math.max(0.8, width / 600);
+    const padLeft = 50 * scaleFactor;
+    const padRight = 20 * scaleFactor;
+    const padTop = 25 * scaleFactor;
+    const padBottom = 30 * scaleFactor;
 
     const graphWidth = width - padLeft - padRight;
     const graphHeight = height - padTop - padBottom;
 
-    const smoothStep = (v0, v1, t) => {
-        const factor = 0.5 * (1 - Math.cos(t * Math.PI));
-        return v0 + (v1 - v0) * factor;
+    // --- Diurnal Fallback Models (Minute 0 - 1439) ---
+    const getDiurnalTemp = (m) => 65 + 15 * Math.sin(((m - 360) / 1440) * 2 * Math.PI);
+    const getDiurnalWind = (m) => 8 + 6 * Math.sin(((m - 480) / 1440) * 2 * Math.PI);
+    const getDiurnalGust = (m) => getDiurnalWind(m) + 8 + 4 * Math.sin((m / 1440) * 2 * Math.PI);
+    const getDiurnalDos = (m) => Math.max(0, 100 * Math.sin(((m - 360) / 1440) * Math.PI));
+    const getDiurnalPressure = (m) => 29.92 + 0.08 * Math.cos((m / 720) * 2 * Math.PI);
+    const getDiurnalUv = (m) => Math.max(0, 10 * Math.sin(((m - 360) / 720) * Math.PI));
+    const getDiurnalHumidity = (m) => 70 - 25 * Math.sin(((m - 360) / 1440) * 2 * Math.PI);
+    const getDiurnalPrecip = (m) => 10 + 10 * Math.sin((m / 1440) * 2 * Math.PI);
+    const getDiurnalVisibility = (m) => 10;
+
+    // Smoothstep utility for interpolation
+    const smoothStep = (min, max, factor) => {
+        const smoothFactor = factor * factor * (3 - 2 * factor);
+        return min + smoothFactor * (max - min);
     };
 
-    const lerpColor = (color1, color2, factor) => {
-        const c1 = parseInt(color1.replace('#', ''), 16);
-        const c2 = parseInt(color2.replace('#', ''), 16);
-
-        const r1 = (c1 >> 16) & 0xff, g1 = (c1 >> 8) & 0xff, b1 = c1 & 0xff;
-        const r2 = (c2 >> 16) & 0xff, g2 = (c2 >> 8) & 0xff, b2 = c2 & 0xff;
-
-        const r = Math.round(r1 + factor * (r2 - r1));
-        const g = Math.round(g1 + factor * (g2 - g1));
-        const b = Math.round(b1 + factor * (b2 - b1));
-
-        return `#${((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1)}`;
-    };
-
-    // --- Apple Weather Color Maps ---
-    const getDynamicWindColor = (speed) => {
-        if (typeof getAppleWindColor === "function") return getAppleWindColor(speed);
-        if (speed <= 5)  return lerpColor("#00c8ff", "#0088ff", speed / 5);
-        if (speed <= 15) return lerpColor("#0088ff", "#00ffaa", (speed - 5) / 10);
-        if (speed <= 25) return lerpColor("#00ffaa", "#ffaa00", (speed - 15) / 10);
-        if (speed <= 35) return lerpColor("#ffaa00", "#ff3300", (speed - 25) / 10);
-        return lerpColor("#ff3300", "#cc00ff", Math.min(1, (speed - 35) / 15));
-    };
-
-    const getUvColor = (uv) => {
-        if (uv <= 2) return lerpColor("#558b2f", "#7cb342", uv / 2); // Green
-        if (uv <= 5) return lerpColor("#fbc02d", "#f57f17", (uv - 2) / 3); // Yellow
-        if (uv <= 7) return lerpColor("#f57c00", "#e65100", (uv - 5) / 2); // Orange
-        if (uv <= 10) return lerpColor("#e53935", "#b71c1c", (uv - 7) / 3); // Red
-        return lerpColor("#8e24aa", "#4a148c", Math.min(1, (uv - 10) / 5)); // Purple
-    };
-
-    const getHumidityColor = (hum) => {
-        return lerpColor("#80deea", "#0277bd", Math.min(1, Math.max(0, hum / 100))); // Light Blue to Deep Cyan
-    };
-
-    const getPrecipColor = (precip) => {
-        return lerpColor("#29b6f6", "#0d47a1", Math.min(1, Math.max(0, precip / 100))); // Sky Blue to Deep Blue
-    };
-
-    const getVisibilityColor = (vis) => {
-        if (vis >= 10) return "#4caf50"; // Clear Green
-        if (vis >= 5)  return "#ffb300"; // Medium Amber
-        return "#f44336"; // Low Visibility Red
-    };
-
-    const getPressureColor = (press) => {
-        if (press < 29.80) return "#42a5f5"; // Low Pressure (Blue)
-        if (press <= 30.20) return "#66bb6a"; // Normal Pressure (Green)
-        return "#ab47bc"; // High Pressure (Purple)
-    };
-
-    const resolvePreviousItem = () => {
-        if (prevItem) return prevItem;
-        if (typeof forecastData !== "undefined" && Array.isArray(forecastData)) {
-            const idx = forecastData.findIndex(d => d.dateStr === item.dateStr);
-            if (idx > 0) return forecastData[idx - 1];
-        }
-        return item.yesterdayItem || item.prevDay || null;
-    };
-
-    const getPreviousDayLowestTemp = () => {
-        if (item.dateStr === "8/24/2026" || item.dateStr === "08/24/2026") {
-            const prev = resolvePreviousItem();
-            if (prev && Array.isArray(prev.overrideEvents) && prev.overrideEvents.length > 0) {
-                const eventTemps = prev.overrideEvents.filter(e => e.temp !== undefined).map(e => e.temp);
-                if (eventTemps.length > 0) return Math.min(...eventTemps);
-            }
-            return 48;
-        }
-
-        const prev = resolvePreviousItem();
-        if (prev) {
-            if (Array.isArray(prev.tempRange) && prev.tempRange.length > 0) return Math.min(...prev.tempRange);
-            if (Array.isArray(prev.temps) && prev.temps.length > 0) return Math.min(...prev.temps);
-            if (prev.tempLowMin !== undefined) return prev.tempLowMin;
-            if (prev.tempMin !== undefined) return prev.tempMin;
-            if (prev.tempLow !== undefined) return prev.tempLow;
-        }
-
-        if (item.yesterdayTempLow !== undefined) return item.yesterdayTempLow;
-        if (item.yesterdayLow !== undefined) return item.yesterdayLow;
-        return item.tempLow;
-    };
-
-    const effectivePrevItem = resolvePreviousItem();
-    const morningLow = getPreviousDayLowestTemp();
-    const todayLow = item.tempLow;
-    const todayHigh = item.tempHigh;
-    const tomorrowLow = item.tempLow;
-
-    const prevHigh = (effectivePrevItem && effectivePrevItem.tempHigh !== undefined) 
-        ? effectivePrevItem.tempHigh 
-        : (item.yesterdayTempHigh !== undefined ? item.yesterdayTempHigh : item.tempHigh);
-
-    const midnightStartTemp = Math.round((prevHigh + morningLow) / 2);
-    const midnightEndTemp = Math.round((todayHigh + tomorrowLow) / 2);
-    const isWinterInversion = item.isWinterInversion || (item.tempHigh < morningLow);
-
-    // --- Diurnal Curves ---
-    const getDiurnalTemp = (m) => {
-        if (isWinterInversion) {
-            const tStart = Math.round((prevHigh + todayHigh) / 2);
-            if (m <= 360) return Math.round(smoothStep(tStart, todayHigh, m / 360));
-            else if (m <= 900) return Math.round(smoothStep(todayHigh, todayLow, (m - 360) / 540));
-            else return Math.round(smoothStep(todayLow, tomorrowLow, (m - 900) / 539));
-        } else {
-            if (m <= 360) return Math.round(smoothStep(midnightStartTemp, morningLow, m / 360));
-            else if (m <= 900) return Math.round(smoothStep(morningLow, todayHigh, (m - 360) / 540));
-            else return Math.round(smoothStep(todayHigh, midnightEndTemp, (m - 900) / 539));
-        }
-    };
-
-    const peakMin = 15 * 60;
-    const getDiurnalWind = (m) => Math.round((item.windMph || 0) * (0.6 + 0.4 * ((Math.cos(((m - peakMin) / 1440) * Math.PI * 2) + 1) / 2)));
-    const getDiurnalGust = (m) => Math.round((item.gustMph || 0) * (0.65 + 0.35 * ((Math.cos(((m - peakMin) / 1440) * Math.PI * 2) + 1) / 2)));
-    const getDiurnalDos = (m) => Math.round((item.score || 0) * (0.5 + 0.5 * ((Math.cos(((m - peakMin) / 1440) * Math.PI * 2) + 1) / 2)));
-
-    // New Diurnal Fallbacks
-    const getDiurnalPressure = (m) => (item.pressure !== undefined ? item.pressure : 29.92) + 0.05 * Math.sin((m / 1440) * Math.PI * 2);
-    const getDiurnalVisibility = () => item.visibility !== undefined ? item.visibility : 10;
-    const getDiurnalUv = (m) => {
-        if (m < 360 || m > 1080) return 0; // Solar window between 6 AM and 6 PM
-        const solarFactor = Math.sin(((m - 360) / 720) * Math.PI);
-        return parseFloat(((item.uvIndex !== undefined ? item.uvIndex : 6) * solarFactor).toFixed(1));
-    };
-    const getDiurnalPrecip = () => item.precipChance !== undefined ? item.precipChance : 0;
-    const getDiurnalHumidity = (m) => {
-        const rad = ((m - 360) / 1440) * Math.PI * 2;
-        const inverseTempFactor = (Math.cos(rad) + 1) / 2;
-        const humBase = item.humidity !== undefined ? item.humidity : 60;
-        return Math.round(Math.min(100, Math.max(10, humBase - 20 + 40 * inverseTempFactor)));
-    };
-
-    const hasEvents = Array.isArray(item.overrideEvents) && item.overrideEvents.length > 0;
-    const sortedEvents = hasEvents ? [...item.overrideEvents].sort((a, b) => a.minute - b.minute) : [];
+    // --- Minute-by-Minute Interpolation Logic ---
+    const hasEvents = Array.isArray(sortedEvents) && sortedEvents.length > 0;
 
     const getInterpolatedVal = (m, key, fallbackFn) => {
         if (!hasEvents) return fallbackFn(m);
@@ -2144,11 +1993,9 @@ function drawForecastCanvasGraph(item, mode, canvas, activeX = null, prevItem = 
         const prevEvent = [...sortedEvents].reverse().find(e => e.minute <= m && e[key] !== undefined);
         const nextEvent = sortedEvents.find(e => e.minute >= m && e[key] !== undefined);
 
-        if (prevEvent && nextEvent) {
-            if (prevEvent.minute === nextEvent.minute) return prevEvent[key];
-            const t = (m - prevEvent.minute) / (nextEvent.minute - prevEvent.minute);
-            const interpolated = smoothStep(prevEvent[key], nextEvent[key], t);
-            return typeof prevEvent[key] === 'number' && prevEvent[key] % 1 !== 0 ? parseFloat(interpolated.toFixed(2)) : Math.round(interpolated);
+        if (prevEvent && nextEvent && prevEvent.minute !== nextEvent.minute) {
+            const factor = (m - prevEvent.minute) / (nextEvent.minute - prevEvent.minute);
+            return smoothStep(prevEvent[key], nextEvent[key], factor);
         } else if (prevEvent) {
             return prevEvent[key];
         } else if (nextEvent) {
@@ -2158,296 +2005,202 @@ function drawForecastCanvasGraph(item, mode, canvas, activeX = null, prevItem = 
         return fallbackFn(m);
     };
 
-    const points = [];
-    for (let m = 0; m <= 1439; m += 15) {
-        const x = padLeft + (m / 1439) * graphWidth;
-        points.push({
-            minute: m,
-            x: x,
-            temp: getInterpolatedVal(m, 'temp', getDiurnalTemp),
-            wind: getInterpolatedVal(m, 'wind', getDiurnalWind),
-            gust: getInterpolatedVal(m, 'gust', getDiurnalGust),
-            dos: getInterpolatedVal(m, 'dos', getDiurnalDos),
-            pressure: getInterpolatedVal(m, 'pressure', getDiurnalPressure),
-            visibility: getInterpolatedVal(m, 'visibility', getDiurnalVisibility),
-            uv: getInterpolatedVal(m, 'uv', getDiurnalUv),
-            precip: getInterpolatedVal(m, 'precip', getDiurnalPrecip),
-            humidity: getInterpolatedVal(m, 'humidity', getDiurnalHumidity)
-        });
+    // --- Mode Setup & Range Bounds ---
+    let yMin = 0, yMax = 100;
+    let mainColor = "#0088ff";
+    let getValueAtMinute = (m) => 0;
+    let getSecondaryValueAtMinute = null;
+    let unitLabel = "";
+
+    if (mode === "temp") {
+        getValueAtMinute = (m) => getInterpolatedVal(m, "temp", getDiurnalTemp);
+        const allTemps = Array.from({ length: 1440 }, (_, m) => getValueAtMinute(m));
+        yMin = Math.floor(Math.min(...allTemps) - 5);
+        yMax = Math.ceil(Math.max(...allTemps) + 5);
+        mainColor = "#38bdf8";
+        unitLabel = "°F";
+    } else if (mode === "wind") {
+        getValueAtMinute = (m) => getInterpolatedVal(m, "wind", getDiurnalWind);
+        getSecondaryValueAtMinute = (m) => getInterpolatedVal(m, "gust", getDiurnalGust);
+        const allGusts = Array.from({ length: 1440 }, (_, m) => getSecondaryValueAtMinute(m));
+        yMin = 0;
+        yMax = Math.max(40, Math.ceil(Math.max(...allGusts) + 10));
+        mainColor = "#0088ff";
+        unitLabel = " mph";
+    } else if (mode === "dos") {
+        getValueAtMinute = (m) => getInterpolatedVal(m, "dos", getDiurnalDos);
+        const allDos = Array.from({ length: 1440 }, (_, m) => getValueAtMinute(m));
+        yMin = 0;
+        yMax = Math.max(120, Math.ceil(Math.max(...allDos) + 15));
+        mainColor = "#f59e0b";
+        unitLabel = " DOS";
+    } else if (mode === "pressure") {
+        getValueAtMinute = (m) => getInterpolatedVal(m, "pressure", getDiurnalPressure);
+        const allPressures = Array.from({ length: 1440 }, (_, m) => getValueAtMinute(m));
+        yMin = parseFloat((Math.min(...allPressures) - 0.1).toFixed(2));
+        yMax = parseFloat((Math.max(...allPressures) + 0.1).toFixed(2));
+        mainColor = "#a855f7";
+        unitLabel = " inHg";
+    } else if (mode === "uv") {
+        getValueAtMinute = (m) => getInterpolatedVal(m, "uvIndex", getDiurnalUv);
+        yMin = 0;
+        yMax = 12;
+        mainColor = "#eab308";
+        unitLabel = " UV";
+    } else if (mode === "humidity" || mode === "precip") {
+        const isHum = mode === "humidity";
+        getValueAtMinute = (m) => getInterpolatedVal(m, isHum ? "humidity" : "precipChance", isHum ? getDiurnalHumidity : getDiurnalPrecip);
+        yMin = 0;
+        yMax = 100;
+        mainColor = isHum ? "#10b981" : "#3b82f6";
+        unitLabel = "%";
+    } else if (mode === "visibility") {
+        getValueAtMinute = (m) => getInterpolatedVal(m, "visibility", getDiurnalVisibility);
+        yMin = 0;
+        yMax = 10;
+        mainColor = "#64748b";
+        unitLabel = " mi";
     }
 
-    // Grid System
-    ctx.strokeStyle = "#2e2e38";
-    ctx.lineWidth = 1;
-    ctx.fillStyle = "#888";
-    ctx.font = `${Math.max(9, Math.round(11 * scaleFactor))}px sans-serif`;
-    ctx.textAlign = "center";
+    const mapX = (m) => padLeft + (m / 1440) * graphWidth;
+    const mapY = (val) => padTop + graphHeight - ((val - yMin) / (yMax - yMin)) * graphHeight;
 
-    const hourStep = width < 400 ? 6 : 4;
-    for (let h = 0; h <= 24; h += hourStep) {
-        const m = h === 24 ? 1439 : h * 60;
-        const x = padLeft + (m / 1439) * graphWidth;
+    // --- Grid Lines & Axes ---
+    ctx.lineWidth = 1;
+    ctx.strokeStyle = "#2a2a35";
+    ctx.fillStyle = "#888899";
+    ctx.font = `${Math.round(10 * scaleFactor)}px 'Segoe UI', sans-serif`;
+
+    const ySteps = 4;
+    for (let i = 0; i <= ySteps; i++) {
+        const val = yMin + (i / ySteps) * (yMax - yMin);
+        const y = mapY(val);
+        ctx.beginPath();
+        ctx.moveTo(padLeft, y);
+        ctx.lineTo(width - padRight, y);
+        ctx.stroke();
+
+        ctx.textAlign = "right";
+        ctx.textBaseline = "middle";
+        const displayVal = (mode === "pressure") ? val.toFixed(2) : Math.round(val);
+        ctx.fillText(`${displayVal}${unitLabel}`, padLeft - 6, y);
+    }
+
+    const timeTicks = [
+        { m: 0, label: "12 AM" }, { m: 360, label: "6 AM" },
+        { m: 720, label: "12 PM" }, { m: 1080, label: "6 PM" }, { m: 1440, label: "12 AM" }
+    ];
+
+    timeTicks.forEach(tick => {
+        const x = mapX(tick.m);
         ctx.beginPath();
         ctx.moveTo(x, padTop);
-        ctx.lineTo(x, height - padBottom);
+        ctx.lineTo(x, padTop + graphHeight);
         ctx.stroke();
 
-        let label = h === 0 ? "12AM" : h === 12 ? "12PM" : h === 24 ? "12AM" : (h > 12 ? h - 12 + "PM" : h + "AM");
-        ctx.fillText(label, x, height - padBottom + 15 * scaleFactor);
-    }
+        ctx.textAlign = "center";
+        ctx.textBaseline = "top";
+        ctx.fillText(tick.label, x, padTop + graphHeight + 6);
+    });
 
-    const drawSegmentedLine = (pts, activeStyle, lineWidth, getYVal, fillUnder = false) => {
-        const renderPath = (segmentPts, style, isDashed) => {
-            if (segmentPts.length < 2) return;
-
-            if (fillUnder) {
-                ctx.beginPath();
-                ctx.moveTo(segmentPts[0].x, height - padBottom);
-                segmentPts.forEach(p => ctx.lineTo(p.x, getYVal(p)));
-                ctx.lineTo(segmentPts[segmentPts.length - 1].x, height - padBottom);
-                ctx.closePath();
-                ctx.fillStyle = style;
-                ctx.globalAlpha = 0.15;
-                ctx.fill();
-                ctx.globalAlpha = 1.0;
-            }
-
-            ctx.beginPath();
-            ctx.setLineDash(isDashed ? [4, 4] : []);
-            ctx.strokeStyle = style;
-            ctx.lineWidth = lineWidth * scaleFactor;
-            segmentPts.forEach((p, idx) => {
-                const y = getYVal(p);
-                if (idx === 0) ctx.moveTo(p.x, y);
-                else ctx.lineTo(p.x, y);
-            });
-            ctx.stroke();
-            ctx.setLineDash([]);
-        };
-
-        if (isToday) {
-            const currentIdx = pts.findIndex(p => p.minute >= currentMinutes);
-            const pastPts = pts.slice(0, Math.max(1, currentIdx + 1));
-            const futurePts = pts.slice(Math.max(0, currentIdx));
-
-            if (pastPts.length > 0) renderPath(pastPts, activeStyle, true);
-            if (futurePts.length > 0) renderPath(futurePts, activeStyle, false);
-        } else {
-            renderPath(pts, activeStyle, false);
-        }
-    };
-
-    const drawIndicatorDot = (x, y, color) => {
-        ctx.fillStyle = color;
+    // --- Curve Plotter ---
+    const plotCurve = (getValFn, strokeStyle, fillGradient = null, dash = []) => {
+        ctx.save();
+        ctx.setLineDash(dash);
         ctx.beginPath();
-        ctx.arc(x, y, 5 * scaleFactor, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.strokeStyle = "#000";
-        ctx.lineWidth = 1.5;
+
+        for (let m = 0; m <= 1440; m += 15) {
+            const x = mapX(m);
+            const y = mapY(getValFn(m));
+            if (m === 0) ctx.moveTo(x, y);
+            else ctx.lineTo(x, y);
+        }
+
+        if (fillGradient) {
+            ctx.lineTo(mapX(1440), mapY(yMin));
+            ctx.lineTo(mapX(0), mapY(yMin));
+            ctx.closePath();
+            ctx.fillStyle = fillGradient;
+            ctx.fill();
+        }
+
+        ctx.beginPath();
+        for (let m = 0; m <= 1440; m += 15) {
+            const x = mapX(m);
+            const y = mapY(getValFn(m));
+            if (m === 0) ctx.moveTo(x, y);
+            else ctx.lineTo(x, y);
+        }
+        ctx.strokeStyle = strokeStyle;
+        ctx.lineWidth = 2.5 * scaleFactor;
         ctx.stroke();
+        ctx.restore();
     };
 
-    // Mode Rendering Logic
-    if (mode === "temp") {
-        const allTemps = points.map(p => p.temp);
-        const minY = Math.min(...allTemps) - 5;
-        const maxY = Math.max(...allTemps) + 5;
-        const getY = (p) => padTop + graphHeight - ((p.temp - minY) / (maxY - minY)) * graphHeight;
-
-        const fillGrad = ctx.createLinearGradient(0, padTop, 0, height - padBottom);
-        fillGrad.addColorStop(0, typeof getAppleTempColor === "function" ? getAppleTempColor(Math.max(...allTemps)) : "#ff5500");
-        fillGrad.addColorStop(1, typeof getAppleTempColor === "function" ? getAppleTempColor(Math.min(...allTemps)) : "#0099ff");
-
-        drawSegmentedLine(points, fillGrad, 3, getY, true);
-
-        if (isToday) {
-            const currentX = padLeft + (currentMinutes / 1439) * graphWidth;
-            const currentTemp = getInterpolatedVal(currentMinutes, 'temp', getDiurnalTemp);
-            drawIndicatorDot(currentX, padTop + graphHeight - ((currentTemp - minY) / (maxY - minY)) * graphHeight, "#ffffff");
-        }
-    } else if (mode === "wind") {
-        const allGusts = points.map(p => p.gust);
-        const minSpeed = 0, maxSpeed = Math.max(10, Math.max(...allGusts) + 5);
-        const getWindY = (p) => padTop + graphHeight - ((p.wind - minSpeed) / (maxSpeed - minSpeed)) * graphHeight;
-        const getGustY = (p) => padTop + graphHeight - ((p.gust - minSpeed) / (maxSpeed - minSpeed)) * graphHeight;
-
-        const createSpeedGradient = () => {
-            const grad = ctx.createLinearGradient(0, height - padBottom, 0, padTop);
-            for (let i = 0; i <= 20; i++) {
-                const ratio = i / 20;
-                grad.addColorStop(ratio, getDynamicWindColor(minSpeed + ratio * (maxSpeed - minSpeed)));
-            }
-            return grad;
-        };
-
-        drawSegmentedLine(points, createSpeedGradient(), 2.5, getWindY, true);
-        drawSegmentedLine(points, createSpeedGradient(), 2.0, getGustY, false);
-
-        if (isToday) {
-            const currentX = padLeft + (currentMinutes / 1439) * graphWidth;
-            const curWind = getInterpolatedVal(currentMinutes, 'wind', getDiurnalWind);
-            const curGust = getInterpolatedVal(currentMinutes, 'gust', getDiurnalGust);
-            drawIndicatorDot(currentX, getWindY({ wind: curWind }), getDynamicWindColor(curWind));
-            drawIndicatorDot(currentX, getGustY({ gust: curGust }), getDynamicWindColor(curGust));
-        }
-    } else if (mode === "dos") {
-        const allDos = points.map(p => p.dos);
-        const minY = Math.max(0, Math.min(...allDos) - 5), maxY = Math.max(...allDos) + 5;
-        const getDosY = (p) => padTop + graphHeight - ((p.dos - minY) / (maxY - minY)) * graphHeight;
-
-        const dosGrad = ctx.createLinearGradient(0, padTop, 0, height - padBottom);
-        dosGrad.addColorStop(0, typeof getLerpColor === "function" ? getLerpColor(item.score) : "#33ff55");
-        dosGrad.addColorStop(1, "#115522");
-
-        drawSegmentedLine(points, dosGrad, 3, getDosY, true);
-
-        if (isToday) {
-            const currentX = padLeft + (currentMinutes / 1439) * graphWidth;
-            const currentDos = getInterpolatedVal(currentMinutes, 'dos', getDiurnalDos);
-            drawIndicatorDot(currentX, padTop + graphHeight - ((currentDos - minY) / (maxY - minY)) * graphHeight, "#ffffff");
-        }
-    } else if (mode === "pressure") {
-        const allVals = points.map(p => p.pressure);
-        const minY = Math.min(...allVals) - 0.1, maxY = Math.max(...allVals) + 0.1;
-        const getY = (p) => padTop + graphHeight - ((p.pressure - minY) / (maxY - minY)) * graphHeight;
-
-        const grad = ctx.createLinearGradient(0, height - padBottom, 0, padTop);
-        grad.addColorStop(0, getPressureColor(minY));
-        grad.addColorStop(1, getPressureColor(maxY));
-
-        drawSegmentedLine(points, grad, 3, getY, true);
-
-        if (isToday) {
-            const currentX = padLeft + (currentMinutes / 1439) * graphWidth;
-            const curVal = getInterpolatedVal(currentMinutes, 'pressure', getDiurnalPressure);
-            drawIndicatorDot(currentX, getY({ pressure: curVal }), getPressureColor(curVal));
-        }
-    } else if (mode === "visibility") {
-        const allVals = points.map(p => p.visibility);
-        const minY = 0, maxY = 10;
-        const getY = (p) => padTop + graphHeight - ((p.visibility - minY) / (maxY - minY)) * graphHeight;
-
-        const grad = ctx.createLinearGradient(0, height - padBottom, 0, padTop);
-        grad.addColorStop(0, getVisibilityColor(0));
-        grad.addColorStop(0.5, getVisibilityColor(5));
-        grad.addColorStop(1, getVisibilityColor(10));
-
-        drawSegmentedLine(points, grad, 3, getY, true);
-
-        if (isToday) {
-            const currentX = padLeft + (currentMinutes / 1439) * graphWidth;
-            const curVal = getInterpolatedVal(currentMinutes, 'visibility', getDiurnalVisibility);
-            drawIndicatorDot(currentX, getY({ visibility: curVal }), getVisibilityColor(curVal));
-        }
-    } else if (mode === "uv") {
-        const allVals = points.map(p => p.uv);
-        const minY = 0, maxY = Math.max(10, Math.max(...allVals) + 1);
-        const getY = (p) => padTop + graphHeight - ((p.uv - minY) / (maxY - minY)) * graphHeight;
-
-        const grad = ctx.createLinearGradient(0, height - padBottom, 0, padTop);
-        grad.addColorStop(0, getUvColor(0));
-        grad.addColorStop(0.5, getUvColor(5));
-        grad.addColorStop(1, getUvColor(11));
-
-        drawSegmentedLine(points, grad, 3, getY, true);
-
-        if (isToday) {
-            const currentX = padLeft + (currentMinutes / 1439) * graphWidth;
-            const curVal = getInterpolatedVal(currentMinutes, 'uv', getDiurnalUv);
-            drawIndicatorDot(currentX, getY({ uv: curVal }), getUvColor(curVal));
-        }
-    } else if (mode === "precip") {
-        const minY = 0, maxY = 100;
-        const getY = (p) => padTop + graphHeight - ((p.precip - minY) / (maxY - minY)) * graphHeight;
-
-        const grad = ctx.createLinearGradient(0, height - padBottom, 0, padTop);
-        grad.addColorStop(0, getPrecipColor(0));
-        grad.addColorStop(1, getPrecipColor(100));
-
-        drawSegmentedLine(points, grad, 3, getY, true);
-
-        if (isToday) {
-            const currentX = padLeft + (currentMinutes / 1439) * graphWidth;
-            const curVal = getInterpolatedVal(currentMinutes, 'precip', getDiurnalPrecip);
-            drawIndicatorDot(currentX, getY({ precip: curVal }), getPrecipColor(curVal));
-        }
-    } else if (mode === "humidity") {
-        const minY = 0, maxY = 100;
-        const getY = (p) => padTop + graphHeight - ((p.humidity - minY) / (maxY - minY)) * graphHeight;
-
-        const grad = ctx.createLinearGradient(0, height - padBottom, 0, padTop);
-        grad.addColorStop(0, getHumidityColor(0));
-        grad.addColorStop(1, getHumidityColor(100));
-
-        drawSegmentedLine(points, grad, 3, getY, true);
-
-        if (isToday) {
-            const currentX = padLeft + (currentMinutes / 1439) * graphWidth;
-            const curVal = getInterpolatedVal(currentMinutes, 'humidity', getDiurnalHumidity);
-            drawIndicatorDot(currentX, getY({ humidity: curVal }), getHumidityColor(curVal));
-        }
+    // --- Render Curves ---
+    if (mode === "wind" && getSecondaryValueAtMinute) {
+        plotCurve(getSecondaryValueAtMinute, "#ef4444", null, [4, 4]);
     }
 
-    // Tooltip Rendering
+    const mainGradient = ctx.createLinearGradient(0, padTop, 0, padTop + graphHeight);
+    mainGradient.addColorStop(0, mainColor.replace(")", ", 0.35)").replace("rgb", "rgba").replace("#", "rgba(") + (mainColor.startsWith("#") ? "35" : ""));
+    mainGradient.addColorStop(1, "rgba(0, 0, 0, 0)");
+
+    plotCurve(getValueAtMinute, mainColor, mainGradient);
+
+    // --- Scrubber Overlay ---
     if (activeX !== null && activeX >= padLeft && activeX <= width - padRight) {
         const clampedX = Math.max(padLeft, Math.min(width - padRight, activeX));
-        const ratio = (clampedX - padLeft) / graphWidth;
-        const hoveredMinute = Math.round(ratio * 1439);
+        const activeMinutes = Math.round(((clampedX - padLeft) / graphWidth) * 1440);
+        const activeVal = getValueAtMinute(activeMinutes);
 
-        const h = Math.floor(hoveredMinute / 60);
-        const m = Math.round(hoveredMinute % 60);
-        const timeStr = `${h % 12 || 12}:${m < 10 ? '0' : ''}${m}${h >= 12 ? 'PM' : 'AM'}`;
+        const hours = Math.floor(activeMinutes / 60);
+        const mins = activeMinutes % 60;
+        const timeStr = `${hours % 12 || 12}:${mins < 10 ? '0' : ''}${mins} ${hours >= 12 ? 'PM' : 'AM'}`;
 
-        ctx.strokeStyle = "rgba(255, 255, 255, 0.6)";
-        ctx.lineWidth = 1;
-        ctx.setLineDash([3, 3]);
+        const pointY = mapY(activeVal);
+
+        // Vertical Scrubber Bar
         ctx.beginPath();
         ctx.moveTo(clampedX, padTop);
-        ctx.lineTo(clampedX, height - padBottom);
+        ctx.lineTo(clampedX, padTop + graphHeight);
+        ctx.strokeStyle = "#ffffff";
+        ctx.lineWidth = 1.5;
+        ctx.setLineDash([3, 3]);
         ctx.stroke();
         ctx.setLineDash([]);
 
-        let tooltipText = "";
-        if (mode === "temp") {
-            tooltipText = `${timeStr} - ${getInterpolatedVal(hoveredMinute, 'temp', getDiurnalTemp)}°F`;
-        } else if (mode === "wind") {
-            tooltipText = `${timeStr} - W: ${getInterpolatedVal(hoveredMinute, 'wind', getDiurnalWind)} | G: ${getInterpolatedVal(hoveredMinute, 'gust', getDiurnalGust)} mph`;
-        } else if (mode === "dos") {
-            tooltipText = `${timeStr} - DOS: ${getInterpolatedVal(hoveredMinute, 'dos', getDiurnalDos)}`;
-        } else if (mode === "pressure") {
-            tooltipText = `${timeStr} - ${getInterpolatedVal(hoveredMinute, 'pressure', getDiurnalPressure).toFixed(2)} inHg`;
-        } else if (mode === "visibility") {
-            tooltipText = `${timeStr} - ${getInterpolatedVal(hoveredMinute, 'visibility', getDiurnalVisibility)} mi`;
-        } else if (mode === "uv") {
-            tooltipText = `${timeStr} - UV: ${getInterpolatedVal(hoveredMinute, 'uv', getDiurnalUv)}`;
-        } else if (mode === "precip") {
-            tooltipText = `${timeStr} - Precip: ${getInterpolatedVal(hoveredMinute, 'precip', getDiurnalPrecip)}%`;
-        } else if (mode === "humidity") {
-            tooltipText = `${timeStr} - Humidity: ${getInterpolatedVal(hoveredMinute, 'humidity', getDiurnalHumidity)}%`;
-        }
+        // Intersection Point Indicator
+        ctx.beginPath();
+        ctx.arc(clampedX, pointY, 5 * scaleFactor, 0, Math.PI * 2);
+        ctx.fillStyle = "#ffffff";
+        ctx.fill();
+        ctx.strokeStyle = mainColor;
+        ctx.lineWidth = 2;
+        ctx.stroke();
 
-        ctx.font = `bold ${Math.max(10, Math.round(12 * scaleFactor))}px sans-serif`;
-        const textWidth = ctx.measureText(tooltipText).width;
-        let boxX = clampedX - textWidth / 2 - 8;
-        boxX = Math.max(padLeft, Math.min(width - padRight - textWidth - 16, boxX));
+        // Dynamic Tooltip Box
+        const text = `${timeStr} | ${(mode === "pressure") ? activeVal.toFixed(2) : Math.round(activeVal)}${unitLabel}`;
+        ctx.font = `bold ${Math.round(11 * scaleFactor)}px 'Segoe UI', sans-serif`;
+        const textWidth = ctx.measureText(text).width;
+        const tooltipX = Math.max(padLeft + 10, Math.min(width - padRight - textWidth - 20, clampedX - textWidth / 2 - 10));
+        const tooltipY = padTop + 10;
 
-        ctx.fillStyle = "rgba(0, 0, 0, 0.85)";
-        ctx.strokeStyle = "#444";
+        ctx.fillStyle = "rgba(18, 18, 24, 0.9)";
+        ctx.strokeStyle = "#444455";
         ctx.lineWidth = 1;
         ctx.beginPath();
-        if (typeof ctx.roundRect === "function") {
-            ctx.roundRect(boxX, 6, textWidth + 16, 22 * scaleFactor, 6);
-        } else {
-            ctx.rect(boxX, 6, textWidth + 16, 22 * scaleFactor);
-        }
+        ctx.roundRect(tooltipX, tooltipY, textWidth + 20, 24 * scaleFactor, 6);
         ctx.fill();
         ctx.stroke();
 
         ctx.fillStyle = "#ffffff";
         ctx.textAlign = "left";
-        ctx.fillText(tooltipText, boxX + 8, 20 * scaleFactor);
+        ctx.textBaseline = "middle";
+        ctx.fillText(text, tooltipX + 10, tooltipY + (12 * scaleFactor));
     }
 }
+
 function updateTrafficButtonState() {
     const btn = document.querySelector('.traffic-btn');
     if (!btn) return;
