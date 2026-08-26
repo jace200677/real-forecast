@@ -1062,13 +1062,13 @@ async function buildForecast() {
             const isBabbitt = locationName.includes("babbitt") || (Math.abs(lat - 47.71) < 0.1 && Math.abs(lon - (-91.95)) < 0.1);
 
             if (isTower) {
-                projectedScore = 41;
+                projectedScore = 61;
             } else if (isVirginia) {
-                projectedScore = 40;
+                projectedScore = 67;
             } else if (isEmbarrass) {
-                projectedScore = 41;
+                projectedScore = 71;
             } else if (isBabbitt) {
-                projectedScore = 42;
+                projectedScore = 97;
             } else {
                 const latOffset = (lat - 45.0) * 2.5;
                 const lonOffset = (lon + 93.0) * 1.8;
