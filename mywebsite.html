@@ -1853,12 +1853,15 @@ function updateTrafficTime(totalMinutes, baseDateOverride = null) {
     const impactEl = document.getElementById("trafficImpactReadout");
     if (!impactEl) return;
 
-    // 2. Date Context & Cutoff Evaluation (Post-Aug 25, 2026 Integration)
+    // 2. Date Context & Target Timestamp Calculation
     let workingDate = new Date();
     if (baseDateOverride) {
         workingDate = new Date(baseDateOverride);
     }
     
+    // Set target date's time to match the slider
+    workingDate.setHours(hours, mins, 0, 0);
+
     const dayOfWeek = workingDate.getDay();
     const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
 
@@ -1871,7 +1874,7 @@ function updateTrafficTime(totalMinutes, baseDateOverride = null) {
     const isViewingLiveTime = !baseDateOverride && minuteDiff <= 15;
     const trafficModeLabel = isViewingLiveTime ? "Live Traffic" : "Typical Traffic";
 
-    // 3. Iframe Parameter & Location Parsing
+    // 3. Iframe Source Update & Parsing (Fixes Map Not Updating)
     let derivedLat = 45.3853;
     let derivedLon = -93.8864;
     let isGoogleMapsSource = false;
@@ -1885,9 +1888,23 @@ function updateTrafficTime(totalMinutes, baseDateOverride = null) {
 
             if (hostname.indexOf("google.com") !== -1 || hostname.indexOf("maps.google.com") !== -1) {
                 isGoogleMapsSource = true;
-                if (isPostAug25 && !urlObj.searchParams.has("layer")) {
+                
+                // Convert departure time to Unix epoch timestamp in seconds
+                const unixTimestampSec = Math.floor(workingDate.getTime() / 1000);
+                
+                // Update URL search parameters so iframe reloads new traffic state
+                if (isViewingLiveTime) {
+                    urlObj.searchParams.delete("departure_time");
                     urlObj.searchParams.set("layer", "t");
-                    iframe.src = urlObj.toString();
+                } else {
+                    urlObj.searchParams.set("departure_time", unixTimestampSec);
+                    urlObj.searchParams.set("layer", "t");
+                }
+
+                // Prevent unnecessary iframe reloads if URL hasn't changed
+                const newSrc = urlObj.toString();
+                if (iframe.src !== newSrc) {
+                    iframe.src = newSrc;
                 }
             }
 
