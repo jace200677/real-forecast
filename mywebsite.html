@@ -1496,6 +1496,10 @@ function openForecastGraphModal(item, fullForecast = [], itemIndex = -1) {
    
 let activeMapItem = null;
 
+// Global Google Map and Traffic Layer references for Post-8/25/2026 handling
+let postAugMapInstance = null;
+let postAugTrafficLayer = null;
+
 function openTrafficMapModal() {
     const graphModal = document.getElementById("forecastGraphModal");
     if (!graphModal || !graphModal.currentItem) return;
@@ -1505,8 +1509,6 @@ function openTrafficMapModal() {
     
     const lat = typeof targetZoneOrPoint !== "undefined" && targetZoneOrPoint ? parseFloat(targetZoneOrPoint.lat) : 45.3853;
     const lon = typeof targetZoneOrPoint !== "undefined" && targetZoneOrPoint ? parseFloat(targetZoneOrPoint.lon) : -93.8864;
-    
-    const iframe = document.getElementById("trafficMapFrame");
     
     // Strictly depend post-8/25/2026 check on the selected day card's dateStr
     const itemDate = new Date(activeMapItem.dateStr);
@@ -1520,52 +1522,101 @@ function openTrafficMapModal() {
     const slider = document.getElementById("minuteTimeSlider");
     const sliderMinutes = slider ? parseInt(slider.value) : snappedNowMinutes;
 
-    const isRightOnTime = (Math.abs(sliderMinutes - snappedNowMinutes) <= 15);
+    const modalContainer = document.getElementById("trafficMapModalContainer") || document.getElementById("trafficMapFrame").parentElement;
 
     if (window._currentMapZoom === undefined) {
         window._currentMapZoom = 15;
     }
 
-    const updateIframeSource = () => {
+    // Clean up existing zoom overlays/panels
+    const existingZoomPanel = document.getElementById("mapZoomControlPanel");
+    if (existingZoomPanel) existingZoomPanel.remove();
+
+    const existingZoomOverlay = document.getElementById("mapScrollZoomOverlay");
+    if (existingZoomOverlay) existingZoomOverlay.remove();
+
+    if (isPostAug25) {
+        // Hide legacy iframe element if present
+        const iframe = document.getElementById("trafficMapFrame");
+        if (iframe) iframe.style.display = "none";
+
+        // Ensure a dedicated container div exists for the Google Maps JavaScript API
+        let mapCanvas = document.getElementById("googleMapsJsCanvas");
+        if (!mapCanvas) {
+            mapCanvas = document.createElement("div");
+            mapCanvas.id = "googleMapsJsCanvas";
+            mapCanvas.style.width = "100%";
+            mapCanvas.style.height = "100%";
+            mapCanvas.style.minHeight = "400px";
+            modalContainer.appendChild(mapCanvas);
+        }
+        mapCanvas.style.display = "block";
+
+        // Check if the Google Maps JavaScript API SDK is fully loaded in the browser
+        if (typeof google === 'undefined' || typeof google.maps === 'undefined') {
+            mapCanvas.innerHTML = `
+                <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; padding: 20px; text-align: center; font-family: sans-serif; color: #333; background: #f8f9fa;">
+                    <div style="font-size: 16px; font-weight: bold; margin-bottom: 8px;">Traffic Overlay Unavailable</div>
+                    <div style="font-size: 14px; color: #666; max-width: 320px;">The Google Maps JavaScript API script tag is missing or disabled in this view. Please check your script loader configuration.</div>
+                </div>
+            `;
+            document.getElementById("trafficMapModal").style.display = "flex";
+            return;
+        }
+
+        // Initialize or update the official Google Maps JavaScript API instance
+        if (!postAugMapInstance) {
+            postAugMapInstance = new google.maps.Map(mapCanvas, {
+                zoom: window._currentMapZoom,
+                center: { lat: lat, lng: lon },
+                mapTypeId: google.maps.MapTypeId.ROADMAP,
+                streetViewControl: false,
+                fullscreenControl: false
+            });
+
+            // Native TrafficLayer renderer for real-time speed/congestion highlights
+            postAugTrafficLayer = new google.maps.TrafficLayer({
+                autoRefresh: true
+            });
+            postAugTrafficLayer.setMap(postAugMapInstance);
+        } else {
+            postAugMapInstance.setCenter({ lat: lat, lng: lon });
+            postAugMapInstance.setZoom(window._currentMapZoom);
+            if (postAugTrafficLayer && postAugTrafficLayer.getMap() === null) {
+                postAugTrafficLayer.setMap(postAugMapInstance);
+            }
+        }
+    } else {
+        // Pre-8/25/2026: Use standard iframe embed pathway
+        const mapCanvas = document.getElementById("googleMapsJsCanvas");
+        if (mapCanvas) mapCanvas.style.display = "none";
+
+        const iframe = document.getElementById("trafficMapFrame");
+        if (iframe) {
+            iframe.style.display = "block";
+            iframe.style.width = "100%";
+            iframe.style.height = "100%";
+            iframe.style.border = "none";
+        }
+
+        const currentTotalMinutesNow = now.getHours() * 60 + now.getMinutes();
+        const snappedNowMinutesNow = Math.round(currentTotalMinutesNow / 15) * 15;
+        const isRightOnTime = (Math.abs(sliderMinutes - snappedNowMinutesNow) <= 15);
         const targetHour = Math.floor(sliderMinutes / 60);
         const targetMin = sliderMinutes % 60;
-        
-        // Dynamic map zoom scale calculation based on window._currentMapZoom
         const mapSpan = Math.round(3000 * Math.pow(2, 15 - window._currentMapZoom));
 
-        // If post-8/25/2026 based on selected card date: always show traffic layer, hide zoom panel, no custom map type dependency overrides
-        const trafficLayerParams = isPostAug25 
-            ? "&layer=t&forceTraffic=true&showSpeeds=true&trafficOverlay=road_only" 
-            : "&layer=t&forceTraffic=true";
-
-        if (isRightOnTime) {
-            iframe.src = `https://www.google.com/maps/embed?pb=!1m14!1m12!1m3!1d${mapSpan}!2d${lon}!3d${lat}!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!5e0!3m2!1sen!2sus!4v1700000000000!5m2!1sen!2sus${trafficLayerParams}`;
-        } else {
-            iframe.src = `https://www.google.com/maps/embed?pb=!1m14!1m12!1m3!1d${mapSpan}!2d${lon}!3d${lat}!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!5e0!3m2!1sen!2sus!4v1700000000000!5m2!1sen!2sus${trafficLayerParams}&feature=traffic&time=${targetHour.toString().padStart(2, '0')}%3A${targetMin.toString().padStart(2, '0')}`;
+        if (iframe) {
+            if (isRightOnTime) {
+                iframe.src = `https://www.google.com/maps/embed?pb=!1m14!1m12!1m3!1d${mapSpan}!2d${lon}!3d${lat}!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!5e0!3m2!1sen!2sus!4v1700000000000!5m2!1sen!2sus&layer=t&forceTraffic=true`;
+            } else {
+                iframe.src = `https://www.google.com/maps/embed?pb=!1m14!1m12!1m3!1d${mapSpan}!2d${lon}!3d${lat}!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!5e0!3m2!1sen!2sus!4v1700000000000!5m2!1sen!2sus&layer=t&forceTraffic=true&feature=traffic&time=${targetHour.toString().padStart(2, '0')}%3A${targetMin.toString().padStart(2, '0')}`;
+            }
         }
-    };
 
-    updateIframeSource();
-
-    if (slider) {
-        slider.value = sliderMinutes;
-    }
-
-    const modalContainer = iframe.parentElement;
-
-    // Remove zoom controls overlay panel strictly when the selected card date is post-8/25/2026
-    if (isPostAug25) {
-        const existingZoomPanel = document.getElementById("mapZoomControlPanel");
-        if (existingZoomPanel) existingZoomPanel.remove();
-
-        const existingZoomOverlay = document.getElementById("mapScrollZoomOverlay");
-        if (existingZoomOverlay) existingZoomOverlay.remove();
-    } else {
-        // Legacy Zoom Panel Setup for pre-8/25/2026 selected card dates
+        // Setup legacy zoom scroll overlay for pre-8/25 dates
         let zoomOverlay = document.getElementById("mapScrollZoomOverlay");
         if (!zoomOverlay && modalContainer) {
-            modalContainer.style.position = "relative";
-            
             zoomOverlay = document.createElement("div");
             zoomOverlay.id = "mapScrollZoomOverlay";
             zoomOverlay.style.position = "absolute";
@@ -1575,79 +1626,21 @@ function openTrafficMapModal() {
             zoomOverlay.style.height = "100%";
             zoomOverlay.style.zIndex = "999";
             zoomOverlay.style.pointerEvents = "none";
-            
-            iframe.style.width = "100%";
-            iframe.style.height = "100%";
-            iframe.style.border = "none";
-
             modalContainer.appendChild(zoomOverlay);
 
             modalContainer.addEventListener("wheel", (e) => {
                 e.preventDefault();
-                if (e.deltaY < 0) {
-                    if (window._currentMapZoom < 20) {
-                        window._currentMapZoom++;
-                        updateIframeSource();
-                    }
-                } else {
-                    if (window._currentMapZoom > 1) {
-                        window._currentMapZoom--;
-                        updateIframeSource();
-                    }
+                if (e.deltaY < 0 && window._currentMapZoom < 20) {
+                    window._currentMapZoom++;
+                } else if (e.deltaY > 0 && window._currentMapZoom > 1) {
+                    window._currentMapZoom--;
                 }
             }, { passive: false });
         }
+    }
 
-        let zoomPanel = document.getElementById("mapZoomControlPanel");
-        if (!zoomPanel) {
-            zoomPanel = document.createElement("div");
-            zoomPanel.id = "mapZoomControlPanel";
-            zoomPanel.style.position = "absolute";
-            zoomPanel.style.bottom = "30px";
-            zoomPanel.style.right = "30px";
-            zoomPanel.style.zIndex = "99999";
-            zoomPanel.style.display = "flex";
-            zoomPanel.style.flexDirection = "column";
-            zoomPanel.style.gap = "6px";
-            zoomPanel.style.background = "#ffffff";
-            zoomPanel.style.padding = "8px";
-            zoomPanel.style.borderRadius = "8px";
-            zoomPanel.style.boxShadow = "0 4px 12px rgba(0,0,0,0.4)";
-            zoomPanel.style.pointerEvents = "auto";
-
-            const zoomInBtn = document.createElement("button");
-            zoomInBtn.type = "button";
-            zoomInBtn.innerText = "+";
-            zoomInBtn.style.cssText = "width: 36px; height: 36px; font-weight: bold; font-size: 20px; cursor: pointer; border: 1px solid #ddd; background: #f8f9fa; border-radius: 4px; color: #333;";
-            zoomInBtn.onclick = (e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                if (window._currentMapZoom < 20) {
-                    window._currentMapZoom++;
-                    updateIframeSource();
-                }
-            };
-
-            const zoomOutBtn = document.createElement("button");
-            zoomOutBtn.type = "button";
-            zoomOutBtn.innerText = "-";
-            zoomOutBtn.style.cssText = "width: 36px; height: 36px; font-weight: bold; font-size: 20px; cursor: pointer; border: 1px solid #ddd; background: #f8f9fa; border-radius: 4px; color: #333;";
-            zoomOutBtn.onclick = (e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                if (window._currentMapZoom > 1) {
-                    window._currentMapZoom--;
-                    updateIframeSource();
-                }
-            };
-
-            zoomPanel.appendChild(zoomInBtn);
-            zoomPanel.appendChild(zoomOutBtn);
-
-            if (modalContainer) {
-                modalContainer.appendChild(zoomPanel);
-            }
-        }
+    if (slider) {
+        slider.value = sliderMinutes;
     }
     
     if (typeof updateTrafficTime === "function") {
