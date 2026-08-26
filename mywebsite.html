@@ -1986,14 +1986,16 @@ function drawForecastCanvasGraph(item, mode, canvas, activeX = null, prevItem = 
     const graphWidth = width - padLeft - padRight;
     const graphHeight = height - padTop - padBottom;
 
-    // Time domain configuration: 11:59 PM (-1 min) to 12:00 AM next day (1440 min)
+    // Domain: 11:59 PM (-1 min) to 12:00 AM next day (1440 min)
     const startMin = -1;
     const endMin = 1440;
     const totalSpan = endMin - startMin;
     const getX = (m) => padLeft + ((m - startMin) / totalSpan) * graphWidth;
 
-    // Linear interpolation
-    const lerp = (v0, v1, t) => v0 + (v1 - v0) * t;
+    const smoothStep = (v0, v1, t) => {
+        const factor = 0.5 * (1 - Math.cos(Math.max(0, Math.min(1, t)) * Math.PI));
+        return v0 + (v1 - v0) * factor;
+    };
 
     const lerpColor = (color1, color2, factor) => {
         const c1 = parseInt(color1.replace('#', ''), 16);
@@ -2047,9 +2049,21 @@ function drawForecastCanvasGraph(item, mode, canvas, activeX = null, prevItem = 
         return item.yesterdayItem || item.prevDay || null;
     };
 
+    const resolveNextItem = () => {
+        if (nextItem) return nextItem;
+        if (typeof forecastData !== "undefined" && Array.isArray(forecastData)) {
+            const idx = forecastData.findIndex(d => d.dateStr === item.dateStr);
+            if (idx >= 0 && idx < forecastData.length - 1) return forecastData[idx + 1];
+        }
+        return item.tomorrowItem || item.nextDay || null;
+    };
+
+    const effectivePrevItem = resolvePreviousItem();
+    const effectiveNextItem = resolveNextItem();
+
     const getPreviousDayLowestTemp = () => {
         if (item.dateStr === "8/24/2026" || item.dateStr === "08/24/2026") {
-            const prev = resolvePreviousItem();
+            const prev = effectivePrevItem;
             if (prev && Array.isArray(prev.overrideEvents) && prev.overrideEvents.length > 0) {
                 const eventTemps = prev.overrideEvents.filter(e => e.temp !== undefined).map(e => e.temp);
                 if (eventTemps.length > 0) return Math.min(...eventTemps);
@@ -2057,7 +2071,7 @@ function drawForecastCanvasGraph(item, mode, canvas, activeX = null, prevItem = 
             return 48;
         }
 
-        const prev = resolvePreviousItem();
+        const prev = effectivePrevItem;
         if (prev) {
             if (Array.isArray(prev.tempRange) && prev.tempRange.length > 0) return Math.min(...prev.tempRange);
             if (Array.isArray(prev.temps) && prev.temps.length > 0) return Math.min(...prev.temps);
@@ -2071,93 +2085,153 @@ function drawForecastCanvasGraph(item, mode, canvas, activeX = null, prevItem = 
         return item.tempLow;
     };
 
-    const effectivePrevItem = resolvePreviousItem();
+    const getNextDayLowestTemp = () => {
+        const next = effectiveNextItem;
+        if (next) {
+            if (Array.isArray(next.tempRange) && next.tempRange.length > 0) return Math.min(...next.tempRange);
+            if (Array.isArray(next.temps) && next.temps.length > 0) return Math.min(...next.temps);
+            if (next.tempLowMin !== undefined) return next.tempLowMin;
+            if (next.tempMin !== undefined) return next.tempMin;
+            if (next.tempLow !== undefined) return next.tempLow;
+        }
+
+        if (item.tomorrowTempLow !== undefined) return item.tomorrowTempLow;
+        if (item.tomorrowLow !== undefined) return item.tomorrowLow;
+        return item.tempLow;
+    };
+
     const morningLow = getPreviousDayLowestTemp();
     const todayLow = item.tempLow;
     const todayHigh = item.tempHigh;
-    const tomorrowLow = item.tempLow;
+    const tomorrowLow = getNextDayLowestTemp();
 
     const prevHigh = (effectivePrevItem && effectivePrevItem.tempHigh !== undefined) 
         ? effectivePrevItem.tempHigh : (item.yesterdayTempHigh !== undefined ? item.yesterdayTempHigh : item.tempHigh);
 
-    const midnightStartTemp = Math.round((prevHigh + morningLow) / 2);
-    const midnightEndTemp = Math.round((todayHigh + tomorrowLow) / 2);
+    let midnightStartTemp = Math.round((prevHigh + morningLow) / 2);
+    if (effectivePrevItem && Array.isArray(effectivePrevItem.overrideEvents) && effectivePrevItem.overrideEvents.length > 0) {
+        const prevEvents = [...effectivePrevItem.overrideEvents].sort((a, b) => a.minute - b.minute);
+        const lastEv = [...prevEvents].reverse().find(e => e.temp !== undefined);
+        if (lastEv) midnightStartTemp = lastEv.temp;
+    }
+
+    let midnightEndTemp = Math.round((todayHigh + tomorrowLow) / 2);
+    if (effectiveNextItem && Array.isArray(effectiveNextItem.overrideEvents) && effectiveNextItem.overrideEvents.length > 0) {
+        const nextEvents = [...effectiveNextItem.overrideEvents].sort((a, b) => a.minute - b.minute);
+        const firstEv = nextEvents.find(e => e.temp !== undefined);
+        if (firstEv) midnightEndTemp = firstEv.temp;
+    }
+
     const isWinterInversion = item.isWinterInversion || (item.tempHigh < morningLow);
 
-    // Linear Diurnal Curves
+    // Diurnal Curves continuous from 11:59 PM (-1 min) to 12:00 AM next day (1440 min)
     const getDiurnalTemp = (m) => {
         if (isWinterInversion) {
             const tStart = Math.round((prevHigh + todayHigh) / 2);
-            if (m <= 360) return Math.round(lerp(tStart, todayHigh, (m - startMin) / 361));
-            else if (m <= 900) return Math.round(lerp(todayHigh, todayLow, (m - 360) / 540));
-            else return Math.round(lerp(todayLow, tomorrowLow, (m - 900) / 540));
+            if (m <= 360) return Math.round(smoothStep(tStart, todayHigh, (m - startMin) / 361));
+            else if (m <= 900) return Math.round(smoothStep(todayHigh, todayLow, (m - 360) / 540));
+            else return Math.round(smoothStep(todayLow, midnightEndTemp, (m - 900) / 540));
         } else {
-            if (m <= 360) return Math.round(lerp(midnightStartTemp, morningLow, (m - startMin) / 361));
-            else if (m <= 900) return Math.round(lerp(morningLow, todayHigh, (m - 360) / 540));
-            else return Math.round(lerp(todayHigh, midnightEndTemp, (m - 900) / 540));
+            if (m <= 360) return Math.round(smoothStep(midnightStartTemp, morningLow, (m - startMin) / 361));
+            else if (m <= 900) return Math.round(smoothStep(morningLow, todayHigh, (m - 360) / 540));
+            else return Math.round(smoothStep(todayHigh, midnightEndTemp, (m - 900) / 540));
         }
     };
 
     const peakMin = 15 * 60;
     const getDiurnalFeelsLike = (m) => getDiurnalTemp(m) + (item.feelsLikeOffset || 0);
+
+    const prevWind = (effectivePrevItem && effectivePrevItem.windMph !== undefined) ? effectivePrevItem.windMph : item.windMph;
+    const nextWind = (effectiveNextItem && effectiveNextItem.windMph !== undefined) ? effectiveNextItem.windMph : item.windMph;
     const getDiurnalWind = (m) => {
+        const baseWind = (m <= 360) ? smoothStep(prevWind, item.windMph, (m - startMin) / 361) :
+                         (m <= 900) ? item.windMph :
+                         smoothStep(item.windMph, nextWind, (m - 900) / 540);
         const windRad = ((m - peakMin) / 1440) * Math.PI * 2;
-        return Math.round(item.windMph * (0.6 + 0.4 * ((Math.cos(windRad) + 1) / 2)));
+        return Math.round(baseWind * (0.6 + 0.4 * ((Math.cos(windRad) + 1) / 2)));
     };
+
+    const prevGust = (effectivePrevItem && effectivePrevItem.gustMph !== undefined) ? effectivePrevItem.gustMph : item.gustMph;
+    const nextGust = (effectiveNextItem && effectiveNextItem.gustMph !== undefined) ? effectiveNextItem.gustMph : item.gustMph;
     const getDiurnalGust = (m) => {
+        const baseGust = (m <= 360) ? smoothStep(prevGust, item.gustMph, (m - startMin) / 361) :
+                         (m <= 900) ? item.gustMph :
+                         smoothStep(item.gustMph, nextGust, (m - 900) / 540);
         const windRad = ((m - peakMin) / 1440) * Math.PI * 2;
-        return Math.round(item.gustMph * (0.65 + 0.35 * ((Math.cos(windRad) + 1) / 2)));
+        return Math.round(baseGust * (0.65 + 0.35 * ((Math.cos(windRad) + 1) / 2)));
     };
+
+    const prevDos = (effectivePrevItem && effectivePrevItem.score !== undefined) ? effectivePrevItem.score : item.score;
+    const nextDos = (effectiveNextItem && effectiveNextItem.score !== undefined) ? effectiveNextItem.score : item.score;
     const getDiurnalDos = (m) => {
+        const baseScore = (m <= 360) ? smoothStep(prevDos, item.score, (m - startMin) / 361) :
+                          (m <= 900) ? item.score :
+                          smoothStep(item.score, nextDos, (m - 900) / 540);
         const dosTempRad = ((m - peakMin) / 1440) * Math.PI * 2;
-        return Math.round(item.score * (0.5 + 0.5 * ((Math.cos(dosTempRad) + 1) / 2)));
+        return Math.round(baseScore * (0.5 + 0.5 * ((Math.cos(dosTempRad) + 1) / 2)));
     };
+
+    const prevPressure = (effectivePrevItem && effectivePrevItem.pressure !== undefined) ? effectivePrevItem.pressure : (item.pressure || 29.92);
+    const nextPressure = (effectiveNextItem && effectiveNextItem.pressure !== undefined) ? effectiveNextItem.pressure : (item.pressure || 29.92);
     const getDiurnalPressure = (m) => {
-        const baseP = item.pressure || 29.92;
+        const baseP = (m <= 360) ? smoothStep(prevPressure, item.pressure || 29.92, (m - startMin) / 361) :
+                      (m <= 900) ? (item.pressure || 29.92) :
+                      smoothStep(item.pressure || 29.92, nextPressure, (m - 900) / 540);
         const rad = (m / 1440) * Math.PI * 4;
         return +(baseP + 0.05 * Math.sin(rad)).toFixed(2);
     };
+
+    const prevHumidity = (effectivePrevItem && effectivePrevItem.humidity !== undefined) ? effectivePrevItem.humidity : (item.humidity || 50);
+    const nextHumidity = (effectiveNextItem && effectiveNextItem.humidity !== undefined) ? effectiveNextItem.humidity : (item.humidity || 50);
     const getDiurnalHumidity = (m) => {
-        const baseHum = item.humidity || 50;
+        const baseHum = (m <= 360) ? smoothStep(prevHumidity, item.humidity || 50, (m - startMin) / 361) :
+                        (m <= 900) ? (item.humidity || 50) :
+                        smoothStep(item.humidity || 50, nextHumidity, (m - 900) / 540);
         const rad = ((m - peakMin) / 1440) * Math.PI * 2;
         return Math.max(0, Math.min(100, Math.round(baseHum - 20 * Math.cos(rad))));
     };
+
     const getDiurnalUv = (m) => {
         const maxUv = item.uvIndex || 0;
         if (m < 360 || m > 1200) return 0;
         const rad = ((m - 360) / 840) * Math.PI;
         return +(maxUv * Math.sin(rad)).toFixed(1);
     };
-    const getDiurnalPrecip = (m) => item.precipChance || 0;
+
+    const prevPrecip = (effectivePrevItem && effectivePrevItem.precipChance !== undefined) ? effectivePrevItem.precipChance : (item.precipChance || 0);
+    const nextPrecip = (effectiveNextItem && effectiveNextItem.precipChance !== undefined) ? effectiveNextItem.precipChance : (item.precipChance || 0);
+    const getDiurnalPrecip = (m) => {
+        if (m <= 360) return Math.round(smoothStep(prevPrecip, item.precipChance || 0, (m - startMin) / 361));
+        if (m <= 900) return item.precipChance || 0;
+        return Math.round(smoothStep(item.precipChance || 0, nextPrecip, (m - 900) / 540));
+    };
 
     const hasEvents = Array.isArray(item.overrideEvents) && item.overrideEvents.length > 0;
     const sortedEvents = hasEvents ? [...item.overrideEvents].sort((a, b) => a.minute - b.minute) : [];
 
-    // Linear interpolation for override events ensuring continuation from 11:59 PM (-1 min) to 12:00 AM (0 min)
     const getInterpolatedVal = (m, key, fallbackFn) => {
         if (!hasEvents) return fallbackFn(m);
         const exact = sortedEvents.find(e => e.minute === m && e[key] !== undefined);
         if (exact) return exact[key];
-
         const prevEvent = [...sortedEvents].reverse().find(e => e.minute <= m && e[key] !== undefined);
         const nextEvent = sortedEvents.find(e => e.minute >= m && e[key] !== undefined);
 
         if (prevEvent && nextEvent) {
             if (prevEvent.minute === nextEvent.minute) return prevEvent[key];
             const t = (m - prevEvent.minute) / (nextEvent.minute - prevEvent.minute);
-            return Math.round(lerp(prevEvent[key], nextEvent[key], t));
+            return Math.round(smoothStep(prevEvent[key], nextEvent[key], t));
         } else if (prevEvent) {
             const endVal = fallbackFn(1440);
             if (m > prevEvent.minute && prevEvent.minute < 1440) {
                 const t = (m - prevEvent.minute) / (1440 - prevEvent.minute);
-                return Math.round(lerp(prevEvent[key], endVal, Math.min(1, t)));
+                return Math.round(smoothStep(prevEvent[key], endVal, Math.min(1, t)));
             }
             return prevEvent[key];
         } else if (nextEvent) {
             const startVal = fallbackFn(-1);
             if (m < nextEvent.minute && nextEvent.minute > -1) {
                 const t = (m - (-1)) / (nextEvent.minute - (-1));
-                return Math.round(lerp(startVal, nextEvent[key], Math.max(0, t)));
+                return Math.round(smoothStep(startVal, nextEvent[key], Math.max(0, t)));
             }
             return nextEvent[key];
         }
@@ -2175,9 +2249,8 @@ function drawForecastCanvasGraph(item, mode, canvas, activeX = null, prevItem = 
     const getInterpolatedUv = (m) => getInterpolatedVal(m, 'uv', getDiurnalUv);
     const getInterpolatedPrecip = (m) => getInterpolatedVal(m, 'precip', getDiurnalPrecip);
 
-    // Continuous minute-by-minute points
     const points = [];
-    for (let m = startMin; m <= endMin; m++) {
+    for (let m = startMin; m <= endMin; m += 15) {
         const x = getX(m);
         points.push({
             minute: m, x: x,
@@ -2196,6 +2269,7 @@ function drawForecastCanvasGraph(item, mode, canvas, activeX = null, prevItem = 
     ctx.font = `${Math.max(9, Math.round(11 * scaleFactor))}px sans-serif`;
     ctx.textAlign = "center";
 
+    const labelInterval = width < 400 ? 6 : (width < 600 ? 3 : 2);
     for (let h = 0; h <= 24; h++) {
         const m = h * 60;
         const x = getX(m);
@@ -2204,7 +2278,6 @@ function drawForecastCanvasGraph(item, mode, canvas, activeX = null, prevItem = 
         ctx.lineTo(x, height - padBottom);
         ctx.stroke();
 
-        const labelInterval = width < 400 ? 6 : (width < 600 ? 3 : 2);
         if (h % labelInterval === 0 || h === 24) {
             let label = h === 0 ? "12AM" : h === 12 ? "12PM" : h === 24 ? "12AM" : (h > 12 ? (h - 12) + "PM" : h + "AM");
             ctx.fillText(label, x, height - padBottom + 15 * scaleFactor);
@@ -2217,11 +2290,21 @@ function drawForecastCanvasGraph(item, mode, canvas, activeX = null, prevItem = 
     ctx.lineTo(xStart, height - padBottom);
     ctx.stroke();
 
-    // Linear Path Renderer
-    const addLinearPathSegments = (ctx, pts, getYVal) => {
+    const addSmoothPathSegments = (ctx, pts, getYVal) => {
         if (pts.length < 2) return;
-        for (let i = 1; i < pts.length; i++) {
-            ctx.lineTo(pts[i].x, getYVal(pts[i]));
+        for (let i = 0; i < pts.length - 1; i++) {
+            const p0 = pts[Math.max(0, i - 1)];
+            const p1 = pts[i];
+            const p2 = pts[i + 1];
+            const p3 = pts[Math.min(pts.length - 1, i + 2)];
+
+            const cp1x = p1.x + (p2.x - p0.x) / 6;
+            const cp1y = getYVal(p1) + (getYVal(p2) - getYVal(p0)) / 6;
+
+            const cp2x = p2.x - (p3.x - p1.x) / 6;
+            const cp2y = getYVal(p2) - (getYVal(p3) - getYVal(p1)) / 6;
+
+            ctx.bezierCurveTo(cp1x, cp1y, cp2x, cp2y, p2.x, getYVal(p2));
         }
     };
 
@@ -2233,7 +2316,7 @@ function drawForecastCanvasGraph(item, mode, canvas, activeX = null, prevItem = 
                 ctx.beginPath();
                 ctx.moveTo(segmentPts[0].x, height - padBottom);
                 ctx.lineTo(segmentPts[0].x, getYVal(segmentPts[0]));
-                addLinearPathSegments(ctx, segmentPts, getYVal);
+                addSmoothPathSegments(ctx, segmentPts, getYVal);
                 ctx.lineTo(segmentPts[segmentPts.length - 1].x, height - padBottom);
                 ctx.closePath();
                 
@@ -2249,7 +2332,7 @@ function drawForecastCanvasGraph(item, mode, canvas, activeX = null, prevItem = 
             ctx.lineWidth = lineWidth + 2 * scaleFactor;
             
             ctx.moveTo(segmentPts[0].x, getYVal(segmentPts[0]));
-            addLinearPathSegments(ctx, segmentPts, getYVal);
+            addSmoothPathSegments(ctx, segmentPts, getYVal);
             
             ctx.stroke();
             ctx.setLineDash([]);
@@ -2375,7 +2458,7 @@ function drawForecastCanvasGraph(item, mode, canvas, activeX = null, prevItem = 
         
         drawSegmentedLine(points, uvGrad, 3, getUvY, true);
     } else if (mode === "precip") {
-        const barWidth = Math.max(1.5, graphWidth / points.length);
+        const barWidth = Math.max(1.5, (graphWidth / points.length) * 0.9);
         points.forEach((p) => {
             if (p.precip > 0) {
                 const barH = (p.precip / 100) * graphHeight;
@@ -2385,7 +2468,13 @@ function drawForecastCanvasGraph(item, mode, canvas, activeX = null, prevItem = 
                 
                 ctx.globalAlpha = (isToday && p.minute < currentMinutes) ? 0.3 : 0.85;
                 ctx.fillStyle = precipColor;
-                ctx.fillRect(p.x - barWidth / 2, yPos, barWidth, barH);
+                if (typeof ctx.roundRect === "function") {
+                    ctx.beginPath();
+                    ctx.roundRect(p.x - barWidth / 2, yPos, barWidth, barH, [4, 4, 0, 0]);
+                    ctx.fill();
+                } else {
+                    ctx.fillRect(p.x - barWidth / 2, yPos, barWidth, barH);
+                }
                 ctx.globalAlpha = 1.0;
             }
         });
