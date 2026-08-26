@@ -1582,7 +1582,7 @@ let postAugTrafficLayer = null;
 
 function ensureGoogleMapsApiLoaded(callback) {
     if (typeof google !== 'undefined' && typeof google.maps !== 'undefined') {
-        callback();
+        if (typeof callback === 'function') callback();
         return;
     }
 
@@ -1590,7 +1590,7 @@ function ensureGoogleMapsApiLoaded(callback) {
         const checkInterval = setInterval(() => {
             if (typeof google !== 'undefined' && typeof google.maps !== 'undefined') {
                 clearInterval(checkInterval);
-                callback();
+                if (typeof callback === 'function') callback();
             }
         }, 100);
         return;
@@ -1608,6 +1608,86 @@ function ensureGoogleMapsApiLoaded(callback) {
         console.error("Failed to load Google Maps JavaScript API dynamically.");
     };
     document.head.appendChild(script);
+}
+
+function updateTrafficOnTimeSliderAndDayCard(totalMinutes, selectedDateStr = null, mapInstance = null) {
+    // 1. Time Normalization & Formatting
+    const snappedMinutes = Math.round(totalMinutes / 15) * 15;
+    const normalizedMinutes = Math.min(Math.max(snappedMinutes, 0), 1439);
+
+    const hours = Math.floor(normalizedMinutes / 60);
+    const mins = normalizedMinutes % 60;
+    const period = hours >= 12 ? "PM" : "AM";
+    const displayHours = hours % 12 || 12;
+    const padMins = mins < 10 ? "0" + mins : mins;
+    const timeStr = displayHours + ":" + padMins + " " + period;
+
+    // 2. Date Context & Selected Day Card Parsing
+    let targetDate = new Date();
+    if (selectedDateStr) {
+        targetDate = new Date(selectedDateStr);
+    }
+    
+    // Set normalized minutes into targetDate object
+    targetDate.setHours(hours, mins, 0, 0);
+
+    const dayOfWeek = targetDate.getDay();
+    const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
+    
+    const postAug25Cutoff = new Date("2026-08-26T00:00:00");
+    const isPostAug25 = targetDate >= postAug25Cutoff;
+
+    // Evaluate if selected target falls within 15 minutes of live time today
+    const now = new Date();
+    const isToday = now.toDateString() === targetDate.toDateString();
+    const currentMins = now.getHours() * 60 + now.getMinutes();
+    const isLive = !selectedDateStr && isToday && Math.abs(normalizedMinutes - currentMins) <= 15;
+    
+    const trafficModeLabel = isLive ? "Live Traffic" : "Typical Traffic";
+
+    // 3. UI Readout Updates
+    const readoutEl = document.getElementById("timeSliderReadout");
+    if (readoutEl) {
+        readoutEl.innerText = timeStr;
+    }
+
+    const dayCardReadoutEl = document.getElementById("selectedDayCardReadout");
+    if (dayCardReadoutEl) {
+        const dateFormatted = targetDate.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+        dayCardReadoutEl.innerText = dateFormatted + " @ " + timeStr;
+    }
+
+    // 4. API Loading & Map Traffic Overlay Binding
+    ensureGoogleMapsApiLoaded(() => {
+        const map = mapInstance || window.googleMapInstance;
+        if (!map) {
+            console.warn("Google Maps JS API loaded, but no valid map instance was found.");
+            return;
+        }
+
+        // Maintain single global TrafficLayer instance
+        if (!window.googleTrafficLayer) {
+            window.googleTrafficLayer = new google.maps.TrafficLayer();
+        }
+
+        // Toggle layer live updates vs static traffic patterns based on selected day/time
+        window.googleTrafficLayer.setOptions({
+            autoUpdate: isLive
+        });
+
+        // Attach overlay to Map instance
+        window.googleTrafficLayer.setMap(map);
+        updateTrafficOnTimeSliderAndDayCard(normalizedMinutes, baseDateOverride, window.googleMapInstance);
+        // Update traffic status color & messaging
+        const impactEl = document.getElementById("trafficImpactReadout");
+        if (impactEl) {
+            const statusColor = isLive ? "#4ade80" : (isWeekend ? "#38bdf8" : "#fbbf24");
+            const engineLabel = isPostAug25 ? "Google Maps JS API (Post-8/25 Engine)" : "Google Maps JS API";
+            
+            impactEl.innerText = engineLabel + ": " + trafficModeLabel + " active for " + targetDate.toDateString() + " " + timeStr;
+            impactEl.style.color = statusColor;
+        }
+    });
 }
 
 function openTrafficMapModal() {
