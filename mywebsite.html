@@ -2345,7 +2345,7 @@ function drawForecastCanvasGraph(item, mode, canvas, activeX = null, prevItem = 
 
         ctx.fillStyle = "rgba(0, 0, 0, 0.85)";
         ctx.strokeStyle = "#444";
-        ctx.lineWidth = 1;
+        ctx.lineWidth = 2.5;
         ctx.beginPath();
         if (typeof ctx.roundRect === "function") {
             ctx.roundRect(boxX, 6, textWidth + 16, 22 * scaleFactor, 6);
