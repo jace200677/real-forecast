@@ -2148,7 +2148,6 @@ function drawForecastCanvasGraph(item, mode, canvas, activeX = null, prevItem = 
         const p2 = pts[i + 1];
         const p3 = pts[Math.min(pts.length - 1, i + 2)];
 
-        // Calculate control points for smooth tension (tension factor ~ 0.2)
         const cp1x = p1.x + (p2.x - p0.x) / 6;
         const cp1y = getYVal(p1) + (getYVal(p2) - getYVal(p0)) / 6;
 
@@ -2158,25 +2157,21 @@ function drawForecastCanvasGraph(item, mode, canvas, activeX = null, prevItem = 
         ctx.bezierCurveTo(cp1x, cp1y, cp2x, cp2y, p2.x, getYVal(p2));
     }
 };
-    const drawSegmentedLine = (pts, activeStyle, lineWidth, getYVal, fillUnder = false) => {
+
+const drawSegmentedLine = (pts, activeStyle, lineWidth, getYVal, fillUnder = false) => {
     const renderPath = (segmentPts, style, isDashed) => {
         if (segmentPts.length < 2) return;
         
         if (fillUnder) {
             ctx.beginPath();
             ctx.moveTo(segmentPts[0].x, height - padBottom);
-            // Trace the top smooth edge down to the baseline
-            segmentPts.forEach((p, idx) => {
-                if (idx === 0) ctx.lineTo(p.x, getYVal(p));
-            });
-            // Alternatively, use the smooth path generator for the filled area top boundary:
             drawSmoothPath(ctx, segmentPts, getYVal);
             ctx.lineTo(segmentPts[segmentPts.length - 1].x, height - padBottom);
             ctx.closePath();
             ctx.fillStyle = style;
             ctx.globalAlpha = 0.15;
             ctx.fill();
-            ctx.globalAlpha =.0;
+            ctx.globalAlpha = 1.0; // Fixed from .0 to 1.0
         }
 
         ctx.beginPath();
@@ -2184,7 +2179,6 @@ function drawForecastCanvasGraph(item, mode, canvas, activeX = null, prevItem = 
         ctx.strokeStyle = style;
         ctx.lineWidth = lineWidth * scaleFactor;
         
-        // Call the smooth curve renderer here instead of standard lineTo loops
         drawSmoothPath(ctx, segmentPts, getYVal);
         
         ctx.stroke();
@@ -2201,7 +2195,6 @@ function drawForecastCanvasGraph(item, mode, canvas, activeX = null, prevItem = 
         renderPath(pts, activeStyle, false);
     }
 };
-
     // Draw Modes
     if (mode === "temp" || mode === "feelsLike") {
         const valKey = mode === "temp" ? 'temp' : 'feelsLike';
