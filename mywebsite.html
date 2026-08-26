@@ -1367,6 +1367,57 @@ async function buildForecast() {
             else if (conditionSwing < -1.5) weatherSummary = "Cloudy & Breezy";
             else weatherSummary = "Cloudy, T-Storms & Windy";
 
+        } 
+        else if (forecastYear === 2026 && forecastMonth === 9 && dateNum === 1) {
+            const lat = targetZoneOrPoint ? parseFloat(targetZoneOrPoint.lat) : 45.0;
+            const lon = targetZoneOrPoint ? parseFloat(targetZoneOrPoint.lon) : -93.0;
+            const locationName = typeof targetZoneOrPoint !== 'undefined' && targetZoneOrPoint && targetZoneOrPoint.name ? targetZoneOrPoint.name.toLowerCase() : "";
+
+            const isTower = locationName.includes("tower") || (Math.abs(lat - 47.80) < 0.1 && Math.abs(lon - (-92.37)) < 0.1);
+            const isVirginia = locationName.includes("virginia") || (Math.abs(lat - 47.52) < 0.1 && Math.abs(lon - (-92.53)) < 0.1);
+            const isEmbarrass = locationName.includes("embarrass") || (Math.abs(lat - 47.66) < 0.1 && Math.abs(lon - (-92.30)) < 0.1);
+            const isBabbitt = locationName.includes("babbitt") || (Math.abs(lat - 47.71) < 0.1 && Math.abs(lon - (-91.95)) < 0.1);
+
+            if (isTower) {
+                projectedScore = 0;
+            } else if (isVirginia) {
+                projectedScore = 0;
+            } else if (isEmbarrass) {
+                projectedScore = 0;
+            } else if (isBabbitt) {
+                projectedScore = 0;
+            } else {
+                const latOffset = (lat - 45.0) * 2.5;
+                const lonOffset = (lon + 93.0) * 1.8;
+                const varianceAmplitude = exactDaysOut * 1.5 * (1 - confidenceFactor); 
+                const swingFactor = Math.sin(exactDaysOut * 1.2);
+                const baseDos93 = 0;
+                projectedScore = Math.max(5, Math.round(baseDos93 + latOffset + lonOffset + (swingFactor * varianceAmplitude)));
+            }
+            
+            streamChance = Math.min(Math.round((projectedScore / 90) * 100), 95);
+
+            const latOffset = (lat - 45.0) * 2.5;
+            const lonOffset = (lon + 93.0) * 1.8;
+            const latOffset1 = (lat - 45.0);
+            const varianceAmplitude = exactDaysOut * 1.5 * (1 - confidenceFactor); 
+            const swingFactor = Math.sin(exactDaysOut * 1.2);
+
+            const baseLow = 56 - latOffset + lonOffset;
+            const baseHigh = 78 - latOffset + (lonOffset * 1.5);
+            const baseWind = 0 + latOffset1;
+            const baseGust = 0 + latOffset1;
+
+            tempLow = Math.round(baseLow + (swingFactor * varianceAmplitude));
+            tempHigh = Math.round(baseHigh + (swingFactor * varianceAmplitude * 1.3));
+            windMph = Math.max(0, Math.round(baseWind + (swingFactor * varianceAmplitude * 0.8)));
+            gustMph = Math.max(windMph + 0, Math.round(baseGust + (swingFactor * varianceAmplitude * 1.5)));
+
+            const conditionSwing = swingFactor * exactDaysOut;
+            if (conditionSwing > 1.5) weatherSummary = "Sunny";
+            else if (conditionSwing < -1.5) weatherSummary = "Cloudy";
+            else weatherSummary = "Cloudy, T-Storms";
+
         } else {
             const trendMultiplier = 1 + (Math.sin(i * 0.8) * 0.2 * (1 / confidenceFactor));
             projectedScore = Math.min(Math.max(Math.round(dos * trendMultiplier), 2), 150);
