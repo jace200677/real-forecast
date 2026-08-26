@@ -1754,7 +1754,7 @@ function closeTrafficMapModal() {
 }
 
 function updateTrafficTime(totalMinutes, baseDateOverride = null) {
-    // Snap total minutes to the nearest 15-minute interval limit (0, 15, 30, 45)
+    // 1. Time Normalization & Display Formatting
     const snappedMinutes = Math.round(totalMinutes / 15) * 15;
     const normalizedMinutes = Math.min(Math.max(snappedMinutes, 0), 1439);
 
@@ -1762,45 +1762,51 @@ function updateTrafficTime(totalMinutes, baseDateOverride = null) {
     const mins = normalizedMinutes % 60;
     const period = hours >= 12 ? "PM" : "AM";
     const displayHours = hours % 12 || 12;
-    const timeStr = `${displayHours}:${mins < 10 ? '0' : ''}${mins} ${period}`;
+    const padMins = mins < 10 ? "0" + mins : mins;
+    const timeStr = displayHours + ":" + padMins + " " + period;
 
     const readoutEl = document.getElementById("timeSliderReadout");
-    if (readoutEl) readoutEl.innerText = timeStr;
+    if (readoutEl) {
+        readoutEl.innerText = timeStr;
+    }
 
     const impactEl = document.getElementById("trafficImpactReadout");
     if (!impactEl) return;
 
-    // Evaluate date context (Post-8/25/2026 Google Maps Traffic Integration)
-    const workingDate = baseDateOverride ? new Date(baseDateOverride) : new Date();
-    const dayOfWeek = workingDate.getDay(); // 0 = Sunday, 6 = Saturday
-    const isWeekend = (dayOfWeek === 0 || dayOfWeek === 6);
+    // 2. Date Context & Cutoff Evaluation (Post-Aug 25, 2026 Integration)
+    let workingDate = new Date();
+    if (baseDateOverride) {
+        workingDate = new Date(baseDateOverride);
+    }
+    
+    const dayOfWeek = workingDate.getDay();
+    const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
 
     const postAug25Cutoff = new Date("2026-08-26T00:00:00");
     const isPostAug25 = workingDate >= postAug25Cutoff;
 
-    // Determine if slider time represents "Live" vs "Typical Traffic" (future/past hours)
     const nowTime = new Date();
     const currentMinutesToday = nowTime.getHours() * 60 + nowTime.getMinutes();
-    const isViewingLiveTime = !baseDateOverride && Math.abs(normalizedMinutes - currentMinutesToday) <= 15;
+    const minuteDiff = Math.abs(normalizedMinutes - currentMinutesToday);
+    const isViewingLiveTime = !baseDateOverride && minuteDiff <= 15;
     const trafficModeLabel = isViewingLiveTime ? "Live Traffic" : "Typical Traffic";
 
-    // 1. Dynamic Parsing of Google Maps iframe attributes & location coordinates
+    // 3. Iframe Parameter & Location Parsing
     let derivedLat = 45.3853;
     let derivedLon = -93.8864;
     let isGoogleMapsSource = false;
-    let baseSpeedLimit = 65; // Base default speed
+    let baseSpeedLimit = 65;
 
     const iframe = document.getElementById("trafficMapFrame");
     if (iframe && iframe.src && iframe.src !== "about:blank") {
         try {
             const urlObj = new URL(iframe.src);
+            const hostname = urlObj.hostname;
 
-            // Check if source iframe is Google Maps
-            if (urlObj.hostname.includes("google.com") || urlObj.hostname.includes("maps.google.com")) {
+            if (hostname.indexOf("google.com") !== -1 || hostname.indexOf("maps.google.com") !== -1) {
                 isGoogleMapsSource = true;
-                // Inject Google Maps traffic overlay layer parameter post-8/25/2026
                 if (isPostAug25 && !urlObj.searchParams.has("layer")) {
-                    urlObj.searchParams.set("layer", "t"); // Enable Google Maps Live Traffic
+                    urlObj.searchParams.set("layer", "t");
                     iframe.src = urlObj.toString();
                 }
             }
@@ -1810,7 +1816,9 @@ function updateTrafficTime(totalMinutes, baseDateOverride = null) {
             const lonParam = urlObj.searchParams.get("lon");
             const speedLimitParam = urlObj.searchParams.get("speedLimit");
 
-            if (speedLimitParam) baseSpeedLimit = parseFloat(speedLimitParam);
+            if (speedLimitParam) {
+                baseSpeedLimit = parseFloat(speedLimitParam);
+            }
 
             if (latParam && lonParam) {
                 derivedLat = parseFloat(latParam);
@@ -1822,7 +1830,6 @@ function updateTrafficTime(totalMinutes, baseDateOverride = null) {
                     derivedLon = parseFloat(coords[1]);
                 }
             } else {
-                // Fallback: Regex extraction for standard Google Maps embedded coordinate patterns (e.g., @lat,lon)
                 const match = urlObj.pathname.match(/@(-?\d+\.\d+),(-?\d+\.\d+)/);
                 if (match) {
                     derivedLat = parseFloat(match[1]);
@@ -1834,65 +1841,67 @@ function updateTrafficTime(totalMinutes, baseDateOverride = null) {
         }
     }
 
-    // 2. Location-Specific Speed Profiles (Vary baseline speeds and rush-hour drops across regions)
-    const getLocationTrafficProfile = (lat, lon) => {
-        // NYC / Urban Core Profile
-        if (Math.abs(lat - 40.7128) < 0.2 && Math.abs(lon - (-74.0060)) < 0.2) {
-            return { name: "NYC Urban Core", freeFlowSpeed: 25, rushDropRatio: 0.65 };
-        }
-        // LA / Highway Corridor Profile
-        if (Math.abs(lat - 34.0522) < 0.5 && Math.abs(lon - (-118.2437)) < 0.5) {
-            return { name: "LA Freeway Network", freeFlowSpeed: 65, rushDropRatio: 0.60 };
-        }
-        // Twin Cities / Regional Metro Profile
-        if (Math.abs(lat - 44.9778) < 0.4 && Math.abs(lon - (-93.2650)) < 0.4) {
-            return { name: "Twin Cities Metro", freeFlowSpeed: 60, rushDropRatio: 0.45 };
-        }
-        // Rural / Interstate Highway Default
-        return { name: "Rural / Highway Transit", freeFlowSpeed: baseSpeedLimit, rushDropRatio: 0.15 };
-    };
+    // 4. Inlined Location Profile Resolution
+    let profileName = "Rural / Highway Transit";
+    let freeFlowSpeed = baseSpeedLimit;
+    let rushDropRatio = 0.15;
 
-    const locationProfile = getLocationTrafficProfile(derivedLat, derivedLon);
+    if (Math.abs(derivedLat - 40.7128) < 0.2 && Math.abs(derivedLon - (-74.0060)) < 0.2) {
+        profileName = "NYC Urban Core";
+        freeFlowSpeed = 25;
+        rushDropRatio = 0.65;
+    } else if (Math.abs(derivedLat - 34.0522) < 0.5 && Math.abs(derivedLon - (-118.2437)) < 0.5) {
+        profileName = "LA Freeway Network";
+        freeFlowSpeed = 65;
+        rushDropRatio = 0.60;
+    } else if (Math.abs(derivedLat - 44.9778) < 0.4 && Math.abs(derivedLon - (-93.2650)) < 0.4) {
+        profileName = "Twin Cities Metro";
+        freeFlowSpeed = 60;
+        rushDropRatio = 0.45;
+    }
 
-    // 3. Time-of-Day Traffic Congestion Calculations
-    const isMorningRush = !isWeekend && normalizedMinutes >= 420 && normalizedMinutes <= 540;   // 7:00 AM - 9:00 AM
-    const isEveningRush = !isWeekend && normalizedMinutes >= 960 && normalizedMinutes <= 1110; // 4:00 PM - 6:30 PM
-    const isMidDayPeak  = normalizedMinutes >= 660 && normalizedMinutes <= 840;                 // 11:00 AM - 2:00 PM
-    const isLateNight   = normalizedMinutes <= 300 || normalizedMinutes >= 1380;                 // 11:00 PM - 5:00 AM
+    // 5. Speed Calculations & UI State Updates
+    const isMorningRush = !isWeekend && normalizedMinutes >= 420 && normalizedMinutes <= 540;
+    const isEveningRush = !isWeekend && normalizedMinutes >= 960 && normalizedMinutes <= 1110;
+    const isMidDayPeak  = normalizedMinutes >= 660 && normalizedMinutes <= 840;
+    const isLateNight   = normalizedMinutes <= 300 || normalizedMinutes >= 1380;
 
     let speedMultiplier = 1.0;
     let statusText = "";
     let statusColor = "#4ade80";
 
-    const sourceLabel = isGoogleMapsSource ? `Google Maps (${trafficModeLabel})` : `Traffic-Planner.com (${trafficModeLabel})`;
+    const sourceLabel = isGoogleMapsSource 
+        ? "Google Maps (" + trafficModeLabel + ")" 
+        : "Traffic-Planner.com (" + trafficModeLabel + ")";
 
     if (isLateNight) {
-        speedMultiplier = 1.05; 
-        statusText = `${sourceLabel}: NIGHTTIME CLEAR (${locationProfile.name})`;
+        speedMultiplier = 1.05;
+        statusText = sourceLabel + ": NIGHTTIME CLEAR (" + profileName + ")";
         statusColor = "#38bdf8";
     } else if (isMorningRush || isEveningRush) {
-        speedMultiplier = 1.0 - locationProfile.rushDropRatio;
-        statusText = `${sourceLabel}: HEAVY CONGESTION (${locationProfile.name})`;
-        statusColor = (speedMultiplier <= 0.45) ? "#dc2626" : "#f59e0b";
+        speedMultiplier = 1.0 - rushDropRatio;
+        statusText = sourceLabel + ": HEAVY CONGESTION (" + profileName + ")";
+        statusColor = speedMultiplier <= 0.45 ? "#dc2626" : "#f59e0b";
     } else if (isMidDayPeak) {
-        speedMultiplier = 1.0 - (locationProfile.rushDropRatio * 0.4);
-        statusText = `${sourceLabel}: MODERATE FLOW (${locationProfile.name})`;
+        speedMultiplier = 1.0 - (rushDropRatio * 0.4);
+        statusText = sourceLabel + ": MODERATE FLOW (" + profileName + ")";
         statusColor = "#fbbf24";
     } else {
         speedMultiplier = 0.95;
-        statusText = `${sourceLabel}: NORMAL FREE-FLOW (${locationProfile.name})`;
+        statusText = sourceLabel + ": NORMAL FREE-FLOW (" + profileName + ")";
         statusColor = "#4ade80";
     }
 
-    const calculatedSpeedMph = Math.round(locationProfile.freeFlowSpeed * speedMultiplier);
+    const calculatedSpeedMph = Math.round(freeFlowSpeed * speedMultiplier);
 
     if (isPostAug25 || isGoogleMapsSource) {
-        statusText += ` — Google Traffic Speed: ${calculatedSpeedMph} mph`;
+        statusText += " — Google Traffic Speed: " + calculatedSpeedMph + " mph";
     }
 
     impactEl.innerText = statusText;
     impactEl.style.color = statusColor;
 }
+   
 function getDosGradientCss(targetScore, maxScale = 120) {
     const stops = [
         { score: 0,   color: "rgb(0, 255, 119)" },
