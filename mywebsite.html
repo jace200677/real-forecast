@@ -1739,6 +1739,13 @@ function updateTrafficTime(totalMinutes, baseDateOverride = null) {
                     derivedLat = parseFloat(coords[0]);
                     derivedLon = parseFloat(coords[1]);
                 }
+            } else {
+                // Fallback: Regex extraction for standard Google Maps embedded coordinate patterns (e.g., @lat,lon)
+                const match = urlObj.pathname.match(/@(-?\d+\.\d+),(-?\d+\.\d+)/);
+                if (match) {
+                    derivedLat = parseFloat(match[1]);
+                    derivedLon = parseFloat(match[2]);
+                }
             }
         } catch (e) {
             console.warn("Could not parse Google Maps iframe parameters.");
@@ -1778,7 +1785,7 @@ function updateTrafficTime(totalMinutes, baseDateOverride = null) {
     const sourceLabel = isGoogleMapsSource ? "Google Maps" : "Traffic-Planner.com";
 
     if (isLateNight) {
-        speedMultiplier = 1.05; // Slightly above free-flow speed at night
+        speedMultiplier = 1.05; 
         statusText = `${sourceLabel}: NIGHTTIME CLEAR (${locationProfile.name})`;
         statusColor = "#38bdf8";
     } else if (isMorningRush || isEveningRush) {
@@ -1795,10 +1802,8 @@ function updateTrafficTime(totalMinutes, baseDateOverride = null) {
         statusColor = "#4ade80";
     }
 
-    // Dynamic Google Maps Traffic Speed Calculation (In MPH)
     const calculatedSpeedMph = Math.round(locationProfile.freeFlowSpeed * speedMultiplier);
 
-    // Append Google Maps live traffic speed output post-8/25/2026
     if (isPostAug25 || isGoogleMapsSource) {
         statusText += ` — Google Traffic Speed: ${calculatedSpeedMph} mph`;
     }
@@ -2609,11 +2614,9 @@ window.addEventListener('resize', () => {
 
 // Optional: Keep it updated if the page stays open
 setInterval(updateTrafficButtonState, 1000);
-   
 buildForecast();
 setInterval(updateStreamStatus, 60000);
 setInterval(buildForecast, 60000);
-setInterval(updateTrafficTime, 60000);
 </script>
 
 </body>
