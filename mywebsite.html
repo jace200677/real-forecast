@@ -1267,8 +1267,8 @@ async function buildForecast() {
 
             const latOffset = (lat - 45.0) * 2.5;
             const lonOffset = (lon + 93.0) * 1.8;
-            const latOffset1 = (lat - 45.0) * 1.5;
-            const lonOffset1 = (lon + 93.0) * 0.8;
+            const latOffset1 = (lat - 45.0) * 0.5;
+            const lonOffset1 = (lon + 93.0) * 0.1;
             const varianceAmplitude = exactDaysOut * 1.5 * (1 - confidenceFactor); 
             const swingFactor = Math.sin(exactDaysOut * 1.2);
 
