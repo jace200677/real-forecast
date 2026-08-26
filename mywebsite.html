@@ -701,17 +701,17 @@ function calculateNationalScores(alerts) {
     
     // Determine the base pre-event target WIS value depending on location
     let baseTargetWIS = finalWIS;
-    if (isTower) baseTargetWIS = 2;
-    else if (isVirginia) baseTargetWIS = 1;
-    else if (isBabbitt) baseTargetWIS = 4;
-    else if (isEmbarrass) baseTargetWIS = 6;
+    if (isTower) baseTargetWIS = 52;
+    else if (isVirginia) baseTargetWIS = 55;
+    else if (isBabbitt) baseTargetWIS = 54;
+    else if (isEmbarrass) baseTargetWIS = 56;
 
     // Determine the specific peak values during the ramp-up window
     let peakTargetWIS = baseTargetWIS;
-    if (isTower) peakTargetWIS = 65;
-    else if (isVirginia) peakTargetWIS = 67;
-    else if (isBabbitt) peakTargetWIS = 97;
-    else if (isEmbarrass) peakTargetWIS = 81;
+    if (isTower) peakTargetWIS = 107;
+    else if (isVirginia) peakTargetWIS = 108;
+    else if (isBabbitt) peakTargetWIS = 138;
+    else if (isEmbarrass) peakTargetWIS = 128;
 
     let targetWIS = baseTargetWIS;
     
@@ -720,9 +720,9 @@ function calculateNationalScores(alerts) {
         ? new Date(window._activeSimulationTime) 
         : new Date();
     
-    const startRampUp = new Date("2026-08-25T08:00:00").getTime();
-    const peakTime = new Date("2026-08-25T21:00:00").getTime();
-    const endRampDown = new Date("2026-08-25T22:00:00").getTime();
+    const startRampUp = new Date("2026-08-25607:00:00").getTime();
+    const peakTime = new Date("2026-08-26T21:00:00").getTime();
+    const endRampDown = new Date("2026-08-26T22:00:00").getTime();
     const currentMillis = currentTime.getTime();
 
     if (currentMillis <= startRampUp) {
