@@ -1533,10 +1533,10 @@ function openTrafficMapModal() {
         // Dynamic map zoom scale calculation based on window._currentMapZoom
         const mapSpan = Math.round(3000 * Math.pow(2, 15 - window._currentMapZoom));
 
-        // Post-8/25/2026: Enable high-visibility road-only traffic speeds overlay (layer=t, speeds=road_only)
+        // Enforce always-on traffic overlay across all map types (Default, Satellite, Hybrid)
         const trafficLayerParams = isPostAug25 
-            ? "&layer=t&showSpeeds=true&trafficOverlay=road_only" 
-            : "&layer=t";
+            ? "&layer=t&forceTraffic=true&showSpeeds=true&trafficOverlay=road_only" 
+            : "&layer=t&forceTraffic=true";
 
         if (isRightOnTime) {
             iframe.src = `https://www.google.com/maps/embed?pb=!1m14!1m12!1m3!1d${mapSpan}!2d${lon}!3d${lat}!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!5e0!3m2!1sen!2sus!4v1700000000000!5m2!1sen!2sus${trafficLayerParams}`;
@@ -1551,94 +1551,102 @@ function openTrafficMapModal() {
         slider.value = sliderMinutes;
     }
 
-    // Interactive Overlay Layer to capture standard laptop trackpad scroll / wheel zoom directly without requiring Ctrl
-    let zoomOverlay = document.getElementById("mapScrollZoomOverlay");
     const modalContainer = iframe.parentElement;
 
-    if (!zoomOverlay && modalContainer) {
-        modalContainer.style.position = "relative";
-        
-        zoomOverlay = document.createElement("div");
-        zoomOverlay.id = "mapScrollZoomOverlay";
-        zoomOverlay.style.position = "absolute";
-        zoomOverlay.style.top = "0";
-        zoomOverlay.style.left = "0";
-        zoomOverlay.style.width = "100%";
-        zoomOverlay.style.height = "100%";
-        zoomOverlay.style.zIndex = "999";
-        zoomOverlay.style.pointerEvents = "none";
-        
-        iframe.style.width = "100%";
-        iframe.style.height = "100%";
-        iframe.style.border = "none";
+    // Remove zoom controls overlay panel post-8/25/2026
+    if (isPostAug25) {
+        const existingZoomPanel = document.getElementById("mapZoomControlPanel");
+        if (existingZoomPanel) existingZoomPanel.remove();
 
-        modalContainer.appendChild(zoomOverlay);
+        const existingZoomOverlay = document.getElementById("mapScrollZoomOverlay");
+        if (existingZoomOverlay) existingZoomOverlay.remove();
+    } else {
+        // Legacy Zoom Panel Setup for pre-8/25/2026 dates
+        let zoomOverlay = document.getElementById("mapScrollZoomOverlay");
+        if (!zoomOverlay && modalContainer) {
+            modalContainer.style.position = "relative";
+            
+            zoomOverlay = document.createElement("div");
+            zoomOverlay.id = "mapScrollZoomOverlay";
+            zoomOverlay.style.position = "absolute";
+            zoomOverlay.style.top = "0";
+            zoomOverlay.style.left = "0";
+            zoomOverlay.style.width = "100%";
+            zoomOverlay.style.height = "100%";
+            zoomOverlay.style.zIndex = "999";
+            zoomOverlay.style.pointerEvents = "none";
+            
+            iframe.style.width = "100%";
+            iframe.style.height = "100%";
+            iframe.style.border = "none";
 
-        // Listen to wheel events on the container for seamless laptop trackpad/scroll zooming
-        modalContainer.addEventListener("wheel", (e) => {
-            e.preventDefault();
-            if (e.deltaY < 0) {
+            modalContainer.appendChild(zoomOverlay);
+
+            modalContainer.addEventListener("wheel", (e) => {
+                e.preventDefault();
+                if (e.deltaY < 0) {
+                    if (window._currentMapZoom < 20) {
+                        window._currentMapZoom++;
+                        updateIframeSource();
+                    }
+                } else {
+                    if (window._currentMapZoom > 1) {
+                        window._currentMapZoom--;
+                        updateIframeSource();
+                    }
+                }
+            }, { passive: false });
+        }
+
+        let zoomPanel = document.getElementById("mapZoomControlPanel");
+        if (!zoomPanel) {
+            zoomPanel = document.createElement("div");
+            zoomPanel.id = "mapZoomControlPanel";
+            zoomPanel.style.position = "absolute";
+            zoomPanel.style.bottom = "30px";
+            zoomPanel.style.right = "30px";
+            zoomPanel.style.zIndex = "99999";
+            zoomPanel.style.display = "flex";
+            zoomPanel.style.flexDirection = "column";
+            zoomPanel.style.gap = "6px";
+            zoomPanel.style.background = "#ffffff";
+            zoomPanel.style.padding = "8px";
+            zoomPanel.style.borderRadius = "8px";
+            zoomPanel.style.boxShadow = "0 4px 12px rgba(0,0,0,0.4)";
+            zoomPanel.style.pointerEvents = "auto";
+
+            const zoomInBtn = document.createElement("button");
+            zoomInBtn.type = "button";
+            zoomInBtn.innerText = "+";
+            zoomInBtn.style.cssText = "width: 36px; height: 36px; font-weight: bold; font-size: 20px; cursor: pointer; border: 1px solid #ddd; background: #f8f9fa; border-radius: 4px; color: #333;";
+            zoomInBtn.onclick = (e) => {
+                e.preventDefault();
+                e.stopPropagation();
                 if (window._currentMapZoom < 20) {
                     window._currentMapZoom++;
                     updateIframeSource();
                 }
-            } else {
+            };
+
+            const zoomOutBtn = document.createElement("button");
+            zoomOutBtn.type = "button";
+            zoomOutBtn.innerText = "-";
+            zoomOutBtn.style.cssText = "width: 36px; height: 36px; font-weight: bold; font-size: 20px; cursor: pointer; border: 1px solid #ddd; background: #f8f9fa; border-radius: 4px; color: #333;";
+            zoomOutBtn.onclick = (e) => {
+                e.preventDefault();
+                e.stopPropagation();
                 if (window._currentMapZoom > 1) {
                     window._currentMapZoom--;
                     updateIframeSource();
                 }
+            };
+
+            zoomPanel.appendChild(zoomInBtn);
+            zoomPanel.appendChild(zoomOutBtn);
+
+            if (modalContainer) {
+                modalContainer.appendChild(zoomPanel);
             }
-        }, { passive: false });
-    }
-
-    let zoomPanel = document.getElementById("mapZoomControlPanel");
-    if (!zoomPanel) {
-        zoomPanel = document.createElement("div");
-        zoomPanel.id = "mapZoomControlPanel";
-        zoomPanel.style.position = "absolute";
-        zoomPanel.style.bottom = "30px";
-        zoomPanel.style.right = "30px";
-        zoomPanel.style.zIndex = "99999";
-        zoomPanel.style.display = "flex";
-        zoomPanel.style.flexDirection = "column";
-        zoomPanel.style.gap = "6px";
-        zoomPanel.style.background = "#ffffff";
-        zoomPanel.style.padding = "8px";
-        zoomPanel.style.borderRadius = "8px";
-        zoomPanel.style.boxShadow = "0 4px 12px rgba(0,0,0,0.4)";
-        zoomPanel.style.pointerEvents = "auto";
-
-        const zoomInBtn = document.createElement("button");
-        zoomInBtn.type = "button";
-        zoomInBtn.innerText = "+";
-        zoomInBtn.style.cssText = "width: 36px; height: 36px; font-weight: bold; font-size: 20px; cursor: pointer; border: 1px solid #ddd; background: #f8f9fa; border-radius: 4px; color: #333;";
-        zoomInBtn.onclick = (e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            if (window._currentMapZoom < 20) {
-                window._currentMapZoom++;
-                updateIframeSource();
-            }
-        };
-
-        const zoomOutBtn = document.createElement("button");
-        zoomOutBtn.type = "button";
-        zoomOutBtn.innerText = "-";
-        zoomOutBtn.style.cssText = "width: 36px; height: 36px; font-weight: bold; font-size: 20px; cursor: pointer; border: 1px solid #ddd; background: #f8f9fa; border-radius: 4px; color: #333;";
-        zoomOutBtn.onclick = (e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            if (window._currentMapZoom > 1) {
-                window._currentMapZoom--;
-                updateIframeSource();
-            }
-        };
-
-        zoomPanel.appendChild(zoomInBtn);
-        zoomPanel.appendChild(zoomOutBtn);
-
-        if (modalContainer) {
-            modalContainer.appendChild(zoomPanel);
         }
     }
     
