@@ -2136,44 +2136,71 @@ function drawForecastCanvasGraph(item, mode, canvas, activeX = null, prevItem = 
         let label = h === 0 ? "12AM" : h === 12 ? "12PM" : h === 24 ? "12AM" : (h > 12 ? h - 12 + "PM" : h + "AM");
         ctx.fillText(label, x, height - padBottom + 15 * scaleFactor);
     }
+    const drawSmoothPath = (ctx, pts, getYVal) => {
+    if (pts.length < 2) return;
+    
+    ctx.beginPath();
+    ctx.moveTo(pts[0].x, getYVal(pts[0]));
 
+    for (let i = 0; i < pts.length - 1; i++) {
+        const p0 = pts[Math.max(0, i - 1)];
+        const p1 = pts[i];
+        const p2 = pts[i + 1];
+        const p3 = pts[Math.min(pts.length - 1, i + 2)];
+
+        // Calculate control points for smooth tension (tension factor ~ 0.2)
+        const cp1x = p1.x + (p2.x - p0.x) / 6;
+        const cp1y = getYVal(p1) + (getYVal(p2) - getYVal(p0)) / 6;
+
+        const cp2x = p2.x - (p3.x - p1.x) / 6;
+        const cp2y = getYVal(p2) - (getYVal(p3) - getYVal(p1)) / 6;
+
+        ctx.bezierCurveTo(cp1x, cp1y, cp2x, cp2y, p2.x, getYVal(p2));
+    }
+};
     const drawSegmentedLine = (pts, activeStyle, lineWidth, getYVal, fillUnder = false) => {
-        const renderPath = (segmentPts, style, isDashed) => {
-            if (segmentPts.length < 2) return;
-            if (fillUnder) {
-                ctx.beginPath();
-                ctx.moveTo(segmentPts[0].x, height - padBottom);
-                segmentPts.forEach(p => ctx.lineTo(p.x, getYVal(p)));
-                ctx.lineTo(segmentPts[segmentPts.length - 1].x, height - padBottom);
-                ctx.closePath();
-                ctx.fillStyle = style;
-                ctx.globalAlpha = 0.15;
-                ctx.fill();
-                ctx.globalAlpha = 1.0;
-            }
+    const renderPath = (segmentPts, style, isDashed) => {
+        if (segmentPts.length < 2) return;
+        
+        if (fillUnder) {
             ctx.beginPath();
-            ctx.setLineDash(isDashed ? [4, 4] : []);
-            ctx.strokeStyle = style;
-            ctx.lineWidth = lineWidth + 2 * scaleFactor;
+            ctx.moveTo(segmentPts[0].x, height - padBottom);
+            // Trace the top smooth edge down to the baseline
             segmentPts.forEach((p, idx) => {
-                const y = getYVal(p);
-                if (idx === 0) ctx.moveTo(p.x, y);
-                else ctx.lineTo(p.x, y);
+                if (idx === 0) ctx.lineTo(p.x, getYVal(p));
             });
-            ctx.stroke();
-            ctx.setLineDash([]);
-        };
-
-        if (isToday) {
-            const currentIdx = pts.findIndex(p => p.minute >= currentMinutes);
-            const pastPts = pts.slice(0, Math.max(1, currentIdx + 1));
-            const futurePts = pts.slice(Math.max(0, currentIdx));
-            if (pastPts.length > 0) renderPath(pastPts, activeStyle, true);
-            if (futurePts.length > 0) renderPath(futurePts, activeStyle, false);
-        } else {
-            renderPath(pts, activeStyle, false);
+            // Alternatively, use the smooth path generator for the filled area top boundary:
+            drawSmoothPath(ctx, segmentPts, getYVal);
+            ctx.lineTo(segmentPts[segmentPts.length - 1].x, height - padBottom);
+            ctx.closePath();
+            ctx.fillStyle = style;
+            ctx.globalAlpha = 0.15;
+            ctx.fill();
+            ctx.globalAlpha =.0;
         }
+
+        ctx.beginPath();
+        ctx.setLineDash(isDashed ? [4, 4] : []);
+        ctx.strokeStyle = style;
+        ctx.lineWidth = lineWidth * scaleFactor;
+        
+        // Call the smooth curve renderer here instead of standard lineTo loops
+        drawSmoothPath(ctx, segmentPts, getYVal);
+        
+        ctx.stroke();
+        ctx.setLineDash([]);
     };
+
+    if (isToday) {
+        const currentIdx = pts.findIndex(p => p.minute >= currentMinutes);
+        const pastPts = pts.slice(0, Math.max(1, currentIdx + 1));
+        const futurePts = pts.slice(Math.max(0, currentIdx));
+        if (pastPts.length > 0) renderPath(pastPts, activeStyle, true);
+        if (futurePts.length > 0) renderPath(futurePts, activeStyle, false);
+    } else {
+        renderPath(pts, activeStyle, false);
+    }
+};
 
     // Draw Modes
     if (mode === "temp" || mode === "feelsLike") {
