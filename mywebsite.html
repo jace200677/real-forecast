@@ -1986,6 +1986,12 @@ function drawForecastCanvasGraph(item, mode, canvas, activeX = null, prevItem = 
     const graphWidth = width - padLeft - padRight;
     const graphHeight = height - padTop - padBottom;
 
+    // Time domain configuration: 11:59 PM (-1 min) to 12:00 AM next day (1440 min)
+    const startMin = -1;
+    const endMin = 1440;
+    const totalSpan = endMin - startMin;
+    const getX = (m) => padLeft + ((m - startMin) / totalSpan) * graphWidth;
+
     const smoothStep = (v0, v1, t) => {
         const factor = 0.5 * (1 - Math.cos(t * Math.PI));
         return v0 + (v1 - v0) * factor;
@@ -2157,8 +2163,12 @@ function drawForecastCanvasGraph(item, mode, canvas, activeX = null, prevItem = 
     const getInterpolatedPrecip = (m) => getInterpolatedVal(m, 'precip', getDiurnalPrecip);
 
     const points = [];
-    for (let m = 0; m <= 1439; m += 15) {
-        const x = padLeft + (m / 1439) * graphWidth;
+    const minutesToPlot = [-1];
+    for (let m = 0; m <= 1440; m += 15) {
+        minutesToPlot.push(m);
+    }
+    minutesToPlot.forEach(m => {
+        const x = getX(m);
         points.push({
             minute: m, x: x,
             temp: getInterpolatedTemp(m), feelsLike: getInterpolatedFeelsLike(m),
@@ -2167,7 +2177,7 @@ function drawForecastCanvasGraph(item, mode, canvas, activeX = null, prevItem = 
             humidity: getInterpolatedHumidity(m), uv: getInterpolatedUv(m),
             precip: getInterpolatedPrecip(m)
         });
-    }
+    });
 
     // Grid & Axis
     ctx.strokeStyle = "#2e2e38";
@@ -2178,87 +2188,89 @@ function drawForecastCanvasGraph(item, mode, canvas, activeX = null, prevItem = 
 
     const hourStep = width < 400 ? 6 : 4;
     for (let h = 0; h <= 24; h += hourStep) {
-        const m = h === 24 ? 1439 : h * 60;
-        const x = padLeft + (m / 1439) * graphWidth;
+        const m = h === 0 ? -1 : (h === 24 ? 1440 : h * 60);
+        const x = getX(m);
         ctx.beginPath();
         ctx.moveTo(x, padTop);
         ctx.lineTo(x, height - padBottom);
         ctx.stroke();
 
-        let label = h === 0 ? "12AM" : h === 12 ? "12PM" : h === 24 ? "12AM" : (h > 12 ? h - 12 + "PM" : h + "AM");
+        let label = h === 0 ? "11:59PM" : h === 12 ? "12PM" : h === 24 ? "12AM" : (h > 12 ? h - 12 + "PM" : h + "AM");
         ctx.fillText(label, x, height - padBottom + 15 * scaleFactor);
     }
+
     // Helper that appends smooth Bezier curves to an already active path (crucial for fills)
-const addSmoothPathSegments = (ctx, pts, getYVal) => {
-    if (pts.length < 2) return;
-    for (let i = 0; i < pts.length - 1; i++) {
-        const p0 = pts[Math.max(0, i - 1)];
-        const p1 = pts[i];
-        const p2 = pts[i + 1];
-        const p3 = pts[Math.min(pts.length - 1, i + 2)];
+    const addSmoothPathSegments = (ctx, pts, getYVal) => {
+        if (pts.length < 2) return;
+        for (let i = 0; i < pts.length - 1; i++) {
+            const p0 = pts[Math.max(0, i - 1)];
+            const p1 = pts[i];
+            const p2 = pts[i + 1];
+            const p3 = pts[Math.min(pts.length - 1, i + 2)];
 
-        const cp1x = p1.x + (p2.x - p0.x) / 6;
-        const cp1y = getYVal(p1) + (getYVal(p2) - getYVal(p0)) / 6;
+            const cp1x = p1.x + (p2.x - p0.x) / 6;
+            const cp1y = getYVal(p1) + (getYVal(p2) - getYVal(p0)) / 6;
 
-        const cp2x = p2.x - (p3.x - p1.x) / 6;
-        const cp2y = getYVal(p2) - (getYVal(p3) - getYVal(p1)) / 6;
+            const cp2x = p2.x - (p3.x - p1.x) / 6;
+            const cp2y = getYVal(p2) - (getYVal(p3) - getYVal(p1)) / 6;
 
-        ctx.bezierCurveTo(cp1x, cp1y, cp2x, cp2y, p2.x, getYVal(p2));
-    }
-};
-
-// Standalone function if you just want to stroke a smooth line by itself
-const drawSmoothPath = (ctx, pts, getYVal) => {
-    if (pts.length < 2) return;
-    ctx.beginPath();
-    ctx.moveTo(pts[0].x, getYVal(pts[0]));
-    addSmoothPathSegments(ctx, pts, getYVal);
-};
-
-const drawSegmentedLine = (pts, activeStyle, lineWidth, getYVal, fillUnder = false) => {
-    const renderPath = (segmentPts, style, isDashed) => {
-        if (segmentPts.length < 2) return;
-        
-        if (fillUnder) {
-            ctx.beginPath();
-            // 1. Start at the bottom-left baseline
-            ctx.moveTo(segmentPts[0].x, height - padBottom);
-            // 2. Draw a straight line up to the first data point height
-            ctx.lineTo(segmentPts[0].x, getYVal(segmentPts[0]));
-            // 3. Trace along the smooth curve points using the segment appender
-            addSmoothPathSegments(ctx, segmentPts, getYVal);
-            // 4. Drop straight down to the bottom-right baseline and close
-            ctx.lineTo(segmentPts[segmentPts.length - 1].x, height - padBottom);
-            ctx.closePath();
-            
-            ctx.fillStyle = style;
-            ctx.globalAlpha = 0.15;
-            ctx.fill();
-            ctx.globalAlpha = 1.0;
+            ctx.bezierCurveTo(cp1x, cp1y, cp2x, cp2y, p2.x, getYVal(p2));
         }
-
-        ctx.beginPath();
-        ctx.setLineDash(isDashed ? [4, 4] : []);
-        ctx.strokeStyle = style;
-        ctx.lineWidth = lineWidth + 2 * scaleFactor;
-        
-        ctx.moveTo(segmentPts[0].x, getYVal(segmentPts[0]));
-        addSmoothPathSegments(ctx, segmentPts, getYVal);
-        
-        ctx.stroke();
-        ctx.setLineDash([]);
     };
 
-    if (isToday) {
-        const currentIdx = pts.findIndex(p => p.minute >= currentMinutes);
-        const pastPts = pts.slice(0, Math.max(1, currentIdx + 1));
-        const futurePts = pts.slice(Math.max(0, currentIdx));
-        if (pastPts.length > 0) renderPath(pastPts, activeStyle, true);
-        if (futurePts.length > 0) renderPath(futurePts, activeStyle, false);
-    } else {
-        renderPath(pts, activeStyle, false);
-    }
-};
+    // Standalone function if you just want to stroke a smooth line by itself
+    const drawSmoothPath = (ctx, pts, getYVal) => {
+        if (pts.length < 2) return;
+        ctx.beginPath();
+        ctx.moveTo(pts[0].x, getYVal(pts[0]));
+        addSmoothPathSegments(ctx, pts, getYVal);
+    };
+
+    const drawSegmentedLine = (pts, activeStyle, lineWidth, getYVal, fillUnder = false) => {
+        const renderPath = (segmentPts, style, isDashed) => {
+            if (segmentPts.length < 2) return;
+            
+            if (fillUnder) {
+                ctx.beginPath();
+                // 1. Start at the bottom-left baseline
+                ctx.moveTo(segmentPts[0].x, height - padBottom);
+                // 2. Draw a straight line up to the first data point height
+                ctx.lineTo(segmentPts[0].x, getYVal(segmentPts[0]));
+                // 3. Trace along the smooth curve points using the segment appender
+                addSmoothPathSegments(ctx, segmentPts, getYVal);
+                // 4. Drop straight down to the bottom-right baseline and close
+                ctx.lineTo(segmentPts[segmentPts.length - 1].x, height - padBottom);
+                ctx.closePath();
+                
+                ctx.fillStyle = style;
+                ctx.globalAlpha = 0.15;
+                ctx.fill();
+                ctx.globalAlpha = 1.0;
+            }
+
+            ctx.beginPath();
+            ctx.setLineDash(isDashed ? [4, 4] : []);
+            ctx.strokeStyle = style;
+            ctx.lineWidth = lineWidth + 2 * scaleFactor;
+            
+            ctx.moveTo(segmentPts[0].x, getYVal(segmentPts[0]));
+            addSmoothPathSegments(ctx, segmentPts, getYVal);
+            
+            ctx.stroke();
+            ctx.setLineDash([]);
+        };
+
+        if (isToday) {
+            const currentIdx = pts.findIndex(p => p.minute >= currentMinutes);
+            const pastPts = pts.slice(0, Math.max(1, currentIdx + 1));
+            const futurePts = pts.slice(Math.max(0, currentIdx));
+            if (pastPts.length > 0) renderPath(pastPts, activeStyle, true);
+            if (futurePts.length > 0) renderPath(futurePts, activeStyle, false);
+        } else {
+            renderPath(pts, activeStyle, false);
+        }
+    };
+
     // Draw Modes
     if (mode === "temp" || mode === "feelsLike") {
         const valKey = mode === "temp" ? 'temp' : 'feelsLike';
@@ -2274,7 +2286,7 @@ const drawSegmentedLine = (pts, activeStyle, lineWidth, getYVal, fillUnder = fal
         drawSegmentedLine(points, fillGrad, 3, getY, true);
 
         if (isToday) {
-            const currentX = padLeft + (currentMinutes / 1439) * graphWidth;
+            const currentX = getX(currentMinutes);
             const currentVal = mode === "temp" ? getInterpolatedTemp(currentMinutes) : getInterpolatedFeelsLike(currentMinutes);
             const currentY = padTop + graphHeight - ((currentVal - minY) / (maxY - minY)) * graphHeight;
 
@@ -2290,7 +2302,7 @@ const drawSegmentedLine = (pts, activeStyle, lineWidth, getYVal, fillUnder = fal
         if (hasEvents && mode === "temp") {
             sortedEvents.forEach(ev => {
                 if (ev.temp !== undefined) {
-                    const ex = padLeft + (ev.minute / 1439) * graphWidth;
+                    const ex = getX(ev.minute);
                     const ey = padTop + graphHeight - ((ev.temp - minY) / (maxY - minY)) * graphHeight;
                     ctx.fillStyle = "#ffcc00";
                     ctx.beginPath();
@@ -2319,7 +2331,7 @@ const drawSegmentedLine = (pts, activeStyle, lineWidth, getYVal, fillUnder = fal
         drawSegmentedLine(points, windGrad, 2.0, getGustY, false);
 
         if (isToday) {
-            const currentX = padLeft + (currentMinutes / 1439) * graphWidth;
+            const currentX = getX(currentMinutes);
             
             // Wind Value Dot (Kept)
             const currentWindVal = getInterpolatedWind(currentMinutes);
@@ -2343,7 +2355,7 @@ const drawSegmentedLine = (pts, activeStyle, lineWidth, getYVal, fillUnder = fal
         drawSegmentedLine(points, dosGrad, 3, getDosY, true);
 
         if (isToday) {
-            const currentX = padLeft + (currentMinutes / 1439) * graphWidth;
+            const currentX = getX(currentMinutes);
             const currentY = padTop + graphHeight - ((getInterpolatedDos(currentMinutes) - minY) / (maxY - minY)) * graphHeight;
             ctx.fillStyle = "#ffffff";
             ctx.beginPath(); ctx.arc(currentX, currentY, 5 * scaleFactor, 0, Math.PI * 2); ctx.fill();
@@ -2400,10 +2412,11 @@ const drawSegmentedLine = (pts, activeStyle, lineWidth, getYVal, fillUnder = fal
     if (activeX !== null && activeX >= padLeft && activeX <= width - padRight) {
         const clampedX = Math.max(padLeft, Math.min(width - padRight, activeX));
         const ratio = (clampedX - padLeft) / graphWidth;
-        const hoveredMinute = Math.round(ratio * 1439);
+        const hoveredMinute = Math.round(startMin + ratio * totalSpan);
 
-        const h = Math.floor(hoveredMinute / 60);
-        const m = Math.round(hoveredMinute % 60);
+        const normMinute = (hoveredMinute + 1440) % 1440;
+        const h = Math.floor(normMinute / 60);
+        const m = Math.round(normMinute % 60);
         const timeStr = `${h % 12 || 12}:${m < 10 ? '0' : ''}${m}${h >= 12 ? 'PM' : 'AM'}`;
 
         ctx.strokeStyle = "rgba(255, 255, 255, 0.6)";
