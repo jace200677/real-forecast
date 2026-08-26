@@ -2572,27 +2572,32 @@ function drawForecastCanvasGraph(item, mode, canvas, activeX = null, prevItem = 
     }
 }
    
-function updateTrafficButtonState() {
+function updateTrafficButtonState(baseDateOverride = null) {
     const btn = document.querySelector('.traffic-btn');
     if (!btn) return;
 
-    const now = new Date();
+    // Use selected date card override if provided, otherwise fallback to current system time
+    const now = baseDateOverride ? new Date(baseDateOverride) : new Date();
+
     const blackoutStart = new Date('2026-08-25T09:00:00');
     const invisibleStart = new Date('2026-08-25T10:00:00');
     const blackoutEnd = new Date('2026-08-26T08:00:00');
+
+    // New invisible date window starting on August 24, 2026 (indefinite or single-point check)
+    const extraInvisibleStart = new Date('2026-08-24T00:00:00');
 
     // Reset default classes/attributes first
     btn.disabled = false;
     btn.classList.remove('is-disabled', 'is-invisible');
     btn.setAttribute('onclick', 'openTrafficMapModal()');
 
-    if (now >= invisibleStart && now < blackoutEnd) {
-        // Invisible state (after 10 AM on 8/25 until 2 PM on 8/26)
+    if ((now >= invisibleStart && now < blackoutEnd) || (now < extraInvisibleStart)) {
+        // Invisible state 
         btn.disabled = true;
         btn.classList.add('is-invisible');
         btn.removeAttribute('onclick');
     } else if (now >= blackoutStart && now < invisibleStart) {
-        // Greyed out and disabled state (between 9 AM and 10 AM on 8/25)
+        // Greyed out and disabled state 
         btn.disabled = true;
         btn.classList.add('is-disabled');
         btn.removeAttribute('onclick');
