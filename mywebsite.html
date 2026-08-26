@@ -2154,7 +2154,7 @@ function drawForecastCanvasGraph(item, mode, canvas, activeX = null, prevItem = 
             ctx.beginPath();
             ctx.setLineDash(isDashed ? [4, 4] : []);
             ctx.strokeStyle = style;
-            ctx.lineWidth = lineWidth * scaleFactor;
+            ctx.lineWidth = lineWidth + 2 * scaleFactor;
             segmentPts.forEach((p, idx) => {
                 const y = getYVal(p);
                 if (idx === 0) ctx.moveTo(p.x, y);
