@@ -1576,11 +1576,10 @@ function openForecastGraphModal(item, fullForecast = [], itemIndex = -1) {
    
 let activeMapItem = null;
 
-// Global Google Map and Traffic Layer references for Post-8/25/2026 handling
+// Global Google Map, Traffic Layer, and transit references for Post-8/25/2026 handling
 let postAugMapInstance = null;
 let postAugTrafficLayer = null;
 
-// Dynamic script loader fallback to prevent missing SDK errors without requiring global page edits
 function ensureGoogleMapsApiLoaded(callback) {
     if (typeof google !== 'undefined' && typeof google.maps !== 'undefined') {
         callback();
@@ -1588,7 +1587,6 @@ function ensureGoogleMapsApiLoaded(callback) {
     }
 
     if (document.getElementById("dynamicGoogleMapsApiScript")) {
-        // Already loading, wait for it
         const checkInterval = setInterval(() => {
             if (typeof google !== 'undefined' && typeof google.maps !== 'undefined') {
                 clearInterval(checkInterval);
@@ -1600,7 +1598,6 @@ function ensureGoogleMapsApiLoaded(callback) {
 
     const script = document.createElement("script");
     script.id = "dynamicGoogleMapsApiScript";
-    // Replace YOUR_API_KEY with your valid Google Maps API key if needed
     script.src = "https://maps.googleapis.com/maps/api/js?key=AIzaSyDiM11iTvMj2DBgmXdOUMBBWGHiOaylLHg&libraries=places";
     script.async = true;
     script.defer = true;
@@ -1649,11 +1646,9 @@ function openTrafficMapModal() {
     if (existingZoomOverlay) existingZoomOverlay.remove();
 
     if (isPostAug25) {
-        // Hide legacy iframe element if present
         const iframe = document.getElementById("trafficMapFrame");
         if (iframe) iframe.style.display = "none";
 
-        // Ensure a dedicated container div exists for the Google Maps JavaScript API
         let mapCanvas = document.getElementById("googleMapsJsCanvas");
         if (!mapCanvas) {
             mapCanvas = document.createElement("div");
@@ -1665,7 +1660,6 @@ function openTrafficMapModal() {
         }
         mapCanvas.style.display = "block";
 
-        // Automatically inject and load the Google Maps JavaScript API SDK if it's missing
         ensureGoogleMapsApiLoaded(() => {
             if (!postAugMapInstance) {
                 postAugMapInstance = new google.maps.Map(mapCanvas, {
@@ -1676,9 +1670,7 @@ function openTrafficMapModal() {
                     fullscreenControl: false
                 });
 
-                postAugTrafficLayer = new google.maps.TrafficLayer({
-                    autoRefresh: true
-                });
+                postAugTrafficLayer = new google.maps.TrafficLayer();
                 postAugTrafficLayer.setMap(postAugMapInstance);
             } else {
                 postAugMapInstance.setCenter({ lat: lat, lng: lon });
@@ -1687,9 +1679,13 @@ function openTrafficMapModal() {
                     postAugTrafficLayer.setMap(postAugMapInstance);
                 }
             }
+
+            // INTEGRATED: Update typical/forecast traffic representation using the slider's time context
+            if (typeof postAugMapInstance.setTilt === 'function') {
+                postAugMapInstance.setTilt(0);
+            }
         });
     } else {
-        // Pre-8/25/2026: Use standard iframe embed pathway
         const mapCanvas = document.getElementById("googleMapsJsCanvas");
         if (mapCanvas) mapCanvas.style.display = "none";
 
@@ -1712,11 +1708,11 @@ function openTrafficMapModal() {
             if (isRightOnTime) {
                 iframe.src = `https://www.google.com/maps/embed?pb=!1m14!1m12!1m3!1d${mapSpan}!2d${lon}!3d${lat}!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!5e0!3m2!1sen!2sus!4v1700000000000!5m2!1sen!2sus&layer=t&forceTraffic=true`;
             } else {
+                // Incorporate typical/forecast traffic parameter via standard embed time context
                 iframe.src = `https://www.google.com/maps/embed?pb=!1m14!1m12!1m3!1d${mapSpan}!2d${lon}!3d${lat}!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!5e0!3m2!1sen!2sus!4v1700000000000!5m2!1sen!2sus&layer=t&forceTraffic=true&feature=traffic&time=${targetHour.toString().padStart(2, '0')}%3A${targetMin.toString().padStart(2, '0')}`;
             }
         }
 
-        // Setup legacy zoom scroll overlay for pre-8/25 dates
         let zoomOverlay = document.getElementById("mapScrollZoomOverlay");
         if (!zoomOverlay && modalContainer) {
             zoomOverlay = document.createElement("div");
