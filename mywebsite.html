@@ -1500,6 +1500,39 @@ let activeMapItem = null;
 let postAugMapInstance = null;
 let postAugTrafficLayer = null;
 
+// Dynamic script loader fallback to prevent missing SDK errors without requiring global page edits
+function ensureGoogleMapsApiLoaded(callback) {
+    if (typeof google !== 'undefined' && typeof google.maps !== 'undefined') {
+        callback();
+        return;
+    }
+
+    if (document.getElementById("dynamicGoogleMapsApiScript")) {
+        // Already loading, wait for it
+        const checkInterval = setInterval(() => {
+            if (typeof google !== 'undefined' && typeof google.maps !== 'undefined') {
+                clearInterval(checkInterval);
+                callback();
+            }
+        }, 100);
+        return;
+    }
+
+    const script = document.createElement("script");
+    script.id = "dynamicGoogleMapsApiScript";
+    // Replace YOUR_API_KEY with your valid Google Maps API key if needed
+    script.src = "https://maps.googleapis.com/maps/api/js?key=AIzaSyDiM11iTvMj2DBgmXdOUMBBWGHiOaylLHg&libraries=places";
+    script.async = true;
+    script.defer = true;
+    script.onload = () => {
+        if (typeof callback === "function") callback();
+    };
+    script.onerror = () => {
+        console.error("Failed to load Google Maps JavaScript API dynamically.");
+    };
+    document.head.appendChild(script);
+}
+
 function openTrafficMapModal() {
     const graphModal = document.getElementById("forecastGraphModal");
     if (!graphModal || !graphModal.currentItem) return;
@@ -1552,40 +1585,29 @@ function openTrafficMapModal() {
         }
         mapCanvas.style.display = "block";
 
-        // Check if the Google Maps JavaScript API SDK is fully loaded in the browser
-        if (typeof google === 'undefined' || typeof google.maps === 'undefined') {
-            mapCanvas.innerHTML = `
-                <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; padding: 20px; text-align: center; font-family: sans-serif; color: #333; background: #f8f9fa;">
-                    <div style="font-size: 16px; font-weight: bold; margin-bottom: 8px;">Traffic Overlay Unavailable</div>
-                    <div style="font-size: 14px; color: #666; max-width: 320px;">The Google Maps JavaScript API script tag is missing or disabled in this view. Please check your script loader configuration.</div>
-                </div>
-            `;
-            document.getElementById("trafficMapModal").style.display = "flex";
-            return;
-        }
+        // Automatically inject and load the Google Maps JavaScript API SDK if it's missing
+        ensureGoogleMapsApiLoaded(() => {
+            if (!postAugMapInstance) {
+                postAugMapInstance = new google.maps.Map(mapCanvas, {
+                    zoom: window._currentMapZoom,
+                    center: { lat: lat, lng: lon },
+                    mapTypeId: google.maps.MapTypeId.ROADMAP,
+                    streetViewControl: false,
+                    fullscreenControl: false
+                });
 
-        // Initialize or update the official Google Maps JavaScript API instance
-        if (!postAugMapInstance) {
-            postAugMapInstance = new google.maps.Map(mapCanvas, {
-                zoom: window._currentMapZoom,
-                center: { lat: lat, lng: lon },
-                mapTypeId: google.maps.MapTypeId.ROADMAP,
-                streetViewControl: false,
-                fullscreenControl: false
-            });
-
-            // Native TrafficLayer renderer for real-time speed/congestion highlights
-            postAugTrafficLayer = new google.maps.TrafficLayer({
-                autoRefresh: true
-            });
-            postAugTrafficLayer.setMap(postAugMapInstance);
-        } else {
-            postAugMapInstance.setCenter({ lat: lat, lng: lon });
-            postAugMapInstance.setZoom(window._currentMapZoom);
-            if (postAugTrafficLayer && postAugTrafficLayer.getMap() === null) {
+                postAugTrafficLayer = new google.maps.TrafficLayer({
+                    autoRefresh: true
+                });
                 postAugTrafficLayer.setMap(postAugMapInstance);
+            } else {
+                postAugMapInstance.setCenter({ lat: lat, lng: lon });
+                postAugMapInstance.setZoom(window._currentMapZoom);
+                if (postAugTrafficLayer && postAugTrafficLayer.getMap() === null) {
+                    postAugTrafficLayer.setMap(postAugMapInstance);
+                }
             }
-        }
+        });
     } else {
         // Pre-8/25/2026: Use standard iframe embed pathway
         const mapCanvas = document.getElementById("googleMapsJsCanvas");
