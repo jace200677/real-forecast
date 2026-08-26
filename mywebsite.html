@@ -1508,10 +1508,10 @@ function openTrafficMapModal() {
     
     const iframe = document.getElementById("trafficMapFrame");
     
-    // Evaluate live date context against the post-8/25/2026 cut-off
+    // Strictly depend post-8/25/2026 check on the selected day card's dateStr
     const itemDate = new Date(activeMapItem.dateStr);
     const postAug25Cutoff = new Date("2026-08-26T00:00:00");
-    const isPostAug25 = itemDate >= postAug25Cutoff || new Date() >= postAug25Cutoff;
+    const isPostAug25 = itemDate >= postAug25Cutoff;
     
     const now = new Date();
     const currentTotalMinutes = now.getHours() * 60 + now.getMinutes();
@@ -1533,7 +1533,7 @@ function openTrafficMapModal() {
         // Dynamic map zoom scale calculation based on window._currentMapZoom
         const mapSpan = Math.round(3000 * Math.pow(2, 15 - window._currentMapZoom));
 
-        // Enforce always-on traffic overlay across all map types (Default, Satellite, Hybrid)
+        // If post-8/25/2026 based on selected card date: always show traffic layer, hide zoom panel, no custom map type dependency overrides
         const trafficLayerParams = isPostAug25 
             ? "&layer=t&forceTraffic=true&showSpeeds=true&trafficOverlay=road_only" 
             : "&layer=t&forceTraffic=true";
@@ -1553,7 +1553,7 @@ function openTrafficMapModal() {
 
     const modalContainer = iframe.parentElement;
 
-    // Remove zoom controls overlay panel post-8/25/2026
+    // Remove zoom controls overlay panel strictly when the selected card date is post-8/25/2026
     if (isPostAug25) {
         const existingZoomPanel = document.getElementById("mapZoomControlPanel");
         if (existingZoomPanel) existingZoomPanel.remove();
@@ -1561,7 +1561,7 @@ function openTrafficMapModal() {
         const existingZoomOverlay = document.getElementById("mapScrollZoomOverlay");
         if (existingZoomOverlay) existingZoomOverlay.remove();
     } else {
-        // Legacy Zoom Panel Setup for pre-8/25/2026 dates
+        // Legacy Zoom Panel Setup for pre-8/25/2026 selected card dates
         let zoomOverlay = document.getElementById("mapScrollZoomOverlay");
         if (!zoomOverlay && modalContainer) {
             modalContainer.style.position = "relative";
