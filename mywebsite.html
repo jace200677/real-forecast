@@ -2136,12 +2136,9 @@ function drawForecastCanvasGraph(item, mode, canvas, activeX = null, prevItem = 
         let label = h === 0 ? "12AM" : h === 12 ? "12PM" : h === 24 ? "12AM" : (h > 12 ? h - 12 + "PM" : h + "AM");
         ctx.fillText(label, x, height - padBottom + 15 * scaleFactor);
     }
-    const drawSmoothPath = (ctx, pts, getYVal) => {
+    // Helper that appends smooth Bezier curves to an already active path (crucial for fills)
+const addSmoothPathSegments = (ctx, pts, getYVal) => {
     if (pts.length < 2) return;
-    
-    ctx.beginPath();
-    ctx.moveTo(pts[0].x, getYVal(pts[0]));
-
     for (let i = 0; i < pts.length - 1; i++) {
         const p0 = pts[Math.max(0, i - 1)];
         const p1 = pts[i];
@@ -2158,20 +2155,34 @@ function drawForecastCanvasGraph(item, mode, canvas, activeX = null, prevItem = 
     }
 };
 
+// Standalone function if you just want to stroke a smooth line by itself
+const drawSmoothPath = (ctx, pts, getYVal) => {
+    if (pts.length < 2) return;
+    ctx.beginPath();
+    ctx.moveTo(pts[0].x, getYVal(pts[0]));
+    addSmoothPathSegments(ctx, pts, getYVal);
+};
+
 const drawSegmentedLine = (pts, activeStyle, lineWidth, getYVal, fillUnder = false) => {
     const renderPath = (segmentPts, style, isDashed) => {
         if (segmentPts.length < 2) return;
         
         if (fillUnder) {
             ctx.beginPath();
+            // 1. Start at the bottom-left baseline
             ctx.moveTo(segmentPts[0].x, height - padBottom);
-            drawSmoothPath(ctx, segmentPts, getYVal);
+            // 2. Draw a straight line up to the first data point height
+            ctx.lineTo(segmentPts[0].x, getYVal(segmentPts[0]));
+            // 3. Trace along the smooth curve points using the segment appender
+            addSmoothPathSegments(ctx, segmentPts, getYVal);
+            // 4. Drop straight down to the bottom-right baseline and close
             ctx.lineTo(segmentPts[segmentPts.length - 1].x, height - padBottom);
             ctx.closePath();
+            
             ctx.fillStyle = style;
             ctx.globalAlpha = 0.15;
             ctx.fill();
-            ctx.globalAlpha = 1.0; // Fixed from .0 to 1.0
+            ctx.globalAlpha = 1.0;
         }
 
         ctx.beginPath();
@@ -2179,7 +2190,8 @@ const drawSegmentedLine = (pts, activeStyle, lineWidth, getYVal, fillUnder = fal
         ctx.strokeStyle = style;
         ctx.lineWidth = lineWidth * scaleFactor;
         
-        drawSmoothPath(ctx, segmentPts, getYVal);
+        ctx.moveTo(segmentPts[0].x, getYVal(segmentPts[0]));
+        addSmoothPathSegments(ctx, segmentPts, getYVal);
         
         ctx.stroke();
         ctx.setLineDash([]);
