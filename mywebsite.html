@@ -1702,6 +1702,12 @@ function updateTrafficTime(totalMinutes, baseDateOverride = null) {
     const postAug25Cutoff = new Date("2026-08-26T00:00:00");
     const isPostAug25 = workingDate >= postAug25Cutoff;
 
+    // Determine if slider time represents "Live" vs "Typical Traffic" (future/past hours)
+    const nowTime = new Date();
+    const currentMinutesToday = nowTime.getHours() * 60 + nowTime.getMinutes();
+    const isViewingLiveTime = !baseDateOverride && Math.abs(normalizedMinutes - currentMinutesToday) <= 15;
+    const trafficModeLabel = isViewingLiveTime ? "Live Traffic" : "Typical Traffic";
+
     // 1. Dynamic Parsing of Google Maps iframe attributes & location coordinates
     let derivedLat = 45.3853;
     let derivedLon = -93.8864;
@@ -1782,7 +1788,7 @@ function updateTrafficTime(totalMinutes, baseDateOverride = null) {
     let statusText = "";
     let statusColor = "#4ade80";
 
-    const sourceLabel = isGoogleMapsSource ? "Google Maps" : "Traffic-Planner.com";
+    const sourceLabel = isGoogleMapsSource ? `Google Maps (${trafficModeLabel})` : `Traffic-Planner.com (${trafficModeLabel})`;
 
     if (isLateNight) {
         speedMultiplier = 1.05; 
