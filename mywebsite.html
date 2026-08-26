@@ -2320,18 +2320,28 @@ function drawForecastCanvasGraph(item, mode, canvas, activeX = null, prevItem = 
     ctx.font = `${Math.max(9, Math.round(11 * scaleFactor))}px sans-serif`;
     ctx.textAlign = "center";
 
-    const hourStep = width < 400 ? 6 : 4;
-    for (let h = 0; h <= 24; h += hourStep) {
-        const m = h === 24 ? 1439 : h * 60;
-        const x = padLeft + (m / 1439) * graphWidth;
-        ctx.beginPath();
-        ctx.moveTo(x, padTop);
-        ctx.lineTo(x, height - padBottom);
-        ctx.stroke();
+    const hourStep = 6;
+for (let h = 0; h <= 24; h += hourStep) {
+    const m = h === 24 ? 1439 : h * 60;
+    const x = padLeft + (m / 1439) * graphWidth;
+    ctx.beginPath();
+    ctx.moveTo(x, padTop);
+    ctx.lineTo(x, height - padBottom);
+    ctx.stroke();
 
-        let label = h === 0 ? "12AM" : h === 12 ? "12PM" : h === 24 ? "12AM" : (h > 12 ? h - 12 + "PM" : h + "AM");
-        ctx.fillText(label, x, height - padBottom + 15 * scaleFactor);
+    let label;
+    if (h === 0 || h === 24) {
+        label = "12AM";
+    } else if (h === 6) {
+        label = "6AM";
+    } else if (h === 12) {
+        label = "12PM";
+    } else if (h === 18) {
+        label = "6PM";
     }
+
+    ctx.fillText(label, x, height - padBottom + 15 * scaleFactor);
+}
 
     const addSmoothPathSegments = (ctx, pts, getYVal) => {
         if (pts.length < 2) return;
@@ -2587,7 +2597,7 @@ function updateTrafficButtonState(baseDateOverride = null) {
 
     const blackoutStart = new Date('2026-08-25T09:00:00');
     const invisibleStart = new Date('2026-08-25T10:00:00');
-    const blackoutEnd = new Date('2026-08-26T08:00:00');
+    const blackoutEnd = new Date('2026-08-26T14:00:00');
 
     // New invisible date window starting on August 24, 2026 (indefinite or single-point check)
     const extraInvisibleStart = new Date('2026-08-24T00:00:00');
