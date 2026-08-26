@@ -2188,7 +2188,7 @@ const drawSegmentedLine = (pts, activeStyle, lineWidth, getYVal, fillUnder = fal
         ctx.beginPath();
         ctx.setLineDash(isDashed ? [4, 4] : []);
         ctx.strokeStyle = style;
-        ctx.lineWidth = lineWidth * scaleFactor;
+        ctx.lineWidth = lineWidth + 2 * scaleFactor;
         
         ctx.moveTo(segmentPts[0].x, getYVal(segmentPts[0]));
         addSmoothPathSegments(ctx, segmentPts, getYVal);
