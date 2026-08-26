@@ -2268,10 +2268,16 @@ const drawSegmentedLine = (pts, activeStyle, lineWidth, getYVal, fillUnder = fal
 
         if (isToday) {
             const currentX = padLeft + (currentMinutes / 1439) * graphWidth;
-            ctx.fillStyle = getDynamicWindColor(getInterpolatedWind(currentMinutes));
-            ctx.beginPath(); ctx.arc(currentX, getWindY({ wind: getInterpolatedWind(currentMinutes) }), 5 * scaleFactor, 0, Math.PI * 2); ctx.fill();
-            ctx.fillStyle = getDynamicWindColor(getInterpolatedGust(currentMinutes));
-            ctx.beginPath(); ctx.arc(currentX, getGustY({ gust: getInterpolatedGust(currentMinutes) }), 5 * scaleFactor, 0, Math.PI * 2); ctx.fill();
+            
+            // Wind Value Dot (Kept)
+            const currentWindVal = getInterpolatedWind(currentMinutes);
+            ctx.fillStyle = getDynamicWindColor(currentWindVal);
+            ctx.beginPath(); 
+            ctx.arc(currentX, getWindY({ wind: currentWindVal }), 5 * scaleFactor, 0, Math.PI * 2); 
+            ctx.fill();
+            ctx.strokeStyle = "#000";
+            ctx.lineWidth = 1.5;
+            ctx.stroke();
         }
     } else if (mode === "dos") {
         const allDos = points.map(p => p.dos);
