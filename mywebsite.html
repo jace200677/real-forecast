@@ -2101,7 +2101,7 @@ function drawForecastCanvasGraph(item, mode, canvas, activeX = null, prevItem = 
     };
 
     const peakMin = 15 * 60;
-    const getDiurnalFeelsLike = (m) => getDiurnalTemp(m) + (item.feelsLikeOffset || 0); // Basic offset if no explicit fields
+    const getDiurnalFeelsLike = (m) => getDiurnalTemp(m) + (item.feelsLikeOffset || 0);
     const getDiurnalWind = (m) => {
         const windRad = ((m - peakMin) / 1440) * Math.PI * 2;
         return Math.round(item.windMph * (0.6 + 0.4 * ((Math.cos(windRad) + 1) / 2)));
@@ -2116,17 +2116,17 @@ function drawForecastCanvasGraph(item, mode, canvas, activeX = null, prevItem = 
     };
     const getDiurnalPressure = (m) => {
         const baseP = item.pressure || 29.92;
-        const rad = (m / 1440) * Math.PI * 4; // Semi-diurnal tide
+        const rad = (m / 1440) * Math.PI * 4;
         return +(baseP + 0.05 * Math.sin(rad)).toFixed(2);
     };
     const getDiurnalHumidity = (m) => {
         const baseHum = item.humidity || 50;
         const rad = ((m - peakMin) / 1440) * Math.PI * 2;
-        return Math.max(0, Math.min(100, Math.round(baseHum - 20 * Math.cos(rad)))); // Inversely follows temp
+        return Math.max(0, Math.min(100, Math.round(baseHum - 20 * Math.cos(rad))));
     };
     const getDiurnalUv = (m) => {
         const maxUv = item.uvIndex || 0;
-        if (m < 360 || m > 1200) return 0; // daylight roughly 6am - 8pm
+        if (m < 360 || m > 1200) return 0;
         const rad = ((m - 360) / 840) * Math.PI;
         return +(maxUv * Math.sin(rad)).toFixed(1);
     };
@@ -2162,12 +2162,9 @@ function drawForecastCanvasGraph(item, mode, canvas, activeX = null, prevItem = 
     const getInterpolatedUv = (m) => getInterpolatedVal(m, 'uv', getDiurnalUv);
     const getInterpolatedPrecip = (m) => getInterpolatedVal(m, 'precip', getDiurnalPrecip);
 
+    // Continuous minute-by-minute points without skipping numbers
     const points = [];
-    const minutesToPlot = [-1];
-    for (let m = 0; m <= 1440; m += 15) {
-        minutesToPlot.push(m);
-    }
-    minutesToPlot.forEach(m => {
+    for (let m = startMin; m <= endMin; m++) {
         const x = getX(m);
         points.push({
             minute: m, x: x,
@@ -2177,7 +2174,7 @@ function drawForecastCanvasGraph(item, mode, canvas, activeX = null, prevItem = 
             humidity: getInterpolatedHumidity(m), uv: getInterpolatedUv(m),
             precip: getInterpolatedPrecip(m)
         });
-    });
+    }
 
     // Grid & Axis
     ctx.strokeStyle = "#2e2e38";
@@ -2186,20 +2183,29 @@ function drawForecastCanvasGraph(item, mode, canvas, activeX = null, prevItem = 
     ctx.font = `${Math.max(9, Math.round(11 * scaleFactor))}px sans-serif`;
     ctx.textAlign = "center";
 
-    const hourStep = width < 400 ? 6 : 4;
-    for (let h = 0; h <= 24; h += hourStep) {
-        const m = h === 0 ? -1 : (h === 24 ? 1440 : h * 60);
+    // Draw grid lines for all hours 0 through 24
+    for (let h = 0; h <= 24; h++) {
+        const m = h * 60;
         const x = getX(m);
         ctx.beginPath();
         ctx.moveTo(x, padTop);
         ctx.lineTo(x, height - padBottom);
         ctx.stroke();
 
-        let label = h === 0 ? "11:59PM" : h === 12 ? "12PM" : h === 24 ? "12AM" : (h > 12 ? h - 12 + "PM" : h + "AM");
-        ctx.fillText(label, x, height - padBottom + 15 * scaleFactor);
+        const labelInterval = width < 400 ? 6 : (width < 600 ? 3 : 2);
+        if (h % labelInterval === 0 || h === 24) {
+            let label = h === 0 ? "12AM" : h === 12 ? "12PM" : h === 24 ? "12AM" : (h > 12 ? (h - 12) + "PM" : h + "AM");
+            ctx.fillText(label, x, height - padBottom + 15 * scaleFactor);
+        }
     }
 
-    // Helper that appends smooth Bezier curves to an already active path (crucial for fills)
+    // Explicit line at start position (-1 minute / 11:59PM)
+    const xStart = getX(-1);
+    ctx.beginPath();
+    ctx.moveTo(xStart, padTop);
+    ctx.lineTo(xStart, height - padBottom);
+    ctx.stroke();
+
     const addSmoothPathSegments = (ctx, pts, getYVal) => {
         if (pts.length < 2) return;
         for (let i = 0; i < pts.length - 1; i++) {
@@ -2218,7 +2224,6 @@ function drawForecastCanvasGraph(item, mode, canvas, activeX = null, prevItem = 
         }
     };
 
-    // Standalone function if you just want to stroke a smooth line by itself
     const drawSmoothPath = (ctx, pts, getYVal) => {
         if (pts.length < 2) return;
         ctx.beginPath();
@@ -2232,13 +2237,9 @@ function drawForecastCanvasGraph(item, mode, canvas, activeX = null, prevItem = 
             
             if (fillUnder) {
                 ctx.beginPath();
-                // 1. Start at the bottom-left baseline
                 ctx.moveTo(segmentPts[0].x, height - padBottom);
-                // 2. Draw a straight line up to the first data point height
                 ctx.lineTo(segmentPts[0].x, getYVal(segmentPts[0]));
-                // 3. Trace along the smooth curve points using the segment appender
                 addSmoothPathSegments(ctx, segmentPts, getYVal);
-                // 4. Drop straight down to the bottom-right baseline and close
                 ctx.lineTo(segmentPts[segmentPts.length - 1].x, height - padBottom);
                 ctx.closePath();
                 
@@ -2332,8 +2333,6 @@ function drawForecastCanvasGraph(item, mode, canvas, activeX = null, prevItem = 
 
         if (isToday) {
             const currentX = getX(currentMinutes);
-            
-            // Wind Value Dot (Kept)
             const currentWindVal = getInterpolatedWind(currentMinutes);
             ctx.fillStyle = getDynamicWindColor(currentWindVal);
             ctx.beginPath(); 
@@ -2382,27 +2381,17 @@ function drawForecastCanvasGraph(item, mode, canvas, activeX = null, prevItem = 
         
         drawSegmentedLine(points, uvGrad, 3, getUvY, true);
     } else if (mode === "precip") {
-        // Draw Precipitation Chance as a colored Bar Graph
-        const barWidth = (graphWidth / points.length) * 0.9;
-        points.forEach((p, i) => {
+        const barWidth = Math.max(1.5, graphWidth / points.length);
+        points.forEach((p) => {
             if (p.precip > 0) {
                 const barH = (p.precip / 100) * graphHeight;
                 const yPos = padTop + graphHeight - barH;
                 
-                // Color scales from light blue (low chance) to deep blue (high chance)
                 const precipColor = lerpColor("#80D0FF", "#0055FF", p.precip / 100);
                 
-                // Dim bars in the past if it's today
                 ctx.globalAlpha = (isToday && p.minute < currentMinutes) ? 0.3 : 0.85;
-                
                 ctx.fillStyle = precipColor;
-                if (typeof ctx.roundRect === "function") {
-                    ctx.beginPath();
-                    ctx.roundRect(p.x - barWidth/2, yPos, barWidth, barH, [4, 4, 0, 0]);
-                    ctx.fill();
-                } else {
-                    ctx.fillRect(p.x - barWidth/2, yPos, barWidth, barH);
-                }
+                ctx.fillRect(p.x - barWidth / 2, yPos, barWidth, barH);
                 ctx.globalAlpha = 1.0;
             }
         });
@@ -2414,7 +2403,7 @@ function drawForecastCanvasGraph(item, mode, canvas, activeX = null, prevItem = 
         const ratio = (clampedX - padLeft) / graphWidth;
         const hoveredMinute = Math.round(startMin + ratio * totalSpan);
 
-        const normMinute = (hoveredMinute + 1440) % 1440;
+        const normMinute = ((hoveredMinute % 1440) + 1440) % 1440;
         const h = Math.floor(normMinute / 60);
         const m = Math.round(normMinute % 60);
         const timeStr = `${h % 12 || 12}:${m < 10 ? '0' : ''}${m}${h >= 12 ? 'PM' : 'AM'}`;
