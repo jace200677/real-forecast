@@ -1874,34 +1874,34 @@ function scrapeUniversalGraphValues(selectedDayIndex = 0) {
   return points;
 }
 
-function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, nextItem = null) {
+function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, nextItem = null, forcedMinute = null) {
     if (!canvas) return null;
     const rect = canvas.getBoundingClientRect();
-    const x = clientX - rect.left;
     const width = canvas.width;
     const height = canvas.height;
 
     const scaleFactor = Math.min(width / 650, 1.5);
     const padLeft = Math.round(45 * scaleFactor);
     const padRight = Math.round(20 * scaleFactor);
-    const padTop = Math.round(30 * scaleFactor);
-    const padBottom = Math.round(35 * scaleFactor);
-
     const graphWidth = width - padLeft - padRight;
-    const graphHeight = height - padTop - padBottom;
 
-    if (x < padLeft || x > width - padRight) {
-        // Fallback: If called without a valid mouse cursor (like initial load), 
-        // default to minute 0 (midnight) so it returns data instead of null.
-        if (clientX === 0) {
-            // Proceed with minute 0
+    // --- FIX: Support direct minute injection from timeline slider ---
+    let hoveredMinute;
+    if (forcedMinute !== null && forcedMinute !== undefined) {
+        hoveredMinute = Math.max(0, Math.min(1439, forcedMinute));
+    } else {
+        const x = clientX - rect.left;
+        if (x < padLeft || x > width - padRight) {
+            if (clientX === 0) {
+                hoveredMinute = 0;
+            } else {
+                return null;
+            }
         } else {
-            return null;
+            const ratio = Math.max(0, Math.min(1, (x - padLeft) / graphWidth));
+            hoveredMinute = Math.round(ratio * 1439);
         }
     }
-
-    const ratio = (clientX === 0) ? 0 : Math.max(0, Math.min(1, (x - padLeft) / graphWidth));
-    const hoveredMinute = Math.round(ratio * 1439);
 
     const h = Math.floor(hoveredMinute / 60);
     const m = Math.round(hoveredMinute % 60);
@@ -2143,9 +2143,6 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
             label = `${resolvedValue}`;
     }
 
-    // --- FIX: Return an L.Layer / L.GridLayer instance instead of a plain JS object ---
-    // This allows window._radarState.radarTileLayer.addTo(map) to execute properly, 
-    // rendering custom canvas tile colors over Leaflet.
     const RadarGridLayerClass = L.GridLayer.extend({
         createTile: function(coords) {
             const tile = document.createElement('canvas');
@@ -2154,8 +2151,7 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
             tile.height = size.y;
             const ctx = tile.getContext('2d');
 
-            // Color-mapping logic based on current mode & resolvedValue
-            let fillColor = 'rgba(0, 150, 255, 0.15)'; // default tint
+            let fillColor = 'rgba(0, 150, 255, 0.15)';
             if (mode === 'temp' || mode === 'feelsLike') {
                 if (resolvedValue > 80) fillColor = 'rgba(255, 69, 0, 0.3)';
                 else if (resolvedValue > 60) fillColor = 'rgba(255, 165, 0, 0.3)';
@@ -2169,7 +2165,6 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
             ctx.fillStyle = fillColor;
             ctx.fillRect(0, 0, tile.width, tile.height);
 
-            // Optional: Draw a subtle grid outline or info marker per tile for visual debugging
             ctx.strokeStyle = 'rgba(255, 255, 255, 0.05)';
             ctx.strokeRect(0, 0, tile.width, tile.height);
 
