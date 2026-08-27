@@ -1957,11 +1957,11 @@ function createRadarGridLayer() {
       const isNight = totalMinutes < 360 || totalMinutes >= 1080;
       const periodKey = isNight ? 'night' : 'day';
 
-      const getEntryValue = (entry, key, targetPeriodKey) => {
+      const getEntryValue = (entry, key) => {
         if (typeof entry === 'number') return entry;
         if (!entry) return currentPalette.minVal;
 
-        const periodObj = entry[targetPeriodKey] || entry[periodKey] || entry;
+        const periodObj = entry[periodKey] || entry;
 
         if (key === 'temp') {
           return periodObj.temp ?? periodObj.temperature ?? periodObj.tempRange ?? periodObj.high ?? entry.temp ?? entry.temperature ?? currentPalette.minVal;
@@ -1994,41 +1994,36 @@ function createRadarGridLayer() {
                currentPalette.minVal;
       };
 
-      // 1. Prioritize pulling datasets directly from the active Chart.js instance on your page
-      let chartDatasets = null;
+      // 1. Prioritize pulling directly from active Chart.js instance datasets (handles {x, y} coordinates & arrays)
+      let activeChartDataset = null;
       if (window._radarState.chartInstance && window._radarState.chartInstance.data && window._radarState.chartInstance.data.datasets) {
-        chartDatasets = window._radarState.chartInstance.data.datasets;
+        const datasets = window._radarState.chartInstance.data.datasets;
+        if (datasets.length > 0) {
+          let dsIdx = 0;
+          if (activeKey === 'gust' && datasets.length > 1) {
+            dsIdx = 1;
+          } else if (activeKey === 'speed' && datasets.length > 0) {
+            dsIdx = 0;
+          } else if (mode === 'temp' || mode === 'dos' || mode === 'precip') {
+            dsIdx = 0;
+          }
+          activeChartDataset = datasets[dsIdx]?.data || datasets[0]?.data;
+        }
       }
 
       const currentItem = window._radarState.currentItem || {};
       const activeDatasetKey = activeKey === 'speed' || activeKey === 'gust' ? 'wind' : activeKey;
 
-      // Select exact dataset array matching active graph mode from Chart.js or state variables
-      let targetDataset = [];
-      if (chartDatasets && chartDatasets.length > 0) {
-        let dsIndex = 0;
-        if (activeKey === 'gust' && chartDatasets.length > 1) {
-          dsIndex = 1;
-        } else if (activeKey === 'speed' && chartDatasets.length > 1) {
-          dsIndex = 0;
-        } else if (mode === 'temp' && chartDatasets.length > 0) {
-          dsIndex = 0;
-        } else if (mode === 'dos' && chartDatasets.length > 0) {
-          dsIndex = 0;
-        }
-        targetDataset = chartDatasets[dsIndex]?.data || chartDatasets[0]?.data || [];
-      }
+      // 2. Comprehensive fallback lookup chain guaranteeing graph data tracking without breaking state
+      const dataset = activeChartDataset || 
+                      window._radarState.graphDatasets?.[activeDatasetKey] || 
+                      window._radarState.chartData || 
+                      window._radarState.dataset || 
+                      currentItem.hourly || 
+                      currentItem.timeline || 
+                      currentItem.hours || [];
 
-      if (!targetDataset || targetDataset.length === 0) {
-        targetDataset = window._radarState.graphDatasets?.[activeDatasetKey] || 
-                        window._radarState.chartData || 
-                        window._radarState.dataset || 
-                        currentItem.hourly || 
-                        currentItem.timeline || 
-                        currentItem.hours || [];
-      }
-
-      const dsLen = targetDataset.length;
+      const dsLen = dataset.length;
       let baseVal = currentPalette.minVal;
 
       if (dsLen > 0) {
@@ -2038,12 +2033,12 @@ function createRadarGridLayer() {
         const highIdx = Math.min(dsLen - 1, Math.ceil(exactIndexFloat));
         const blend = exactIndexFloat - lowIdx;
 
-        const lowRaw = targetDataset[lowIdx];
-        const highRaw = targetDataset[highIdx];
+        const lowRaw = dataset[lowIdx];
+        const highRaw = dataset[highIdx];
 
-        // Safely extract scalar values whether Chart.js stores points as objects ({x, y}) or raw numbers/objects
-        const valLow = typeof lowRaw === 'object' && lowRaw !== null ? (lowRaw.y ?? getEntryValue(lowRaw, activeKey, periodKey)) : getEntryValue(lowRaw, activeKey, periodKey);
-        const valHigh = typeof highRaw === 'object' && highRaw !== null ? (highRaw.y ?? getEntryValue(highRaw, activeKey, periodKey)) : getEntryValue(highRaw, activeKey, periodKey);
+        // 3. Robust extraction handling Chart.js point objects ({x, y}), primitive numbers, or nested entries
+        const valLow = typeof lowRaw === 'object' && lowRaw !== null ? (lowRaw.y ?? getEntryValue(lowRaw, activeKey)) : getEntryValue(lowRaw, activeKey);
+        const valHigh = typeof highRaw === 'object' && highRaw !== null ? (highRaw.y ?? getEntryValue(highRaw, activeKey)) : getEntryValue(highRaw, activeKey);
         
         baseVal = valLow * (1 - blend) + valHigh * blend;
 
@@ -2058,7 +2053,8 @@ function createRadarGridLayer() {
           }
         }
       } else {
-        baseVal = getEntryValue(currentItem, activeKey, periodKey);
+        baseVal = getEntryValue(currentItem, activeKey);
+
         const extractedTime = currentItem.time || currentItem.timestamp || currentItem.datetime || currentItem.date;
         if (extractedTime) {
           window._radarState.currentExtractedTime = extractedTime;
@@ -2084,12 +2080,9 @@ function createRadarGridLayer() {
 
           const dLat = latLng.lat - targetLat;
           const dLng = latLng.lng - targetLon;
-          const distanceDeg = Math.sqrt(dLat * dLat + dLng * dLng);
 
-          const fadeFactor = Math.max(0, 1 - (distanceDeg / 12.0)); 
-          const spatialVariation = Math.sin(dLat * 0.1) * Math.cos(dLng * 0.1) * 2.0;
-          
-          const sampledValue = currentPalette.minVal + (baseVal + spatialVariation - currentPalette.minVal) * fadeFactor;
+          const spatialVariation = Math.sin(dLat * 0.05) * Math.cos(dLng * 0.05) * 3.0; 
+          const sampledValue = baseVal + spatialVariation;
 
           const stops = currentPalette.stops;
           let rgb = stops[0].rgb;
@@ -2112,15 +2105,13 @@ function createRadarGridLayer() {
             }
           }
 
-          const dynamicAlpha = Math.round(140 * fadeFactor);
-
           for (let sy = 0; sy < step && (y + sy) < tileSize.y; sy++) {
             for (let sx = 0; sx < step && (x + sx) < tileSize.x; sx++) {
               const ptr = ((y + sy) * tileSize.x + (x + sx)) * 4;
               data[ptr] = rgb[0];
               data[ptr + 1] = rgb[1];
               data[ptr + 2] = rgb[2];
-              data[ptr + 3] = dynamicAlpha;
+              data[ptr + 3] = 135;
             }
           }
         }
@@ -2131,7 +2122,7 @@ function createRadarGridLayer() {
     }
   });
 
-  return new CustomGridLayer({ opacity: 0.85, updateWhenZooming: false });
+  return new CustomGridLayer({ opacity: 0.75, updateWhenZooming: false });
 }
 function triggerRadarRedraw(forcedMinute) {
   const slider = document.getElementById("radarTimeSlider");
