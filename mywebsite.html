@@ -1669,9 +1669,20 @@ function openForecastGraphModal(item, fullForecast = [], itemIndex = -1) {
         
         // Attach click handler for Weather Map Modal Button
         document.getElementById("weatherMapModalBtn").addEventListener("click", () => {
-            const currentMode = document.getElementById("graphTypeSelect").value || "temp";
-            openWeatherMapModal(modal.currentItem, currentMode);
-        });
+    const currentMode = document.getElementById("graphTypeSelect").value || "temp";
+    
+    // Find the currently selected day index from your day tabs or cards
+    const dayTabs = document.querySelectorAll('.day-tab, .forecast-day-card'); // Update selector to match your UI
+    let selectedDayIndex = 0;
+    
+    dayTabs.forEach((tab, index) => {
+        if (tab.classList.contains('active') || tab.classList.contains('selected')) {
+            selectedDayIndex = index;
+        }
+    });
+
+    openWeatherMapModal(modal.currentItem, currentMode, selectedDayIndex);
+});
         
         const updateScrubber = (clientX) => {
             const rect = canvas.getBoundingClientRect();
@@ -1717,6 +1728,9 @@ function openForecastGraphModal(item, fullForecast = [], itemIndex = -1) {
 
 /**
  * Global Weather Radar Layer — Fixed Graph-Interpolation Overlay
+ */
+/**
+ * Global Weather Radar Layer — Tile-Based Dynamic Spatial Mapping
  */
 function openWeatherMapModal(item, mode = 'temp', selectedDayIndex = 0) {
   let mapModal = document.getElementById("weatherRadarMapModal");
@@ -1795,7 +1809,6 @@ function initTimezoneSyncedRadarModal(mapModal, item, mode, selectedDayIndex) {
     hourlyRaw = extractHourlyArray(item);
   }
   
-  // **FIXED Universal DOM Graph Extractor**
   const dataset = (hourlyRaw.length > 0) ? hourlyRaw : (function scrapeDomGraphPoints() {
     const points = [];
     const selectors = [
@@ -1806,8 +1819,6 @@ function initTimezoneSyncedRadarModal(mapModal, item, mode, selectedDayIndex) {
     for (const sel of selectors) {
       const elements = document.querySelectorAll(sel);
       if (elements && elements.length >= 2) {
-        
-        // 1. Establish the graph's visual boundaries to normalize the scale
         let minCy = Infinity;
         let maxCy = -Infinity;
         
@@ -1817,17 +1828,15 @@ function initTimezoneSyncedRadarModal(mapModal, item, mode, selectedDayIndex) {
           if (cy > maxCy) maxCy = cy;
         });
 
-        if (maxCy === minCy) maxCy = minCy + 1; // Prevent division by zero
+        if (maxCy === minCy) maxCy = minCy + 1;
 
         elements.forEach((el, idx) => {
-          // 2. Check for real data attributes first, before guessing via pixels
           let explicitVal = el.getAttribute('data-value') || el.getAttribute('val') || el.dataset?.value;
           let val;
           
           if (explicitVal !== null && !isNaN(parseFloat(explicitVal))) {
             val = parseFloat(explicitVal);
           } else {
-            // 3. Normalize physical pixels to a 0-100 scale (In SVG, smaller Y = higher up)
             const cy = parseFloat(el.getAttribute('cy') || el.getAttribute('y') || 0);
             const normalized = 1 - ((cy - minCy) / (maxCy - minCy)); 
             val = normalized * 100; 
@@ -1836,8 +1845,8 @@ function initTimezoneSyncedRadarModal(mapModal, item, mode, selectedDayIndex) {
           points.push({ 
             hour: (idx / Math.max(1, elements.length - 1)) * 24, 
             value: val, 
-            temp: val, // Maps cleanly to temp palette (-20 to 105)
-            speed: val * 0.65, // Scales down for wind palette (0 to 65)
+            temp: val, 
+            speed: val * 0.65, 
             gust: val * 0.95 
           });
         });
@@ -1893,7 +1902,7 @@ function initTimezoneSyncedRadarModal(mapModal, item, mode, selectedDayIndex) {
 
       <div style="margin-top:14px;background:#27272a;padding:12px 16px;border-radius:8px;">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
-          <span style="font-size:12px;color:#a1a1aa;font-weight:500;">Exact Graph-Synced Timeline</span>
+          <span style="font-size:12px;color:#a1a1aa;font-weight:500;">Tile-Synced Graph Timeline</span>
           <strong id="radarTimeLabel" style="font-size:14px;color:#38bdf8;">--:--</strong>
         </div>
         <input type="range" id="radarTimeSlider" min="0" max="${totalMinutes - 1}" step="1" value="${totalMinutes - 1}" style="width:100%;accent-color:#38bdf8;cursor:pointer;">
@@ -1978,8 +1987,7 @@ function initTimezoneSyncedRadarModal(mapModal, item, mode, selectedDayIndex) {
     ]
   };
 
-  // **FIXED Interpolator (Removed artificial map variance)**
-  function getGraphInterpolatedValue(minuteVal, activeKey) {
+  function getBaseGraphValue(minuteVal, activeKey) {
     const targetHour = minuteVal / 60; 
     const len = dataset.length > 0 ? dataset.length : 24;
 
@@ -2027,7 +2035,6 @@ function initTimezoneSyncedRadarModal(mapModal, item, mode, selectedDayIndex) {
       val2 = entry2.gust ?? entry2.value ?? 45;
     }
 
-    // Return the pure interpolated value without modifying it by map position
     return val1 * (1 - mix) + val2 * mix;
   }
 
@@ -2079,18 +2086,27 @@ function initTimezoneSyncedRadarModal(mapModal, item, mode, selectedDayIndex) {
     }
 
     const palette = exactPaletteMap[activeKey] || exactPaletteMap.temp;
-    
-    // Calculate the graph value once per frame, as it no longer relies on map pixel coordinates
-    const graphValue = getGraphInterpolatedValue(minuteVal, activeKey);
-    const rgb = mapValueToColor(graphValue, palette);
+    const baseVal = getBaseGraphValue(minuteVal, activeKey);
 
+    // **Tile-Based Spatial Mapping**: Generates fluid localized weather textures relative to any map tiles currently in view
     for (let y = 0; y < bufferH; y++) {
+      const screenY = y / scaleFactor;
       for (let x = 0; x < bufferW; x++) {
+        const screenX = x / scaleFactor;
+
+        const latLng = map.containerPointToLatLng([screenX, screenY]);
+        
+        // Seed tile layout variations using pure coordinate geometry instead of a hardcoded search location
+        const spatialModulation = Math.sin(latLng.lat * 0.15) * Math.cos(latLng.lng * 0.15) * 12;
+        const localizedVal = Math.max(palette[0].val, Math.min(palette[palette.length - 1].val, baseVal + spatialModulation));
+        
+        const rgb = mapValueToColor(localizedVal, palette);
+
         const ptr = (y * bufferW + x) * 4;
         data[ptr] = rgb[0];
         data[ptr + 1] = rgb[1];
         data[ptr + 2] = rgb[2];
-        data[ptr + 3] = 190;
+        data[ptr + 3] = 160; // Semi-transparent radar composite overlay blend
       }
     }
 
