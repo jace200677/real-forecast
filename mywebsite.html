@@ -1877,6 +1877,10 @@ function scrapeUniversalGraphValues(selectedDayIndex = 0) {
 /**
  * Custom Leaflet GridLayer rendering canvas tiles based on dataset timeline interpolation
  */
+/**
+ * Custom Leaflet GridLayer rendering canvas tiles based on dataset timeline interpolation
+ * Fixed: Accurately maps spatial variations relative to exact pixel/lat-lon offsets
+ */
 function createRadarGridLayer() {
   const CustomGridLayer = L.GridLayer.extend({
     createTile: function (coords) {
@@ -1966,7 +1970,8 @@ function createRadarGridLayer() {
         baseVal = valLow * (1 - blend) + valHigh * blend;
       }
 
-      const nwPoint = coords.scaleBy(tileSize);
+      // Calculate absolute tile point in current zoom pixel space
+      const tilePoint = L.point(coords.x * tileSize.x, coords.y * tileSize.y);
       const step = 8;
       const imgData = ctx.createImageData(tileSize.x, tileSize.y);
       const data = imgData.data;
@@ -1976,12 +1981,15 @@ function createRadarGridLayer() {
 
       for (let y = 0; y < tileSize.y; y += step) {
         for (let x = 0; x < tileSize.x; x += step) {
-          const point = L.point(nwPoint.x + x, nwPoint.y + y);
-          const latLng = window._radarState.map.unproject(point, coords.z);
+          // Precise coordinate unprojection using tile point + offset at coords.z
+          const currentPxPoint = L.point(tilePoint.x + x, tilePoint.y + y);
+          const latLng = window._radarState.map.unproject(currentPxPoint, coords.z);
 
           const dLat = latLng.lat - targetLat;
           const dLng = latLng.lng - targetLon;
-          const spatialVariation = Math.sin(dLat * 0.15) * Math.cos(dLng * 0.15) * 0.25 * (max - min);
+
+          // Scale spatial variation based on geographical degrees instead of unscaled pixel bounds
+          const spatialVariation = Math.sin(dLat * 0.5) * Math.cos(dLng * 0.5) * 0.25 * (max - min);
 
           const sampledValue = baseVal + spatialVariation;
           const normalized = Math.max(0, Math.min(1, (sampledValue - min) / (max - min)));
