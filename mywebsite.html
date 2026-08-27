@@ -1746,7 +1746,6 @@ function initTimezoneSyncedRadarModal(mapModal, item, mode, selectedDayIndex) {
   };
 
   let daysArray = extractDaysArray(item);
-  // Fallback if item itself is wrapped inside a weather response payload (e.g., item.data)
   if (daysArray.length === 0 && item && typeof item === 'object') {
     for (const key of Object.keys(item)) {
       if (item[key] && typeof item[key] === 'object') {
@@ -1947,8 +1946,8 @@ function initTimezoneSyncedRadarModal(mapModal, item, mode, selectedDayIndex) {
       val1 = entry1.speed ?? entry1.windSpeed ?? entry1.wind_speed ?? entry1.value ?? 25;
       val2 = entry2.speed ?? entry2.windSpeed ?? entry2.wind_speed ?? entry2.value ?? 25;
     } else if (activeKey === 'wind_gust') {
-      val1 = entry1.gust ?? entry1.windGust ?? entry1.wind_gust ?? entry1.gusts ?? (entry1.speed ? entry1.speed * 1.75 : 45);
-      val2 = entry2.gust ?? entry2.windGust ?? entry2.wind_gust ?? entry2.gusts ?? (entry2.speed ? entry2.speed * 1.75 : 45);
+      val1 = entry1.gust ?? entry1.windGust ?? entry1.wind_gust ?? entry1.gusts ?? entry1.speed ?? 45;
+      val2 = entry2.gust ?? entry2.windGust ?? entry2.wind_gust ?? entry2.gusts ?? entry2.speed ?? 45;
     } else {
       val1 = entry1.value ?? 50;
       val2 = entry2.value ?? 50;
@@ -2054,6 +2053,13 @@ function initTimezoneSyncedRadarModal(mapModal, item, mode, selectedDayIndex) {
     windSelect.addEventListener('change', (e) => {
       windSubMode = e.target.value;
       modeTitle.innerText = `Wind ${windSubMode === 'gust' ? 'Gusts' : 'Speed'} Layer`;
+      
+      // Update visibility of the container or sync mode state
+      const windOptContainer = document.getElementById('windOptionContainer');
+      if (windOptContainer) {
+        windOptContainer.style.display = currentMode === 'wind' ? 'inline-block' : 'none';
+      }
+
       scheduleRedraw();
     });
   }
