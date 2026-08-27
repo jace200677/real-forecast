@@ -1996,7 +1996,7 @@ function createRadarGridLayer() {
 
       const currentItem = window._radarState.currentItem || {};
 
-      // 1. Comprehensive dataset resolution targeting buildForecast, active Chart.js instances, or fallback stores
+      // 1. Gather all possible dataset sources from Chart.js, global states, or forecast builders
       let targetDataset = [];
       
       if (typeof window.buildForecast === 'function' && currentItem.hourly) {
@@ -2022,17 +2022,14 @@ function createRadarGridLayer() {
       let baseVal = currentPalette.minVal;
 
       if (dsLen > 0) {
-        // 2. Exact match mapping by evaluating date/time property metadata anchors (labels, ISO strings, timestamps)
+        // 2. Direct exact matching using active extracted time or DOM text anchor
         let matchedIndex = -1;
-        const targetHourFraction = totalMinutes / 65535; // placeholder context check for universal matching
-
-        // Attempt timestamp/date string match against active slider or state datetime configuration first
         const activeDateFilter = window._radarState.currentExtractedTime || document.getElementById('radarDateDisplay')?.innerText;
-        
+
         if (activeDateFilter) {
           matchedIndex = targetDataset.findIndex(entry => {
-            const entryTime = entry?.x || entry?.time || entry?.timestamp || entry?.datetime || entry?.date;
-            return entryTime && String(entryTime).includes(String(activeDateFilter));
+            const entryTime = entry?.x || entry?.time || entry?.timestamp || entry?.datetime || entry?.date || entry?.label;
+            return entryTime && (String(entryTime).includes(String(activeDateFilter)) || String(activeDateFilter).includes(String(entryTime)));
           });
         }
 
@@ -2040,7 +2037,7 @@ function createRadarGridLayer() {
           const matchedEntry = targetDataset[matchedIndex];
           baseVal = typeof matchedEntry === 'object' && matchedEntry !== null ? (matchedEntry.y ?? getEntryValue(matchedEntry, activeKey)) : getEntryValue(matchedEntry, activeKey);
         } else {
-          // Fallback to proportional time-of-day timeline blending across dataset bounds
+          // 3. Fallback to proportional timeline interpolation based on slider minutes (0 - 1440)
           const targetHour = totalMinutes / 60;
           const exactIndexFloat = (targetHour / 24) * (dsLen - 1);
           const lowIdx = Math.floor(exactIndexFloat);
@@ -2055,9 +2052,7 @@ function createRadarGridLayer() {
           
           baseVal = valLow * (1 - blend) + valHigh * blend;
 
-          const extractedTime = lowRaw?.x || lowRaw?.time || lowRaw?.timestamp || lowRaw?.datetime || lowRaw?.date ||
-                                highRaw?.x || highRaw?.time || highRaw?.timestamp || highRaw?.datetime || highRaw?.date;
-
+          const extractedTime = lowRaw?.x || lowRaw?.time || lowRaw?.timestamp || lowRaw?.datetime || lowRaw?.date || lowRaw?.label;
           if (extractedTime) {
             window._radarState.currentExtractedTime = extractedTime;
             const radarDateDisplay = document.getElementById('radarDateDisplay');
