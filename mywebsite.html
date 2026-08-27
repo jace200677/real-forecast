@@ -1873,6 +1873,34 @@ function scrapeUniversalGraphValues(selectedDayIndex = 0) {
 
   return points;
 }
+
+function triggerRadarRedraw(forcedMinute) {
+  const slider = document.getElementById("radarTimeSlider");
+  const totalMinutes = forcedMinute !== undefined ? forcedMinute : (slider ? parseInt(slider.value, 10) : 0);
+
+  const label = document.getElementById("radarTimeLabel");
+  if (label) {
+    const hours24 = Math.floor(totalMinutes / 60) % 24;
+    const mins = totalMinutes % 60;
+    const period = hours24 >= 12 ? 'PM' : 'AM';
+    const hours12 = hours24 % 12 === 0 ? 12 : hours24 % 12;
+
+    const appTimezone = window._radarState.currentItem?.timezone || 
+                        window._radarState.currentItem?.tz || 
+                        Intl.DateTimeFormat().resolvedOptions().timeZone;
+
+    label.innerText = `${hours12}:${mins.toString().padStart(2, '0')} ${period} (${appTimezone})`;
+  }
+
+  if (window._radarState.radarTileLayer) {
+    window._radarState.radarTileLayer.redraw();
+  }
+}
+
+/**
+ * Synchronizes selected timezone, dataset, and initializes Leaflet map object
+ */
+// Updated initialization function ready for use with the correct arguments
 function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, nextItem = null, forcedMinute = 0) {
     if (!canvas) return null;
     const rect = canvas.getBoundingClientRect();
@@ -2141,6 +2169,61 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
             label = `${resolvedValue}`;
     }
 
+    // Dynamic Multi-Threshold Color Evaluator
+    const getDynamicColor = (val, currentMode) => {
+        if (currentMode === 'temp' || currentMode === 'feelsLike') {
+            if (val >= 100) return 'rgba(153, 0, 0, 0.65)';        // Deep Purple Red
+            if (val >= 90)  return 'rgba(239, 68, 68, 0.55)';       // Extreme Heat Red
+            if (val >= 80)  return 'rgba(249, 115, 22, 0.50)';      // Hot Orange
+            if (val >= 70)  return 'rgba(234, 179, 8, 0.45)';       // Warm Yellow
+            if (val >= 60)  return 'rgba(34, 197, 94, 0.40)';       // Mild Green
+            if (val >= 45)  return 'rgba(6, 182, 212, 0.35)';       // Cool Cyan
+            if (val >= 32)  return 'rgba(59, 130, 246, 0.40)';      // Cold Blue
+            return 'rgba(147, 51, 234, 0.45)';                      // Freezing Violet
+        } 
+        
+        if (currentMode === 'precip') {
+            if (val <= 0) return 'rgba(0, 0, 0, 0.0)';
+            if (val >= 80) return 'rgba(147, 51, 234, 0.65)';       // Extreme Purple
+            if (val >= 60) return 'rgba(220, 38, 38, 0.55)';        // Heavy Red
+            if (val >= 40) return 'rgba(37, 99, 235, 0.45)';        // Moderate Blue
+            return 'rgba(56, 189, 248, 0.30)';                      // Light Rain Cyan
+        } 
+        
+        if (currentMode === 'wind') {
+            const speed = typeof val === 'object' ? (val.speed || 0) : val;
+            if (speed >= 40) return 'rgba(225, 29, 72, 0.60)';      // High Gale Red
+            if (speed >= 25) return 'rgba(249, 115, 22, 0.50)';     // Strong Orange
+            if (speed >= 12) return 'rgba(234, 179, 8, 0.35)';      // Breeze Yellow
+            return 'rgba(34, 197, 94, 0.20)';                       // Calm Green
+        } 
+
+        if (currentMode === 'dos') {
+            if (val >= 80) return 'rgba(34, 197, 94, 0.50)';       // Excellent Green
+            if (val >= 60) return 'rgba(56, 189, 248, 0.40)';       // Good Blue
+            if (val >= 40) return 'rgba(234, 179, 8, 0.40)';        // Moderate Yellow
+            return 'rgba(239, 68, 68, 0.50)';                       // Poor Red
+        }
+
+        if (currentMode === 'uv') {
+            if (val >= 11) return 'rgba(147, 51, 234, 0.60)';       // Extreme Violet
+            if (val >= 8)  return 'rgba(225, 29, 72, 0.50)';        // Very High Red
+            if (val >= 6)  return 'rgba(249, 115, 22, 0.45)';       // High Orange
+            if (val >= 3)  return 'rgba(234, 179, 8, 0.35)';        // Moderate Yellow
+            return 'rgba(34, 197, 94, 0.20)';                       // Low Green
+        }
+
+        if (currentMode === 'humidity') {
+            if (val >= 80) return 'rgba(30, 64, 175, 0.50)';        // Deep Blue
+            if (val >= 50) return 'rgba(56, 189, 248, 0.35)';       // Cyan
+            return 'rgba(251, 146, 60, 0.30)';                      // Dry Amber
+        }
+
+        return 'rgba(56, 189, 248, 0.25)';
+    };
+
+    const calculatedColor = getDynamicColor(resolvedValue, mode);
+
     const RadarGridLayerClass = L.GridLayer.extend({
         createTile: function(coords) {
             const tile = document.createElement('canvas');
@@ -2149,18 +2232,7 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
             tile.height = size.y;
             const ctx = tile.getContext('2d');
 
-            let fillColor = 'rgba(0, 150, 255, 0.15)';
-            if (mode === 'temp' || mode === 'feelsLike') {
-                if (resolvedValue > 80) fillColor = 'rgba(255, 69, 0, 0.3)';
-                else if (resolvedValue > 60) fillColor = 'rgba(255, 165, 0, 0.3)';
-                else fillColor = 'rgba(0, 191, 255, 0.3)';
-            } else if (mode === 'precip' && resolvedValue > 0) {
-                fillColor = `rgba(0, 128, 255, ${Math.min(0.7, resolvedValue / 100)})`;
-            } else if (mode === 'wind') {
-                fillColor = resolvedValue.speed > 20 ? 'rgba(255, 0, 0, 0.3)' : 'rgba(0, 255, 127, 0.2)';
-            }
-
-            ctx.fillStyle = fillColor;
+            ctx.fillStyle = calculatedColor;
             ctx.fillRect(0, 0, tile.width, tile.height);
 
             ctx.strokeStyle = 'rgba(255, 255, 255, 0.05)';
@@ -2170,29 +2242,37 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
         }
     });
 
-    return new RadarGridLayerClass();
+    const activeGridLayer = new RadarGridLayerClass();
+    activeGridLayer._meta = {
+        value: resolvedValue,
+        label: label,
+        minute: hoveredMinute,
+        timeStr: timeStr,
+        color: calculatedColor
+    };
+
+    return activeGridLayer;
 }
 
-// --- Timeline Slider Integration ---
-// Ensure you reference your actual active variables or global state container
-const timelineSlider = document.querySelector('input[type="range"]');
+// --- Fully Synchronized Timeline Slider Event Observer ---
+const timelineSlider = document.getElementById('radarTimeSlider') || document.querySelector('input[type="range"]');
 
 if (timelineSlider) {
-    timelineSlider.addEventListener('input', (e) => {
-        const sliderMinute = parseInt(e.target.value, 10);
+    const updateRadarTimelineState = (sliderMinute) => {
+        const canvas = window._radarState?.canvas || document.querySelector('canvas') || document.getElementById('yourCanvasId');
+        const activeItem = window._radarState?.currentItem || (typeof item !== 'undefined' ? item : {});
+        const activeMode = window._radarState?.currentMode || (typeof mode !== 'undefined' ? mode : 'temp');
+        const activeMap = window._radarState?.map;
 
-        // Fallback or pull dynamically from your app state if variables are scoped locally
-        const canvas = window._radarState?.canvas || document.getElementById('yourCanvasId');
-        const activeItem = window._radarState?.currentItem || item;
-        const activeMode = window._radarState?.currentMode || mode;
-        const activeMap = window._radarState?.map || map;
+        if (!activeMap) return;
 
-        // 1. Remove active layer from the Leaflet map
+        // 1. Remove previous tile layer
         if (window._radarState && window._radarState.radarTileLayer) {
             activeMap.removeLayer(window._radarState.radarTileLayer);
+            window._radarState.radarTileLayer = null;
         }
 
-        // 2. Re-create the radar grid layer with the explicit slider minute
+        // 2. Generate updated tile layer with recalculated minute, values, and dynamic colors
         const updatedLayer = createRadarGridLayer(
             canvas, 
             0, 
@@ -2200,133 +2280,39 @@ if (timelineSlider) {
             activeMode, 
             null, 
             null, 
-            sliderMinute // Injects directly into forcedMinute
+            sliderMinute
         );
 
-        // 3. Add back to map and cache reference
+        // 3. Mount to Leaflet map and save state reference
         if (updatedLayer) {
             updatedLayer.addTo(activeMap);
             window._radarState = window._radarState || {};
             window._radarState.radarTileLayer = updatedLayer;
+
+            // 4. Update real-time UI text labels, badge values, and visual accents
+            const meta = updatedLayer._meta || {};
+            
+            const timeLabel = document.getElementById('radarTimeLabel') || document.getElementById('timeDisplayLabel');
+            if (timeLabel) {
+                const tz = typeof getTimezoneAbbreviation === 'function' ? getTimezoneAbbreviation() : '';
+                timeLabel.textContent = `${meta.timeStr} ${tz}`.trim();
+            }
+
+            const valueLabel = document.getElementById('radarValueDisplay') || document.getElementById('radarValueLabel');
+            if (valueLabel) {
+                valueLabel.textContent = meta.label || '';
+                valueLabel.style.color = meta.color ? meta.color.replace(/[\d\.]+\)$/g, '1.0)') : '#38bdf8';
+            }
         }
-
-        // 4. Optional: Update time display text on screen if you have a label element
-        const h = Math.floor(sliderMinute / 60);
-        const m = Math.round(sliderMinute % 60);
-        const timeDisplay = document.getElementById('timeDisplayLabel'); // Update with your UI label ID
-        if (timeDisplay) {
-            timeDisplay.textContent = `${h % 12 || 12}:${m < 10 ? '0' : ''}${m} ${h >= 12 ? 'PM' : 'AM'}`;
-        }
-    });
-}
-function triggerRadarRedraw(forcedMinute) {
-  const slider = document.getElementById("radarTimeSlider");
-  const totalMinutes = forcedMinute !== undefined ? forcedMinute : (slider ? parseInt(slider.value, 10) : 0);
-
-  const label = document.getElementById("radarTimeLabel");
-  if (label) {
-    const hours24 = Math.floor(totalMinutes / 60) % 24;
-    const mins = totalMinutes % 60;
-    const period = hours24 >= 12 ? 'PM' : 'AM';
-    const hours12 = hours24 % 12 === 0 ? 12 : hours24 % 12;
-
-    const appTimezone = window._radarState.currentItem?.timezone || 
-                        window._radarState.currentItem?.tz || 
-                        Intl.DateTimeFormat().resolvedOptions().timeZone;
-
-    label.innerText = `${hours12}:${mins.toString().padStart(2, '0')} ${period} (${appTimezone})`;
-  }
-
-  if (window._radarState.radarTileLayer) {
-    window._radarState.radarTileLayer.redraw();
-  }
-}
-
-/**
- * Synchronizes selected timezone, dataset, and initializes Leaflet map object
- */
-// Updated initialization function ready for use with the correct arguments
-function initTimezoneSyncedRadarModal(mapModal, item, mode, selectedDayIndex) {
-  window._radarState.currentMode = mode;
-  window._radarState.selectedDayIndex = selectedDayIndex;
-  window._radarState.currentItem = item;
-
-  const lat = item?.lat ?? item?.latitude ?? (window.currentLat || 45.3827);
-  const lon = item?.lon ?? item?.longitude ?? (window.currentLon || -93.8761);
-
-  const formattedDisplayDate = extractDateFromGraph(item, selectedDayIndex);
-  window._radarState.activeDateText = formattedDisplayDate;
-
-  const dateDisplayEl = document.getElementById('radarDateDisplay');
-  if (dateDisplayEl) dateDisplayEl.innerText = formattedDisplayDate;
-
-  const layerSwitcherEl = document.getElementById('radarLayerSwitcher');
-  if (layerSwitcherEl) layerSwitcherEl.value = window._radarState.currentMode;
-
-  const windCont = document.getElementById('windOptionContainer');
-  if (windCont) windCont.style.display = window._radarState.currentMode === 'wind' ? 'inline-block' : 'none';
-
-  const extractHourlyArray = (card) => card ? (card.hourly || card.timeline || card.dataset || card.hours || card.lead || []) : [];
-  let hourlyRaw = extractHourlyArray(item);
-
-  window._radarState.dataset = (hourlyRaw.length > 0) ? hourlyRaw : scrapeUniversalGraphValues(selectedDayIndex);
-
-  if (!window._radarState.map) {
-    const worldBounds = L.latLngBounds(L.latLng(-90, -180), L.latLng(90, 180));
-    window._radarState.map = L.map('leafletMap', {
-      center: [lat, lon],
-      zoom: 4,
-      minZoom: 2,
-      maxZoom: 18,
-      zoomControl: true,
-      maxBounds: worldBounds,
-      maxBoundsViscosity: 1.0
-    });
-
-    L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
-      minZoom: 2, maxZoom: 18, noWrap: true, bounds: worldBounds, attribution: 'Tiles &copy; Esri'
-    }).addTo(window._radarState.map);
-
-    // Create a proper Leaflet GridLayer that actually renders custom canvas colors
-    window._radarState.radarTileLayer = L.gridLayer({
-      minZoom: 2,
-      maxZoom: 18,
-      noWrap: true,
-      bounds: worldBounds
-    });
-
-    window._radarState.radarTileLayer.createTile = function(coords) {
-      const tile = document.createElement('canvas');
-      const size = this.getTileSize();
-      tile.width = size.x;
-      tile.height = size.y;
-      const ctx = tile.getContext('2d');
-
-      // Call your evaluation logic per tile/pixel or derive color from item/mode values
-      const sampleData = createRadarGridLayer(tile, 0, item, mode);
-      
-      // Paint tile background or visual color representation based on the resolved value
-      ctx.fillStyle = 'rgba(0, 150, 255, 0.25)'; // Base tint overlay
-      ctx.fillRect(0, 0, tile.width, tile.height);
-
-      if (sampleData && sampleData.value !== null) {
-        ctx.fillStyle = '#ffffff';
-        ctx.font = '12px sans-serif';
-        ctx.fillText(sampleData.label || '', 10, 20);
-      }
-
-      return tile;
     };
 
-    window._radarState.radarTileLayer.addTo(window._radarState.map);
-  } else {
-    window._radarState.map.setView([lat, lon], window._radarState.map.getZoom());
-  }
+    timelineSlider.addEventListener('input', (e) => {
+        updateRadarTimelineState(parseInt(e.target.value, 10));
+    });
 
-  setTimeout(() => {
-    window._radarState.map.invalidateSize();
-    triggerRadarRedraw(0);
-  }, 250);
+    timelineSlider.addEventListener('change', (e) => {
+        updateRadarTimelineState(parseInt(e.target.value, 10));
+    });
 }
 
 /**
