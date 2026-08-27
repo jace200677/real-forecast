@@ -1831,10 +1831,6 @@ function openWeatherMapModal(item, mode = 'temp', selectedDayIndex = 0) {
       }
     };
 
-    document.getElementById('radarTimeSlider').addEventListener('input', (e) => {
-      triggerRadarRedraw(parseInt(e.target.value, 10));
-    });
-
     document.getElementById('radarLayerSwitcher').addEventListener('change', (e) => {
       window._radarState.currentMode = e.target.value;
       const windCont = document.getElementById('windOptionContainer');
@@ -1846,6 +1842,14 @@ function openWeatherMapModal(item, mode = 'temp', selectedDayIndex = 0) {
       window._radarState.windSubMode = e.target.value;
       triggerRadarRedraw();
     });
+  }
+
+  // Ensure slider event listener is always freshly bound to avoid detached listeners
+  const sliderEl = document.getElementById("radarTimeSlider");
+  if (sliderEl) {
+    sliderEl.oninput = function(e) {
+      triggerRadarRedraw(parseInt(e.target.value, 10));
+    };
   }
 
   mapModal.style.display = "flex";
@@ -1890,8 +1894,11 @@ function initTimezoneSyncedRadarModal(mapModal, item, mode, selectedDayIndex) {
     } catch (e) { formattedDisplayDate = rawDateStr; }
   }
 
-  document.getElementById('radarDateDisplay').innerText = formattedDisplayDate;
-  document.getElementById('radarLayerSwitcher').value = window._radarState.currentMode;
+  const dateDisplayEl = document.getElementById('radarDateDisplay');
+  if (dateDisplayEl) dateDisplayEl.innerText = formattedDisplayDate;
+  
+  const layerSwitcherEl = document.getElementById('radarLayerSwitcher');
+  if (layerSwitcherEl) layerSwitcherEl.value = window._radarState.currentMode;
   
   const windCont = document.getElementById('windOptionContainer');
   if (windCont) windCont.style.display = window._radarState.currentMode === 'wind' ? 'inline-block' : 'none';
