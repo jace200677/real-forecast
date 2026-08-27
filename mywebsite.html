@@ -1622,6 +1622,60 @@ function renderForecast(dosForecast) {
 }
 
 
+/**
+ * Global Weather Radar & Grid Synchronization Module
+ */
+
+window.RadarState = {
+    map: null,
+    canvas: document.createElement('canvas'),
+    currentLayer: null,
+    currentItem: {
+        dateStr: "2026-08-27",
+        tempLow: 58,
+        tempHigh: 84,
+        windMph: 12,
+        gustMph: 22,
+        score: 65,
+        feelsLikeOffset: 2
+    },
+    currentMode: 'temp',
+    currentMinute: 720,
+    selectedPoint: { lat: 47.6858, lon: -92.7723 }
+};
+
+window.RadarState.canvas.width = 650;
+window.RadarState.canvas.height = 400;
+
+/**
+ * 1. Dynamic Color Extractor (Driven by Graph Data Thresholds)
+ */
+function getGraphThemeColors(val, mode) {
+    if (mode === 'wind') {
+        const speed = typeof val === 'object' ? (val.speed || 0) : val;
+        if (speed >= 50) return { accent: '#a855f7', fill: 'rgba(168, 85, 247, 0.55)', theme: 'theme-hot' };
+        if (speed >= 35) return { accent: '#ef4444', fill: 'rgba(239, 68, 68, 0.50)', theme: 'theme-hot' };
+        if (speed >= 25) return { accent: '#f97316', fill: 'rgba(249, 115, 22, 0.45)', theme: 'theme-warm' };
+        if (speed >= 12) return { accent: '#eab308', fill: 'rgba(234, 179, 8, 0.35)', theme: 'theme-mild' };
+        return { accent: '#22c55e', fill: 'rgba(34, 197, 94, 0.25)', theme: 'theme-cold' };
+    } 
+    if (mode === 'dos') {
+        if (val >= 100) return { accent: '#a855f7', fill: 'rgba(168, 85, 247, 0.60)', theme: 'theme-hot' };
+        if (val >= 70)  return { accent: '#ea580c', fill: 'rgba(234, 88, 12, 0.55)', theme: 'theme-warm' };
+        if (val >= 40)  return { accent: '#a16207', fill: 'rgba(161, 98, 7, 0.45)', theme: 'theme-mild' };
+        return { accent: '#22c55e', fill: 'rgba(34, 197, 94, 0.25)', theme: 'theme-cold' };
+    }
+    // Default Mode: Temperature / FeelsLike
+    if (val >= 90) return { accent: '#ef4444', fill: 'rgba(239, 68, 68, 0.55)', theme: 'theme-hot' };
+    if (val >= 75) return { accent: '#f97316', fill: 'rgba(249, 115, 22, 0.45)', theme: 'theme-warm' };
+    if (val >= 60) return { accent: '#4ade80', fill: 'rgba(74, 222, 128, 0.40)', theme: 'theme-mild' };
+    if (val >= 45) return { accent: '#2dd4bf', fill: 'rgba(45, 212, 191, 0.35)', theme: 'theme-cold' };
+    return { accent: '#0f766e', fill: 'rgba(15, 118, 110, 0.30)', theme: 'theme-cold' };
+}
+
+/**
+ * 2. Radar Grid Layer Creation Method
+ */
 function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, nextItem = null, forcedMinute = 0) {
     if (!canvas) return null;
     const rect = canvas.getBoundingClientRect();
@@ -1822,47 +1876,25 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
             label = `${resolvedValue}`;
     }
 
-    const getDynamicColor = (val, currentMode) => {
-        if (currentMode === 'wind') {
-            const speed = typeof val === 'object' ? (val.speed || 0) : val;
-            if (speed >= 50) return 'rgba(168, 85, 247, 0.55)';
-            if (speed >= 35) return 'rgba(239, 68, 68, 0.50)';
-            if (speed >= 25) return 'rgba(249, 115, 22, 0.45)';
-            if (speed >= 12) return 'rgba(234, 179, 8, 0.35)';
-            return 'rgba(34, 197, 94, 0.25)';
-        } 
-        if (currentMode === 'dos') {
-            if (val >= 100) return 'rgba(168, 85, 247, 0.60)';
-            if (val >= 70)  return 'rgba(234, 88, 12, 0.55)';
-            if (val >= 40)  return 'rgba(161, 98, 7, 0.45)';
-            if (val >= 20)  return 'rgba(101, 163, 13, 0.35)';
-            return 'rgba(34, 197, 94, 0.25)';
-        }
-        if (currentMode === 'temp' || currentMode === 'feelsLike') {
-            if (val >= 90) return 'rgba(239, 68, 68, 0.55)';
-            if (val >= 75) return 'rgba(249, 115, 22, 0.45)';
-            if (val >= 60) return 'rgba(74, 222, 128, 0.40)';
-            if (val >= 45) return 'rgba(45, 212, 191, 0.35)';
-            return 'rgba(15, 118, 110, 0.30)';
-        }
-        return 'rgba(56, 189, 248, 0.25)';
-    };
-
-    const calculatedColor = getDynamicColor(resolvedValue, mode);
-    const RadarGridLayerClass = L.GridLayer.extend({
-        createTile: function(coords) {
-            const tile = document.createElement('canvas');
-            const size = this.getTileSize();
-            tile.width = size.x;
-            tile.height = size.y;
-            const ctx = tile.getContext('2d');
-            ctx.fillStyle = calculatedColor;
-            ctx.fillRect(0, 0, tile.width, tile.height);
-            ctx.strokeStyle = 'rgba(255, 255, 255, 0.05)';
-            ctx.strokeRect(0, 0, tile.width, tile.height);
-            return tile;
-        }
-    });
+    const styleMeta = getGraphThemeColors(resolvedValue, mode);
+    
+    // Leaflet Grid Layer Creation
+    const RadarGridLayerClass = (typeof L !== 'undefined' && L.GridLayer) 
+        ? L.GridLayer.extend({
+            createTile: function(coords) {
+                const tile = document.createElement('canvas');
+                const size = this.getTileSize();
+                tile.width = size.x;
+                tile.height = size.y;
+                const ctx = tile.getContext('2d');
+                ctx.fillStyle = styleMeta.fill;
+                ctx.fillRect(0, 0, tile.width, tile.height);
+                ctx.strokeStyle = 'rgba(255, 255, 255, 0.05)';
+                ctx.strokeRect(0, 0, tile.width, tile.height);
+                return tile;
+            }
+        })
+        : function() {};
 
     const activeGridLayer = new RadarGridLayerClass();
     activeGridLayer._meta = {
@@ -1871,7 +1903,9 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
         minute: hoveredMinute,
         timeStr: timeStr,
         dateStr: extractedDate,
-        color: calculatedColor,
+        color: styleMeta.fill,
+        accentColor: styleMeta.accent,
+        themeClass: styleMeta.theme,
         mode: mode
     };
 
@@ -1879,7 +1913,7 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
 }
 
 /**
- * 2. Spatial & Temporal Plot Graph Sampler
+ * 3. Any Lat/Lon Graph Sampler
  */
 function getValueFromPlotGraph(params) {
     const { lat, lon, totalMinutes, item, mode, gridBounds, spatialGridData } = params;
@@ -1940,42 +1974,45 @@ function getValueFromPlotGraph(params) {
         mode: mode,
         value: finalValue,
         color: layer._meta.color,
+        accentColor: layer._meta.accentColor,
+        themeClass: layer._meta.themeClass,
         formattedLabel: layer._meta.label
     };
 }
 
-// 3. Global Application Controller & State
-window.RadarState = {
-    map: null,
-    canvas: document.createElement('canvas'),
-    currentLayer: null,
-    currentItem: {
-        dateStr: "2026-08-27",
-        tempLow: 58,
-        tempHigh: 84,
-        windMph: 12,
-        gustMph: 22,
-        score: 65,
-        feelsLikeOffset: 2
-    },
-    currentMode: 'temp',
-    currentMinute: 720,
-    selectedPoint: { lat: 47.6858, lon: -92.7723 }
+/**
+ * 4. Weather Map Screen Event Handlers & State Updates
+ */
+
+// Selected Day Forecast Card Change
+window.onSelectForecastCard = function(item) {
+    window.RadarState.currentItem = item;
+    window.updateActiveRadarLayer();
 };
 
-window.RadarState.canvas.width = 650;
-window.RadarState.canvas.height = 400;
+// Weather Map Time Slider Input
+window.onTimeSliderInput = function(minuteValue) {
+    window.RadarState.currentMinute = parseInt(minuteValue, 10);
+    window.updateActiveRadarLayer();
+};
 
-window.updateActiveRadarLayer = (overrides = {}) => {
+// Map Click Handler for Any Lat / Lon
+window.onMapClick = function(lat, lon) {
+    window.RadarState.selectedPoint = { lat, lon };
+    updateDashboard();
+};
+
+// Main State Updates
+window.updateActiveRadarLayer = function(overrides = {}) {
     const s = window.RadarState;
 
     if (overrides.item !== undefined) s.currentItem = overrides.item;
     if (overrides.mode !== undefined) s.currentMode = overrides.mode;
     if (overrides.minute !== undefined) s.currentMinute = overrides.minute;
 
-    if (!s.map || !s.currentItem) return;
+    if (!s.currentItem) return;
 
-    if (s.currentLayer) {
+    if (s.map && s.currentLayer) {
         s.map.removeLayer(s.currentLayer);
     }
 
@@ -1990,14 +2027,16 @@ window.updateActiveRadarLayer = (overrides = {}) => {
     );
 
     if (newLayer) {
-        newLayer.addTo(s.map);
+        if (s.map && typeof newLayer.addTo === 'function') {
+            newLayer.addTo(s.map);
+        }
         s.currentLayer = newLayer;
     }
 
-    // Refresh display values on sampling dashboard
     updateDashboard();
 };
 
+// Dynamic Dashboard & UI Color Sync
 function updateDashboard() {
     const s = window.RadarState;
     if (!s.selectedPoint) return;
@@ -2010,15 +2049,44 @@ function updateDashboard() {
         mode: s.currentMode
     });
 
-    document.getElementById('timeDisplay').innerText = sampledData.timeStr;
-    document.getElementById('dispCoords').innerText = `${sampledData.lat.toFixed(3)}, ${sampledData.lon.toFixed(3)}`;
-    document.getElementById('dispTime').innerText = sampledData.timeStr;
-    document.getElementById('dispLabel').innerText = sampledData.formattedLabel;
+    // 1. Text elements
+    const elTimeDisplay = document.getElementById('timeDisplay');
+    const elCoords = document.getElementById('dispCoords');
+    const elTime = document.getElementById('dispTime');
+    const elLabel = document.getElementById('dispLabel');
+    const elValue = document.getElementById('dispValue');
+    const elDate = document.getElementById('dispDate');
 
-    if (typeof sampledData.value === 'object') {
-        document.getElementById('dispValue').innerText = `Speed: ${sampledData.value.speed} / Gust: ${sampledData.value.gust}`;
-    } else {
-        document.getElementById('dispValue').innerText = sampledData.value;
+    if (elTimeDisplay) elTimeDisplay.innerText = sampledData.timeStr;
+    if (elCoords) elCoords.innerText = `${sampledData.lat.toFixed(3)}, ${sampledData.lon.toFixed(3)}`;
+    if (elTime) elTime.innerText = sampledData.timeStr;
+    if (elLabel) elLabel.innerText = sampledData.formattedLabel;
+    if (elDate) elDate.innerText = sampledData.dateStr;
+
+    if (elValue) {
+        if (typeof sampledData.value === 'object') {
+            elValue.innerText = `Speed: ${sampledData.value.speed} / Gust: ${sampledData.value.gust} mph`;
+        } else {
+            elValue.innerText = sampledData.value;
+        }
+    }
+
+    // 2. Sync UI Colors across Weather Map Screen (Forecast Card, Slider, Accent Lines)
+    const weatherSection = document.getElementById('weatherSection');
+    const timeSlider = document.getElementById('timeSlider');
+    const forecastCard = document.getElementById('forecastCard');
+
+    if (weatherSection && sampledData.themeClass) {
+        weatherSection.className = `weather-section ${sampledData.themeClass}`;
+        weatherSection.style.setProperty('--theme-accent', sampledData.accentColor);
+    }
+
+    if (timeSlider && sampledData.accentColor) {
+        timeSlider.style.accentColor = sampledData.accentColor;
+    }
+
+    if (forecastCard && sampledData.accentColor) {
+        forecastCard.style.borderLeftColor = sampledData.accentColor;
     }
 }
 function openForecastGraphModal(item, fullForecast = [], itemIndex = -1) {
