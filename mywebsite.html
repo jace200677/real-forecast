@@ -1874,32 +1874,10 @@ function scrapeUniversalGraphValues(selectedDayIndex = 0) {
   return points;
 }
 
-/**
- * Global Radar Redraw Trigger
- * Updates the time label directly from slider minutes and triggers tile layer redraw
- */
-function triggerRadarRedraw(minutesValue) {
-  const slider = document.getElementById("radarTimeSlider");
-  const currentMins = minutesValue !== undefined ? minutesValue : (slider ? parseInt(slider.value, 10) : 0);
-  
-  // Format exact HH:MM AM/PM string directly from raw slider minutes
-  const hours = Math.floor(currentMins / 60) % 24;
-  const mins = currentMins % 60;
-  const displayHour = hours % 12 === 0 ? 12 : hours % 12;
-  const ampm = hours < 12 ? 'AM' : 'PM';
-  const timeStr = `${displayHour}:${mins.toString().padStart(2, '0')} ${ampm}`;
-
-  const timeLabel = document.getElementById("radarTimeLabel");
-  if (timeLabel) timeLabel.innerText = timeStr;
-
-  if (window._radarState.radarTileLayer) {
-    window._radarState.radarTileLayer.redraw();
-  }
-}
 
 /**
- * Custom Leaflet GridLayer
- * Direct Graph Timeline Interpolation: Maps slider value (0 to max) directly to dataset length
+ * Custom Leaflet GridLayer rendering canvas tiles based on dataset timeline interpolation
+ * Direct Slider Minutes Mode: Reads exact slider position (0-1440 minutes) without timezone conversions
  */
 function createRadarGridLayer() {
   const CustomGridLayer = L.GridLayer.extend({
@@ -1980,22 +1958,32 @@ function createRadarGridLayer() {
       const currentPalette = paletteConfig[paletteKey] || paletteConfig.dos;
 
       const slider = document.getElementById("radarTimeSlider");
-      const sliderVal = slider ? parseInt(slider.value, 10) : 0;
-      const sliderMax = slider ? (parseInt(slider.max, 10) || 1439) : 1439;
+      const totalMinutes = slider ? parseInt(slider.value, 10) : 0;
+      
+      const isNight = totalMinutes < 360 || totalMinutes >= 1080;
+      const periodKey = isNight ? 'night' : 'day';
 
-      // Extract raw numeric value matching graph dataset keys
       const getEntryValue = (entry, key) => {
         if (typeof entry === 'number') return entry;
         if (!entry) return currentPalette.minVal;
 
-        return entry[key] ?? 
+        const periodObj = entry[periodKey] || entry;
+
+        return periodObj[key] ?? 
+               periodObj.dos ?? 
+               periodObj.score ?? 
+               periodObj.windSpeed ?? 
+               periodObj.windGust ?? 
+               periodObj.temp ?? 
+               periodObj.value ?? 
+               periodObj.speed ?? 
+               entry[key] ?? 
                entry.dos ?? 
                entry.score ?? 
                entry.windSpeed ?? 
                entry.windGust ?? 
                entry.temp ?? 
                entry.value ?? 
-               entry.speed ?? 
                currentPalette.minVal;
       };
 
@@ -2004,9 +1992,8 @@ function createRadarGridLayer() {
       let baseVal = currentPalette.minVal;
 
       if (dsLen > 0) {
-        // Map slider fraction directly to graph dataset bounds
-        const progress = Math.max(0, Math.min(1, sliderVal / sliderMax));
-        const exactIndexFloat = progress * (dsLen - 1);
+        const targetHour = totalMinutes / 60;
+        const exactIndexFloat = (targetHour / 24) * (dsLen - 1);
         const lowIdx = Math.floor(exactIndexFloat);
         const highIdx = Math.min(dsLen - 1, Math.ceil(exactIndexFloat));
         const blend = exactIndexFloat - lowIdx;
@@ -2076,6 +2063,29 @@ function createRadarGridLayer() {
   return new CustomGridLayer({ opacity: 0.75, updateWhenZooming: false });
 }
 
+function triggerRadarRedraw(forcedMinute) {
+  const slider = document.getElementById("radarTimeSlider");
+  const totalMinutes = forcedMinute !== undefined ? forcedMinute : (slider ? parseInt(slider.value, 10) : 0);
+
+  const label = document.getElementById("radarTimeLabel");
+  if (label) {
+    const hours24 = Math.floor(totalMinutes / 60) % 24;
+    const mins = totalMinutes % 60;
+    const period = hours24 >= 12 ? 'PM' : 'AM';
+    const hours12 = hours24 % 12 === 0 ? 12 : hours24 % 12;
+
+    const appTimezone = window._radarState.currentItem?.timezone || 
+                        window._radarState.currentItem?.tz || 
+                        Intl.DateTimeFormat().resolvedOptions().timeZone;
+
+    label.innerText = `${hours12}:${mins.toString().padStart(2, '0')} ${period} (${appTimezone})`;
+  }
+
+  if (window._radarState.radarTileLayer) {
+    window._radarState.radarTileLayer.redraw();
+  }
+}
+
 /**
  * Synchronizes selected timezone, dataset, and initializes Leaflet map object
  */
@@ -2132,6 +2142,153 @@ function initTimezoneSyncedRadarModal(mapModal, item, mode, selectedDayIndex) {
   }, 250);
 }
 
+/**
+ * Creates modal DOM elements and handles open/close lifecycle
+ */
+function openWeatherMapModal(item, mode = 'temp', selectedDayIndex = null) {
+  if (selectedDayIndex === null || selectedDayIndex === undefined) {
+    const activeCard = document.querySelector('.day-card.active, .forecast-day-card.active, .day-tab.active, [data-selected="true"]');
+    if (activeCard) {
+      const allCards = Array.from(document.querySelectorAll('.day-card, .forecast-day-card, .day-tab'));
+      const foundIdx = allCards.indexOf(activeCard);
+      selectedDayIndex = foundIdx !== -1 ? foundIdx : 0;
+    } else {
+      selectedDayIndex = 0;
+    }
+  }
+
+  let mapModal = document.getElementById("weatherRadarMapModal");
+  if (!mapModal) {
+    mapModal = document.createElement("div");
+    mapModal.id = "weatherRadarMapModal";
+    mapModal.style.cssText = "position:fixed;top:0;left:0;width:100vw;height:100vh;background:rgba(0,0,0,0.85);z-index:10000;display:flex;align-items:center;justify-content:center;padding:12px;box-sizing:border-box;";
+    document.body.appendChild(mapModal);
+
+    mapModal.innerHTML = `
+      <div style="background:#18181c;border-radius:14px;padding:16px;width:100%;max-width:900px;color:#fff;position:relative;box-shadow:0 12px 40px rgba(0,0,0,0.7);font-family:system-ui, -apple-system, sans-serif;max-height:95vh;display:flex;flex-direction:column;box-sizing:border-box;">
+        <button id="closeRadarModalBtn" style="position:absolute;top:12px;right:12px;background:#27272a;border:none;color:#fff;width:32px;height:32px;border-radius:50%;font-size:18px;cursor:pointer;z-index:1001;display:flex;align-items:center;justify-content:center;">✕</button>
+        
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;flex-wrap:wrap;gap:10px;flex-shrink:0;">
+          <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+            <h3 style="margin:0;font-size:16px;font-weight:600;">
+              🛰️ Radar (<span id="radarDateDisplay" style="color:#38bdf8;">Loading...</span>)
+            </h3>
+            
+            <select id="radarLayerSwitcher" style="background:#27272a;color:#fff;border:1px solid #3f3f46;padding:4px 10px;border-radius:6px;font-size:13px;cursor:pointer;outline:none;">
+              <option value="temp">Temperature</option>
+              <option value="wind">Wind</option>
+              <option value="dos">DOS / Index</option>
+              <option value="precip">Precipitation</option>
+            </select>
+
+            <div id="windOptionContainer" style="display:none;">
+              <select id="windSubModeSelect" style="background:#27272a;color:#fff;border:1px solid #3f3f46;padding:4px 10px;border-radius:6px;font-size:13px;cursor:pointer;outline:none;">
+                <option value="speed">Wind Speed</option>
+                <option value="gust">Wind Gusts</option>
+              </select>
+            </div>
+          </div>
+        </div>
+        
+        <div id="interactiveMapContainer" style="position:relative;width:100%;height:380px;background:#090d16;border-radius:10px;overflow:hidden;border:1px solid #27272a;flex-grow:1;">
+          <div id="leafletMap" style="width:100%;height:100%;background:#090d16;"></div>
+        </div>
+
+        <div style="margin-top:10px;background:#27272a;padding:10px 14px;border-radius:8px;flex-shrink:0;">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
+            <span style="font-size:12px;color:#a1a1aa;font-weight:500;">Interactive Timeline</span>
+            <strong id="radarTimeLabel" style="font-size:13px;color:#38bdf8;">12:00 AM</strong>
+          </div>
+          <input type="range" id="radarTimeSlider" min="0" max="1439" step="1" value="0" style="width:100%;accent-color:#38bdf8;cursor:pointer;">
+        </div>
+      </div>
+    `;
+
+    document.getElementById('closeRadarModalBtn').onclick = () => {
+      mapModal.style.display = 'none';
+      if (window._radarState.map) {
+        window._radarState.map.off();
+        window._radarState.map.remove();
+        window._radarState.map = null;
+        window._radarState.radarTileLayer = null;
+      }
+    };
+
+    document.getElementById('radarLayerSwitcher').addEventListener('change', (e) => {
+      window._radarState.currentMode = e.target.value;
+      const windCont = document.getElementById('windOptionContainer');
+      if (windCont) windCont.style.display = window._radarState.currentMode === 'wind' ? 'inline-block' : 'none';
+      triggerRadarRedraw();
+    });
+
+    document.getElementById('windSubModeSelect').addEventListener('change', (e) => {
+      window._radarState.windSubMode = e.target.value;
+      triggerRadarRedraw();
+    });
+  }
+
+  // Ensure current mode and submode pickers reflect provided mode parameter
+  window._radarState = window._radarState || {};
+  window._radarState.currentMode = mode;
+  const layerSwitcher = document.getElementById('radarLayerSwitcher');
+  if (layerSwitcher) layerSwitcher.value = mode;
+
+  const windCont = document.getElementById('windOptionContainer');
+  if (windCont) windCont.style.display = mode === 'wind' ? 'inline-block' : 'none';
+
+  const sliderEl = document.getElementById("radarTimeSlider");
+  if (sliderEl) {
+    sliderEl.value = 0;
+    sliderEl.oninput = function(e) {
+      triggerRadarRedraw(parseInt(e.target.value, 10));
+    };
+  }
+
+  mapModal.style.display = "flex";
+
+  ensureLeafletLoaded(() => {
+    initTimezoneSyncedRadarModal(mapModal, item, mode, selectedDayIndex);
+  });
+}
+
+/**
+ * Weather Map Modal Button Listener
+ */
+document.getElementById("weatherMapModalBtn")?.addEventListener("click", () => {
+  const currentMode = document.getElementById("graphTypeSelect")?.value || "temp";
+  const rootData = window._radarState?.currentItem || window.currentWeatherData || {};
+  let selectedDayIndex = 0;
+
+  const dayElements = document.querySelectorAll('.day-tab, .forecast-day-card, .day-card, .history-card');
+  dayElements.forEach((el, index) => {
+    if (
+      el.classList.contains('active') ||
+      el.classList.contains('selected') ||
+      el.getAttribute('aria-selected') === 'true' ||
+      el.dataset.selected === 'true'
+    ) {
+      selectedDayIndex = index;
+    }
+  });
+
+  const extractDaysArray = (data) => {
+    if (!data) return [];
+    if (Array.isArray(data)) return data;
+    return data.daily || data.forecast || data.days || data.weekly || data.list || data.data || data.timeline || [];
+  };
+
+  let daysArray = extractDaysArray(rootData);
+  const selectedDayCard = daysArray[selectedDayIndex] || daysArray[0] || rootData;
+
+  if (selectedDayCard !== rootData && typeof rootData === 'object') {
+    selectedDayCard.lat = selectedDayCard.lat ?? rootData.lat ?? rootData.latitude;
+    selectedDayCard.lon = selectedDayCard.lon ?? rootData.lon ?? rootData.longitude;
+    selectedDayCard.timezone = selectedDayCard.timezone ?? rootData.timezone ?? rootData.tz;
+    selectedDayCard.days = daysArray;
+  }
+
+  openWeatherMapModal(selectedDayCard, currentMode, selectedDayIndex);
+});
 /**
  * Dynamically loads Leaflet.js assets if not present
  */
