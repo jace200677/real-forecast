@@ -1727,10 +1727,7 @@ function openForecastGraphModal(item, fullForecast = [], itemIndex = -1) {
 }
 
 /**
- * Global Weather Radar Layer — Tile-Based Dynamic Spatial Mapping (Fully Interactive & Multi-Layer)
- */
-/**
- * Global Weather Radar Layer — Dynamically Paired Color & Value Scaling
+ * Global Weather Radar Layer — Real-Time Timeline & Multi-Layer Integration
  */
 function openWeatherMapModal(item, mode = 'temp', selectedDayIndex = 0) {
   let mapModal = document.getElementById("weatherRadarMapModal");
@@ -1921,7 +1918,7 @@ function initTimezoneSyncedRadarModal(mapModal, item, mode, selectedDayIndex) {
           <span style="font-size:12px;color:#a1a1aa;font-weight:500;">Interactive Timeline</span>
           <strong id="radarTimeLabel" style="font-size:14px;color:#38bdf8;">--:--</strong>
         </div>
-        <input type="range" id="radarTimeSlider" min="0" max="${totalMinutes - 1}" step="1" value="${totalMinutes - 1}" style="width:100%;accent-color:#38bdf8;cursor:pointer;">
+        <input type="range" id="radarTimeSlider" min="0" max="${totalMinutes - 1}" step="1" value="0" style="width:100%;accent-color:#38bdf8;cursor:pointer;">
       </div>
     </div>
   `;
@@ -1962,15 +1959,14 @@ function initTimezoneSyncedRadarModal(mapModal, item, mode, selectedDayIndex) {
   const offscreenCanvas = document.createElement("canvas");
   const offscreenCtx = offscreenCanvas.getContext("2d");
 
-  // Base gradients mapping values directly onto continuous multi-stop color scales
   const exactPaletteMap = {
     temp: [
-      { stop: 0.0, rgb: [30, 64, 175] },   // Deep Cold Blue
-      { stop: 0.2, rgb: [56, 189, 248] },  // Cyan
-      { stop: 0.4, rgb: [74, 222, 128] },  // Green
-      { stop: 0.6, rgb: [250, 204, 21] },  // Yellow
-      { stop: 0.8, rgb: [251, 146, 60] },  // Orange
-      { stop: 1.0, rgb: [239, 68, 68] }    // Red Hot
+      { stop: 0.0, rgb: [30, 64, 175] },
+      { stop: 0.2, rgb: [56, 189, 248] },
+      { stop: 0.4, rgb: [74, 222, 128] },
+      { stop: 0.6, rgb: [250, 204, 21] },
+      { stop: 0.8, rgb: [251, 146, 60] },
+      { stop: 1.0, rgb: [239, 68, 68] }
     ],
     wind_speed: [
       { stop: 0.0, rgb: [15, 23, 42] },
@@ -2115,7 +2111,6 @@ function initTimezoneSyncedRadarModal(mapModal, item, mode, selectedDayIndex) {
 
         const latLng = map.containerPointToLatLng([screenX, screenY]);
         
-        // Spatial variance tied to current graph range span
         const span = maxVal - minVal;
         const spatialModulation = Math.sin(latLng.lat * 0.15) * Math.cos(latLng.lng * 0.15) * (span * 0.15);
         const localizedVal = Math.max(minVal, Math.min(maxVal, baseVal + spatialModulation));
@@ -2152,7 +2147,10 @@ function initTimezoneSyncedRadarModal(mapModal, item, mode, selectedDayIndex) {
   map.on('zoom', scheduleRedraw);
   map.on('viewreset', scheduleRedraw);
 
-  slider.addEventListener('input', scheduleRedraw);
+  // Directly attach input event listener without delay or bottlenecks
+  slider.addEventListener('input', (e) => {
+    drawSyncOverlay(parseInt(e.target.value, 10));
+  });
 
   layerSwitcher.addEventListener('change', (e) => {
     currentMode = e.target.value;
