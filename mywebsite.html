@@ -1876,6 +1876,50 @@ function scrapeUniversalGraphValues(selectedDayIndex = 0) {
 
 function createRadarGridLayer() {
   const CustomGridLayer = L.GridLayer.extend({
+    initialize: function (options) {
+      L.GridLayer.prototype.initialize.call(this, options);
+      
+      if (window._radarState && window._radarState.map) {
+        this._bindRadarEvents(window._radarState.map);
+      }
+    },
+
+    _bindRadarEvents: function (map) {
+      if (this._eventsBound) return;
+      this._eventsBound = true;
+
+      map.on('zoomend movend', () => {
+        if (this._map && this._map.hasLayer(this)) {
+          this.redraw();
+        }
+      });
+
+      const timeSlider = document.getElementById('radarTimeSlider');
+      if (timeSlider && !timeSlider._radarEventAttached) {
+        timeSlider._radarEventAttached = true;
+        timeSlider.addEventListener('input', () => {
+          if (this._map && this._map.hasLayer(this)) {
+            this.redraw();
+          }
+        });
+      }
+
+      const layerSwitcher = document.getElementById('radarLayerSwitcher');
+      if (layerSwitcher && !layerSwitcher._radarEventAttached) {
+        layerSwitcher._radarEventAttached = true;
+        layerSwitcher.addEventListener('change', () => {
+          if (this._map && this._map.hasLayer(this)) {
+            this.redraw();
+          }
+        });
+      }
+    },
+
+    onAdd: function (map) {
+      L.GridLayer.prototype.onAdd.call(this, map);
+      this._bindRadarEvents(map);
+    },
+
     createTile: function (coords) {
       const tile = document.createElement('canvas');
       const tileSize = this.getTileSize();
@@ -2006,12 +2050,10 @@ function createRadarGridLayer() {
           const pxPoint = L.point(tileOrigin.x + x, tileOrigin.y + y);
           const latLng = window._radarState.map.unproject(pxPoint, coords.z);
 
-          // Pixel-to-pixel coordinate relative distance from center point to simulate drawForecast() mapping behavior
           const dx = pxPoint.x - window._radarState.map.latLngToLayerPoint([targetLat, targetLon]).x;
           const dy = pxPoint.y - window._radarState.map.latLngToLayerPoint([targetLat, targetLon]).y;
           const pixelDist = Math.sqrt(dx * dx + dy * dy);
 
-          // Sample variations dynamically pulling from dataset indexes or spatial spread if available in drawForecast
           let sampledValue = baseVal;
           if (dsLen > 1) {
             const spreadFactor = Math.max(0, 1 - (pixelDist / 400));
