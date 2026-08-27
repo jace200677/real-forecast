@@ -1754,6 +1754,9 @@ function openForecastGraphModal(item, fullForecast = [], itemIndex = -1) {
 /**
  * Global Weather Radar Layer — Real-Time Timeline & Multi-Layer Integration
  */
+/**
+ * Global Weather Radar Layer — Real-Time Timeline & Multi-Layer Integration
+ */
 function openWeatherMapModal(item, mode = 'temp', selectedDayIndex = 0) {
   let mapModal = document.getElementById("weatherRadarMapModal");
   if (!mapModal) {
@@ -1763,8 +1766,12 @@ function openWeatherMapModal(item, mode = 'temp', selectedDayIndex = 0) {
     document.body.appendChild(mapModal);
   }
 
+  // Clean up previous map instance entirely
   if (window._radarMapInstance) {
-    window._radarMapInstance.remove();
+    try {
+      window._radarMapInstance.off();
+      window._radarMapInstance.remove();
+    } catch (e) {}
     window._radarMapInstance = null;
   }
 
@@ -1907,9 +1914,10 @@ function initTimezoneSyncedRadarModal(mapModal, item, mode, selectedDayIndex) {
   let currentMode = mode;
   let windSubMode = 'speed';
 
+  // Force clean inner structure injection on every execution
   mapModal.innerHTML = `
     <div style="background:#18181c;border-radius:14px;padding:16px;width:100%;max-width:900px;color:#fff;position:relative;box-shadow:0 12px 40px rgba(0,0,0,0.7);font-family:system-ui, -apple-system, sans-serif;max-height:95vh;display:flex;flex-direction:column;box-sizing:border-box;">
-      <button onclick="document.getElementById('weatherRadarMapModal').style.display='none'" style="position:absolute;top:12px;right:12px;background:#27272a;border:none;color:#fff;width:32px;height:32px;border-radius:50%;font-size:18px;cursor:pointer;z-index:1001;display:flex;align-items:center;justify-content:center;">✕</button>
+      <button id="closeRadarModalBtn" style="position:absolute;top:12px;right:12px;background:#27272a;border:none;color:#fff;width:32px;height:32px;border-radius:50%;font-size:18px;cursor:pointer;z-index:1001;display:flex;align-items:center;justify-content:center;">✕</button>
       
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;flex-wrap:wrap;gap:10px;flex-shrink:0;">
         <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
@@ -1949,6 +1957,10 @@ function initTimezoneSyncedRadarModal(mapModal, item, mode, selectedDayIndex) {
   `;
 
   mapModal.style.display = "flex";
+
+  document.getElementById('closeRadarModalBtn').onclick = () => {
+    mapModal.style.display = 'none';
+  };
 
   const worldBounds = L.latLngBounds(L.latLng(-90, -180), L.latLng(90, 180));
 
@@ -2100,6 +2112,7 @@ function initTimezoneSyncedRadarModal(mapModal, item, mode, selectedDayIndex) {
   let renderPending = false;
 
   const drawSyncOverlay = (minuteVal) => {
+    if (!canvas || !ctx) return;
     if (label) {
       label.innerText = formatTimeFromMinutes(minuteVal);
     }
@@ -2201,7 +2214,7 @@ function initTimezoneSyncedRadarModal(mapModal, item, mode, selectedDayIndex) {
   setTimeout(() => {
     map.invalidateSize();
     scheduleRedraw();
-  }, 200);
+  }, 250);
 }
 
 function ensureLeafletLoaded(callback) {
