@@ -1751,6 +1751,9 @@ function openForecastGraphModal(item, fullForecast = [], itemIndex = -1) {
 /**
  * Global Radar Map Layer — Offscreen Buffer Pixel Rendering (Zero Grid Lines, High Performance)
  */
+/**
+ * Global Radar Map Layer — Continuous Image Buffer (Zero Lines, Smooth Color Field)
+ */
 function openWeatherMapModal(item, mode = 'temp') {
   let mapModal = document.getElementById("weatherRadarMapModal");
   if (!mapModal) {
@@ -1818,6 +1821,10 @@ function initFixedGridRadarModal(mapModal, item, mode) {
   const slider = document.getElementById("radarTimeSlider");
   const label = document.getElementById("radarTimeLabel");
 
+  // Offscreen buffer canvas for continuous pixel manipulation
+  const offscreenCanvas = document.createElement("canvas");
+  const offscreenCtx = offscreenCanvas.getContext("2d");
+
   const paletteMap = {
     temp: [[56, 189, 248], [251, 146, 60], [239, 68, 68]],
     wind: [[59, 130, 246], [147, 51, 234], [236, 72, 153]],
@@ -1827,7 +1834,7 @@ function initFixedGridRadarModal(mapModal, item, mode) {
 
   let renderPending = false;
 
-  const drawFixedTileOverlay = (frameIndex) => {
+  const drawContinuousOverlay = (frameIndex) => {
     label.innerText = hours[frameIndex]?.time || `Frame ${frameIndex + 1}`;
 
     const rect = canvas.parentElement.getBoundingClientRect();
@@ -1836,43 +1843,34 @@ function initFixedGridRadarModal(mapModal, item, mode) {
       canvas.height = rect.height;
     }
 
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    // Downscaled resolution for fast smooth pixel sampling (eliminates lag & lines completely)
+    const scaleFactor = 0.25; 
+    const bufferWidth = Math.ceil(canvas.width * scaleFactor);
+    const bufferHeight = Math.ceil(canvas.height * scaleFactor);
+
+    offscreenCanvas.width = bufferWidth;
+    offscreenCanvas.height = bufferHeight;
+
+    const imgData = offscreenCtx.createImageData(bufferWidth, bufferHeight);
+    const data = imgData.data;
 
     const palette = paletteMap[mode] || paletteMap.temp;
     const timeOffset = (frameIndex + 1) * 0.2;
 
-    const geoGridStep = 0.25;
+    for (let y = 0; y < bufferHeight; y++) {
+      const screenY = y / scaleFactor;
+      for (let x = 0; x < bufferWidth; x++) {
+        const screenX = x / scaleFactor;
 
-    const mapBounds = map.getBounds();
-    const minLat = Math.max(-85, Math.floor(mapBounds.getSouth() / geoGridStep) * geoGridStep);
-    const maxLat = Math.min(85, Math.ceil(mapBounds.getNorth() / geoGridStep) * geoGridStep);
-    const minLng = Math.max(-180, Math.floor(mapBounds.getWest() / geoGridStep) * geoGridStep);
-    const maxLng = Math.min(180, Math.ceil(mapBounds.getEast() / geoGridStep) * geoGridStep);
+        // Map container pixel back to Geographic Lat/Lon
+        const latLng = map.containerPointToLatLng([screenX, screenY]);
+        const geoLat = latLng.lat;
+        const geoLng = latLng.lng;
 
-    // Disable image smoothing smoothing gaps between adjacent color fills
-    ctx.imageSmoothingEnabled = true;
-
-    for (let gridLat = minLat; gridLat < maxLat; gridLat += geoGridStep) {
-      for (let gridLng = minLng; gridLng < maxLng; gridLng += geoGridStep) {
-        const pNW = map.latLngToContainerPoint([gridLat + geoGridStep, gridLng]);
-        const pSE = map.latLngToContainerPoint([gridLat, gridLng + geoGridStep]);
-
-        // Expanding coordinates slightly and rounding to nearest pixel integer guarantees 100% seam-free rendering
-        const rectX = Math.round(pNW.x) - 1;
-        const rectY = Math.round(pNW.y) - 1;
-        const rectW = Math.round(pSE.x - pNW.x) + 2;
-        const rectH = Math.round(pSE.y - pNW.y) + 2;
-
-        if (rectX + rectW < 0 || rectX > canvas.width || rectY + rectH < 0 || rectY > canvas.height) {
-          continue;
-        }
-
-        const centerLat = gridLat + geoGridStep / 2;
-        const centerLng = gridLng + geoGridStep / 2;
-
-        const val1 = Math.sin(centerLat * 0.08 + timeOffset) * Math.cos(centerLng * 0.08 + timeOffset);
-        const val2 = Math.cos(centerLat * 0.15 - timeOffset * 0.5) * Math.sin(centerLng * 0.15 + timeOffset * 0.5);
-        const normVal = (val1 + val2 + 2) / 4;
+        // Continuous field calculation
+        const val1 = Math.sin(geoLat * 0.08 + timeOffset) * Math.cos(geoLng * 0.08 + timeOffset);
+        const val2 = Math.cos(geoLat * 0.15 - timeOffset * 0.5) * Math.sin(geoLng * 0.15 + timeOffset * 0.5);
+        const normVal = Math.min(1, Math.max(0, (val1 + val2 + 2) / 4));
 
         const colorIdx = normVal * (palette.length - 1);
         const idx1 = Math.floor(colorIdx);
@@ -1882,12 +1880,23 @@ function initFixedGridRadarModal(mapModal, item, mode) {
         const r = Math.round(palette[idx1][0] * (1 - factor) + palette[idx2][0] * factor);
         const g = Math.round(palette[idx1][1] * (1 - factor) + palette[idx2][1] * factor);
         const b = Math.round(palette[idx1][2] * (1 - factor) + palette[idx2][2] * factor);
-        const alpha = Math.min(0.65, normVal * 0.7);
+        const alpha = Math.round(Math.min(0.65, normVal * 0.7) * 255);
 
-        ctx.fillStyle = `rgba(${r}, ${g}, ${b}, ${alpha})`;
-        ctx.fillRect(rectX, rectY, rectW, rectH);
+        const ptr = (y * bufferWidth + x) * 4;
+        data[ptr] = r;
+        data[ptr + 1] = g;
+        data[ptr + 2] = b;
+        data[ptr + 3] = alpha;
       }
     }
+
+    offscreenCtx.putImageData(imgData, 0, 0);
+
+    // Render scaled bitmap with bicubic smoothing over the Leaflet Map
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = "high";
+    ctx.drawImage(offscreenCanvas, 0, 0, canvas.width, canvas.height);
 
     renderPending = false;
   };
@@ -1895,7 +1904,7 @@ function initFixedGridRadarModal(mapModal, item, mode) {
   const scheduleRedraw = () => {
     if (!renderPending) {
       renderPending = true;
-      requestAnimationFrame(() => drawFixedTileOverlay(parseInt(slider.value, 10)));
+      requestAnimationFrame(() => drawContinuousOverlay(parseInt(slider.value, 10)));
     }
   };
 
