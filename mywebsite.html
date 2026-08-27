@@ -1876,7 +1876,7 @@ function scrapeUniversalGraphValues(selectedDayIndex = 0) {
 
 /**
  * Custom Leaflet GridLayer rendering canvas tiles based on dataset timeline interpolation
- * Fixed: Grounded strictly in graph/chart scraped values with precise Mercator coordinate alignment
+ * Fixed: Palette colors map directly to fixed real-world values (matching graph legends)
  */
 function createRadarGridLayer() {
   const CustomGridLayer = L.GridLayer.extend({
@@ -1896,68 +1896,79 @@ function createRadarGridLayer() {
         paletteKey = `wind_${window._radarState.windSubMode}`;
       }
 
-      const exactPaletteMap = {
-        temp: [
-          { stop: 0.00, rgb: [30, 58, 138] },
-          { stop: 0.25, rgb: [56, 189, 248] },
-          { stop: 0.50, rgb: [34, 197, 94] },
-          { stop: 0.75, rgb: [234, 179, 8] },
-          { stop: 1.00, rgb: [239, 68, 68] }
-        ],
-        wind_speed: [
-          { stop: 0.00, rgb: [15, 23, 42] },
-          { stop: 0.30, rgb: [56, 189, 248] },
-          { stop: 0.65, rgb: [34, 197, 94] },
-          { stop: 0.85, rgb: [234, 179, 8] },
-          { stop: 1.00, rgb: [168, 85, 247] }
-        ],
-        wind_gust: [
-          { stop: 0.00, rgb: [15, 23, 42] },
-          { stop: 0.35, rgb: [56, 189, 248] },
-          { stop: 0.65, rgb: [234, 179, 8] },
-          { stop: 0.85, rgb: [239, 68, 68] },
-          { stop: 1.00, rgb: [168, 85, 247] }
-        ],
-        dos: [
-          { stop: 0.00, rgb: [34, 197, 94] },
-          { stop: 0.35, rgb: [56, 189, 248] },
-          { stop: 0.70, rgb: [234, 179, 8] },
-          { stop: 1.00, rgb: [239, 68, 68] }
-        ],
-        precip: [
-          { stop: 0.00, rgb: [15, 23, 42] },
-          { stop: 0.30, rgb: [56, 189, 248] },
-          { stop: 0.65, rgb: [59, 130, 246] },
-          { stop: 0.85, rgb: [34, 197, 94] },
-          { stop: 1.00, rgb: [168, 85, 247] }
-        ]
+      // Value-based thresholds matching standard graph legends
+      const paletteConfig = {
+        temp: {
+          minVal: -10, // °F
+          maxVal: 110,
+          stops: [
+            { val: -10, rgb: [30, 58, 138] },
+            { val: 32,  rgb: [56, 189, 248] },
+            { val: 65,  rgb: [34, 197, 94] },
+            { val: 85,  rgb: [234, 179, 8] },
+            { val: 110, rgb: [239, 68, 68] }
+          ]
+        },
+        wind_speed: {
+          minVal: 0, // mph
+          maxVal: 60,
+          stops: [
+            { val: 0,  rgb: [15, 23, 42] },
+            { val: 10, rgb: [56, 189, 248] },
+            { val: 25, rgb: [34, 197, 94] },
+            { val: 40, rgb: [234, 179, 8] },
+            { val: 60, rgb: [168, 85, 247] }
+          ]
+        },
+        wind_gust: {
+          minVal: 0, // mph
+          maxVal: 75,
+          stops: [
+            { val: 0,  rgb: [15, 23, 42] },
+            { val: 15, rgb: [56, 189, 248] },
+            { val: 35, rgb: [234, 179, 8] },
+            { val: 55, rgb: [239, 68, 68] },
+            { val: 75, rgb: [168, 85, 247] }
+          ]
+        },
+        dos: {
+          minVal: 0, // DOS Index (0 - 10)
+          maxVal: 10,
+          stops: [
+            { val: 0,  rgb: [34, 197, 94] },
+            { val: 3,  rgb: [56, 189, 248] },
+            { val: 7,  rgb: [234, 179, 8] },
+            { val: 10, rgb: [239, 68, 68] }
+          ]
+        },
+        precip: {
+          minVal: 0, // Inches / % Probability
+          maxVal: 100,
+          stops: [
+            { val: 0,   rgb: [15, 23, 42] },
+            { val: 25,  rgb: [56, 189, 248] },
+            { val: 55,  rgb: [59, 130, 246] },
+            { val: 80,  rgb: [34, 197, 94] },
+            { val: 100, rgb: [168, 85, 247] }
+          ]
+        }
       };
 
-      const palette = exactPaletteMap[paletteKey] || exactPaletteMap.temp;
+      const currentPalette = paletteConfig[paletteKey] || paletteConfig.temp;
 
       const getEntryValue = (entry, key) => {
         if (typeof entry === 'number') return entry;
-        if (!entry) return 50;
-        return entry[key] ?? entry.value ?? entry.temp ?? entry.speed ?? 50;
+        if (!entry) return 0;
+        return entry[key] ?? entry.value ?? entry.temp ?? entry.speed ?? 0;
       };
 
-      // Extract values directly from active graph scraped dataset
       const dataset = window._radarState.dataset || [];
-      let min = Infinity, max = -Infinity;
-      dataset.forEach(entry => {
-        let v = getEntryValue(entry, activeKey);
-        if (v < min) min = v;
-        if (v > max) max = v;
-      });
-      if (min === max || !isFinite(min)) { min = 0; max = 100; }
-
       const slider = document.getElementById("radarTimeSlider");
       const totalMinutes = slider ? parseInt(slider.value, 10) : 0;
       const targetHour = totalMinutes / 60;
       const dsLen = dataset.length;
-      let baseVal = 50;
+      let baseVal = currentPalette.minVal;
 
-      // Pin exact minute-by-minute timeline values directly to chart datapoints
       if (dsLen > 0) {
         const exactIndexFloat = (targetHour / 24) * (dsLen - 1);
         const lowIdx = Math.floor(exactIndexFloat);
@@ -1979,30 +1990,35 @@ function createRadarGridLayer() {
 
       for (let y = 0; y < tileSize.y; y += step) {
         for (let x = 0; x < tileSize.x; x += step) {
-          // Precise coordinate unprojection locked to current map zoom (coords.z)
           const pxPoint = L.point(tileOrigin.x + x, tileOrigin.y + y);
           const latLng = window._radarState.map.unproject(pxPoint, coords.z);
 
           const dLat = latLng.lat - targetLat;
           const dLng = latLng.lng - targetLon;
 
-          // Calculate regional spatial spread anchored strictly to baseVal extracted from chart
-          const spatialVariation = Math.sin(dLat * 0.05) * Math.cos(dLng * 0.05) * 0.15 * (max - min);
+          // Regional spatial variation scaled directly in real units
+          const spatialVariation = Math.sin(dLat * 0.05) * Math.cos(dLng * 0.05) * 5.0; 
           const sampledValue = baseVal + spatialVariation;
 
-          // Normalize strict relative to dataset min/max values
-          const normalized = Math.max(0, Math.min(1, (sampledValue - min) / (max - min)));
+          // Interpolate RGB directly from real value thresholds
+          const stops = currentPalette.stops;
+          let rgb = stops[0].rgb;
 
-          let rgb = palette[0].rgb;
-          for (let i = 0; i < palette.length - 1; i++) {
-            if (normalized >= palette[i].stop && normalized <= palette[i + 1].stop) {
-              const factor = (normalized - palette[i].stop) / (palette[i + 1].stop - palette[i].stop);
-              rgb = [
-                Math.round(palette[i].rgb[0] * (1 - factor) + palette[i + 1].rgb[0] * factor),
-                Math.round(palette[i].rgb[1] * (1 - factor) + palette[i + 1].rgb[1] * factor),
-                Math.round(palette[i].rgb[2] * (1 - factor) + palette[i + 1].rgb[2] * factor)
-              ];
-              break;
+          if (sampledValue <= stops[0].val) {
+            rgb = stops[0].rgb;
+          } else if (sampledValue >= stops[stops.length - 1].val) {
+            rgb = stops[stops.length - 1].rgb;
+          } else {
+            for (let i = 0; i < stops.length - 1; i++) {
+              if (sampledValue >= stops[i].val && sampledValue <= stops[i + 1].val) {
+                const factor = (sampledValue - stops[i].val) / (stops[i + 1].val - stops[i].val);
+                rgb = [
+                  Math.round(stops[i].rgb[0] * (1 - factor) + stops[i + 1].rgb[0] * factor),
+                  Math.round(stops[i].rgb[1] * (1 - factor) + stops[i + 1].rgb[1] * factor),
+                  Math.round(stops[i].rgb[2] * (1 - factor) + stops[i + 1].rgb[2] * factor)
+                ];
+                break;
+              }
             }
           }
 
