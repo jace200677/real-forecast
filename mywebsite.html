@@ -1895,7 +1895,7 @@ function scrapeUniversalGraphValues(selectedDayIndex = 0) {
           speed: numVal * 0.65,
           gust: numVal * 0.95,
           dos: Math.max(1, Math.min(10, numVal / 10)),
-          precip: numVal * 0.05
+          precip: numVal * 0.03
         });
       });
       return points;
@@ -1976,7 +1976,7 @@ function initTimezoneSyncedRadarModal(mapModal, item, mode, selectedDayIndex) {
 }
 
 /**
- * Dynamically map graph values to visual radar heatmaps matching exact forecast color scales
+ * Dynamically sample spatial map coordinates to generate radar overlays anywhere on screen
  */
 function triggerRadarRedraw(forcedMinute) {
   const slider = document.getElementById("radarTimeSlider");
@@ -2023,36 +2023,35 @@ function triggerRadarRedraw(forcedMinute) {
     paletteKey = `wind_${window._radarState.windSubMode}`;
   }
 
-  // Exact color scales mapped to match forecast graph theme (#3b82f6, #38bdf8, #22c55e, #eab308, #ef4444)
   const exactPaletteMap = {
     temp: [
-      { stop: 0.0, rgb: [59, 130, 246] },   // Cold / Low (#3b82f6)
-      { stop: 0.3, rgb: [56, 189, 248] },   // Mild / Cool (#38bdf8)
-      { stop: 0.6, rgb: [34, 197, 94] },    // Moderate (#22c55e)
-      { stop: 0.8, rgb: [234, 179, 8] },    // Warm (#eab308)
-      { stop: 1.0, rgb: [239, 68, 68] }     // Hot / High (#ef4444)
+      { stop: 0.0, rgb: [59, 130, 246] },   // #3b82f6
+      { stop: 0.3, rgb: [56, 189, 248] },   // #38bdf8
+      { stop: 0.6, rgb: [34, 197, 94] },    // #22c55e
+      { stop: 0.8, rgb: [234, 179, 8] },    // #eab308
+      { stop: 1.0, rgb: [239, 68, 68] }     // #ef4444
     ],
     wind_speed: [
-      { stop: 0.0, rgb: [15, 23, 42] },     // Calm Slate (#0f172a)
-      { stop: 0.4, rgb: [56, 189, 248] },   // Breezy Light Blue (#38bdf8)
-      { stop: 0.75, rgb: [34, 197, 94] },   // Wind Emerald (#22c55e)
-      { stop: 1.0, rgb: [168, 85, 247] }    // High Wind Purple (#a855f7)
+      { stop: 0.0, rgb: [15, 23, 42] },     // #0f172a
+      { stop: 0.4, rgb: [56, 189, 248] },   // #38bdf8
+      { stop: 0.75, rgb: [34, 197, 94] },   // #22c55e
+      { stop: 1.0, rgb: [168, 85, 247] }    // #a855f7
     ],
     wind_gust: [
-      { stop: 0.0, rgb: [30, 58, 138] },    // Dark Blue (#1e3a8a)
-      { stop: 0.5, rgb: [234, 179, 8] },    // Gust Yellow (#eab308)
-      { stop: 1.0, rgb: [239, 68, 68] }     // Severe Gust Red (#ef4444)
+      { stop: 0.0, rgb: [30, 58, 138] },    // #1e3a8a
+      { stop: 0.5, rgb: [234, 179, 8] },    // #eab308
+      { stop: 1.0, rgb: [239, 68, 68] }     // #ef4444
     ],
     dos: [
-      { stop: 0.0, rgb: [34, 197, 94] },    // Low Risk Green (#22c55e)
-      { stop: 0.5, rgb: [234, 179, 8] },    // Moderate Risk Yellow (#eab308)
-      { stop: 1.0, rgb: [239, 68, 68] }     // Extreme Risk Red (#ef4444)
+      { stop: 0.0, rgb: [34, 197, 94] },    // #22c55e
+      { stop: 0.5, rgb: [234, 179, 8] },    // #eab308
+      { stop: 1.0, rgb: [239, 68, 68] }     // #ef4444
     ],
     precip: [
-      { stop: 0.0, rgb: [15, 23, 42] },     // Dry (#0f172a)
-      { stop: 0.4, rgb: [56, 189, 248] },   // Light Rain (#38bdf8)
-      { stop: 0.8, rgb: [59, 130, 246] },   // Heavy Rain (#3b82f6)
-      { stop: 1.0, rgb: [168, 85, 247] }    // Extreme Precip Purple (#a855f7)
+      { stop: 0.0, rgb: [15, 23, 42] },     // #0f172a
+      { stop: 0.4, rgb: [56, 189, 248] },   // #38bdf8
+      { stop: 0.8, rgb: [59, 130, 246] },   // #3b82f6
+      { stop: 1.0, rgb: [168, 85, 247] }    // #a855f7
     ]
   };
 
@@ -2090,17 +2089,21 @@ function triggerRadarRedraw(forcedMinute) {
     baseVal = valLow * (1 - blend) + valHigh * blend;
   }
 
-  const centerBufferX = bufferW / 2;
-  const centerBufferY = bufferH / 2;
-  const maxRadius = Math.hypot(bufferW, bufferH) / 2;
+  const centerLatLng = window._radarState.map.getCenter();
 
+  // Map canvas pixels to latitude/longitude coordinates to render spatial data anywhere on map
   for (let y = 0; y < bufferH; y++) {
     for (let x = 0; x < bufferW; x++) {
-      const distFromCenter = Math.hypot(x - centerBufferX, y - centerBufferY);
-      const distRatio = Math.min(1, distFromCenter / maxRadius);
-      
-      const localizedVal = baseVal - (distRatio * 0.15 * (max - min));
-      const normalized = Math.max(0, Math.min(1, (localizedVal - min) / (max - min)));
+      const screenX = (x / bufferW) * canvas.width;
+      const screenY = (y / bufferH) * canvas.height;
+      const latLng = window._radarState.map.containerPointToLatLng([screenX, screenY]);
+
+      const dLat = latLng.lat - centerLatLng.lat;
+      const dLng = latLng.lng - centerLatLng.lng;
+      const spatialVariation = Math.sin(dLat * 0.5) * Math.cos(dLng * 0.5) * 0.25 * (max - min);
+
+      const sampledValue = baseVal + spatialVariation;
+      const normalized = Math.max(0, Math.min(1, (sampledValue - min) / (max - min)));
 
       let rgb = palette[0].rgb;
       for (let i = 0; i < palette.length - 1; i++) {
@@ -2119,7 +2122,7 @@ function triggerRadarRedraw(forcedMinute) {
       data[ptr] = rgb[0];
       data[ptr + 1] = rgb[1];
       data[ptr + 2] = rgb[2];
-      data[ptr + 3] = Math.round((1 - distRatio * 0.4) * 165);
+      data[ptr + 3] = 160;
     }
   }
 
