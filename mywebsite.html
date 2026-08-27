@@ -1733,6 +1733,9 @@ function openForecastGraphModal(item, fullForecast = [], itemIndex = -1) {
 /**
  * Radar Map Layer with Fixed Geographic Grid Squares
  */
+/**
+ * Radar Map Layer with Fixed Geographic Grid Squares (Pure Square Lerp)
+ */
 function openWeatherMapModal(item, mode = 'temp') {
   let mapModal = document.getElementById("weatherRadarMapModal");
   if (!mapModal) {
@@ -1815,7 +1818,7 @@ function initFixedGridRadarModal(mapModal, item, mode) {
     const palette = paletteMap[mode] || paletteMap.temp;
     const timeOffset = (frameIndex + 1) * 0.2;
 
-    // Set fixed geographic tile step (degrees of Lat/Lon)
+    // Fixed geographic grid step size in degrees
     const geoGridStep = 0.25;
 
     const bounds = map.getBounds();
@@ -1826,7 +1829,7 @@ function initFixedGridRadarModal(mapModal, item, mode) {
 
     for (let gridLat = minLat; gridLat < maxLat; gridLat += geoGridStep) {
       for (let gridLng = minLng; gridLng < maxLng; gridLng += geoGridStep) {
-        // Map geo bounds of the square to screen pixel coordinates
+        // Map geo points directly to rectangular screen coordinates
         const pNW = map.latLngToContainerPoint([gridLat + geoGridStep, gridLng]);
         const pSE = map.latLngToContainerPoint([gridLat, gridLng + geoGridStep]);
 
@@ -1835,7 +1838,7 @@ function initFixedGridRadarModal(mapModal, item, mode) {
         const rectW = pSE.x - pNW.x;
         const rectH = pSE.y - pNW.y;
 
-        // Skip rendering if tile falls entirely off-screen
+        // Skip rendering off-screen squares
         if (rectX + rectW < 0 || rectX > canvas.width || rectY + rectH < 0 || rectY > canvas.height) {
           continue;
         }
@@ -1843,12 +1846,12 @@ function initFixedGridRadarModal(mapModal, item, mode) {
         const centerLat = gridLat + geoGridStep / 2;
         const centerLng = gridLng + geoGridStep / 2;
 
-        // Continuous noise field calculated relative to geographic coordinates
+        // Smooth wave function mapped strictly to geographic lat/lng
         const val1 = Math.sin(centerLat * 0.8 + timeOffset) * Math.cos(centerLng * 0.8 + timeOffset);
         const val2 = Math.cos(centerLat * 1.5 - timeOffset * 0.5) * Math.sin(centerLng * 1.5 + timeOffset * 0.5);
         const normVal = (val1 + val2 + 2) / 4;
 
-        // Interpolate (Lerp) tile color
+        // Linear interpolation (lerp) across palette colors
         const colorIdx = normVal * (palette.length - 1);
         const idx1 = Math.floor(colorIdx);
         const idx2 = Math.min(idx1 + 1, palette.length - 1);
@@ -1859,11 +1862,11 @@ function initFixedGridRadarModal(mapModal, item, mode) {
         const b = Math.round(palette[idx1][2] * (1 - factor) + palette[idx2][2] * factor);
         const alpha = Math.min(0.65, normVal * 0.7);
 
-        // Render geographic radar square cell
+        // Fill sharp square tile boundaries (no radial gradients or circular drawing)
         ctx.fillStyle = `rgba(${r}, ${g}, ${b}, ${alpha})`;
-        ctx.fillRect(rectX + 1, rectY + 1, Math.max(0, rectW - 2), Math.max(0, rectH - 2));
+        ctx.fillRect(rectX, rectY, rectW, rectH);
 
-        // Subtly outline fixed tile grid square boundaries
+        // Grid border line overlay for distinct tile structure
         ctx.strokeStyle = "rgba(255, 255, 255, 0.12)";
         ctx.lineWidth = 1;
         ctx.strokeRect(rectX, rectY, rectW, rectH);
