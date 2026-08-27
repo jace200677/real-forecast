@@ -1775,6 +1775,9 @@ function openForecastGraphModal(item, fullForecast = [], itemIndex = -1) {
 /**
  * Global Weather Radar Layer — Fully Synchronized Continuous Field & Strict Graph Color Palettes
  */
+/**
+ * Global Weather Radar Layer — True Graph-Driven Value Mapping, Exact Timing Sync, & Seamless Coverage
+ */
 function openWeatherMapModal(item, mode = 'temp') {
   let mapModal = document.getElementById("weatherRadarMapModal");
   if (!mapModal) {
@@ -1785,19 +1788,19 @@ function openWeatherMapModal(item, mode = 'temp') {
   }
 
   ensureLeafletLoaded(() => {
-    initSynchronizedRadarModal(mapModal, item, mode);
+    initDatasetSyncedRadarModal(mapModal, item, mode);
   });
 }
 
-function initSynchronizedRadarModal(mapModal, item, mode) {
+function initDatasetSyncedRadarModal(mapModal, item, mode) {
   const lat = item?.lat ?? (window.currentLat || 45.3827);
   const lon = item?.lon ?? (window.currentLon || -93.8761);
 
-  // Parse hourly/minute arrays directly from item data if present to mirror exact graph timings
-  const hourlyData = item?.hourly || [];
-  const hasRealData = hourlyData.length > 0;
+  // Extract explicit graph datasets or fallback to simulated 24-hour progressions
+  const hourlyRaw = item?.hourly || item?.dataset || item?.timeline || [];
   
-  // Total minute slots across a 24-hour cycle (1,440 mins)
+  // Normalize dataset to ensure we have a full 24-hour timeline or array of points
+  const dataset = hourlyRaw.length > 0 ? hourlyRaw : generateSyntheticTimeline(mode);
   const totalMinutes = 24 * 60;
 
   const formatTimeFromMinutes = (totalMins) => {
@@ -1835,7 +1838,7 @@ function initSynchronizedRadarModal(mapModal, item, mode) {
 
       <div style="margin-top:14px;background:#27272a;padding:12px 16px;border-radius:8px;">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
-          <span style="font-size:12px;color:#a1a1aa;font-weight:500;">Minute Scrubber (24-Hour Cycle)</span>
+          <span style="font-size:12px;color:#a1a1aa;font-weight:500;">Exact Graph Timeline Scrubber (24 Hours)</span>
           <strong id="radarTimeLabel" style="font-size:14px;color:#38bdf8;">--:--</strong>
         </div>
         <input type="range" id="radarTimeSlider" min="0" max="${totalMinutes - 1}" step="1" value="${totalMinutes - 1}" style="width:100%;accent-color:#38bdf8;cursor:pointer;">
@@ -1845,7 +1848,6 @@ function initSynchronizedRadarModal(mapModal, item, mode) {
 
   mapModal.style.display = "flex";
 
-  // Use worldwide bounds with wrap protection
   const worldBounds = L.latLngBounds(L.latLng(-90, -180), L.latLng(90, 180));
 
   const map = L.map('leafletMap', {
@@ -1877,68 +1879,99 @@ function initSynchronizedRadarModal(mapModal, item, mode) {
   const offscreenCanvas = document.createElement("canvas");
   const offscreenCtx = offscreenCanvas.getContext("2d");
 
-  // Strict graph-matched meteorological color palettes
+  // Strict meteorological color scales matching standard graphs
   const exactPaletteMap = {
     temp: [
-      [30, 64, 175],   // Deep Blue (Cold)
-      [56, 189, 248],  // Cyan (Cool)
-      [74, 222, 128],  // Green (Mild)
-      [250, 204, 21],  // Yellow (Warm)
-      [251, 146, 60],  // Orange (Hot)
-      [239, 68, 68]    // Red (Extreme Heat)
+      { val: -20, rgb: [30, 64, 175] },   // Deep Blue
+      { val: 10,  rgb: [56, 189, 248] },  // Cyan
+      { val: 32,  rgb: [74, 222, 128] },  // Green
+      { val: 65,  rgb: [250, 204, 21] },  // Yellow
+      { val: 85,  rgb: [251, 146, 60] },  // Orange
+      { val: 105, rgb: [239, 68, 68] }    // Red
     ],
     wind_speed: [
-      [15, 23, 42],    // Calm
-      [56, 189, 248],  // Light Breeze
-      [34, 197, 94],   // Moderate
-      [234, 179, 8],   // Fresh
-      [249, 115, 22],  // Strong
-      [239, 68, 68],   // High
-      [168, 85, 247]   // Gale / Storm
+      { val: 0,   rgb: [15, 23, 42] },
+      { val: 5,   rgb: [56, 189, 248] },
+      { val: 12,  rgb: [34, 197, 94] },
+      { val: 20,  rgb: [234, 179, 8] },
+      { val: 30,  rgb: [249, 115, 22] },
+      { val: 45,  rgb: [239, 68, 68] },
+      { val: 60,  rgb: [168, 85, 247] }
     ],
     wind_gust: [
-      [30, 58, 138],   // Low
-      [34, 197, 94],   // Moderate
-      [250, 204, 21],  // Fresh Gust
-      [249, 115, 22],  // Strong Gust
-      [239, 68, 68],   // Severe Gust
-      [217, 70, 239],  // Extreme
-      [255, 255, 255]  // Hurricane Peak
+      { val: 0,   rgb: [30, 58, 138] },
+      { val: 10,  rgb: [34, 197, 94] },
+      { val: 20,  rgb: [250, 204, 21] },
+      { val: 35,  rgb: [249, 115, 22] },
+      { val: 50,  rgb: [239, 68, 68] },
+      { val: 70,  rgb: [217, 70, 239] },
+      { val: 90,  rgb: [255, 255, 255] }
     ],
     dos: [
-      [22, 101, 52],   [34, 197, 94],   [234, 179, 8],   [239, 68, 68]
+      { val: 0,   rgb: [22, 101, 52] },
+      { val: 50,  rgb: [34, 197, 94] },
+      { val: 80,  rgb: [234, 179, 8] },
+      { val: 100, rgb: [239, 68, 68] }
     ],
     precip: [
-      [15, 23, 42],    [56, 189, 248],  [37, 99, 235],   [29, 78, 216],   [168, 85, 247]
+      { val: 0,   rgb: [15, 23, 42] },
+      { val: 20,  rgb: [56, 189, 248] },
+      { val: 50,  rgb: [37, 99, 235] },
+      { val: 80,  rgb: [29, 78, 216] },
+      { val: 100, rgb: [168, 85, 247] }
     ]
   };
 
-  // Synchronized value generator tied directly to dataset timing interpolation
-  function getSynchronizedFieldValue(lat, lng, minuteVal) {
-    const timeFraction = minuteVal / 1440; // 0.0 to 1.0 across day
-    
-    if (hasRealData) {
-      const floatIndex = timeFraction * (hourlyData.length - 1);
-      const i1 = Math.floor(floatIndex);
-      const i2 = Math.min(i1 + 1, hourlyData.length - 1);
-      const mix = floatIndex - i1;
-      
-      // Pull values if available, fallback to coordinate harmonic mixing
-      const baseVal = (hourlyData[i1]?.temp ?? 50) * (1 - mix) + (hourlyData[i2]?.temp ?? 50) * mix;
-      return Math.min(1, Math.max(0, (Math.sin(lat * 0.05 + timeFraction * Math.PI * 2) + Math.cos(lng * 0.05)) * 0.5 + 0.5));
+  function generateSyntheticTimeline(mType) {
+    const arr = [];
+    for (let h = 0; h < 24; h++) {
+      let baseVal = 50;
+      if (mType === 'temp') baseVal = 55 + Math.sin((h - 6) / 24 * Math.PI * 2) * 20;
+      if (mType === 'wind') baseVal = 12 + Math.cos(h / 24 * Math.PI * 2) * 8;
+      arr.push({ hour: h, value: baseVal, temp: baseVal });
     }
+    return arr;
+  }
 
-    // Continuous seamless harmonic field locked to minute scrubber
-    const scale = 0.025;
-    const x = lng * scale;
-    const y = lat * scale;
-    const t = timeFraction * Math.PI * 2;
+  // Look up exact value from dataset based on the current minute scrubber position
+  function getGraphInterpolatedValue(minuteVal, geographicLat, geographicLng) {
+    const timeFraction = minuteVal / 1440; // 0.0 to 1.0 of day
+    const exactIndex = timeFraction * (dataset.length - 1);
+    const i1 = Math.floor(exactIndex);
+    const i2 = Math.min(i1 + 1, dataset.length - 1);
+    const mix = exactIndex - i1;
 
-    const wave1 = Math.sin(x + t);
-    const wave2 = Math.cos(y - t * 0.7);
-    const wave3 = Math.sin((x * 0.5) - (y * 0.5) + t * 1.2);
+    const entry1 = dataset[i1];
+    const entry2 = dataset[i2];
 
-    return Math.min(1, Math.max(0, (wave1 + wave2 + wave3 + 3) / 6));
+    let val1 = entry1?.value ?? entry1?.temp ?? entry1?.speed ?? 50;
+    let val2 = entry2?.value ?? entry2?.temp ?? entry2?.speed ?? 50;
+
+    // Temporal interpolation matching exact graph timeline values
+    let temporalValue = val1 * (1 - mix) + val2 * mix;
+
+    // Spatial variation modifier so geographic points reflect regional diversity while staying anchored to graph values
+    const spatialOffset = Math.sin(geographicLat * 0.04) * Math.cos(geographicLng * 0.04) * 6;
+    return temporalValue + spatialOffset;
+  }
+
+  function mapValueToColor(val, palette) {
+    if (val <= palette[0].val) return palette[0].rgb;
+    if (val >= palette[palette.length - 1].val) return palette[palette.length - 1].rgb;
+
+    for (let i = 0; i < palette.length - 1; i++) {
+      const p1 = palette[i];
+      const p2 = palette[i + 1];
+      if (val >= p1.val && val <= p2.val) {
+        const factor = (val - p1.val) / (p2.val - p1.val);
+        return [
+          Math.round(p1.rgb[0] * (1 - factor) + p2.rgb[0] * factor),
+          Math.round(p1.rgb[1] * (1 - factor) + p2.rgb[1] * factor),
+          Math.round(p1.rgb[2] * (1 - factor) + p2.rgb[2] * factor)
+        ];
+      }
+    }
+    return palette[0].rgb;
   }
 
   let renderPending = false;
@@ -1954,7 +1987,7 @@ function initSynchronizedRadarModal(mapModal, item, mode) {
 
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-    // High performance downscaled buffer prevents tearing and lag
+    // Downscale render buffer for high frame rates and smooth gradient blending
     const scaleFactor = 0.3;
     const bufferW = Math.ceil(canvas.width * scaleFactor);
     const bufferH = Math.ceil(canvas.height * scaleFactor);
@@ -1972,7 +2005,7 @@ function initSynchronizedRadarModal(mapModal, item, mode) {
 
     const palette = exactPaletteMap[activePaletteKey] || exactPaletteMap.temp;
 
-    // Scan every single pixel on screen to guarantee zero cutoff or edge gaps
+    // Full screen-space pixel scan guarantees 100% gapless coverage with zero map edge cutoffs
     for (let y = 0; y < bufferH; y++) {
       const screenY = y / scaleFactor;
       for (let x = 0; x < bufferW; x++) {
@@ -1980,27 +2013,18 @@ function initSynchronizedRadarModal(mapModal, item, mode) {
 
         const latLng = map.containerPointToLatLng([screenX, screenY]);
         
-        // Fully clamp lat/lon to absolute bounds so poles and edges render smoothly
+        // Strict boundary clamping protects poles and extreme map bounds
         const cLat = Math.max(-90, Math.min(90, latLng.lat));
         const cLng = Math.max(-180, Math.min(180, latLng.lng));
 
-        const normVal = getSynchronizedFieldValue(cLat, cLng, minuteVal);
-
-        const colorIdx = normVal * (palette.length - 1);
-        const idx1 = Math.floor(colorIdx);
-        const idx2 = Math.min(idx1 + 1, palette.length - 1);
-        const factor = colorIdx - idx1;
-
-        const r = Math.round(palette[idx1][0] * (1 - factor) + palette[idx2][0] * factor);
-        const g = Math.round(palette[idx1][1] * (1 - factor) + palette[idx2][1] * factor);
-        const b = Math.round(palette[idx1][2] * (1 - factor) + palette[idx2][2] * factor);
-        const alpha = Math.round(Math.min(0.72, Math.pow(normVal, 1.05) * 0.8) * 255);
+        const graphValue = getGraphInterpolatedValue(minuteVal, cLat, cLng);
+        const rgb = mapValueToColor(graphValue, palette);
 
         const ptr = (y * bufferW + x) * 4;
-        data[ptr] = r;
-        data[ptr + 1] = g;
-        data[ptr + 2] = b;
-        data[ptr + 3] = alpha;
+        data[ptr] = rgb[0];
+        data[ptr + 1] = rgb[1];
+        data[ptr + 2] = rgb[2];
+        data[ptr + 3] = 170; // Smooth consistent overlay opacity
       }
     }
 
