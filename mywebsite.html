@@ -1765,7 +1765,7 @@ function openForecastGraphModal(item, fullForecast = [], itemIndex = -1) {
         drawForecastCanvasGraph(item, currentMode, modalCanvas, null, modal.prevItem, modal.nextItem);
     }, 50);
 }
-// Initialize global radar state
+// Global radar state initialization
 window._radarState = window._radarState || {
   map: null,
   radarTileLayer: null,
@@ -1777,6 +1777,9 @@ window._radarState = window._radarState || {
   activeDateText: ''
 };
 
+/**
+ * Extracts and formats date context from graph modal titles, active cards, or dataset items
+ */
 function extractDateFromGraph(item, selectedDayIndex = 0) {
   const graphHeaderSelectors = [
     '#graphModalTitle', '.modal-title', '.graph-header', '.chart-title',
@@ -1829,6 +1832,9 @@ function extractDateFromGraph(item, selectedDayIndex = 0) {
   return `Day ${selectedDayIndex + 1}`;
 }
 
+/**
+ * Scrapes numeric chart points directly from the DOM or generates fallback 24-hour sinusoidal data
+ */
 function scrapeUniversalGraphValues(selectedDayIndex = 0) {
   const points = [];
   const domPoints = document.querySelectorAll('[data-value], [val], svg circle, .apexcharts-series path, .recharts-curve-dot, .chart-point, [data-hour], [data-time]');
@@ -1869,8 +1875,7 @@ function scrapeUniversalGraphValues(selectedDayIndex = 0) {
 }
 
 /**
- * Creates custom native Leaflet GridLayer for weather overlay
- * Exact value sync with dataset timeline & timezone alignment
+ * Custom Leaflet GridLayer rendering canvas tiles based on dataset timeline interpolation
  */
 function createRadarGridLayer() {
   const CustomGridLayer = L.GridLayer.extend({
@@ -2014,6 +2019,9 @@ function createRadarGridLayer() {
   return new CustomGridLayer({ opacity: 0.7 });
 }
 
+/**
+ * Triggers redrawing of the tile layer and updates UI time labels
+ */
 function triggerRadarRedraw(forcedMinute) {
   const slider = document.getElementById("radarTimeSlider");
   const totalMinutes = forcedMinute !== undefined ? forcedMinute : (slider ? parseInt(slider.value, 10) : 0);
@@ -2037,6 +2045,9 @@ function triggerRadarRedraw(forcedMinute) {
   }
 }
 
+/**
+ * Synchronizes selected timezone, dataset, and initializes Leaflet map object
+ */
 function initTimezoneSyncedRadarModal(mapModal, item, mode, selectedDayIndex) {
   window._radarState.currentMode = mode;
   window._radarState.selectedDayIndex = selectedDayIndex;
@@ -2090,6 +2101,9 @@ function initTimezoneSyncedRadarModal(mapModal, item, mode, selectedDayIndex) {
   }, 250);
 }
 
+/**
+ * Creates modal DOM elements and handles open/close lifecycle
+ */
 function openWeatherMapModal(item, mode = 'temp', selectedDayIndex = null) {
   if (selectedDayIndex === null || selectedDayIndex === undefined) {
     const activeCard = document.querySelector('.day-card.active, .forecast-day-card.active, .day-tab.active, [data-selected="true"]');
@@ -2187,6 +2201,9 @@ function openWeatherMapModal(item, mode = 'temp', selectedDayIndex = null) {
   });
 }
 
+/**
+ * Weather Map Modal Button Listener
+ */
 document.getElementById("weatherMapModalBtn")?.addEventListener("click", () => {
   const currentMode = document.getElementById("graphTypeSelect")?.value || "temp";
   const rootData = window._radarState?.currentItem || window.currentWeatherData || {};
@@ -2223,11 +2240,16 @@ document.getElementById("weatherMapModalBtn")?.addEventListener("click", () => {
   openWeatherMapModal(selectedDayCard, currentMode, selectedDayIndex);
 });
 
+/**
+ * Dynamically loads Leaflet.js assets if not present
+ */
 function ensureLeafletLoaded(callback) {
   if (window.L) { callback(); return; }
   const link = document.createElement("link");
-  link.rel = "stylesheet"; link.href = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.css";
+  link.rel = "stylesheet"; 
+  link.href = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.css";
   document.head.appendChild(link);
+  
   const script = document.createElement("script");
   script.src = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.js";
   script.onload = callback;
