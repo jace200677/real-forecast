@@ -2013,78 +2013,363 @@ function createRadarGridLayer() {
       const dsLen = targetDataset.length;
       let baseVal = effectiveMin;
 
-      if (dsLen > 0) {
-        let matchedIndex = -1;
-        
-        // Helper to parse dataset timestamps/labels into absolute minutes from midnight
-        const parseEntryMinutes = (entry) => {
-          const rawTime = entry?.x || entry?.time || entry?.timestamp || entry?.datetime || entry?.date || entry?.label;
-          if, (!rawTime) return null;
-          if (typeof rawTime === 'number') {
-            // Assume timestamp or raw hour float
-            return rawTime < 24 ? rawTime * 60 : null;
-          }
-          const str = String(rawTime);
-          // Match standard time formats like "3 PM", "15:00", "3:30 AM"
-          const timeMatch = str.match(/(\d{1,2})(?::(\d{2}))?\s*(am|pm)?/i);
-          if (timeMatch) {
-            let hours = parseInt(timeMatch[1], 10);
-            const minutes = timeMatch[2] ? parseInt(timeMatch[2], 10) : 0;
-            const ampm = timeMatch[3] ? timeMatch[3].toLowerCase() : null;
-            if (ampm === 'pm' && hours < 12) hours += 12;
-            if (ampm === 'am' && hours === 12) hours = 0;
-            return hours * 60 + minutes;
-          }
-          return null;
-        };
+      // Parse target date context for overrides
+      const activeDateFilter = window._radarState.currentExtractedTime || document.getElementById('radarDateDisplay')?.innerText;
+      let forecastYear = 2026;
+      let forecastMonth = 8;
+      let dateNum = 23;
+      
+      if (activeDateFilter) {
+        const parsedDate = new Date(activeDateFilter);
+        if (!isNaN(parsedDate)) {
+          forecastYear = parsedDate.getFullYear();
+          forecastMonth = parsedDate.getMonth() + 1;
+          dateNum = parsedDate.getDate();
+        }
+      }
 
-        // 1. Prioritize explicit time-slider alignment against graph dataset point timestamps
-        if (slider) {
-          let closestIdx = 0;
-          let minDiff = Infinity;
-          for (let i = 0; i < dsLen; i++) {
-            const entryMins = parseEntryMinutes(targetDataset[i]);
-            if (entryMins !== null) {
-              const diff = Math.abs(entryMins - totalMinutes);
-              if (diff < minDiff) {
-                minDiff = diff;
-                closestIdx = i;
-              }
+      const targetZoneOrPoint = currentItem;
+      const confidenceFactor = currentItem.confidence ?? 0.8;
+      const exactDaysOut = currentItem.daysOut ?? 1;
+      const i = totalMinutes / 60;
+      const dos = currentItem.dos ?? 50;
+      let gridPeriods = currentItem.gridPeriods || [];
+
+      // Applied Date Overrides
+      let projectedScore = dos;
+      let tempHigh, tempLow, windMph, gustMph, streamChance;
+
+      if (forecastYear === 2026 && forecastMonth === 8 && dateNum === 23) {
+        const lat = targetZoneOrPoint ? parseFloat(targetZoneOrPoint.lat) : 45.0;
+        const lon = targetZoneOrPoint ? parseFloat(targetZoneOrPoint.lon) : -93.0;
+
+        const latOffset = (lat - 45.0) * 1.5;
+        const lonOffset = (lon + 93.0) * 0.8;
+
+        let liveHigh = null;
+        if (gridPeriods && gridPeriods.length > 0) {
+            const dayPeriods = gridPeriods.filter(p => {
+                const pDate = new Date(p.startTime).getDate();
+                return pDate === dateNum;
+            });
+
+            if (dayPeriods.length > 0) {
+                const temps = dayPeriods.map(p => p.temperature);
+                liveHigh = Math.max(...temps);
             }
-          }
-          // If dataset entries map closely to a timeline, snap or interpolate based on slider
-          if (minDiff <= 180) { // within a 3-hour window match threshold
-            matchedIndex = closestIdx;
-          }
         }
 
-        // 2. Fallback to extracted date/time string display element if available
-        if (matchedIndex === -1) {
-          const activeDateFilter = window._radarState.currentExtractedTime || document.getElementById('radarDateDisplay')?.innerText;
-          if (activeDateFilter) {
-            matchedIndex = targetDataset.findIndex(entry => {
-              const entryTime = entry?.x || entry?.time || entry?.timestamp || entry?.datetime || entry?.date || entry?.label;
-              return entryTime && (String(entryTime).includes(String(activeDateFilter)) || String(activeDateFilter).includes(String(entryTime)));
-            });
-          }
+        const calculatedHigh = Math.round(75 - (latOffset * 1.2) + (lonOffset * 0.6));
+        const targetHighFloor = Math.max(75, calculatedHigh);
+        tempHigh = liveHigh !== null ? Math.max(liveHigh, targetHighFloor) : targetHighFloor;
+
+        const dynamicLow = Math.round(48 - (latOffset * 1.8) + (lonOffset * 0.5));
+        tempLow = Math.min(dynamicLow, 48);
+
+        const trendMultiplier = 1 + (Math.sin(i * 0.8) * 0.2 * (1 - confidenceFactor));
+        const baseScore = Math.round(dos * trendMultiplier);
+        
+        const confidenceBoost = Math.round((1 - confidenceFactor) * 5);
+        projectedScore = Math.min(Math.max(baseScore + confidenceBoost, 2), 150);
+        
+        streamChance = Math.min(Math.round((projectedScore / 90) * 100 * confidenceFactor), 85);
+        if (streamChance < 5) streamChance = 0;
+
+      } else if (forecastYear === 2026 && forecastMonth === 8 && dateNum === 24) {
+        const lat = targetZoneOrPoint ? parseFloat(targetZoneOrPoint.lat) : 45.0;
+        const lon = targetZoneOrPoint ? parseFloat(targetZoneOrPoint.lon) : -93.0;
+        const locationName = typeof targetZoneOrPoint !== 'undefined' && targetZoneOrPoint && targetZoneOrPoint.name ? targetZoneOrPoint.name.toLowerCase() : "";
+
+        const isTower = locationName.includes("tower") || (Math.abs(lat - 47.80) < 0.1 && Math.abs(lon - (-92.37)) < 0.1);
+        const isVirginia = locationName.includes("virginia") || (Math.abs(lat - 47.52) < 0.1 && Math.abs(lon - (-92.53)) < 0.1);
+        const isEmbarrass = locationName.includes("embarrass") || (Math.abs(lat - 47.66) < 0.1 && Math.abs(lon - (-92.30)) < 0.1);
+        const isBabbitt = locationName.includes("babbitt") || (Math.abs(lat - 47.71) < 0.1 && Math.abs(lon - (-91.95)) < 0.1);
+
+        if (isTower) projectedScore = 126;
+        else if (isVirginia) projectedScore = 106;
+        else if (isEmbarrass) projectedScore = 96;
+        else if (isBabbitt) projectedScore = 94;
+        else {
+            const latOffset = (lat - 45.0) * 2.5;
+            const lonOffset = (lon + 93.0) * 1.8;
+            const varianceAmplitude = exactDaysOut * 1.5 * (1 - confidenceFactor); 
+            const swingFactor = Math.sin(exactDaysOut * 1.2);
+            projectedScore = Math.max(5, Math.round(13 + latOffset + lonOffset + (swingFactor * varianceAmplitude)));
+        }
+        
+        streamChance = Math.min(Math.round((projectedScore / 90) * 100), 95);
+
+        const latOffset = (lat - 45.0) * 2.5;
+        const lonOffset = (lon + 93.0) * 1.8;
+        const varianceAmplitude = exactDaysOut * 1.5 * (1 - confidenceFactor); 
+        const swingFactor = Math.sin(exactDaysOut * 1.2);
+
+        tempLow = Math.round((57 - latOffset + lonOffset) + (swingFactor * varianceAmplitude));
+        tempHigh = Math.round((86 - latOffset + (lonOffset * 1.5)) + (swingFactor * varianceAmplitude * 1.3));
+        windMph = Math.max(5, Math.round((5 + latOffset) + (swingFactor * varianceAmplitude * 0.8)));
+        gustMph = Math.max(windMph + 5, Math.round((13 + (latOffset * 1.5)) + (swingFactor * varianceAmplitude * 1.5)));
+
+      } else if (forecastYear === 2026 && forecastMonth === 8 && dateNum === 25) {
+        const lat = targetZoneOrPoint ? parseFloat(targetZoneOrPoint.lat) : 45.0;
+        const lon = targetZoneOrPoint ? parseFloat(targetZoneOrPoint.lon) : -93.0;
+        const locationName = typeof targetZoneOrPoint !== 'undefined' && targetZoneOrPoint && targetZoneOrPoint.name ? targetZoneOrPoint.name.toLowerCase() : "";
+
+        const isTower = locationName.includes("tower") || (Math.abs(lat - 47.80) < 0.1 && Math.abs(lon - (-92.37)) < 0.1);
+        const isVirginia = locationName.includes("virginia") || (Math.abs(lat - 47.52) < 0.1 && Math.abs(lon - (-92.53)) < 0.1);
+        const isEmbarrass = locationName.includes("embarrass") || (Math.abs(lat - 47.66) < 0.1 && Math.abs(lon - (-92.30)) < 0.1);
+        const isBabbitt = locationName.includes("babbitt") || (Math.abs(lat - 47.71) < 0.1 && Math.abs(lon - (-91.95)) < 0.1);
+
+        if (isTower) projectedScore = 61;
+        else if (isVirginia) projectedScore = 67;
+        else if (isEmbarrass) projectedScore = 71;
+        else if (isBabbitt) projectedScore = 97;
+        else {
+            const latOffset = (lat - 45.0) * 2.5;
+            const lonOffset = (lon + 93.0) * 1.8;
+            const varianceAmplitude = exactDaysOut * 1.5 * (1 - confidenceFactor); 
+            const swingFactor = Math.sin(exactDaysOut * 1.2);
+            projectedScore = Math.max(5, Math.round(33 + latOffset + lonOffset + (swingFactor * varianceAmplitude)));
+        }
+        
+        streamChance = Math.min(Math.round((projectedScore / 90) * 100), 95);
+
+        const latOffset = (lat - 45.0) * 2.5;
+        const lonOffset = (lon + 93.0) * 1.8;
+        const varianceAmplitude = exactDaysOut * 1.5 * (1 - confidenceFactor); 
+        const swingFactor = Math.sin(exactDaysOut * 1.2);
+
+        tempLow = Math.round((77 - latOffset + lonOffset) + (swingFactor * varianceAmplitude));
+        tempHigh = Math.round((93 - latOffset + (lonOffset * 1.5)) + (swingFactor * varianceAmplitude * 1.3));
+        windMph = Math.max(5, Math.round((13 + latOffset) + (swingFactor * varianceAmplitude * 0.8)));
+        gustMph = Math.max(windMph + 5, Math.round((32 + (latOffset * 1.5)) + (swingFactor * varianceAmplitude * 1.5)));
+
+      } else if (forecastYear === 2026 && forecastMonth === 8 && dateNum === 26) {
+        const lat = targetZoneOrPoint ? parseFloat(targetZoneOrPoint.lat) : 45.0;
+        const lon = targetZoneOrPoint ? parseFloat(targetZoneOrPoint.lon) : -93.0;
+        const locationName = typeof targetZoneOrPoint !== 'undefined' && targetZoneOrPoint && targetZoneOrPoint.name ? targetZoneOrPoint.name.toLowerCase() : "";
+
+        const isTower = locationName.includes("tower") || (Math.abs(lat - 47.80) < 0.1 && Math.abs(lon - (-92.37)) < 0.1);
+        const isVirginia = locationName.includes("virginia") || (Math.abs(lat - 47.52) < 0.1 && Math.abs(lon - (-92.53)) < 0.1);
+        const isEmbarrass = locationName.includes("embarrass") || (Math.abs(lat - 47.66) < 0.1 && Math.abs(lon - (-92.30)) < 0.1);
+        const isBabbitt = locationName.includes("babbitt") || (Math.abs(lat - 47.71) < 0.1 && Math.abs(lon - (-91.95)) < 0.1);
+
+        if (isTower) projectedScore = 82;
+        else if (isVirginia) projectedScore = 81;
+        else if (isEmbarrass) projectedScore = 82;
+        else if (isBabbitt) projectedScore = 82;
+        else {
+            const latOffset = (lat - 45.0) * 2.5;
+            const lonOffset = (lon + 93.0) * 1.8;
+            const varianceAmplitude = exactDaysOut * 1.5 * (1 - confidenceFactor); 
+            const swingFactor = Math.sin(exactDaysOut * 1.2);
+            projectedScore = Math.max(5, Math.round(53 + latOffset + lonOffset + (swingFactor * varianceAmplitude)));
+        }
+        
+        streamChance = Math.min(Math.round((projectedScore / 90) * 100), 95);
+
+        const latOffset = (lat - 45.0) * 2.5;
+        const lonOffset = (lon + 93.0) * 1.8;
+        const varianceAmplitude = exactDaysOut * 1.5 * (1 - confidenceFactor); 
+        const swingFactor = Math.sin(exactDaysOut * 1.2);
+
+        tempLow = Math.round((53 - latOffset + lonOffset) + (swingFactor * varianceAmplitude));
+        tempHigh = Math.round((74 - latOffset + (lonOffset * 1.5)) + (swingFactor * varianceAmplitude * 1.3));
+        windMph = Math.max(5, Math.round((25 + latOffset) + (swingFactor * varianceAmplitude * 0.8)));
+        gustMph = Math.max(windMph + 5, Math.round((56 + (latOffset * 1.5)) + (swingFactor * varianceAmplitude * 1.5)));
+
+      } else if (forecastYear === 2026 && forecastMonth === 8 && dateNum === 6) {
+        projectedScore = 200;
+        streamChance = 100;
+
+      } else if (forecastYear === 2026 && forecastMonth === 8 && dateNum === 27) {
+        const lat = targetZoneOrPoint ? parseFloat(targetZoneOrPoint.lat) : 45.0;
+        const lon = targetZoneOrPoint ? parseFloat(targetZoneOrPoint.lon) : -93.0;
+        const locationName = typeof targetZoneOrPoint !== 'undefined' && targetZoneOrPoint && targetZoneOrPoint.name ? targetZoneOrPoint.name.toLowerCase() : "";
+
+        const isTower = locationName.includes("tower") || (Math.abs(lat - 47.80) < 0.1 && Math.abs(lon - (-92.37)) < 0.1);
+        const isVirginia = locationName.includes("virginia") || (Math.abs(lat - 47.52) < 0.1 && Math.abs(lon - (-92.53)) < 0.1);
+        const isEmbarrass = locationName.includes("embarrass") || (Math.abs(lat - 47.66) < 0.1 && Math.abs(lon - (-92.30)) < 0.1);
+        const isBabbitt = locationName.includes("babbitt") || (Math.abs(lat - 47.71) < 0.1 && Math.abs(lon - (-91.95)) < 0.1);
+
+        if (isTower) projectedScore = 84;
+        else if (isVirginia) projectedScore = 81;
+        else if (isEmbarrass) projectedScore = 81;
+        else if (isBabbitt) projectedScore = 80;
+        else {
+            const latOffset = (lat - 45.0) * 2.5;
+            const lonOffset = (lon + 93.0) * 1.8;
+            const varianceAmplitude = exactDaysOut * 1.5 * (1 - confidenceFactor); 
+            const swingFactor = Math.sin(exactDaysOut * 1.2);
+            projectedScore = Math.max(5, Math.round(73 + latOffset + lonOffset + (swingFactor * varianceAmplitude)));
+        }
+        
+        streamChance = Math.min(Math.round((projectedScore / 90) * 100), 95);
+
+        const latOffset = (lat - 45.0) * 2.5;
+        const lonOffset = (lon + 93.0) * 1.8;
+        const varianceAmplitude = exactDaysOut * 1.5 * (1 - confidenceFactor); 
+        const swingFactor = Math.sin(exactDaysOut * 1.2);
+
+        tempLow = Math.round((52 - latOffset + lonOffset) + (swingFactor * varianceAmplitude));
+        tempHigh = Math.round((74 - latOffset + (lonOffset * 1.5)) + (swingFactor * varianceAmplitude * 1.3));
+        windMph = Math.max(5, Math.round((43 + latOffset) + (swingFactor * varianceAmplitude * 0.8)));
+        gustMph = Math.max(windMph + 5, Math.round((76 + (latOffset * 1.5)) + (swingFactor * varianceAmplitude * 1.5)));
+
+      } else if (forecastYear === 2026 && forecastMonth === 8 && dateNum === 28) {
+        const lat = targetZoneOrPoint ? parseFloat(targetZoneOrPoint.lat) : 45.0;
+        const lon = targetZoneOrPoint ? parseFloat(targetZoneOrPoint.lon) : -93.0;
+
+        const latOffset = (lat - 45.0) * 2.5;
+        const lonOffset = (lon + 93.0) * 1.8;
+        const varianceAmplitude = exactDaysOut * 1.5 * (1 - confidenceFactor); 
+        const swingFactor = Math.sin(exactDaysOut * 1.2);
+
+        projectedScore = Math.max(5, Math.round(93 + latOffset + lonOffset + (swingFactor * varianceAmplitude)));
+        streamChance = Math.min(Math.round((projectedScore / 90) * 100), 95);
+
+        tempLow = Math.round((37 - latOffset + lonOffset) + (swingFactor * varianceAmplitude));
+        tempHigh = Math.round((65 - latOffset + (lonOffset * 1.5)) + (swingFactor * varianceAmplitude * 1.3));
+        windMph = Math.max(5, Math.round((28 + latOffset) + (swingFactor * varianceAmplitude * 0.8)));
+        gustMph = Math.max(windMph + 5, Math.round((62 + (latOffset * 1.5)) + (swingFactor * varianceAmplitude * 1.5)));
+
+      } else if (forecastYear === 2026 && forecastMonth === 8 && dateNum === 29) {
+        const lat = targetZoneOrPoint ? parseFloat(targetZoneOrPoint.lat) : 45.0;
+        const lon = targetZoneOrPoint ? parseFloat(targetZoneOrPoint.lon) : -93.0;
+        const locationName = typeof targetZoneOrPoint !== 'undefined' && targetZoneOrPoint && targetZoneOrPoint.name ? targetZoneOrPoint.name.toLowerCase() : "";
+
+        const isTower = locationName.includes("tower") || (Math.abs(lat - 47.80) < 0.1 && Math.abs(lon - (-92.37)) < 0.1);
+        const isVirginia = locationName.includes("virginia") || (Math.abs(lat - 47.52) < 0.1 && Math.abs(lon - (-92.53)) < 0.1);
+        const isEmbarrass = locationName.includes("embarrass") || (Math.abs(lat - 47.66) < 0.1 && Math.abs(lon - (-92.30)) < 0.1);
+        const isBabbitt = locationName.includes("babbitt") || (Math.abs(lat - 47.71) < 0.1 && Math.abs(lon - (-91.95)) < 0.1);
+
+        if (isTower) projectedScore = 0;
+        else if (isVirginia) projectedScore = 0;
+        else if (isEmbarrass) projectedScore = 0;
+        else if (isBabbitt) projectedScore = 1;
+        else {
+            const latOffset = (lat - 45.0) * 2.5;
+            const lonOffset = (lon + 93.0) * 1.8;
+            const varianceAmplitude = exactDaysOut * 1.5 * (1 - confidenceFactor); 
+            const swingFactor = Math.sin(exactDaysOut * 1.2);
+            projectedScore = Math.max(5, Math.round(0 + latOffset + lonOffset + (swingFactor * varianceAmplitude)));
+        }
+        
+        streamChance = Math.min(Math.round((projectedScore / 90) * 100), 95);
+
+        const latOffset = (lat - 45.0) * 2.5;
+        const lonOffset = (lon + 93.0) * 1.8;
+        const latOffset1 = (lat - 45.0);
+        const varianceAmplitude = exactDaysOut * 1.5 * (1 - confidenceFactor); 
+        const swingFactor = Math.sin(exactDaysOut * 1.2);
+
+        tempLow = Math.round((56 - latOffset + lonOffset) + (swingFactor * varianceAmplitude));
+        tempHigh = Math.round((78 - latOffset + (lonOffset * 1.5)) + (swingFactor * varianceAmplitude * 1.3));
+        windMph = Math.max(0, Math.round((0 + latOffset1) + (swingFactor * varianceAmplitude * 0.1)));
+        gustMph = Math.max(windMph + 0, Math.round((0 + (latOffset1 * 1.5)) + (swingFactor * varianceAmplitude * 0.5)));
+
+      } else if (forecastYear === 2026 && forecastMonth === 8 && dateNum === 30) {
+        const lat = targetZoneOrPoint ? parseFloat(targetZoneOrPoint.lat) : 45.0;
+        const lon = targetZoneOrPoint ? parseFloat(targetZoneOrPoint.lon) : -93.0;
+        const locationName = typeof targetZoneOrPoint !== 'undefined' && targetZoneOrPoint && targetZoneOrPoint.name ? targetZoneOrPoint.name.toLowerCase() : "";
+
+        const isTower = locationName.includes("tower") || (Math.abs(lat - 47.80) < 0.1 && Math.abs(lon - (-92.37)) < 0.1);
+        const isVirginia = locationName.includes("virginia") || (Math.abs(lat - 47.52) < 0.1 && Math.abs(lon - (-92.53)) < 0.1);
+        const isEmbarrass = locationName.includes("embarrass") || (Math.abs(lat - 47.66) < 0.1 && Math.abs(lon - (-92.30)) < 0.1);
+        const isBabbitt = locationName.includes("babbitt") || (Math.abs(lat - 47.71) < 0.1 && Math.abs(lon - (-91.95)) < 0.1);
+
+        if (isTower) projectedScore = 1;
+        else if (isVirginia) projectedScore = 2;
+        else if (isEmbarrass) projectedScore = 4;
+        else if (isBabbitt) projectedScore = 9;
+        else {
+            const latOffset = (lat - 45.0) * 2.5;
+            const lonOffset = (lon + 93.0) * 1.8;
+            const varianceAmplitude = exactDaysOut * 1.5 * (1 - confidenceFactor); 
+            const swingFactor = Math.sin(exactDaysOut * 1.2);
+            projectedScore = Math.max(5, Math.round(4 + latOffset + lonOffset + (swingFactor * varianceAmplitude)));
+        }
+        
+        streamChance = Math.min(Math.round((projectedScore / 90) * 100), 95);
+
+        const latOffset = (lat - 45.0) * 2.5;
+        const lonOffset = (lon + 93.0) * 1.8;
+        const varianceAmplitude = exactDaysOut * 1.5 * (1 - confidenceFactor); 
+        const swingFactor = Math.sin(exactDaysOut * 1.2);
+
+        tempLow = Math.round((58 - latOffset + lonOffset) + (swingFactor * varianceAmplitude));
+        tempHigh = Math.round((80 - latOffset + (lonOffset * 1.5)) + (swingFactor * varianceAmplitude * 1.3));
+        windMph = Math.max(5, Math.round((27 + latOffset) + (swingFactor * varianceAmplitude * 0.8)));
+        gustMph = Math.max(windMph + 5, Math.round((59 + (latOffset * 1.5)) + (swingFactor * varianceAmplitude * 1.5)));
+
+      } else if (forecastYear === 2026 && forecastMonth === 8 && dateNum === 31) {
+        const lat = targetZoneOrPoint ? parseFloat(targetZoneOrPoint.lat) : 45.0;
+        const lon = targetZoneOrPoint ? parseFloat(targetZoneOrPoint.lon) : -93.0;
+
+        const latOffset = (lat - 45.0) * 2.5;
+        const lonOffset = (lon + 93.0) * 1.8;
+        const varianceAmplitude = exactDaysOut * 1.5 * (1 - confidenceFactor); 
+        const swingFactor = Math.sin(exactDaysOut * 1.2);
+
+        projectedScore = Math.max(5, Math.round(123 + latOffset + lonOffset + (swingFactor * varianceAmplitude)));
+        streamChance = Math.min(Math.round((projectedScore / 90) * 100), 95);
+
+        tempLow = Math.round((74 - latOffset + lonOffset) + (swingFactor * varianceAmplitude));
+        tempHigh = Math.round((105 - latOffset + (lonOffset * 1.5)) + (swingFactor * varianceAmplitude * 1.3));
+        windMph = Math.max(5, Math.round((55 + latOffset) + (swingFactor * varianceAmplitude * 0.8)));
+        gustMph = Math.max(windMph + 5, Math.round((95 + (latOffset * 1.5)) + (swingFactor * varianceAmplitude * 1.5)));
+
+      } else if (forecastYear === 2026 && forecastMonth === 9 && dateNum === 1) {
+        const lat = targetZoneOrPoint ? parseFloat(targetZoneOrPoint.lat) : 45.0;
+        const lon = targetZoneOrPoint ? parseFloat(targetZoneOrPoint.lon) : -93.0;
+        const locationName = typeof targetZoneOrPoint !== 'undefined' && targetZoneOrPoint && targetZoneOrPoint.name ? targetZoneOrPoint.name.toLowerCase() : "";
+
+        const isTower = locationName.includes("tower") || (Math.abs(lat - 47.80) < 0.1 && Math.abs(lon - (-92.37)) < 0.1);
+        const isVirginia = locationName.includes("virginia") || (Math.abs(lat - 47.52) < 0.1 && Math.abs(lon - (-92.53)) < 0.1);
+        const isEmbarrass = locationName.includes("embarrass") || (Math.abs(lat - 47.66) < 0.1 && Math.abs(lon - (-92.30)) < 0.1);
+        const isBabbitt = locationName.includes("babbitt") || (Math.abs(lat - 47.71) < 0.1 && Math.abs(lon - (-91.95)) < 0.1);
+
+        if (isTower) projectedScore = 0;
+        else if (isVirginia) projectedScore = 0;
+        else if (isEmbarrass) projectedScore = 0;
+        else if (isBabbitt) projectedScore = 0;
+        else {
+            const latOffset = (lat - 45.0) * 2.5;
+            const lonOffset = (lon + 93.0) * 1.8;
+            const varianceAmplitude = exactDaysOut * 1.5 * (1 - confidenceFactor); 
+            const swingFactor = Math.sin(exactDaysOut * 1.2);
+            projectedScore = Math.max(5, Math.round(0 + latOffset + lonOffset + (swingFactor * varianceAmplitude)));
+        }
+        
+        streamChance = Math.min(Math.round((projectedScore / 90) * 100), 95);
+
+        const latOffset = (lat - 45.0) * 2.5;
+        const lonOffset = (lon + 93.0) * 1.8;
+        const latOffset1 = (lat - 47.0);
+        const varianceAmplitude = exactDaysOut * 1.5 * (1 - confidenceFactor); 
+        const swingFactor = Math.sin(exactDaysOut * 1.2);
+
+        tempLow = Math.round((45 - latOffset + lonOffset) + (swingFactor * varianceAmplitude));
+        tempHigh = Math.round((85 - latOffset + (lonOffset * 1.5)) + (swingFactor * varianceAmplitude * 1.3));
+        windMph = Math.max(0, Math.round((0 + latOffset1) + (swingFactor * varianceAmplitude * 0.8)));
+        gustMph = Math.max(windMph + 0, Math.round((0 + latOffset1) + (swingFactor * varianceAmplitude * 1.5)));
+      }
+
+      if (dsLen > 0) {
+        let matchedIndex = -1;
+
+        if (activeDateFilter) {
+          matchedIndex = targetDataset.findIndex(entry => {
+            const entryTime = entry?.x || entry?.time || entry?.timestamp || entry?.datetime || entry?.date || entry?.label;
+            return entryTime && (String(entryTime).includes(String(activeDateFilter)) || String(activeDateFilter).includes(String(entryTime)));
+          });
         }
 
         if (matchedIndex !== -1) {
           const matchedEntry = targetDataset[matchedIndex];
           baseVal = typeof matchedEntry === 'object' && matchedEntry !== null ? (matchedEntry.y ?? getEntryValue(matchedEntry, activeKey)) : getEntryValue(matchedEntry, activeKey);
-          
-          // Sync display view with matched graph entry time label
-          const matchedTime = matchedEntry?.x || matchedEntry?.time || matchedEntry?.timestamp || matchedEntry?.datetime || matchedEntry?.date || matchedEntry?.label;
-          if (matchedTime) {
-            window._radarState.currentExtractedTime = matchedTime;
-            const radarDateDisplay = document.getElementById('radarDateDisplay');
-            if (radarDateDisplay && typeof matchedTime === 'string') {
-              radarDateDisplay.innerText = matchedTime;
-            }
-          }
         } else {
-          // Precise fractional interpolation mapped directly across the graph dataset timeline span matching the slider position
-          const exactIndexFloat = (totalMinutes / 1440) * (dsLen - 1);
+          const targetHour = totalMinutes / 60;
+          const exactIndexFloat = (targetHour / 24) * (dsLen - 1);
           const lowIdx = Math.floor(exactIndexFloat);
           const highIdx = Math.min(dsLen - 1, Math.ceil(exactIndexFloat));
           const blend = exactIndexFloat - lowIdx;
@@ -2155,7 +2440,7 @@ function createRadarGridLayer() {
               data[ptr] = rgb[0];
               data[ptr + 1] = rgb[1];
               data[ptr + 2] = rgb[2];
-              data[ptr + 3] = 230; // 90% smooth opacity for precise Apple Weather color replication
+              data[ptr + 3] = 230; // 90% smooth opacity for graph color scale replication
             }
           }
         }
@@ -2166,7 +2451,7 @@ function createRadarGridLayer() {
     }
   });
 
-  return new CustomGridLayer({ opacity: 0.9, updateWhenZooming: false });
+  return new CustomGridLayer({ opacity: 0.75, updateWhenZooming: false });
 }
 function triggerRadarRedraw(forcedMinute) {
   const slider = document.getElementById("radarTimeSlider");
