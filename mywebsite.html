@@ -1976,7 +1976,7 @@ function initTimezoneSyncedRadarModal(mapModal, item, mode, selectedDayIndex) {
 }
 
 /**
- * Dynamically map graph values to visual radar heatmaps without location dependence
+ * Dynamically map graph values to visual radar heatmaps matching exact forecast color scales
  */
 function triggerRadarRedraw(forcedMinute) {
   const slider = document.getElementById("radarTimeSlider");
@@ -2023,32 +2023,39 @@ function triggerRadarRedraw(forcedMinute) {
     paletteKey = `wind_${window._radarState.windSubMode}`;
   }
 
+  // Exact color scales mapped to match forecast graph theme (#3b82f6, #38bdf8, #22c55e, #eab308, #ef4444)
   const exactPaletteMap = {
     temp: [
-      { stop: 0.0, rgb: [30, 64, 175] },
-      { stop: 0.4, rgb: [74, 222, 128] },
-      { stop: 0.7, rgb: [250, 204, 21] },
-      { stop: 1.0, rgb: [239, 68, 68] }
+      { stop: 0.0, rgb: [59, 130, 246] },   // Cold / Low (#3b82f6)
+      { stop: 0.3, rgb: [56, 189, 248] },   // Mild / Cool (#38bdf8)
+      { stop: 0.6, rgb: [34, 197, 94] },    // Moderate (#22c55e)
+      { stop: 0.8, rgb: [234, 179, 8] },    // Warm (#eab308)
+      { stop: 1.0, rgb: [239, 68, 68] }     // Hot / High (#ef4444)
     ],
     wind_speed: [
-      { stop: 0.0, rgb: [15, 23, 42] },
-      { stop: 0.5, rgb: [34, 197, 94] },
-      { stop: 1.0, rgb: [168, 85, 247] }
+      { stop: 0.0, rgb: [15, 23, 42] },     // Calm Slate (#0f172a)
+      { stop: 0.4, rgb: [56, 189, 248] },   // Breezy Light Blue (#38bdf8)
+      { stop: 0.75, rgb: [34, 197, 94] },   // Wind Emerald (#22c55e)
+      { stop: 1.0, rgb: [168, 85, 247] }    // High Wind Purple (#a855f7)
     ],
     wind_gust: [
-      { stop: 0.0, rgb: [30, 58, 138] },
-      { stop: 0.5, rgb: [250, 204, 21] },
-      { stop: 1.0, rgb: [255, 255, 255] }
+      { stop: 0.0, rgb: [30, 58, 138] },    // Dark Blue (#1e3a8a)
+      { stop: 0.5, rgb: [234, 179, 8] },    // Gust Yellow (#eab308)
+      { stop: 1.0, rgb: [239, 68, 68] }     // Severe Gust Red (#ef4444)
     ],
     dos: [
-      { stop: 0.0, rgb: [22, 101, 52] },
-      { stop: 1.0, rgb: [239, 68, 68] }
+      { stop: 0.0, rgb: [34, 197, 94] },    // Low Risk Green (#22c55e)
+      { stop: 0.5, rgb: [234, 179, 8] },    // Moderate Risk Yellow (#eab308)
+      { stop: 1.0, rgb: [239, 68, 68] }     // Extreme Risk Red (#ef4444)
     ],
     precip: [
-      { stop: 0.0, rgb: [15, 23, 42] },
-      { stop: 1.0, rgb: [168, 85, 247] }
+      { stop: 0.0, rgb: [15, 23, 42] },     // Dry (#0f172a)
+      { stop: 0.4, rgb: [56, 189, 248] },   // Light Rain (#38bdf8)
+      { stop: 0.8, rgb: [59, 130, 246] },   // Heavy Rain (#3b82f6)
+      { stop: 1.0, rgb: [168, 85, 247] }    // Extreme Precip Purple (#a855f7)
     ]
   };
+
   const palette = exactPaletteMap[paletteKey] || exactPaletteMap.temp;
 
   const getEntryValue = (entry, key) => {
@@ -2286,7 +2293,7 @@ function ensureLeafletLoaded(callback) {
   script.src = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.js";
   script.onload = callback;
   document.head.appendChild(script);
-}  
+}
 let activeMapItem = null;
 
 // Global Google Map, Traffic Layer, and transit references for Post-8/25/2026 handling
