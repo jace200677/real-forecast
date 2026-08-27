@@ -2168,6 +2168,7 @@ function triggerRadarRedraw(forcedMinute) {
 /**
  * Synchronizes selected timezone, dataset, and initializes Leaflet map object
  */
+// Updated initialization function ready for use with the correct arguments
 function initTimezoneSyncedRadarModal(mapModal, item, mode, selectedDayIndex) {
   window._radarState.currentMode = mode;
   window._radarState.selectedDayIndex = selectedDayIndex;
@@ -2209,8 +2210,11 @@ function initTimezoneSyncedRadarModal(mapModal, item, mode, selectedDayIndex) {
       minZoom: 2, maxZoom: 18, noWrap: true, bounds: worldBounds, attribution: 'Tiles &copy; Esri'
     }).addTo(window._radarState.map);
 
-    window._radarState.radarTileLayer = createRadarGridLayer(null, 0, item, mode);
-    window._radarState.radarTileLayer.addTo(window._radarState.map);
+    const dummyCanvas = document.createElement('canvas');
+    window._radarState.radarTileLayer = createRadarGridLayer(dummyCanvas, 0, item, mode);
+    if (window._radarState.radarTileLayer && typeof window._radarState.radarTileLayer.addTo === 'function') {
+      window._radarState.radarTileLayer.addTo(window._radarState.map);
+    }
   } else {
     window._radarState.map.setView([lat, lon], window._radarState.map.getZoom());
   }
