@@ -1727,6 +1727,12 @@ function openWeatherMapModal(item, mode = 'temp', selectedDayIndex = 0) {
     document.body.appendChild(mapModal);
   }
 
+  // FIX: Destroy existing Leaflet map instance to prevent "already initialized" crash
+  if (window._radarMapInstance) {
+    window._radarMapInstance.remove();
+    window._radarMapInstance = null;
+  }
+
   ensureLeafletLoaded(() => {
     initTimezoneSyncedRadarModal(mapModal, item, mode, selectedDayIndex);
   });
@@ -1793,13 +1799,11 @@ function initTimezoneSyncedRadarModal(mapModal, item, mode, selectedDayIndex) {
   // **Universal DOM Graph Extractor**: Scrapes live SVG/Canvas/DOM data points if direct dataset properties are missing
   const dataset = (hourlyRaw.length > 0) ? hourlyRaw : (function scrapeDomGraphPoints() {
     const points = [];
-    // Target any interactive modal or container holding svg dots, circles, or path data points
     const selectors = [
       'svg circle', '.apexcharts-series path', '.recharts-curve', '.recharts-dot', 
       'canvas', '[class*="chart"] circle', '[class*="graph"] circle', 'path.highcharts-graph'
     ];
     
-    // Look for rendered data points or plot nodes across active DOM elements
     for (const sel of selectors) {
       const elements = document.querySelectorAll(sel);
       if (elements && elements.length >= 12) {
@@ -1807,14 +1811,13 @@ function initTimezoneSyncedRadarModal(mapModal, item, mode, selectedDayIndex) {
           let val = 50;
           const cx = parseFloat(el.getAttribute('cx') || el.getAttribute('x') || (idx * 15));
           const cy = parseFloat(el.getAttribute('cy') || el.getAttribute('y') || (100 - (idx % 24)));
-          val = Math.max(0, Math.min(150, 150 - (cy * 1.2))); // Normalize vertical position to a realistic weather/DOS metric
+          val = Math.max(0, Math.min(150, 150 - (cy * 1.2))); 
           points.push({ hour: (idx / elements.length) * 24, value: val, temp: val, speed: val * 0.5, gust: val * 0.8 });
         });
         break;
       }
     }
 
-    // Fallback: If no explicit chart nodes found, check window global chart instances or generate precise sine wave anchored to current hour
     if (points.length < 24) {
       for (let h = 0; h < 24; h++) {
         let baseVal = 50 + Math.sin((h - 6) / 24 * Math.PI * 2) * 35 + (selectedDayIndex * 5);
@@ -1875,7 +1878,8 @@ function initTimezoneSyncedRadarModal(mapModal, item, mode, selectedDayIndex) {
 
   const worldBounds = L.latLngBounds(L.latLng(-90, -180), L.latLng(90, 180));
 
-  const map = L.map('leafletMap', {
+  // FIX: Save map instance globally so it can be destroyed on next modal call
+  window._radarMapInstance = L.map('leafletMap', {
     center: [lat, lon],
     zoom: 3,
     minZoom: 2,
@@ -1885,6 +1889,8 @@ function initTimezoneSyncedRadarModal(mapModal, item, mode, selectedDayIndex) {
     maxBounds: worldBounds,
     maxBoundsViscosity: 1.0
   });
+
+  const map = window._radarMapInstance;
 
   L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
     minZoom: 2,
