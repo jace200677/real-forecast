@@ -1873,7 +1873,7 @@ function scrapeUniversalGraphValues(selectedDayIndex = 0) {
 
   return points;
 }
-// --- Complete Radar Chart and Timeline Slider Integration ---
+// --- Complete createRadarGridLayer Method with Full Multi-Variable & Event Interpolation ---
 
 function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, nextItem = null, forcedMinute = null) {
     if (!canvas) return null;
@@ -1934,14 +1934,6 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
     const effectiveNextItem = resolveNextItem();
 
     const getPreviousDayLowestTemp = () => {
-        if (item.dateStr === "8/24/2026" || item.dateStr === "08/24/2026") {
-            const prev = effectivePrevItem;
-            if (prev && Array.isArray(prev.overrideEvents) && prev.overrideEvents.length > 0) {
-                const eventTemps = prev.overrideEvents.filter(e => e.temp !== undefined).map(e => e.temp);
-                if (eventTemps.length > 0) return Math.min(...eventTemps);
-            }
-            return 48;
-        }
         const prev = effectivePrevItem;
         if (prev) {
             if (Array.isArray(prev.tempRange) && prev.tempRange.length > 0) return Math.min(...prev.tempRange);
@@ -2113,10 +2105,11 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
             label = `Feels Like ${resolvedValue}°F`;
             break;
         case "wind":
+            const subMode = window._radarState?.windSubMode || 'speed';
             const w = getInterpolatedVal(hoveredMinute, 'wind', getDiurnalWind);
             const g = getInterpolatedVal(hoveredMinute, 'gust', getDiurnalGust);
             resolvedValue = { speed: w, gust: g };
-            label = `W: ${w} | G: ${g} mph`;
+            label = subMode === 'gust' ? `Gust: ${g} mph` : `Speed: ${w} mph`;
             break;
         case "dos":
             resolvedValue = getInterpolatedVal(hoveredMinute, 'dos', getDiurnalDos);
@@ -2159,7 +2152,10 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
             } else if (mode === 'precip' && resolvedValue > 0) {
                 fillColor = `rgba(0, 128, 255, ${Math.min(0.7, resolvedValue / 100)})`;
             } else if (mode === 'wind') {
-                fillColor = resolvedValue.speed > 20 ? 'rgba(255, 0, 0, 0.3)' : 'rgba(0, 255, 127, 0.2)';
+                const checkVal = (window._radarState?.windSubMode === 'gust') ? resolvedValue.gust : resolvedValue.speed;
+                fillColor = checkVal > 20 ? 'rgba(255, 0, 0, 0.3)' : 'rgba(0, 255, 127, 0.2)';
+            } else if (mode === 'dos') {
+                fillColor = resolvedValue > 70 ? 'rgba(147, 51, 234, 0.3)' : 'rgba(59, 130, 246, 0.2)';
             }
 
             ctx.fillStyle = fillColor;
@@ -2173,53 +2169,6 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
     });
 
     return new RadarGridLayerClass();
-}
-
-// --- Fully Robust Timeline Slider Listener ---
-const timelineSlider = document.querySelector('input[type="range"]');
-
-if (timelineSlider) {
-    timelineSlider.addEventListener('input', (e) => {
-        const sliderMinute = parseInt(e.target.value, 10);
-
-        // Fetch operational scopes cleanly from active app state or global context
-        const activeCanvas = window._radarState?.canvas || document.querySelector('canvas');
-        const activeItem = window._radarState?.currentItem || (typeof item !== 'undefined' ? item : null);
-        const activeMode = window._radarState?.currentMode || (typeof mode !== 'undefined' ? mode : 'temp');
-        const activeMap = window._radarState?.map || (typeof map !== 'undefined' ? map : null);
-
-        if (!activeMap || !activeCanvas || !activeItem) return;
-
-        // Remove old tile layer to prevent memory leaks and stacked tiles
-        if (window._radarState && window._radarState.radarTileLayer) {
-            activeMap.removeLayer(window._radarState.radarTileLayer);
-        }
-
-        // Re-create layer passing the explicit slider minute as forcedMinute
-        const updatedLayer = createRadarGridLayer(
-            activeCanvas, 
-            0, 
-            activeItem, 
-            activeMode, 
-            null, 
-            null, 
-            sliderMinute
-        );
-
-        if (updatedLayer) {
-            updatedLayer.addTo(activeMap);
-            window._radarState = window._radarState || {};
-            window._radarState.radarTileLayer = updatedLayer;
-        }
-
-        // Update UI time string labels if present
-        const h = Math.floor(sliderMinute / 60);
-        const m = Math.round(sliderMinute % 60);
-        const timeDisplay = document.getElementById('timeDisplayLabel'); 
-        if (timeDisplay) {
-            timeDisplay.textContent = `${h % 12 || 12}:${m < 10 ? '0' : ''}${m} ${h >= 12 ? 'PM' : 'AM'}`;
-        }
-    });
 }
 // --- Comprehensive Timezone-Synced Radar Modal & Timeline Controller ---
 
