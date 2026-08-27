@@ -1844,7 +1844,7 @@ function openWeatherMapModal(item, mode = 'temp', selectedDayIndex = 0) {
     });
   }
 
-  // Ensure slider event listener is always freshly bound to avoid detached listeners
+  // Bind slider event listener dynamically
   const sliderEl = document.getElementById("radarTimeSlider");
   if (sliderEl) {
     sliderEl.oninput = function(e) {
@@ -1990,8 +1990,15 @@ function triggerRadarRedraw(forcedMinute) {
   const imgData = offscreenCtx.createImageData(bufferW, bufferH);
   const data = imgData.data;
 
-  let activeKey = window._radarState.currentMode;
-  if (activeKey === 'wind') activeKey = `wind_${window._radarState.windSubMode}`;
+  // Resolve active keys and mode properties
+  const mode = window._radarState.currentMode;
+  let activeKey = mode;
+  let paletteKey = mode;
+
+  if (mode === 'wind') {
+    activeKey = window._radarState.windSubMode === 'gust' ? 'gust' : 'speed';
+    paletteKey = `wind_${window._radarState.windSubMode}`;
+  }
 
   const exactPaletteMap = {
     temp: [
@@ -2011,11 +2018,17 @@ function triggerRadarRedraw(forcedMinute) {
       { stop: 0.0, rgb: [15, 23, 42] }, { stop: 1.0, rgb: [168, 85, 247] }
     ]
   };
-  const palette = exactPaletteMap[activeKey] || exactPaletteMap.temp;
+  const palette = exactPaletteMap[paletteKey] || exactPaletteMap.temp;
+
+  // Helper for safe dataset extraction
+  const getEntryValue = (entry, key) => {
+    if (!entry) return 50;
+    return entry[key] ?? entry.value ?? entry.temp ?? 50;
+  };
 
   let min = Infinity, max = -Infinity;
   window._radarState.dataset.forEach(entry => {
-    let v = entry[activeKey] ?? entry.value ?? entry.temp ?? 50;
+    let v = getEntryValue(entry, activeKey);
     if (v < min) min = v; if (v > max) max = v;
   });
   if (min === max) { min -= 10; max += 10; }
@@ -2030,13 +2043,16 @@ function triggerRadarRedraw(forcedMinute) {
     const highIdx = Math.min(dsLen - 1, Math.ceil(exactIndexFloat));
     const blend = exactIndexFloat - lowIdx;
 
-    const entryLow = window._radarState.dataset[lowIdx] || {};
-    const entryHigh = window._radarState.dataset[highIdx] || {};
+    const entryLow = window._radarState.dataset[lowIdx];
+    const entryHigh = window._radarState.dataset[highIdx];
 
-    const valLow = entryLow[activeKey] ?? entryLow.value ?? entryLow.temp ?? 50;
-    const valHigh = entryHigh[activeKey] ?? entryHigh.value ?? entryHigh.temp ?? 50;
+    const valLow = getEntryValue(entryLow, activeKey);
+    const valHigh = getEntryValue(entryHigh, activeKey);
     baseVal = valLow * (1 - blend) + valHigh * blend;
   }
+
+  // Phase offset based on time progress (forces visible radar rendering shifts with slider)
+  const timePhase = (totalMinutes / 1440) * Math.PI * 4;
 
   for (let y = 0; y < bufferH; y++) {
     const screenY = y / scaleFactor;
@@ -2044,7 +2060,7 @@ function triggerRadarRedraw(forcedMinute) {
       const screenX = x / scaleFactor;
       const latLng = window._radarState.map.containerPointToLatLng([screenX, screenY]);
       
-      const spatialMod = Math.sin(latLng.lat * 0.12) * Math.cos(latLng.lng * 0.12) * ((max - min) * 0.1);
+      const spatialMod = Math.sin(latLng.lat * 0.12 + timePhase) * Math.cos(latLng.lng * 0.12 + timePhase) * ((max - min) * 0.2);
       const localizedVal = Math.max(min, Math.min(max, baseVal + spatialMod));
       
       const normalized = Math.max(0, Math.min(1, (localizedVal - min) / (max - min)));
