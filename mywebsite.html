@@ -1994,30 +1994,29 @@ function createRadarGridLayer() {
                currentPalette.minVal;
       };
 
-      // Direct inspection of Chart.js instances or global graph datasets to extract exact plotted values
-      let activeChartDataset = null;
+      // Direct inspection of Chart.js instance datasets first to pull exact chart points
+      let chartDataset = null;
       if (window._radarState.chartInstance && window._radarState.chartInstance.data && window._radarState.chartInstance.data.datasets) {
         const datasets = window._radarState.chartInstance.data.datasets;
         if (datasets.length > 0) {
-          // Select dataset index based on active mode/submode
           let dsIdx = 0;
           if (activeKey === 'gust' && datasets.length > 1) dsIdx = 1;
-          activeChartDataset = datasets[dsIdx]?.data || datasets[0]?.data;
+          chartDataset = datasets[dsIdx]?.data;
         }
       }
 
       const currentItem = window._radarState.currentItem || {};
       const activeDatasetKey = activeKey === 'speed' || activeKey === 'gust' ? 'wind' : activeKey;
       
-      // Fallback hierarchy pulling straight from live chart datasets, chart instance storage, or fallback items
-      const dataset = activeChartDataset || 
+      // Robust dataset hierarchy fallback pulling straight from live chart instance or state properties
+      const dataset = chartDataset || 
                       window._radarState.graphDatasets?.[activeDatasetKey] || 
                       window._radarState.chartData || 
                       window._radarState.dataset || 
                       currentItem.hourly || 
                       currentItem.timeline || 
                       currentItem.hours || [];
-                      
+
       const dsLen = dataset.length;
       let baseVal = currentPalette.minVal;
 
@@ -2031,7 +2030,7 @@ function createRadarGridLayer() {
         const lowRaw = dataset[lowIdx];
         const highRaw = dataset[highIdx];
 
-        // Handle Chart.js point objects ({x, y} or numbers) directly
+        // Safely extract values from Chart.js objects ({x, y}), numbers, or nested data structures
         const valLow = typeof lowRaw === 'object' && lowRaw !== null ? (lowRaw.y ?? getEntryValue(lowRaw, activeKey, periodKey)) : getEntryValue(lowRaw, activeKey, periodKey);
         const valHigh = typeof highRaw === 'object' && highRaw !== null ? (highRaw.y ?? getEntryValue(highRaw, activeKey, periodKey)) : getEntryValue(highRaw, activeKey, periodKey);
         
