@@ -2019,7 +2019,6 @@ function createRadarGridLayer() {
         if (!entry) return currentPalette.minVal;
         const pObj = entry[periodKey] || entry;
         
-        // Match keys used by drawForecast / dual lines graph (e.g. speed vs gust, or high/low/speed/gust/temp/dos)
         if (mode === 'wind') {
           const sub = window._radarState.windSubMode;
           if (sub === 'gust') {
@@ -2036,14 +2035,31 @@ function createRadarGridLayer() {
       };
 
       let baseVal = currentPalette.minVal;
+      let activeEntry = currentItem;
+
       if (dsLen > 0) {
         const exactIndexFloat = (targetHour / 24) * (dsLen - 1);
         const lowIdx = Math.floor(exactIndexFloat);
         const highIdx = Math.min(dsLen - 1, Math.ceil(exactIndexFloat));
         const blend = exactIndexFloat - lowIdx;
-        baseVal = getValFromEntry(dataset[lowIdx]) * (1 - blend) + getValFromEntry(dataset[highIdx]) * blend;
+        
+        const lowEntry = dataset[lowIdx] || {};
+        const highEntry = dataset[highIdx] || {};
+        
+        baseVal = getValFromEntry(lowEntry) * (1 - blend) + getValFromEntry(highEntry) * blend;
+        activeEntry = blend > 0.5 ? highEntry : lowEntry;
       } else {
         baseVal = getValFromEntry(currentItem);
+      }
+
+      // Automatically capture and update extracted date/time display on the interface element
+      const extractedTime = activeEntry.time || activeEntry.timestamp || activeEntry.datetime || activeEntry.date || currentItem.time;
+      if (extractedTime) {
+        window._radarState.currentExtractedTime = extractedTime;
+        const radarDateDisplay = document.getElementById('radarDateDisplay');
+        if (radarDateDisplay && typeof extractedTime === 'string') {
+          radarDateDisplay.innerText = extractedTime;
+        }
       }
 
       const tileOrigin = L.point(coords.x * tileSize.x, coords.y * tileSize.y);
@@ -2052,8 +2068,8 @@ function createRadarGridLayer() {
       const data = imgData.data;
 
       const mapCenter = window._radarState.map ? window._radarState.map.getCenter() : null;
-      const targetLat = currentItem.lat ?? currentItem.latitude ?? window._radarState.lat ?? (mapCenter ? mapCenter.lat : 45.3827);
-      const targetLon = currentItem.lon ?? currentItem.longitude ?? window._radarState.lon ?? (mapCenter ? mapCenter.lng : -93.8761);
+      const targetLat = activeEntry.lat ?? activeEntry.latitude ?? currentItem.lat ?? currentItem.latitude ?? window._radarState.lat ?? (mapCenter ? mapCenter.lat : 45.3827);
+      const targetLon = activeEntry.lon ?? activeEntry.longitude ?? currentItem.lon ?? currentItem.longitude ?? window._radarState.lon ?? (mapCenter ? mapCenter.lng : -93.8761);
 
       for (let y = 0; y < tileSize.y; y += step) {
         for (let x = 0; x < tileSize.x; x += step) {
