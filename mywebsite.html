@@ -1754,6 +1754,9 @@ function openForecastGraphModal(item, fullForecast = [], itemIndex = -1) {
 /**
  * Global Radar Map Layer — Continuous Image Buffer (Zero Lines, Smooth Color Field)
  */
+/**
+ * Global Radar Map Layer — Single Planet Bounds & Seamless Color Overlay
+ */
 function openWeatherMapModal(item, mode = 'temp') {
   let mapModal = document.getElementById("weatherRadarMapModal");
   if (!mapModal) {
@@ -1799,20 +1802,25 @@ function initFixedGridRadarModal(mapModal, item, mode) {
 
   mapModal.style.display = "flex";
 
+  // Strict World Bounds to prevent world repetition (tiling copy)
+  const worldBounds = L.latLngBounds(L.latLng(-85, -180), L.latLng(85, 180));
+
   const map = L.map('leafletMap', {
     center: [lat, lon],
-    zoom: 3,
-    minZoom: 1,
+    zoom: 2,
+    minZoom: 2, // Set minimum zoom so the map fits the container without repeating
     maxZoom: 18,
     zoomControl: true,
-    worldCopyJump: true,
-    maxBounds: [[-90, -180], [90, 180]],
+    worldCopyJump: false,
+    maxBounds: worldBounds,
     maxBoundsViscosity: 1.0
   });
 
   L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
-    minZoom: 1,
+    minZoom: 2,
     maxZoom: 18,
+    noWrap: true, // Prevents base tile layer repetition
+    bounds: worldBounds,
     attribution: 'Tiles &copy; Esri'
   }).addTo(map);
 
@@ -1821,7 +1829,6 @@ function initFixedGridRadarModal(mapModal, item, mode) {
   const slider = document.getElementById("radarTimeSlider");
   const label = document.getElementById("radarTimeLabel");
 
-  // Offscreen buffer canvas for continuous pixel manipulation
   const offscreenCanvas = document.createElement("canvas");
   const offscreenCtx = offscreenCanvas.getContext("2d");
 
@@ -1843,7 +1850,8 @@ function initFixedGridRadarModal(mapModal, item, mode) {
       canvas.height = rect.height;
     }
 
-    // Downscaled resolution for fast smooth pixel sampling (eliminates lag & lines completely)
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
     const scaleFactor = 0.25; 
     const bufferWidth = Math.ceil(canvas.width * scaleFactor);
     const bufferHeight = Math.ceil(canvas.height * scaleFactor);
@@ -1862,12 +1870,16 @@ function initFixedGridRadarModal(mapModal, item, mode) {
       for (let x = 0; x < bufferWidth; x++) {
         const screenX = x / scaleFactor;
 
-        // Map container pixel back to Geographic Lat/Lon
         const latLng = map.containerPointToLatLng([screenX, screenY]);
+        
+        // Skip pixels outside the single world longitude bounds (-180 to 180)
+        if (latLng.lng < -180 || latLng.lng > 180 || latLng.lat < -85 || latLng.lat > 85) {
+          continue;
+        }
+
         const geoLat = latLng.lat;
         const geoLng = latLng.lng;
 
-        // Continuous field calculation
         const val1 = Math.sin(geoLat * 0.08 + timeOffset) * Math.cos(geoLng * 0.08 + timeOffset);
         const val2 = Math.cos(geoLat * 0.15 - timeOffset * 0.5) * Math.sin(geoLng * 0.15 + timeOffset * 0.5);
         const normVal = Math.min(1, Math.max(0, (val1 + val2 + 2) / 4));
@@ -1892,8 +1904,6 @@ function initFixedGridRadarModal(mapModal, item, mode) {
 
     offscreenCtx.putImageData(imgData, 0, 0);
 
-    // Render scaled bitmap with bicubic smoothing over the Leaflet Map
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
     ctx.imageSmoothingEnabled = true;
     ctx.imageSmoothingQuality = "high";
     ctx.drawImage(offscreenCanvas, 0, 0, canvas.width, canvas.height);
