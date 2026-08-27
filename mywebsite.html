@@ -1875,10 +1875,6 @@ function scrapeUniversalGraphValues(selectedDayIndex = 0) {
 }
 
 
-/**
- * Custom Leaflet GridLayer rendering canvas tiles based on dataset timeline interpolation
- * Direct Slider Minutes Mode: Reads exact slider position (0-1440 minutes) without timezone conversions
- */
 function createRadarGridLayer() {
   const CustomGridLayer = L.GridLayer.extend({
     createTile: function (coords) {
@@ -1987,11 +1983,14 @@ function createRadarGridLayer() {
                currentPalette.minVal;
       };
 
-      const dataset = window._radarState.dataset || [];
+      // Retrieve selected day item or dataset fallback
+      const currentItem = window._radarState.currentItem || {};
+      const dataset = window._radarState.dataset || currentItem.hourly || currentItem.timeline || currentItem.hours || [];
       const dsLen = dataset.length;
       let baseVal = currentPalette.minVal;
 
       if (dsLen > 0) {
+        // Direct minute-based sampling bound to active slider time
         const targetHour = totalMinutes / 60;
         const exactIndexFloat = (targetHour / 24) * (dsLen - 1);
         const lowIdx = Math.floor(exactIndexFloat);
@@ -2001,6 +2000,9 @@ function createRadarGridLayer() {
         const valLow = getEntryValue(dataset[lowIdx], activeKey);
         const valHigh = getEntryValue(dataset[highIdx], activeKey);
         baseVal = valLow * (1 - blend) + valHigh * blend;
+      } else {
+        // Fallback directly to day-card scope values
+        baseVal = getEntryValue(currentItem, activeKey);
       }
 
       const tileOrigin = L.point(coords.x * tileSize.x, coords.y * tileSize.y);
@@ -2008,8 +2010,8 @@ function createRadarGridLayer() {
       const imgData = ctx.createImageData(tileSize.x, tileSize.y);
       const data = imgData.data;
 
-      const targetLat = window._radarState.currentItem?.lat ?? 45.3827;
-      const targetLon = window._radarState.currentItem?.lon ?? -93.8761;
+      const targetLat = currentItem.lat ?? 45.3827;
+      const targetLon = currentItem.lon ?? -93.8761;
 
       for (let y = 0; y < tileSize.y; y += step) {
         for (let x = 0; x < tileSize.x; x += step) {
@@ -2062,7 +2064,6 @@ function createRadarGridLayer() {
 
   return new CustomGridLayer({ opacity: 0.75, updateWhenZooming: false });
 }
-
 function triggerRadarRedraw(forcedMinute) {
   const slider = document.getElementById("radarTimeSlider");
   const totalMinutes = forcedMinute !== undefined ? forcedMinute : (slider ? parseInt(slider.value, 10) : 0);
