@@ -1878,6 +1878,10 @@ function scrapeUniversalGraphValues(selectedDayIndex = 0) {
  * Custom Leaflet GridLayer rendering canvas tiles based on dataset timeline interpolation
  * Fixed: Perfectly aligned with site graph values and accurate property keys
  */
+/**
+ * Custom Leaflet GridLayer rendering canvas tiles based on dataset timeline interpolation
+ * Fixed: Dynamically resolves Day vs Night nested graph properties matching active slider time
+ */
 function createRadarGridLayer() {
   const CustomGridLayer = L.GridLayer.extend({
     createTile: function (coords) {
@@ -1896,10 +1900,9 @@ function createRadarGridLayer() {
         paletteKey = `wind_${window._radarState.windSubMode}`;
       }
 
-      // Calibrated precisely to the DOS / WIS site scales and unit legends
       const paletteConfig = {
         temp: {
-          minVal: 0, // °F
+          minVal: 0,
           maxVal: 100,
           stops: [
             { val: 0,   rgb: [30, 58, 138] },
@@ -1910,7 +1913,7 @@ function createRadarGridLayer() {
           ]
         },
         wind_speed: {
-          minVal: 0, // mph
+          minVal: 0,
           maxVal: 60,
           stops: [
             { val: 0,  rgb: [15, 23, 42] },
@@ -1921,7 +1924,7 @@ function createRadarGridLayer() {
           ]
         },
         wind_gust: {
-          minVal: 0, // mph
+          minVal: 0,
           maxVal: 80,
           stops: [
             { val: 0,  rgb: [15, 23, 42] },
@@ -1932,18 +1935,18 @@ function createRadarGridLayer() {
           ]
         },
         dos: {
-          minVal: 0, // DOS Index (Matches site scale: 0 - 100)
+          minVal: 0,
           maxVal: 100,
           stops: [
-            { val: 0,   rgb: [34, 197, 94] },   // Quiet / Low
-            { val: 30,  rgb: [56, 189, 248] },  // Moderate
-            { val: 70,  rgb: [234, 179, 8] },   // High (73 Today)
-            { val: 90,  rgb: [239, 68, 68] },   // Severe (93 Fri)
+            { val: 0,   rgb: [34, 197, 94] },
+            { val: 30,  rgb: [56, 189, 248] },
+            { val: 70,  rgb: [234, 179, 8] },
+            { val: 90,  rgb: [239, 68, 68] },
             { val: 100, rgb: [168, 85, 247] }
           ]
         },
         precip: {
-          minVal: 0, // %
+          minVal: 0,
           maxVal: 100,
           stops: [
             { val: 0,   rgb: [15, 23, 42] },
@@ -1957,30 +1960,46 @@ function createRadarGridLayer() {
 
       const currentPalette = paletteConfig[paletteKey] || paletteConfig.dos;
 
-      // Fully maps all possible object key variations from dataset extractions
+      const slider = document.getElementById("radarTimeSlider");
+      const totalMinutes = slider ? parseInt(slider.value, 10) : 0;
+      const hourOfDay = (totalMinutes / 60) % 24;
+      
+      // Determine Day (6:00 AM - 6:00 PM) vs Night active period
+      const isNight = hourOfDay < 6 || hourOfDay >= 18;
+      const periodKey = isNight ? 'night' : 'day';
+
+      // Reads values whether stored directly or nested inside day/night forecast objects
       const getEntryValue = (entry, key) => {
         if (typeof entry === 'number') return entry;
         if (!entry) return currentPalette.minVal;
-        
-        return entry[key] ?? 
+
+        // Check active period object first (day or night)
+        const periodObj = entry[periodKey] || entry;
+
+        return periodObj[key] ?? 
+               periodObj.dos ?? 
+               periodObj.score ?? 
+               periodObj.windSpeed ?? 
+               periodObj.windGust ?? 
+               periodObj.temp ?? 
+               periodObj.value ?? 
+               periodObj.speed ?? 
+               entry[key] ?? 
                entry.dos ?? 
                entry.score ?? 
                entry.windSpeed ?? 
                entry.windGust ?? 
                entry.temp ?? 
                entry.value ?? 
-               entry.speed ?? 
                currentPalette.minVal;
       };
 
       const dataset = window._radarState.dataset || [];
-      const slider = document.getElementById("radarTimeSlider");
-      const totalMinutes = slider ? parseInt(slider.value, 10) : 0;
-      const targetHour = totalMinutes / 60;
       const dsLen = dataset.length;
       let baseVal = currentPalette.minVal;
 
       if (dsLen > 0) {
+        const targetHour = totalMinutes / 60;
         const exactIndexFloat = (targetHour / 24) * (dsLen - 1);
         const lowIdx = Math.floor(exactIndexFloat);
         const highIdx = Math.min(dsLen - 1, Math.ceil(exactIndexFloat));
@@ -2007,7 +2026,6 @@ function createRadarGridLayer() {
           const dLat = latLng.lat - targetLat;
           const dLng = latLng.lng - targetLon;
 
-          // Local spatial variance offset constrained to maintain strict accuracy near focal point
           const spatialVariation = Math.sin(dLat * 0.05) * Math.cos(dLng * 0.05) * 3.0; 
           const sampledValue = baseVal + spatialVariation;
 
