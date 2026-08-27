@@ -1873,7 +1873,6 @@ function scrapeUniversalGraphValues(selectedDayIndex = 0) {
 
   return points;
 }
-
 function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, nextItem = null, forcedMinute = null) {
     if (!canvas) return null;
     const rect = canvas.getBoundingClientRect();
@@ -1885,7 +1884,6 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
     const padRight = Math.round(20 * scaleFactor);
     const graphWidth = width - padLeft - padRight;
 
-    // --- FIX: Support direct minute injection from timeline slider ---
     let hoveredMinute;
     if (forcedMinute !== null && forcedMinute !== undefined) {
         hoveredMinute = Math.max(0, Math.min(1439, forcedMinute));
@@ -2173,6 +2171,37 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
     });
 
     return new RadarGridLayerClass();
+}
+
+// --- Timeline Slider Integration ---
+const timelineSlider = document.querySelector('input[type="range"]'); // Target your timeline slider element
+
+if (timelineSlider) {
+    timelineSlider.addEventListener('input', (e) => {
+        const sliderMinute = parseInt(e.target.value, 10);
+
+        // Remove active layer from the map if it exists
+        if (window._radarState && window._radarState.radarTileLayer) {
+            map.removeLayer(window._radarState.radarTileLayer);
+        }
+
+        // Re-create the radar grid layer with the new slider minute
+        const updatedLayer = createRadarGridLayer(
+            canvasElement, 
+            0, 
+            currentItemData, 
+            currentMode, 
+            null, 
+            null, 
+            sliderMinute
+        );
+
+        if (updatedLayer) {
+            updatedLayer.addTo(map);
+            window._radarState = window._radarState || {};
+            window._radarState.radarTileLayer = updatedLayer;
+        }
+    });
 }
 function triggerRadarRedraw(forcedMinute) {
   const slider = document.getElementById("radarTimeSlider");
