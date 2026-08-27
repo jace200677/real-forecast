@@ -2956,6 +2956,9 @@ async function handleWeatherHistory() {
 /**
  * Fetches historical grid observations from 2026-08-23 up to the exact current date/time
  */
+/**
+ * Fetches historical grid observations from 2026-08-23 up to the exact current date/time
+ */
 async function fetchHistoricalWeatherData(lat, lon) {
   // 1. Get grid points from coordinates
   const pointRes = await fetch(`https://api.weather.gov/points/${lat},${lon}`);
@@ -2988,11 +2991,12 @@ async function fetchHistoricalWeatherData(lat, lon) {
 }
 
 /**
- * Parses raw observation records and filters strictly between 8/23/2026 and today
+ * Parses raw observation records and filters strictly between 8/23/2026 and today,
+ * merging graph override events into final history objects.
  */
 function parseHistoryObservations(observations) {
   const dailyMap = {};
-  const startDateCutoff = '2026-08-23';
+  const startDateCutoff = '2026-08-22';
   const todayCutoff = new Date().toISOString().split('T')[0]; // Current date cap (YYYY-MM-DD)
 
   observations.forEach((obs) => {
@@ -3032,27 +3036,74 @@ function parseHistoryObservations(observations) {
     }
   });
 
+  // Fetch graph override events from global app state or localStorage
+  const graphOverrides = getGraphOverrideEvents();
+
   // Sort dates from newest (today) down to 8/23/2026
   return Object.values(dailyMap)
     .sort((a, b) => b.date.localeCompare(a.date))
     .map((day) => {
-      const maxTemp = day.temps.length ? Math.round(Math.max(...day.temps)) : 'N/A';
-      const minTemp = day.temps.length ? Math.round(Math.min(...day.temps)) : 'N/A';
-      const maxWind = day.winds.length ? Math.round(Math.max(...day.winds)) : 0;
-      const maxGust = day.gusts.length ? Math.round(Math.max(...day.gusts)) : null;
-      const condition = day.conditions[0] || 'Clear';
+      let maxTemp = day.temps.length ? Math.round(Math.max(...day.temps)) : 'N/A';
+      let minTemp = day.temps.length ? Math.round(Math.min(...day.temps)) : 'N/A';
+      let maxWind = day.winds.length ? Math.round(Math.max(...day.winds)) : 0;
+      let maxGust = day.gusts.length ? Math.round(Math.max(...day.gusts)) : null;
+      let condition = day.conditions[0] || 'Clear';
 
-      return {
+      // Base record object
+      let record = {
         date: formatDateDisplay(day.date),
+        rawDate: day.date,
         highTemp: maxTemp,
         lowTemp: minTemp,
         wind: maxWind,
         gust: maxGust,
         condition: condition,
-        dos: calculateDOS(maxWind, condition),
-        wis: calculateWIS(minTemp, maxWind, condition)
+        isOverridden: false,
+        overrideReason: null
       };
+
+      // Apply graph override events if they exist for this date
+      record = mergeGraphOverrides(record, graphOverrides[day.date]);
+
+      // Calculate finalized scores with applied overrides
+      record.dos = calculateDOS(record.wind, record.condition, record);
+      record.wis = calculateWIS(record.lowTemp, record.wind, record.condition, record);
+
+      return record;
     });
+}
+
+/**
+ * Retrieves override events stored from graph interactions or app state
+ */
+function getGraphOverrideEvents() {
+  if (window.graphOverrides) {
+    return window.graphOverrides;
+  }
+  
+  try {
+    return JSON.parse(localStorage.getItem('weatherGraphOverrides')) || {};
+  } catch (e) {
+    return {};
+  }
+}
+
+/**
+ * Merges graph override attributes into an individual weather record
+ */
+function mergeGraphOverrides(record, override) {
+  if (!override) return record;
+
+  return {
+    ...record,
+    highTemp: override.highTemp !== undefined ? override.highTemp : record.highTemp,
+    lowTemp: override.lowTemp !== undefined ? override.lowTemp : record.lowTemp,
+    wind: override.wind !== undefined ? override.wind : record.wind,
+    gust: override.gust !== undefined ? override.gust : record.gust,
+    condition: override.condition !== undefined ? override.condition : record.condition,
+    isOverridden: true,
+    overrideReason: override.reason || 'Graph Manual Override'
+  };
 }
 
 /**
