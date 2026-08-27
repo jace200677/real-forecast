@@ -1742,6 +1742,9 @@ function openForecastGraphModal(item, fullForecast = [], itemIndex = -1) {
 /**
  * Global Radar Map Layer — Full Planet Grid without Inner Lines
  */
+/**
+ * Global Radar Map Layer — Fixed Planet Grid (Full Zoom Out Enabled)
+ */
 function openWeatherMapModal(item, mode = 'temp') {
   let mapModal = document.getElementById("weatherRadarMapModal");
   if (!mapModal) {
@@ -1789,12 +1792,17 @@ function initFixedGridRadarModal(mapModal, item, mode) {
 
   const map = L.map('leafletMap', {
     center: [lat, lon],
-    zoom: 3,
+    zoom: 2,
+    minZoom: 1, // Allows zooming max out to full planet view
+    maxZoom: 18,
     zoomControl: true,
-    worldCopyJump: true
+    worldCopyJump: true,
+    maxBounds: [[-90, -180], [90, 180]],
+    maxBoundsViscosity: 1.0
   });
 
   L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+    minZoom: 1,
     maxZoom: 18,
     attribution: 'Tiles &copy; Esri'
   }).addTo(map);
@@ -1825,14 +1833,13 @@ function initFixedGridRadarModal(mapModal, item, mode) {
     const palette = paletteMap[mode] || paletteMap.temp;
     const timeOffset = (frameIndex + 1) * 0.2;
 
-    const zoom = map.getZoom();
-    const geoGridStep = Math.max(0.1, 1.0 / Math.pow(2, Math.max(0, zoom - 3)));
+    const geoGridStep = 0.25;
 
-    // Full global bounds (Web Mercator limit for latitude)
-    const minLat = -85;
-    const maxLat = 85;
-    const minLng = -180;
-    const maxLng = 180;
+    const mapBounds = map.getBounds();
+    const minLat = Math.max(-85, Math.floor(mapBounds.getSouth() / geoGridStep) * geoGridStep);
+    const maxLat = Math.min(85, Math.ceil(mapBounds.getNorth() / geoGridStep) * geoGridStep);
+    const minLng = Math.max(-180, Math.floor(mapBounds.getWest() / geoGridStep) * geoGridStep);
+    const maxLng = Math.min(180, Math.ceil(mapBounds.getEast() / geoGridStep) * geoGridStep);
 
     for (let gridLat = minLat; gridLat < maxLat; gridLat += geoGridStep) {
       for (let gridLng = minLng; gridLng < maxLng; gridLng += geoGridStep) {
