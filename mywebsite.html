@@ -1769,6 +1769,9 @@ function openForecastGraphModal(item, fullForecast = [], itemIndex = -1) {
 /**
  * Global Radar Overlay — Seamless Minute-by-Minute Dynamic Time Scrubber
  */
+/**
+ * Global Radar Overlay — Seamless Minute-by-Minute (No Grid Lines, No Blank Gaps, Organic Noise)
+ */
 function openWeatherMapModal(item, mode = 'temp') {
   let mapModal = document.getElementById("weatherRadarMapModal");
   if (!mapModal) {
@@ -1779,18 +1782,16 @@ function openWeatherMapModal(item, mode = 'temp') {
   }
 
   ensureLeafletLoaded(() => {
-    initFixedGridRadarModal(mapModal, item, mode);
+    initContinuousRadarModal(mapModal, item, mode);
   });
 }
 
-function initFixedGridRadarModal(mapModal, item, mode) {
+function initContinuousRadarModal(mapModal, item, mode) {
   const lat = item?.lat ?? (window.currentLat || 45.3827);
   const lon = item?.lon ?? (window.currentLon || -93.8761);
 
-  // 1,440 minute steps representing 24 full hours (00:00 to 23:59)
   const totalMinutes = 24 * 60;
   
-  // Format minutes (0..1439) into 12-hour AM/PM format
   const formatTimeFromMinutes = (totalMins) => {
     const hours24 = Math.floor(totalMins / 60) % 24;
     const mins = totalMins % 60;
@@ -1821,7 +1822,7 @@ function initFixedGridRadarModal(mapModal, item, mode) {
       
       <div id="interactiveMapContainer" style="position:relative;width:100%;height:450px;background:#090d16;border-radius:10px;overflow:hidden;border:1px solid #27272a;">
         <div id="leafletMap" style="width:100%;height:100%;background:#090d16;"></div>
-        <canvas id="fixedTileCanvas" style="position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:400;mix-blend-mode:screen;"></canvas>
+        <canvas id="continuousTileCanvas" style="position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:400;mix-blend-mode:screen;"></canvas>
       </div>
 
       <div style="margin-top:14px;background:#27272a;padding:12px 16px;border-radius:8px;">
@@ -1857,12 +1858,16 @@ function initFixedGridRadarModal(mapModal, item, mode) {
     attribution: 'Tiles &copy; Esri'
   }).addTo(map);
 
-  const canvas = document.getElementById("fixedTileCanvas");
+  const canvas = document.getElementById("continuousTileCanvas");
   const ctx = canvas.getContext("2d");
   const slider = document.getElementById("radarTimeSlider");
   const label = document.getElementById("radarTimeLabel");
   const windSelect = document.getElementById("windSubModeSelect");
   const modeTitle = document.getElementById("radarModeTitle");
+
+  // Create an offscreen buffer for pixel manipulation (keeps it highly performant)
+  const offscreenCanvas = document.createElement("canvas");
+  const offscreenCtx = offscreenCanvas.getContext("2d");
 
   const paletteMap = {
     temp: [
@@ -1874,22 +1879,12 @@ function initFixedGridRadarModal(mapModal, item, mode) {
       [239, 68, 68]    // Red
     ],
     wind_speed: [
-      [30, 58, 138],   // Navy
-      [56, 189, 248],  // Cyan
-      [34, 197, 94],   // Green
-      [234, 179, 8],   // Yellow
-      [249, 115, 22],  // Orange
-      [239, 68, 68],   // Red
-      [168, 85, 247]   // Purple
+      [30, 58, 138],   [56, 189, 248],  [34, 197, 94],   [234, 179, 8],   
+      [249, 115, 22],  [239, 68, 68],   [168, 85, 247]
     ],
     wind_gust: [
-      [59, 130, 246],  // Blue
-      [34, 197, 94],   // Green
-      [250, 204, 21],  // Yellow
-      [249, 115, 22],  // Orange
-      [239, 68, 68],   // Red
-      [217, 70, 239],  // Magenta
-      [255, 255, 255]  // White
+      [59, 130, 246],  [34, 197, 94],   [250, 204, 21],  [249, 115, 22],  
+      [239, 68, 68],   [217, 70, 239],  [255, 255, 255]
     ],
     dos: [
       [22, 101, 52],   [34, 197, 94],   [234, 179, 8],   [239, 68, 68]
@@ -1899,21 +1894,23 @@ function initFixedGridRadarModal(mapModal, item, mode) {
     ]
   };
 
-  function getSquareFieldValue(lat, lng, t) {
-    const scale = 0.045;
+  // Organic noise function (removes repeating radial circles)
+  function getOrganicFieldValue(lat, lng, t) {
+    const scale = 0.035;
     const x = lng * scale;
     const y = lat * scale;
 
-    const valX = Math.sin(x + t);
-    const valY = Math.cos(y - t * 0.8);
-    const valDiag = Math.sin((x + y) * 0.7 + t * 0.5);
+    const n1 = Math.sin(x + t * 0.8);
+    const n2 = Math.cos(y - t * 0.6);
+    const n3 = Math.sin((x * 0.7) + (y * 0.5) + t * 0.9);
+    const n4 = Math.cos((x * 0.4) - (y * 0.8) - t * 0.7);
 
-    return Math.min(1, Math.max(0, (valX + valY + valDiag + 3) / 6));
+    return Math.min(1, Math.max(0, (n1 + n2 + n3 + n4 + 4) / 8));
   }
 
   let renderPending = false;
 
-  const drawSquareGridOverlay = (minuteVal) => {
+  const drawContinuousPixelOverlay = (minuteVal) => {
     label.innerText = formatTimeFromMinutes(minuteVal);
 
     const rect = canvas.parentElement.getBoundingClientRect();
@@ -1924,37 +1921,39 @@ function initFixedGridRadarModal(mapModal, item, mode) {
 
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
+    // Downscale calculation buffer for smooth blur and high framerate
+    const scaleFactor = 0.25;
+    const bufferW = Math.ceil(canvas.width * scaleFactor);
+    const bufferH = Math.ceil(canvas.height * scaleFactor);
+    
+    offscreenCanvas.width = bufferW;
+    offscreenCanvas.height = bufferH;
+    
+    const imgData = offscreenCtx.createImageData(bufferW, bufferH);
+    const data = imgData.data;
+
     let activePaletteKey = currentMode;
     if (currentMode === 'wind') {
       activePaletteKey = `wind_${windSubMode}`;
     }
 
     const palette = paletteMap[activePaletteKey] || paletteMap.temp;
-    
-    // Scale minute offsets smoothly over time
     const timeOffset = minuteVal * 0.005;
 
-    const stepDeg = 2.0;
+    // Iterate through screen pixels to guarantee 100% gapless coverage
+    for (let y = 0; y < bufferH; y++) {
+      const screenY = y / scaleFactor;
+      for (let x = 0; x < bufferW; x++) {
+        const screenX = x / scaleFactor;
 
-    for (let latDeg = -90; latDeg < 90; latDeg += stepDeg) {
-      for (let lngDeg = -180; lngDeg < 180; lngDeg += stepDeg) {
+        // Map screen pixel back to lat/lon
+        const latLng = map.containerPointToLatLng([screenX, screenY]);
         
-        const nw = map.latLngToContainerPoint([latDeg + stepDeg, lngDeg]);
-        const se = map.latLngToContainerPoint([latDeg, lngDeg + stepDeg]);
+        // Clamp bounds to prevent math breakage at the extreme poles
+        const cLat = Math.max(-90, Math.min(90, latLng.lat));
+        const cLng = latLng.lng; 
 
-        const x = Math.floor(nw.x);
-        const y = Math.floor(nw.y);
-        const w = Math.ceil(se.x - nw.x) + 1;
-        const h = Math.ceil(se.y - nw.y) + 1;
-
-        if (x + w < 0 || x > canvas.width || y + h < 0 || y > canvas.height) {
-          continue;
-        }
-
-        const centerLat = latDeg + stepDeg / 2;
-        const centerLng = lngDeg + stepDeg / 2;
-
-        const normVal = getSquareFieldValue(centerLat, centerLng, timeOffset);
+        const normVal = getOrganicFieldValue(cLat, cLng, timeOffset);
 
         const colorIdx = normVal * (palette.length - 1);
         const idx1 = Math.floor(colorIdx);
@@ -1964,12 +1963,22 @@ function initFixedGridRadarModal(mapModal, item, mode) {
         const r = Math.round(palette[idx1][0] * (1 - factor) + palette[idx2][0] * factor);
         const g = Math.round(palette[idx1][1] * (1 - factor) + palette[idx2][1] * factor);
         const b = Math.round(palette[idx1][2] * (1 - factor) + palette[idx2][2] * factor);
-        const alpha = Math.min(0.68, Math.pow(normVal, 1.1) * 0.75);
+        const alpha = Math.round(Math.min(0.68, Math.pow(normVal, 1.1) * 0.75) * 255);
 
-        ctx.fillStyle = `rgba(${r},${g},${b},${alpha})`;
-        ctx.fillRect(x, y, w, h);
+        const ptr = (y * bufferW + x) * 4;
+        data[ptr] = r;
+        data[ptr + 1] = g;
+        data[ptr + 2] = b;
+        data[ptr + 3] = alpha;
       }
     }
+
+    offscreenCtx.putImageData(imgData, 0, 0);
+
+    // Stretch the smooth pixel buffer over the main canvas
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = "high";
+    ctx.drawImage(offscreenCanvas, 0, 0, canvas.width, canvas.height);
 
     renderPending = false;
   };
@@ -1977,7 +1986,7 @@ function initFixedGridRadarModal(mapModal, item, mode) {
   const scheduleRedraw = () => {
     if (!renderPending) {
       renderPending = true;
-      requestAnimationFrame(() => drawSquareGridOverlay(parseInt(slider.value, 10)));
+      requestAnimationFrame(() => drawContinuousPixelOverlay(parseInt(slider.value, 10)));
     }
   };
 
