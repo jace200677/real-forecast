@@ -1632,29 +1632,21 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
     const padRight = Math.round(20 * scaleFactor);
     const graphWidth = width - padLeft - padRight;
 
-    // Normalize minute input to standard total daily minutes range (0 - 1439)
     let hoveredMinute;
     if (forcedMinute !== null && forcedMinute !== undefined) {
         hoveredMinute = Math.max(0, Math.min(1439, parseInt(forcedMinute, 10) || 0));
     } else {
         const x = clientX - rect.left;
         if (x < padLeft || x > width - padRight) {
-            if (clientX === 0) {
-                hoveredMinute = 0;
-            } else {
-                return null;
-            }
+            if (clientX === 0) hoveredMinute = 0;
+            else return null;
         } else {
             const ratio = Math.max(0, Math.min(1, (x - padLeft) / graphWidth));
             hoveredMinute = Math.round(ratio * 1439);
         }
     }
 
-    // Dynamic date extraction from item
-    const extractedDate = item?.dateStr || 
-                          item?.date || 
-                          item?.day || 
-                          item?.dt_txt || 
+    const extractedDate = item?.dateStr || item?.date || item?.day || item?.dt_txt || 
                           (item?.dt ? new Date(item.dt * 1000).toLocaleDateString() : null) || 
                           new Date().toLocaleDateString();
 
@@ -1689,14 +1681,6 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
     const effectiveNextItem = resolveNextItem();
 
     const getPreviousDayLowestTemp = () => {
-        if (extractedDate === "8/24/2026" || extractedDate === "08/24/2026") {
-            const prev = effectivePrevItem;
-            if (prev && Array.isArray(prev.overrideEvents) && prev.overrideEvents.length > 0) {
-                const eventTemps = prev.overrideEvents.filter(e => e.temp !== undefined).map(e => e.temp);
-                if (eventTemps.length > 0) return Math.min(...eventTemps);
-            }
-            return 48;
-        }
         const prev = effectivePrevItem;
         if (prev) {
             if (Array.isArray(prev.tempRange) && prev.tempRange.length > 0) return Math.min(...prev.tempRange);
@@ -1727,19 +1711,7 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
     const prevHigh = (effectivePrevItem && effectivePrevItem.tempHigh !== undefined) ? effectivePrevItem.tempHigh : todayHigh;
 
     let midnightStartTemp = Math.round((prevHigh + morningLow) / 2);
-    if (effectivePrevItem && Array.isArray(effectivePrevItem.overrideEvents) && effectivePrevItem.overrideEvents.length > 0) {
-        const prevEvents = [...effectivePrevItem.overrideEvents].sort((a, b) => a.minute - b.minute);
-        const lastEv = [...prevEvents].reverse().find(e => e.temp !== undefined);
-        if (lastEv) midnightStartTemp = lastEv.temp;
-    }
-
     let midnightEndTemp = Math.round((todayHigh + tomorrowLow) / 2);
-    if (effectiveNextItem && Array.isArray(effectiveNextItem.overrideEvents) && effectiveNextItem.overrideEvents.length > 0) {
-        const nextEvents = [...effectiveNextItem.overrideEvents].sort((a, b) => a.minute - b.minute);
-        const firstEv = nextEvents.find(e => e.temp !== undefined);
-        if (firstEv) midnightEndTemp = firstEv.temp;
-    }
-
     const isWinterInversion = item?.isWinterInversion || (todayHigh < morningLow);
 
     const getDiurnalTemp = (m) => {
@@ -1850,7 +1822,6 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
             label = `${resolvedValue}`;
     }
 
-    // Dynamic Multi-Threshold Color Evaluator matched to exact chart gradients
     const getDynamicColor = (val, currentMode) => {
         if (currentMode === 'wind') {
             const speed = typeof val === 'object' ? (val.speed || 0) : val;
@@ -1860,7 +1831,6 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
             if (speed >= 12) return 'rgba(234, 179, 8, 0.35)';
             return 'rgba(34, 197, 94, 0.25)';
         } 
-
         if (currentMode === 'dos') {
             if (val >= 100) return 'rgba(168, 85, 247, 0.60)';
             if (val >= 70)  return 'rgba(234, 88, 12, 0.55)';
@@ -1868,7 +1838,6 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
             if (val >= 20)  return 'rgba(101, 163, 13, 0.35)';
             return 'rgba(34, 197, 94, 0.25)';
         }
-
         if (currentMode === 'temp' || currentMode === 'feelsLike') {
             if (val >= 90) return 'rgba(239, 68, 68, 0.55)';
             if (val >= 75) return 'rgba(249, 115, 22, 0.45)';
@@ -1876,12 +1845,10 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
             if (val >= 45) return 'rgba(45, 212, 191, 0.35)';
             return 'rgba(15, 118, 110, 0.30)';
         }
-
         return 'rgba(56, 189, 248, 0.25)';
     };
 
     const calculatedColor = getDynamicColor(resolvedValue, mode);
-
     const RadarGridLayerClass = L.GridLayer.extend({
         createTile: function(coords) {
             const tile = document.createElement('canvas');
@@ -1889,13 +1856,10 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
             tile.width = size.x;
             tile.height = size.y;
             const ctx = tile.getContext('2d');
-
             ctx.fillStyle = calculatedColor;
             ctx.fillRect(0, 0, tile.width, tile.height);
-
             ctx.strokeStyle = 'rgba(255, 255, 255, 0.05)';
             ctx.strokeRect(0, 0, tile.width, tile.height);
-
             return tile;
         }
     });
@@ -1914,15 +1878,93 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
     return activeGridLayer;
 }
 
-// Global controller for dynamic updates across Mode Selection, Slider, and Extracted Date changes
+/**
+ * 2. Spatial & Temporal Plot Graph Sampler
+ */
+function getValueFromPlotGraph(params) {
+    const { lat, lon, totalMinutes, item, mode, gridBounds, spatialGridData } = params;
+
+    const validMinute = Math.max(0, Math.min(1439, parseInt(totalMinutes, 10) || 0));
+
+    let spatialMultiplier = 1.0;
+    if (gridBounds && spatialGridData && gridBounds.width && gridBounds.height) {
+        const { north, south, east, west, width, height } = gridBounds;
+        const xNorm = (lon - west) / (east - west);
+        const yNorm = (north - lat) / (north - south);
+
+        if (xNorm >= 0 && xNorm <= 1 && yNorm >= 0 && yNorm <= 1) {
+            const col = Math.min(width - 1, Math.floor(xNorm * width));
+            const row = Math.min(height - 1, Math.floor(yNorm * height));
+            const gridIndex = row * width + col;
+
+            if (spatialGridData[gridIndex] !== undefined) {
+                spatialMultiplier = spatialGridData[gridIndex];
+            }
+        }
+    }
+
+    const dummyCanvas = document.createElement('canvas');
+    dummyCanvas.width = 650;
+    dummyCanvas.height = 400;
+
+    const layer = createRadarGridLayer(
+        dummyCanvas,
+        0,
+        item,
+        mode,
+        params.prevItem || null,
+        params.nextItem || null,
+        validMinute
+    );
+
+    if (!layer || !layer._meta) {
+        return { value: null, label: 'N/A', lat, lon, minute: validMinute };
+    }
+
+    let finalValue = layer._meta.value;
+    if (typeof finalValue === 'number') {
+        finalValue = Math.round(finalValue * spatialMultiplier);
+    } else if (typeof finalValue === 'object' && finalValue !== null) {
+        finalValue = {
+            speed: Math.round((finalValue.speed || 0) * spatialMultiplier),
+            gust: Math.round((finalValue.gust || 0) * spatialMultiplier)
+        };
+    }
+
+    return {
+        lat: lat,
+        lon: lon,
+        minute: validMinute,
+        timeStr: layer._meta.timeStr,
+        dateStr: layer._meta.dateStr,
+        mode: mode,
+        value: finalValue,
+        color: layer._meta.color,
+        formattedLabel: layer._meta.label
+    };
+}
+
+// 3. Global Application Controller & State
 window.RadarState = {
     map: null,
-    canvas: null,
+    canvas: document.createElement('canvas'),
     currentLayer: null,
-    currentItem: null,
+    currentItem: {
+        dateStr: "2026-08-27",
+        tempLow: 58,
+        tempHigh: 84,
+        windMph: 12,
+        gustMph: 22,
+        score: 65,
+        feelsLikeOffset: 2
+    },
     currentMode: 'temp',
-    currentMinute: 0
+    currentMinute: 720,
+    selectedPoint: { lat: 47.6858, lon: -92.7723 }
 };
+
+window.RadarState.canvas.width = 650;
+window.RadarState.canvas.height = 400;
 
 window.updateActiveRadarLayer = (overrides = {}) => {
     const s = window.RadarState;
@@ -1930,10 +1972,8 @@ window.updateActiveRadarLayer = (overrides = {}) => {
     if (overrides.item !== undefined) s.currentItem = overrides.item;
     if (overrides.mode !== undefined) s.currentMode = overrides.mode;
     if (overrides.minute !== undefined) s.currentMinute = overrides.minute;
-    if (overrides.canvas !== undefined) s.canvas = overrides.canvas;
-    if (overrides.map !== undefined) s.map = overrides.map;
 
-    if (!s.map || !s.canvas || !s.currentItem) return;
+    if (!s.map || !s.currentItem) return;
 
     if (s.currentLayer) {
         s.map.removeLayer(s.currentLayer);
@@ -1953,37 +1993,33 @@ window.updateActiveRadarLayer = (overrides = {}) => {
         newLayer.addTo(s.map);
         s.currentLayer = newLayer;
     }
+
+    // Refresh display values on sampling dashboard
+    updateDashboard();
 };
 
-// Event Listeners for dynamic UI binding
-const bindRadarControls = () => {
-    // 1. Time Slider Binding
-    const timelineSlider = document.getElementById('radarTimeSlider') || document.querySelector('input[type="range"]');
-    if (timelineSlider) {
-        const handleSliderSync = (e) => {
-            const sliderVal = parseInt(e.target.value, 10) || 0;
-            const maxVal = parseInt(e.target.max, 10) || 1439;
-            const totalMinutes = Math.round((sliderVal / maxVal) * 1439);
-            window.updateActiveRadarLayer({ minute: totalMinutes });
-        };
-        timelineSlider.addEventListener('input', handleSliderSync);
-        timelineSlider.addEventListener('change', handleSliderSync);
-    }
+function updateDashboard() {
+    const s = window.RadarState;
+    if (!s.selectedPoint) return;
 
-    // 2. Mode Selector Dropdown Binding
-    const modeSelect = document.getElementById('modeSelect') || document.querySelector('select[name="mode"]');
-    if (modeSelect) {
-        modeSelect.addEventListener('change', (e) => {
-            window.updateActiveRadarLayer({ mode: e.target.value });
-        });
-    }
-};
+    const sampledData = getValueFromPlotGraph({
+        lat: s.selectedPoint.lat,
+        lon: s.selectedPoint.lon,
+        totalMinutes: s.currentMinute,
+        item: s.currentItem,
+        mode: s.currentMode
+    });
 
-// Initialize listeners on DOM ready
-if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', bindRadarControls);
-} else {
-    bindRadarControls();
+    document.getElementById('timeDisplay').innerText = sampledData.timeStr;
+    document.getElementById('dispCoords').innerText = `${sampledData.lat.toFixed(3)}, ${sampledData.lon.toFixed(3)}`;
+    document.getElementById('dispTime').innerText = sampledData.timeStr;
+    document.getElementById('dispLabel').innerText = sampledData.formattedLabel;
+
+    if (typeof sampledData.value === 'object') {
+        document.getElementById('dispValue').innerText = `Speed: ${sampledData.value.speed} / Gust: ${sampledData.value.gust}`;
+    } else {
+        document.getElementById('dispValue').innerText = sampledData.value;
+    }
 }
 function openForecastGraphModal(item, fullForecast = [], itemIndex = -1) {
     let modal = document.getElementById("forecastGraphModal");
