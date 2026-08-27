@@ -1874,7 +1874,6 @@ function scrapeUniversalGraphValues(selectedDayIndex = 0) {
   return points;
 }
 
-
 function createRadarGridLayer() {
   const CustomGridLayer = L.GridLayer.extend({
     createTile: function (coords) {
@@ -1997,12 +1996,36 @@ function createRadarGridLayer() {
         const highIdx = Math.min(dsLen - 1, Math.ceil(exactIndexFloat));
         const blend = exactIndexFloat - lowIdx;
 
-        const valLow = getEntryValue(dataset[lowIdx], activeKey);
-        const valHigh = getEntryValue(dataset[highIdx], activeKey);
+        const lowEntry = dataset[lowIdx] || {};
+        const highEntry = dataset[highIdx] || {};
+
+        const valLow = getEntryValue(lowEntry, activeKey);
+        const valHigh = getEntryValue(highEntry, activeKey);
         baseVal = valLow * (1 - blend) + valHigh * blend;
+
+        // Extract time/date directly from interpolated graph points if available
+        const extractedTime = lowEntry.time || lowEntry.timestamp || lowEntry.datetime || lowEntry.date ||
+                              highEntry.time || highEntry.timestamp || highEntry.datetime || highEntry.date;
+
+        if (extractedTime) {
+          window._radarState.currentExtractedTime = extractedTime;
+          const radarDateDisplay = document.getElementById('radarDateDisplay');
+          if (radarDateDisplay && typeof extractedTime === 'string') {
+            radarDateDisplay.innerText = extractedTime;
+          }
+        }
       } else {
-        // Fallback directly to day-card scope values
+        // Fallback directly to day-card scope values and timestamp metadata
         baseVal = getEntryValue(currentItem, activeKey);
+
+        const extractedTime = currentItem.time || currentItem.timestamp || currentItem.datetime || currentItem.date;
+        if (extractedTime) {
+          window._radarState.currentExtractedTime = extractedTime;
+          const radarDateDisplay = document.getElementById('radarDateDisplay');
+          if (radarDateDisplay && typeof extractedTime === 'string') {
+            radarDateDisplay.innerText = extractedTime;
+          }
+        }
       }
 
       const tileOrigin = L.point(coords.x * tileSize.x, coords.y * tileSize.y);
