@@ -1873,7 +1873,6 @@ function scrapeUniversalGraphValues(selectedDayIndex = 0) {
 
   return points;
 }
-
 function createRadarGridLayer() {
   const CustomGridLayer = L.GridLayer.extend({
     createTile: function (coords) {
@@ -1996,9 +1995,11 @@ function createRadarGridLayer() {
                currentPalette.minVal;
       };
 
-      // Retrieve selected day item or dataset fallback
+      // Retrieve selected day item or dataset fallback with graph data sync support
       const currentItem = window._radarState.currentItem || {};
-      const dataset = window._radarState.dataset || currentItem.hourly || currentItem.timeline || currentItem.hours || [];
+      const activeDatasetKey = activeKey === 'speed' || activeKey === 'gust' ? 'wind' : activeKey;
+      const graphDataset = window._radarState.graphDatasets?.[activeDatasetKey];
+      const dataset = graphDataset || window._radarState.dataset || currentItem.hourly || currentItem.timeline || currentItem.hours || [];
       const dsLen = dataset.length;
       let baseVal = currentPalette.minVal;
 
