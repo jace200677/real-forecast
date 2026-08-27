@@ -1736,6 +1736,9 @@ function openForecastGraphModal(item, fullForecast = [], itemIndex = -1) {
 /**
  * Radar Map Layer with Fixed Geographic Grid Squares (Pure Square Lerp)
  */
+/**
+ * Radar Map Layer with Fixed Geographic Grid Squares (No Inner Grid Lines, Zoom-Adjusted Resolution)
+ */
 function openWeatherMapModal(item, mode = 'temp') {
   let mapModal = document.getElementById("weatherRadarMapModal");
   if (!mapModal) {
@@ -1818,8 +1821,9 @@ function initFixedGridRadarModal(mapModal, item, mode) {
     const palette = paletteMap[mode] || paletteMap.temp;
     const timeOffset = (frameIndex + 1) * 0.2;
 
-    // Fixed geographic grid step size in degrees
-    const geoGridStep = 0.25;
+    // Dynamically adjust geographic grid resolution to maintain consistent tile sizes across zoom levels
+    const zoom = map.getZoom();
+    const geoGridStep = 0.25 / Math.pow(2, zoom - 7);
 
     const bounds = map.getBounds();
     const minLat = Math.floor(bounds.getSouth() / geoGridStep) * geoGridStep;
@@ -1835,8 +1839,9 @@ function initFixedGridRadarModal(mapModal, item, mode) {
 
         const rectX = pNW.x;
         const rectY = pNW.y;
-        const rectW = pSE.x - pNW.x;
-        const rectH = pSE.y - pNW.y;
+        // Add +0.5px overlap to eliminate sub-pixel border gaps without inner stroke lines
+        const rectW = (pSE.x - pNW.x) + 0.5;
+        const rectH = (pSE.y - pNW.y) + 0.5;
 
         // Skip rendering off-screen squares
         if (rectX + rectW < 0 || rectX > canvas.width || rectY + rectH < 0 || rectY > canvas.height) {
@@ -1862,14 +1867,9 @@ function initFixedGridRadarModal(mapModal, item, mode) {
         const b = Math.round(palette[idx1][2] * (1 - factor) + palette[idx2][2] * factor);
         const alpha = Math.min(0.65, normVal * 0.7);
 
-        // Fill sharp square tile boundaries (no radial gradients or circular drawing)
+        // Fill seamless square tile boundaries without drawing grid lines
         ctx.fillStyle = `rgba(${r}, ${g}, ${b}, ${alpha})`;
         ctx.fillRect(rectX, rectY, rectW, rectH);
-
-        // Grid border line overlay for distinct tile structure
-        ctx.strokeStyle = "rgba(255, 255, 255, 0.12)";
-        ctx.lineWidth = 1;
-        ctx.strokeRect(rectX, rectY, rectW, rectH);
       }
     }
   };
