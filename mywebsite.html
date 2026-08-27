@@ -1954,7 +1954,6 @@ function createRadarGridLayer() {
       const slider = document.getElementById("radarTimeSlider");
       const totalMinutes = slider ? parseInt(slider.value, 10) : 0;
       
-      // Strict period correction: Night occurs during night hours, Day occurs during day hours
       const isNight = totalMinutes < 360 || totalMinutes >= 1080;
       const periodKey = isNight ? 'night' : 'day';
 
@@ -1962,7 +1961,6 @@ function createRadarGridLayer() {
         if (typeof entry === 'number') return entry;
         if (!entry) return currentPalette.minVal;
 
-        // Support explicit day/night object lookup matching the requested timeline state perfectly
         const periodObj = entry[targetPeriodKey] || entry[periodKey] || entry;
 
         if (key === 'temp') {
@@ -1996,14 +1994,33 @@ function createRadarGridLayer() {
                currentPalette.minVal;
       };
 
+      // Direct inspection of Chart.js instances or global graph datasets to extract exact plotted values
+      let activeChartDataset = null;
+      if (window._radarState.chartInstance && window._radarState.chartInstance.data && window._radarState.chartInstance.data.datasets) {
+        const datasets = window._radarState.chartInstance.data.datasets;
+        if (datasets.length > 0) {
+          // Select dataset index based on active mode/submode
+          let dsIdx = 0;
+          if (activeKey === 'gust' && datasets.length > 1) dsIdx = 1;
+          activeChartDataset = datasets[dsIdx]?.data || datasets[0]?.data;
+        }
+      }
+
       const currentItem = window._radarState.currentItem || {};
       const activeDatasetKey = activeKey === 'speed' || activeKey === 'gust' ? 'wind' : activeKey;
-      const graphDataset = window._radarState.graphDatasets?.[activeDatasetKey];
-      const dataset = graphDataset || window._radarState.dataset || currentItem.hourly || currentItem.timeline || currentItem.hours || [];
+      
+      // Fallback hierarchy pulling straight from live chart datasets, chart instance storage, or fallback items
+      const dataset = activeChartDataset || 
+                      window._radarState.graphDatasets?.[activeDatasetKey] || 
+                      window._radarState.chartData || 
+                      window._radarState.dataset || 
+                      currentItem.hourly || 
+                      currentItem.timeline || 
+                      currentItem.hours || [];
+                      
       const dsLen = dataset.length;
-
-      // Pre-calculate base timeline value at center/target location
       let baseVal = currentPalette.minVal;
+
       if (dsLen > 0) {
         const targetHour = totalMinutes / 60;
         const exactIndexFloat = (targetHour / 24) * (dsLen - 1);
@@ -2011,15 +2028,17 @@ function createRadarGridLayer() {
         const highIdx = Math.min(dsLen - 1, Math.ceil(exactIndexFloat));
         const blend = exactIndexFloat - lowIdx;
 
-        const lowEntry = dataset[lowIdx] || {};
-        const highEntry = dataset[highIdx] || {};
+        const lowRaw = dataset[lowIdx];
+        const highRaw = dataset[highIdx];
 
-        const valLow = getEntryValue(lowEntry, activeKey, periodKey);
-        const valHigh = getEntryValue(highEntry, activeKey, periodKey);
+        // Handle Chart.js point objects ({x, y} or numbers) directly
+        const valLow = typeof lowRaw === 'object' && lowRaw !== null ? (lowRaw.y ?? getEntryValue(lowRaw, activeKey, periodKey)) : getEntryValue(lowRaw, activeKey, periodKey);
+        const valHigh = typeof highRaw === 'object' && highRaw !== null ? (highRaw.y ?? getEntryValue(highRaw, activeKey, periodKey)) : getEntryValue(highRaw, activeKey, periodKey);
+        
         baseVal = valLow * (1 - blend) + valHigh * blend;
 
-        const extractedTime = lowEntry.time || lowEntry.timestamp || lowEntry.datetime || lowEntry.date ||
-                              highEntry.time || highEntry.timestamp || highEntry.datetime || highEntry.date;
+        const extractedTime = lowRaw?.time || lowRaw?.timestamp || lowRaw?.datetime || lowRaw?.date ||
+                              highRaw?.time || highRaw?.timestamp || highRaw?.datetime || highRaw?.date;
 
         if (extractedTime) {
           window._radarState.currentExtractedTime = extractedTime;
@@ -2045,7 +2064,6 @@ function createRadarGridLayer() {
       const imgData = ctx.createImageData(tileSize.x, tileSize.y);
       const data = imgData.data;
 
-      // Reference anchor lat/lon corresponding to the active graph location point anywhere
       const targetLat = currentItem.lat ?? window._radarState.lat ?? 45.3827;
       const targetLon = currentItem.lon ?? window._radarState.lon ?? -93.8761;
 
@@ -2054,16 +2072,13 @@ function createRadarGridLayer() {
           const pxPoint = L.point(tileOrigin.x + x, tileOrigin.y + y);
           const latLng = window._radarState.map.unproject(pxPoint, coords.z);
 
-          // Compute exact geographical distance offset from the graph point for spatial fading
           const dLat = latLng.lat - targetLat;
           const dLng = latLng.lng - targetLon;
           const distanceDeg = Math.sqrt(dLat * dLat + dLng * dLng);
 
-          // Smooth distance-based fading factor (fades values smoothly away from the graph pixel location center)
           const fadeFactor = Math.max(0, 1 - (distanceDeg / 12.0)); 
           const spatialVariation = Math.sin(dLat * 0.1) * Math.cos(dLng * 0.1) * 2.0;
           
-          // Blend towards default palette minimum value based on distance fade
           const sampledValue = currentPalette.minVal + (baseVal + spatialVariation - currentPalette.minVal) * fadeFactor;
 
           const stops = currentPalette.stops;
@@ -2087,7 +2102,6 @@ function createRadarGridLayer() {
             }
           }
 
-          // Dynamic alpha scaling so regions far from the graph location fade out cleanly
           const dynamicAlpha = Math.round(140 * fadeFactor);
 
           for (let sy = 0; sy < step && (y + sy) < tileSize.y; sy++) {
