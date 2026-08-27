@@ -2590,6 +2590,9 @@ function initTimezoneSyncedRadarModal(mapModal, item, mode, selectedDayIndex) {
 /**
  * Creates modal DOM elements and handles open/close lifecycle
  */
+/**
+ * Main Weather Map Modal Opener
+ */
 function openWeatherMapModal(item, mode = 'temp', selectedDayIndex = null) {
   if (selectedDayIndex === null || selectedDayIndex === undefined) {
     const activeCard = document.querySelector('.day-card.active, .forecast-day-card.active, .day-tab.active, [data-selected="true"]');
@@ -2663,16 +2666,15 @@ function openWeatherMapModal(item, mode = 'temp', selectedDayIndex = null) {
       window._radarState.currentMode = e.target.value;
       const windCont = document.getElementById('windOptionContainer');
       if (windCont) windCont.style.display = window._radarState.currentMode === 'wind' ? 'inline-block' : 'none';
-      triggerRadarRedraw();
+      if (typeof triggerRadarRedraw === 'function') triggerRadarRedraw();
     });
 
     document.getElementById('windSubModeSelect').addEventListener('change', (e) => {
       window._radarState.windSubMode = e.target.value;
-      triggerRadarRedraw();
+      if (typeof triggerRadarRedraw === 'function') triggerRadarRedraw();
     });
   }
 
-  // Ensure current mode and submode pickers reflect provided mode parameter
   window._radarState = window._radarState || {};
   window._radarState.currentMode = mode;
   const layerSwitcher = document.getElementById('radarLayerSwitcher');
@@ -2685,19 +2687,23 @@ function openWeatherMapModal(item, mode = 'temp', selectedDayIndex = null) {
   if (sliderEl) {
     sliderEl.value = 0;
     sliderEl.oninput = function(e) {
-      triggerRadarRedraw(parseInt(e.target.value, 10));
+      if (typeof triggerRadarRedraw === 'function') triggerRadarRedraw(parseInt(e.target.value, 10));
     };
   }
 
   mapModal.style.display = "flex";
 
-  ensureLeafletLoaded(() => {
-    initTimezoneSyncedRadarModal(mapModal, item, mode, selectedDayIndex);
-  });
+  if (typeof ensureLeafletLoaded === 'function') {
+    ensureLeafletLoaded(() => {
+      if (typeof initTimezoneSyncedRadarModal === 'function') {
+        initTimezoneSyncedRadarModal(mapModal, item, mode, selectedDayIndex);
+      }
+    });
+  }
 }
 
 /**
- * Weather Map Modal Button Listener
+ * Event Listener for Weather Map Modal Trigger Button
  */
 document.getElementById("weatherMapModalBtn")?.addEventListener("click", () => {
   const currentMode = document.getElementById("graphTypeSelect")?.value || "temp";
@@ -2734,6 +2740,29 @@ document.getElementById("weatherMapModalBtn")?.addEventListener("click", () => {
 
   openWeatherMapModal(selectedDayCard, currentMode, selectedDayIndex);
 });
+
+/**
+ * Coordinate Resolution Helper inside Tile Renderers / Grid Layers
+ */
+function resolveRadarCoordinates(currentItem, dataset = []) {
+  const center = window._radarState && window._radarState.map ? window._radarState.map.getCenter() : null;
+
+  const targetLat = 
+    (currentItem ? currentItem.lat : null) ?? 
+    (dataset[0] ? dataset[0].lat : null) ?? 
+    (window._radarState ? window._radarState.lat : null) ?? 
+    (center ? center.lat : null) ?? 
+    45.3827;
+
+  const targetLon = 
+    (currentItem ? (currentItem.lon ?? currentItem.longitude) : null) ?? 
+    (dataset[0] ? (dataset[0].lon ?? dataset[0].longitude) : null) ?? 
+    (window._radarState ? window._radarState.lon : null) ?? 
+    (center ? center.lng : null) ?? 
+    -93.8761;
+
+  return { lat: targetLat, lon: targetLon };
+}
 /**
  * Dynamically loads Leaflet.js assets if not present
  */
