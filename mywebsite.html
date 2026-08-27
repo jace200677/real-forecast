@@ -2029,7 +2029,6 @@ function createRadarGridLayer() {
       const imgData = ctx.createImageData(tileSize.x, tileSize.y);
       const data = imgData.data;
 
-      // Hierarchical coordinate resolution chain (Item -> Dataset -> State -> Map Center -> Default)
       const mapCenter = window._radarState.map ? window._radarState.map.getCenter() : null;
       const targetLat = 
         currentItem.lat ?? 
