@@ -1960,77 +1960,36 @@ function createRadarGridLayer() {
       };
 
       const currentPalette = paletteConfig[paletteKey] || paletteConfig.dos;
-
-      const slider = document.getElementById("radarTimeSlider");
-      const totalMinutes = slider ? parseInt(slider.value, 10) : 0;
-      
-      const isNight = totalMinutes < 360 || totalMinutes >= 1080;
-      const periodKey = isNight ? 'night' : 'day';
-
-      const getEntryValue = (entry, key) => {
-        if (typeof entry === 'number') return entry;
-        if (!entry) return currentPalette.minVal;
-
-        const periodObj = entry[periodKey] || entry;
-
-        return periodObj[key] ?? 
-               periodObj.dos ?? 
-               periodObj.score ?? 
-               periodObj.windSpeed ?? 
-               periodObj.windGust ?? 
-               periodObj.temp ?? 
-               periodObj.value ?? 
-               periodObj.speed ?? 
-               entry[key] ?? 
-               entry.dos ?? 
-               entry.score ?? 
-               entry.windSpeed ?? 
-               entry.windGust ?? 
-               entry.temp ?? 
-               entry.value ?? 
-               currentPalette.minVal;
-      };
-
       const currentItem = window._radarState.currentItem || {};
       const dataset = window._radarState.dataset || currentItem.hourly || currentItem.timeline || currentItem.hours || currentItem.days || [];
       const dsLen = dataset.length;
-      let baseVal = currentPalette.minVal;
 
+      const slider = document.getElementById("radarTimeSlider");
+      const totalMinutes = slider ? parseInt(slider.value, 10) : 0;
+      const targetHour = totalMinutes / 60;
+
+      const isNight = totalMinutes < 360 || totalMinutes >= 1080;
+      const periodKey = isNight ? 'night' : 'day';
+
+      const getValFromEntry = (entry) => {
+        if (typeof entry === 'number') return entry;
+        if (!entry) return currentPalette.minVal;
+        const pObj = entry[periodKey] || entry;
+        return pObj[activeKey] ?? 
+               pObj.dos ?? pObj.score ?? pObj.windSpeed ?? pObj.windGust ?? pObj.temp ?? pObj.value ?? pObj.speed ?? 
+               entry[activeKey] ?? entry.dos ?? entry.score ?? entry.windSpeed ?? entry.windGust ?? entry.temp ?? entry.value ?? 
+               currentPalette.minVal;
+      };
+
+      let baseVal = currentPalette.minVal;
       if (dsLen > 0) {
-        const targetHour = totalMinutes / 60;
         const exactIndexFloat = (targetHour / 24) * (dsLen - 1);
         const lowIdx = Math.floor(exactIndexFloat);
         const highIdx = Math.min(dsLen - 1, Math.ceil(exactIndexFloat));
         const blend = exactIndexFloat - lowIdx;
-
-        const lowEntry = dataset[lowIdx] || {};
-        const highEntry = dataset[highIdx] || {};
-
-        const valLow = getEntryValue(lowEntry, activeKey);
-        const valHigh = getEntryValue(highEntry, activeKey);
-        baseVal = valLow * (1 - blend) + valHigh * blend;
-
-        const extractedTime = lowEntry.time || lowEntry.timestamp || lowEntry.datetime || lowEntry.date ||
-                              highEntry.time || highEntry.timestamp || highEntry.datetime || highEntry.date;
-
-        if (extractedTime) {
-          window._radarState.currentExtractedTime = extractedTime;
-          const radarDateDisplay = document.getElementById('radarDateDisplay');
-          if (radarDateDisplay && typeof extractedTime === 'string') {
-            radarDateDisplay.innerText = extractedTime;
-          }
-        }
+        baseVal = getValFromEntry(dataset[lowIdx]) * (1 - blend) + getValFromEntry(dataset[highIdx]) * blend;
       } else {
-        baseVal = getEntryValue(currentItem, activeKey);
-
-        const extractedTime = currentItem.time || currentItem.timestamp || currentItem.datetime || currentItem.date;
-        if (extractedTime) {
-          window._radarState.currentExtractedTime = extractedTime;
-          const radarDateDisplay = document.getElementById('radarDateDisplay');
-          if (radarDateDisplay && typeof extractedTime === 'string') {
-            radarDateDisplay.innerText = extractedTime;
-          }
-        }
+        baseVal = getValFromEntry(currentItem);
       }
 
       const tileOrigin = L.point(coords.x * tileSize.x, coords.y * tileSize.y);
@@ -2039,32 +1998,29 @@ function createRadarGridLayer() {
       const data = imgData.data;
 
       const mapCenter = window._radarState.map ? window._radarState.map.getCenter() : null;
-      const targetLat = 
-        currentItem.lat ?? 
-        currentItem.latitude ?? 
-        (dataset[0] ? (dataset[0].lat ?? dataset[0].latitude) : null) ?? 
-        window._radarState.lat ?? 
-        (mapCenter ? mapCenter.lat : null) ?? 
-        45.3827;
-
-      const targetLon = 
-        currentItem.lon ?? 
-        currentItem.longitude ?? 
-        (dataset[0] ? (dataset[0].lon ?? dataset[0].longitude) : null) ?? 
-        window._radarState.lon ?? 
-        (mapCenter ? mapCenter.lng : null) ?? 
-        -93.8761;
+      const targetLat = currentItem.lat ?? currentItem.latitude ?? window._radarState.lat ?? (mapCenter ? mapCenter.lat : 45.3827);
+      const targetLon = currentItem.lon ?? currentItem.longitude ?? window._radarState.lon ?? (mapCenter ? mapCenter.lng : -93.8761);
 
       for (let y = 0; y < tileSize.y; y += step) {
         for (let x = 0; x < tileSize.x; x += step) {
           const pxPoint = L.point(tileOrigin.x + x, tileOrigin.y + y);
           const latLng = window._radarState.map.unproject(pxPoint, coords.z);
 
-          const dLat = latLng.lat - targetLat;
-          const dLng = latLng.lng - targetLon;
+          // Pixel-to-pixel coordinate relative distance from center point to simulate drawForecast() mapping behavior
+          const dx = pxPoint.x - window._radarState.map.latLngToLayerPoint([targetLat, targetLon]).x;
+          const dy = pxPoint.y - window._radarState.map.latLngToLayerPoint([targetLat, targetLon]).y;
+          const pixelDist = Math.sqrt(dx * dx + dy * dy);
 
-          const spatialVariation = Math.sin(dLat * 0.05) * Math.cos(dLng * 0.05) * 3.0; 
-          const sampledValue = baseVal + spatialVariation;
+          // Sample variations dynamically pulling from dataset indexes or spatial spread if available in drawForecast
+          let sampledValue = baseVal;
+          if (dsLen > 1) {
+            const spreadFactor = Math.max(0, 1 - (pixelDist / 400));
+            const spatialIndexShift = Math.floor((pixelDist / 50) % dsLen);
+            const shiftedEntry = dataset[(Math.floor((targetHour / 24) * (dsLen - 1)) + spatialIndexShift) % dsLen];
+            sampledValue = getValFromEntry(shiftedEntry) * 0.4 + baseVal * 0.6;
+          } else {
+            sampledValue = baseVal + Math.sin(pixelDist * 0.02) * 4.0;
+          }
 
           const stops = currentPalette.stops;
           let rgb = stops[0].rgb;
