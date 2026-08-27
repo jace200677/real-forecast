@@ -1958,11 +1958,25 @@ function createRadarGridLayer() {
       const isNight = totalMinutes < 360 || totalMinutes >= 1080;
       const periodKey = isNight ? 'night' : 'day';
 
+      // Universal key resolver mapping active layer modes to corresponding graph/card property attributes anywhere
       const getEntryValue = (entry, key) => {
         if (typeof entry === 'number') return entry;
         if (!entry) return currentPalette.minVal;
 
         const periodObj = entry[periodKey] || entry;
+
+        if (key === 'temp') {
+          return periodObj.temp ?? periodObj.temperature ?? periodObj.tempRange ?? periodObj.high ?? entry.temp ?? entry.temperature ?? currentPalette.minVal;
+        }
+        if (key === 'dos') {
+          return periodObj.dos ?? periodObj.score ?? periodObj.outlookScore ?? periodObj.index ?? entry.dos ?? entry.score ?? currentPalette.minVal;
+        }
+        if (key === 'speed') {
+          return periodObj.windSpeed ?? periodObj.speed ?? periodObj.wind ?? entry.windSpeed ?? entry.speed ?? currentPalette.minVal;
+        }
+        if (key === 'gust') {
+          return periodObj.windGust ?? periodObj.gust ?? entry.windGust ?? entry.gust ?? currentPalette.minVal;
+        }
 
         return periodObj[key] ?? 
                periodObj.dos ?? 
@@ -2015,7 +2029,7 @@ function createRadarGridLayer() {
           }
         }
       } else {
-        // Fallback directly to day-card scope values and timestamp metadata
+        // Fallback directly to day-card scope values and timestamp metadata anywhere
         baseVal = getEntryValue(currentItem, activeKey);
 
         const extractedTime = currentItem.time || currentItem.timestamp || currentItem.datetime || currentItem.date;
