@@ -1781,6 +1781,9 @@ function openForecastGraphModal(item, fullForecast = [], itemIndex = -1) {
 /**
  * Global Weather Radar Layer — Fully Multi-Day Dataset, Exact Wind/Gust Graph Matching, & Seamless Coverage
  */
+/**
+ * Global Weather Radar Layer — Robust Multi-Day Card Resolution & Exact Graph/Wind/Gust Sync
+ */
 function openWeatherMapModal(item, mode = 'temp', selectedDayIndex = 0) {
   let mapModal = document.getElementById("weatherRadarMapModal");
   if (!mapModal) {
@@ -1791,21 +1794,23 @@ function openWeatherMapModal(item, mode = 'temp', selectedDayIndex = 0) {
   }
 
   ensureLeafletLoaded(() => {
-    initMultiDaySyncedRadarModal(mapModal, item, mode, selectedDayIndex);
+    initRobustMultiDayRadarModal(mapModal, item, mode, selectedDayIndex);
   });
 }
 
-function initMultiDaySyncedRadarModal(mapModal, item, mode, selectedDayIndex) {
+function initRobustMultiDayRadarModal(mapModal, item, mode, selectedDayIndex) {
   const lat = item?.lat ?? (window.currentLat || 45.3827);
   const lon = item?.lon ?? (window.currentLon || -93.8761);
 
-  // Extract multi-day forecast structures or fallback arrays
-  const daysArray = item?.daily || item?.forecast || item?.days || [];
-  const targetDayData = daysArray[selectedDayIndex] || daysArray[0] || {};
+  // Robustly extract days from standard structures (item.daily, item.forecast, item.days, or item.weekly)
+  const daysArray = item?.daily || item?.forecast || item?.days || item?.weekly || [];
   
-  // Isolate hourly datasets tied specifically to the selected day card
-  const hourlyRaw = targetDayData.hourly || targetDayData.timeline || item?.hourly || [];
-  const dataset = hourlyRaw.length > 0 ? hourlyRaw : generateSyntheticDayTimeline(mode);
+  // Resolve target day safely with fallback to index 0 or flat item timeline
+  const targetDayData = daysArray[selectedDayIndex] || daysArray[0] || item || {};
+  
+  // Isolate hourly datasets tied specifically to the selected day card or fallback to root timeline
+  const hourlyRaw = targetDayData.hourly || targetDayData.timeline || targetDayData.dataset || item?.hourly || item?.timeline || [];
+  const dataset = hourlyRaw.length > 0 ? hourlyRaw : generateSyntheticDayTimeline(mode, selectedDayIndex);
   
   const totalMinutes = 24 * 60;
 
@@ -1825,15 +1830,24 @@ function initMultiDaySyncedRadarModal(mapModal, item, mode, selectedDayIndex) {
     <div style="background:#18181c;border-radius:14px;padding:16px;width:100%;max-width:900px;color:#fff;position:relative;box-shadow:0 12px 40px rgba(0,0,0,0.7);font-family:system-ui, -apple-system, sans-serif;">
       <button onclick="document.getElementById('weatherRadarMapModal').style.display='none'" style="position:absolute;top:12px;right:12px;background:#27272a;border:none;color:#fff;width:32px;height:32px;border-radius:50%;font-size:18px;cursor:pointer;z-index:1001;display:flex;align-items:center;justify-content:center;">✕</button>
       
-      <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px;flex-wrap:wrap;">
-        <h3 style="margin:0;font-size:16px;font-weight:600;">
-          🛰️ Radar Overlay (Day <span id="activeDayIndicator">${selectedDayIndex + 1}</span>) — <span id="radarModeTitle" style="color:#38bdf8;text-transform:capitalize;">${mode} Layer</span>
-        </h3>
-        <div id="windOptionContainer" style="display:${mode === 'wind' ? 'inline-block' : 'none'};">
-          <select id="windSubModeSelect" style="background:#27272a;color:#fff;border:1px solid #3f3f46;padding:4px 10px;border-radius:6px;font-size:13px;cursor:pointer;outline:none;">
-            <option value="speed" selected>Wind Speed</option>
-            <option value="gust">Wind Gusts</option>
-          </select>
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:10px;">
+        <div style="display:flex;align-items:center;gap:12px;">
+          <h3 style="margin:0;font-size:16px;font-weight:600;">
+            🛰️ Radar Overlay (Day <span id="activeDayIndicator" style="color:#38bdf8;">${selectedDayIndex + 1}</span>) — <span id="radarModeTitle" style="color:#38bdf8;text-transform:capitalize;">${mode} Layer</span>
+          </h3>
+          <div id="windOptionContainer" style="display:${mode === 'wind' ? 'inline-block' : 'none'};">
+            <select id="windSubModeSelect" style="background:#27272a;color:#fff;border:1px solid #3f3f46;padding:4px 10px;border-radius:6px;font-size:13px;cursor:pointer;outline:none;">
+              <option value="speed" selected>Wind Speed</option>
+              <option value="gust">Wind Gusts</option>
+            </select>
+          </div>
+        </div>
+        
+        <!-- Day card selector buttons injected dynamically for easy testing & UI control -->
+        <div id="daySelectorTabs" style="display:flex;gap:4px;background:#27272a;padding:3px;border-radius:8px;">
+          <button class="day-tab-btn" data-day="0" style="background:${selectedDayIndex===0?'#38bdf8':'transparent'};color:${selectedDayIndex===0?'#000':'#fff'};border:none;padding:4px 10px;border-radius:6px;font-size:12px;cursor:pointer;font-weight:600;">Day 1</button>
+          <button class="day-tab-btn" data-day="1" style="background:${selectedDayIndex===1?'#38bdf8':'transparent'};color:${selectedDayIndex===1?'#000':'#fff'};border:none;padding:4px 10px;border-radius:6px;font-size:12px;cursor:pointer;font-weight:600;">Day 2</button>
+          <button class="day-tab-btn" data-day="2" style="background:${selectedDayIndex===2?'#38bdf8':'transparent'};color:${selectedDayIndex===2?'#000':'#fff'};border:none;padding:4px 10px;border-radius:6px;font-size:12px;cursor:pointer;font-weight:600;">Day 3</button>
         </div>
       </div>
       
@@ -1844,7 +1858,7 @@ function initMultiDaySyncedRadarModal(mapModal, item, mode, selectedDayIndex) {
 
       <div style="margin-top:14px;background:#27272a;padding:12px 16px;border-radius:8px;">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
-          <span style="font-size:12px;color:#a1a1aa;font-weight:500;">Selected Day Timeline Scrubber</span>
+          <span style="font-size:12px;color:#a1a1aa;font-weight:500;">Selected Day Timeline Scrubber (24 Hours)</span>
           <strong id="radarTimeLabel" style="font-size:14px;color:#38bdf8;">--:--</strong>
         </div>
         <input type="range" id="radarTimeSlider" min="0" max="${totalMinutes - 1}" step="1" value="${totalMinutes - 1}" style="width:100%;accent-color:#38bdf8;cursor:pointer;">
@@ -1885,7 +1899,7 @@ function initMultiDaySyncedRadarModal(mapModal, item, mode, selectedDayIndex) {
   const offscreenCanvas = document.createElement("canvas");
   const offscreenCtx = offscreenCanvas.getContext("2d");
 
-  // Exact meteorological graph color mappings
+  // Strict meteorological color scales matching graphs precisely
   const exactPaletteMap = {
     temp: [
       { val: -20, rgb: [30, 64, 175] },
@@ -1928,18 +1942,18 @@ function initMultiDaySyncedRadarModal(mapModal, item, mode, selectedDayIndex) {
     ]
   };
 
-  function generateSyntheticDayTimeline(mType) {
+  function generateSyntheticDayTimeline(mType, dayIdx) {
     const arr = [];
     for (let h = 0; h < 24; h++) {
-      let temp = 55 + Math.sin((h - 6) / 24 * Math.PI * 2) * 20;
-      let speed = 12 + Math.cos(h / 24 * Math.PI * 2) * 8 + (selectedDayIndex * 1.5);
-      let gust = speed * 1.6 + Math.sin(h * 0.5) * 5;
+      let temp = 50 + (dayIdx * 3) + Math.sin((h - 6) / 24 * Math.PI * 2) * 18;
+      let speed = 10 + (dayIdx * 2) + Math.cos(h / 24 * Math.PI * 2) * 8;
+      let gust = speed * 1.65 + Math.sin(h * 0.4) * 6;
       arr.push({ hour: h, temp: temp, speed: speed, gust: gust, value: temp });
     }
     return arr;
   }
 
-  // Extract exact values from graph data points matching active day & submode
+  // Precise property mapping ensuring wind speed and wind gusts read directly from dataset keys
   function getGraphInterpolatedValue(minuteVal, geographicLat, geographicLng, activeKey) {
     const timeFraction = minuteVal / 1440;
     const exactIndex = timeFraction * (dataset.length - 1);
@@ -1953,21 +1967,21 @@ function initMultiDaySyncedRadarModal(mapModal, item, mode, selectedDayIndex) {
     let val1 = 50, val2 = 50;
 
     if (activeKey === 'temp') {
-      val1 = entry1.temp ?? entry1.value ?? 55;
-      val2 = entry2.temp ?? entry2.value ?? 55;
+      val1 = entry1.temp ?? entry1.temperature ?? entry1.value ?? 55;
+      val2 = entry2.temp ?? entry2.temperature ?? entry2.value ?? 55;
     } else if (activeKey === 'wind_speed') {
-      val1 = entry1.speed ?? entry1.windSpeed ?? entry1.value ?? 10;
-      val2 = entry2.speed ?? entry2.windSpeed ?? entry2.value ?? 10;
+      val1 = entry1.speed ?? entry1.windSpeed ?? entry1.wind_speed ?? entry1.value ?? 12;
+      val2 = entry2.speed ?? entry2.windSpeed ?? entry2.wind_speed ?? entry2.value ?? 12;
     } else if (activeKey === 'wind_gust') {
-      val1 = entry1.gust ?? entry1.windGust ?? (entry1.speed ? entry1.speed * 1.5 : 15);
-      val2 = entry2.gust ?? entry2.windGust ?? (entry2.speed ? entry2.speed * 1.5 : 15);
+      val1 = entry1.gust ?? entry1.windGust ?? entry1.wind_gust ?? (entry1.speed ? entry1.speed * 1.6 : 18);
+      val2 = entry2.gust ?? entry2.windGust ?? entry2.wind_gust ?? (entry2.speed ? entry2.speed * 1.6 : 18);
     } else {
       val1 = entry1.value ?? 50;
       val2 = entry2.value ?? 50;
     }
 
     let temporalValue = val1 * (1 - mix) + val2 * mix;
-    const spatialOffset = Math.sin(geographicLat * 0.035) * Math.cos(geographicLng * 0.035) * (activeKey.includes('wind') ? 3 : 6);
+    const spatialOffset = Math.sin(geographicLat * 0.035) * Math.cos(geographicLng * 0.035) * (activeKey.includes('wind') ? 4 : 6);
     return temporalValue + spatialOffset;
   }
 
@@ -2069,6 +2083,15 @@ function initMultiDaySyncedRadarModal(mapModal, item, mode, selectedDayIndex) {
       scheduleRedraw();
     });
   }
+
+  // Hook up day selector tabs so clicking Day 1, 2, or 3 re-initializes with that day's specific graph dataset
+  document.querySelectorAll('.day-tab-btn').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      const newDayIdx = parseInt(e.target.getAttribute('data-day'), 10);
+      document.getElementById('weatherRadarMapModal').remove();
+      openWeatherMapModal(item, mode, newDayIdx);
+    });
+  });
 
   setTimeout(() => {
     map.invalidateSize();
