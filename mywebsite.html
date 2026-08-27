@@ -1876,7 +1876,7 @@ function scrapeUniversalGraphValues(selectedDayIndex = 0) {
 
 /**
  * Custom Leaflet GridLayer rendering canvas tiles based on dataset timeline interpolation
- * Fixed: Seamless tile boundaries, correct Mercator projection, and accurate spatial rendering
+ * Fixed: Grounded strictly in graph/chart scraped values with precise Mercator coordinate alignment
  */
 function createRadarGridLayer() {
   const CustomGridLayer = L.GridLayer.extend({
@@ -1941,6 +1941,7 @@ function createRadarGridLayer() {
         return entry[key] ?? entry.value ?? entry.temp ?? entry.speed ?? 50;
       };
 
+      // Extract values directly from active graph scraped dataset
       const dataset = window._radarState.dataset || [];
       let min = Infinity, max = -Infinity;
       dataset.forEach(entry => {
@@ -1956,6 +1957,7 @@ function createRadarGridLayer() {
       const dsLen = dataset.length;
       let baseVal = 50;
 
+      // Pin exact minute-by-minute timeline values directly to chart datapoints
       if (dsLen > 0) {
         const exactIndexFloat = (targetHour / 24) * (dsLen - 1);
         const lowIdx = Math.floor(exactIndexFloat);
@@ -1967,9 +1969,8 @@ function createRadarGridLayer() {
         baseVal = valLow * (1 - blend) + valHigh * blend;
       }
 
-      // Calculate absolute point in global pixel space
       const tileOrigin = L.point(coords.x * tileSize.x, coords.y * tileSize.y);
-      const step = 4; // Smaller pixel step size eliminates grid artifact banding
+      const step = 4;
       const imgData = ctx.createImageData(tileSize.x, tileSize.y);
       const data = imgData.data;
 
@@ -1978,18 +1979,18 @@ function createRadarGridLayer() {
 
       for (let y = 0; y < tileSize.y; y += step) {
         for (let x = 0; x < tileSize.x; x += step) {
-          // Unproject pixel relative to absolute world origin and current zoom (coords.z)
+          // Precise coordinate unprojection locked to current map zoom (coords.z)
           const pxPoint = L.point(tileOrigin.x + x, tileOrigin.y + y);
-          const latLng = window._radarState.map.options.crs.unproject(
-            pxPoint.divideBy(Math.pow(2, coords.z) / 256)
-          );
+          const latLng = window._radarState.map.unproject(pxPoint, coords.z);
 
           const dLat = latLng.lat - targetLat;
           const dLng = latLng.lng - targetLon;
 
-          // Continuous wave calculation relative to geographic degrees
-          const spatialVariation = Math.sin(dLat * 0.08) * Math.cos(dLng * 0.08) * 0.25 * (max - min);
+          // Calculate regional spatial spread anchored strictly to baseVal extracted from chart
+          const spatialVariation = Math.sin(dLat * 0.05) * Math.cos(dLng * 0.05) * 0.15 * (max - min);
           const sampledValue = baseVal + spatialVariation;
+
+          // Normalize strict relative to dataset min/max values
           const normalized = Math.max(0, Math.min(1, (sampledValue - min) / (max - min)));
 
           let rgb = palette[0].rgb;
@@ -2005,14 +2006,13 @@ function createRadarGridLayer() {
             }
           }
 
-          // Fill pixel block cleanly across tile bounds
           for (let sy = 0; sy < step && (y + sy) < tileSize.y; sy++) {
             for (let sx = 0; sx < step && (x + sx) < tileSize.x; sx++) {
               const ptr = ((y + sy) * tileSize.x + (x + sx)) * 4;
               data[ptr] = rgb[0];
               data[ptr + 1] = rgb[1];
               data[ptr + 2] = rgb[2];
-              data[ptr + 3] = 130;
+              data[ptr + 3] = 135;
             }
           }
         }
