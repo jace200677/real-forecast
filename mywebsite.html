@@ -285,6 +285,29 @@
     display: none;
     /* Alternatively, use visibility: hidden; opacity: 0; if you want to reserve layout space */
 }
+   .btn-history {
+      background-color: var(--btn-history-bg);
+      color: var(--text-main);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      padding: 10px 18px;
+      font-size: 0.95rem;
+      font-weight: 600;
+      border-radius: 6px;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      transition: background-color 0.2s ease, transform 0.1s ease;
+    }
+
+    .btn-history:hover {
+      background-color: var(--btn-history-hover);
+      transform: translateY(-1px);
+    }
+
+    .btn-history:active {
+      transform: translateY(0);
+    }
     /* Media queries for smaller screens */
     @media (max-width: 600px) {
         body { padding: 10px; }
@@ -2903,7 +2926,224 @@ function updateTrafficButtonState(baseDateOverride = null) {
         btn.removeAttribute('onclick');
     }
 }
+/**
+ * Main handler function to show historical weather data down to 8/23/2026
+ */
+async function handleWeatherHistory() {
+  const lat = document.getElementById('latInput')?.value || 41.8781;
+  const lon = document.getElementById('lonInput')?.value || -87.6298;
 
+  showLoadingModal('Fetching Weather History down to 8/23/2026...');
+
+  try {
+    const historyData = await fetchHistoricalWeatherData(lat, lon);
+    renderHistoryModal(historyData);
+  } catch (error) {
+    console.error('Error loading weather history:', error);
+    alert('Failed to retrieve weather history data. Please try again.');
+    closeModal();
+  }
+}
+
+/**
+ * Fetches historical grid observations with fixed date cutoff (2026-08-23 to today)
+ */
+async function fetchHistoricalWeatherData(lat, lon) {
+  // 1. Get grid points from coordinates
+  const pointRes = await fetch(`https://api.weather.gov/points/${lat},${lon}`);
+  if (!pointRes.ok) throw new Error('Failed to resolve location coordinates');
+  const pointData = await pointRes.json();
+  const { gridId, gridX, gridY } = pointData.properties;
+
+  // 2. Set strict date range: Start at 2026-08-23 up to current date
+  const startIso = '2026-08-23';
+  const endDate = new Date();
+  const endIso = endDate.toISOString().split('T')[0];
+
+  // 3. Fetch station ID
+  const historyRes = await fetch(
+    `https://api.weather.gov/gridpoints/${gridId}/${gridX},${gridY}/stations`
+  );
+  if (!historyRes.ok) throw new Error('Failed to fetch observation stations');
+  const stationsData = await historyRes.json();
+  const stationId = stationsData.features[0]?.properties?.stationIdentifier;
+
+  if (!stationId) throw new Error('No weather stations found near location');
+
+  // 4. Fetch station observations within date range
+  const obsRes = await fetch(
+    `https://api.weather.gov/stations/${stationId}/observations?start=${startIso}T00:00:00Z&end=${endIso}T23:59:59Z`
+  );
+  if (!obsRes.ok) throw new Error('Failed to fetch observation data');
+  const obsData = await obsRes.json();
+
+  return parseHistoryObservations(obsData.features);
+}
+
+/**
+ * Parses raw observation records and filters out any dates prior to 8/23/2026
+ */
+function parseHistoryObservations(observations) {
+  const dailyMap = {};
+  const cutoffDate = '2026-08-23';
+
+  observations.forEach((obs) => {
+    const props = obs.properties;
+    const dateKey = props.timestamp.split('T')[0];
+
+    // Enforce lower bound limit (8/23/2026)
+    if (dateKey < cutoffDate) return;
+
+    if (!dailyMap[dateKey]) {
+      dailyMap[dateKey] = {
+        date: dateKey,
+        temps: [],
+        winds: [],
+        conditions: []
+      };
+    }
+
+    if (props.temperature?.value !== null) {
+      const tempF = (props.temperature.value * 9) / 5 + 32;
+      dailyMap[dateKey].temps.push(tempF);
+    }
+
+    if (props.windSpeed?.value !== null) {
+      const windMph = props.windSpeed.value * 0.621371;
+      dailyMap[dateKey].winds.push(windMph);
+    }
+
+    if (props.textDescription) {
+      dailyMap[dateKey].conditions.push(props.textDescription);
+    }
+  });
+
+  // Calculate daily metrics sorted from newest to oldest
+  return Object.values(dailyMap)
+    .sort((a, b) => b.date.localeCompare(a.date))
+    .map((day) => {
+      const maxTemp = day.temps.length ? Math.round(Math.max(...day.temps)) : 'N/A';
+      const minTemp = day.temps.length ? Math.round(Math.min(...day.temps)) : 'N/A';
+      const maxWind = day.winds.length ? Math.round(Math.max(...day.winds)) : 0;
+      const condition = day.conditions[0] || 'Clear';
+
+      return {
+        date: formatDateDisplay(day.date),
+        highTemp: maxTemp,
+        lowTemp: minTemp,
+        wind: maxWind,
+        condition: condition,
+        dos: calculateDOS(maxWind, condition),
+        wis: calculateWIS(minTemp, maxWind, condition)
+      };
+    });
+}
+
+/**
+ * Format date key (YYYY-MM-DD) to readable format (MM/DD/YYYY)
+ */
+function formatDateDisplay(dateStr) {
+  const [year, month, day] = dateStr.split('-');
+  return `${parseInt(month)}/${parseInt(day)}/${year}`;
+}
+
+function calculateDOS(wind, condition) {
+  let score = 10;
+  if (wind > 35) score -= 4;
+  else if (wind > 20) score -= 2;
+
+  const text = condition.toLowerCase();
+  if (text.includes('snow') || text.includes('ice') || text.includes('blizzard')) score -= 5;
+  else if (text.includes('rain') || text.includes('fog')) score -= 2;
+
+  return Math.max(1, score);
+}
+
+function calculateWIS(minTemp, wind, condition) {
+  let score = 1;
+  const text = condition.toLowerCase();
+
+  if (typeof minTemp === 'number' && minTemp < 32) score += 3;
+  if (typeof minTemp === 'number' && minTemp < 10) score += 2;
+  if (wind > 25) score += 2;
+  if (text.includes('snow') || text.includes('ice')) score += 3;
+
+  return Math.min(10, score);
+}
+
+function renderHistoryModal(data) {
+  let modal = document.getElementById('historyModal');
+  if (!modal) {
+    modal = document.createElement('div');
+    modal.id = 'historyModal';
+    modal.style.cssText = `
+      position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+      background: rgba(0,0,0,0.75); display: flex; align-items: center;
+      justify-content: center; z-index: 9999;
+    `;
+    document.body.appendChild(modal);
+  }
+
+  const rowsHtml = data.length > 0 ? data.map((item) => `
+    <tr style="border-bottom: 1px solid #475569;">
+      <td style="padding: 10px;">${item.date}</td>
+      <td style="padding: 10px;">${item.condition}</td>
+      <td style="padding: 10px;">${item.highTemp}°F / ${item.lowTemp}°F</td>
+      <td style="padding: 10px;">${item.wind} mph</td>
+      <td style="padding: 10px; font-weight: bold; color: ${item.dos < 5 ? '#ef4444' : '#22c55e'};">${item.dos}/10</td>
+      <td style="padding: 10px; font-weight: bold; color: ${item.wis > 5 ? '#ef4444' : '#38bdf8'};">${item.wis}/10</td>
+    </tr>
+  `).join('') : `<tr><td colspan="6" style="padding: 20px; text-align: center;">No history data found down to 8/23/2026.</td></tr>`;
+
+  modal.innerHTML = `
+    <div style="background: #1e293b; color: #fff; padding: 25px; border-radius: 10px; max-width: 800px; width: 90%; max-height: 80vh; overflow-y: auto;">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+        <h2 style="margin: 0;"><i class="fas fa-history"></i> Weather History (Down to 8/23/2026)</h2>
+        <button onclick="closeModal()" style="background: none; border: none; color: #fff; font-size: 1.5rem; cursor: pointer;">&times;</button>
+      </div>
+      <table style="width: 100%; border-collapse: collapse; text-align: left;">
+        <thead>
+          <tr style="border-bottom: 2px solid #38bdf8; color: #38bdf8;">
+            <th style="padding: 10px;">Date</th>
+            <th style="padding: 10px;">Condition</th>
+            <th style="padding: 10px;">High / Low</th>
+            <th style="padding: 10px;">Wind</th>
+            <th style="padding: 10px;">DOS</th>
+            <th style="padding: 10px;">WIS</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${rowsHtml}
+        </tbody>
+      </table>
+    </div>
+  `;
+}
+
+function showLoadingModal(message) {
+  let modal = document.getElementById('historyModal');
+  if (!modal) {
+    modal = document.createElement('div');
+    modal.id = 'historyModal';
+    modal.style.cssText = `
+      position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+      background: rgba(0,0,0,0.75); display: flex; align-items: center;
+      justify-content: center; z-index: 9999;
+    `;
+    document.body.appendChild(modal);
+  }
+  modal.innerHTML = `
+    <div style="background: #1e293b; color: #fff; padding: 30px; border-radius: 8px; text-align: center;">
+      <i class="fas fa-spinner fa-spin fa-2x" style="color: #38bdf8; margin-bottom: 10px;"></i>
+      <p style="margin: 0;">${message}</p>
+    </div>
+  `;
+}
+
+function closeModal() {
+  const modal = document.getElementById('historyModal');
+  if (modal) modal.remove();
+}
 // Run on page load and periodically to catch time shifts
 window.addEventListener('resize', () => {
     const modal = document.getElementById("forecastGraphModal");
