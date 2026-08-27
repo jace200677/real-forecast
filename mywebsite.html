@@ -1745,6 +1745,9 @@ function openForecastGraphModal(item, fullForecast = [], itemIndex = -1) {
 /**
  * Global Radar Map Layer — Fixed Planet Grid (Full Zoom Out Enabled)
  */
+/**
+ * Global Radar Map Layer — Fixed Planet Grid (Performance Optimized, No Freezing, Pure Color Lerp)
+ */
 function openWeatherMapModal(item, mode = 'temp') {
   let mapModal = document.getElementById("weatherRadarMapModal");
   if (!mapModal) {
@@ -1792,8 +1795,8 @@ function initFixedGridRadarModal(mapModal, item, mode) {
 
   const map = L.map('leafletMap', {
     center: [lat, lon],
-    zoom: 2,
-    minZoom: 1, // Allows zooming max out to full planet view
+    zoom: 3,
+    minZoom: 1,
     maxZoom: 18,
     zoomControl: true,
     worldCopyJump: true,
@@ -1819,6 +1822,8 @@ function initFixedGridRadarModal(mapModal, item, mode) {
     precip: [[56, 189, 248], [37, 99, 235], [29, 78, 216]]
   };
 
+  let renderPending = false;
+
   const drawFixedTileOverlay = (frameIndex) => {
     label.innerText = hours[frameIndex]?.time || `Frame ${frameIndex + 1}`;
 
@@ -1833,7 +1838,9 @@ function initFixedGridRadarModal(mapModal, item, mode) {
     const palette = paletteMap[mode] || paletteMap.temp;
     const timeOffset = (frameIndex + 1) * 0.2;
 
-    const geoGridStep = 0.25;
+    // Adapt step size based on zoom level to eliminate freeze/lag when zoomed out
+    const zoom = map.getZoom();
+    const geoGridStep = Math.max(0.25, 1.5 / Math.pow(2, zoom - 1));
 
     const mapBounds = map.getBounds();
     const minLat = Math.max(-85, Math.floor(mapBounds.getSouth() / geoGridStep) * geoGridStep);
@@ -1848,8 +1855,10 @@ function initFixedGridRadarModal(mapModal, item, mode) {
 
         const rectX = Math.floor(pNW.x);
         const rectY = Math.floor(pNW.y);
-        const rectW = Math.ceil(pSE.x - pNW.x) + 1;
-        const rectH = Math.ceil(pSE.y - pNW.y) + 1;
+
+        // Add 1.5px overlap to make sure grid boundaries are totally smooth with zero visible gaps/lines
+        const rectW = Math.ceil(pSE.x - pNW.x) + 1.5;
+        const rectH = Math.ceil(pSE.y - pNW.y) + 1.5;
 
         if (rectX + rectW < 0 || rectX > canvas.width || rectY + rectH < 0 || rectY > canvas.height) {
           continue;
@@ -1872,25 +1881,31 @@ function initFixedGridRadarModal(mapModal, item, mode) {
         const b = Math.round(palette[idx1][2] * (1 - factor) + palette[idx2][2] * factor);
         const alpha = Math.min(0.65, normVal * 0.7);
 
+        // Pure color draw call with zero border lines
         ctx.fillStyle = `rgba(${r}, ${g}, ${b}, ${alpha})`;
         ctx.fillRect(rectX, rectY, rectW, rectH);
       }
     }
+
+    renderPending = false;
   };
 
-  const triggerRedraw = () => drawFixedTileOverlay(parseInt(slider.value, 10));
+  const scheduleRedraw = () => {
+    if (!renderPending) {
+      renderPending = true;
+      requestAnimationFrame(() => drawFixedTileOverlay(parseInt(slider.value, 10)));
+    }
+  };
 
-  map.on('move', triggerRedraw);
-  map.on('moveend', triggerRedraw);
-  map.on('zoom', triggerRedraw);
-  map.on('zoomend', triggerRedraw);
-  map.on('viewreset', triggerRedraw);
+  map.on('move', scheduleRedraw);
+  map.on('zoom', scheduleRedraw);
+  map.on('viewreset', scheduleRedraw);
 
-  slider.addEventListener('input', triggerRedraw);
+  slider.addEventListener('input', scheduleRedraw);
 
   setTimeout(() => {
     map.invalidateSize();
-    triggerRedraw();
+    scheduleRedraw();
   }, 200);
 }
 
