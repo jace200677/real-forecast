@@ -1718,103 +1718,147 @@ function openForecastGraphModal(item, fullForecast = [], itemIndex = -1) {
 /**
  * Open Radar/Map Modal synchronized with selected day card & graph mode
  */
+/**
+ * Opens Radar/Satellite Map Modal using fixed tile coordinates (z/x/y)
+ * mapped strictly to the target item's geographic latitude/longitude.
+ */
 function openWeatherMapModal(item, mode) {
-    let mapModal = document.getElementById("weatherRadarMapModal");
-    if (!mapModal) {
-        mapModal = document.createElement("div");
-        mapModal.id = "weatherRadarMapModal";
-        mapModal.style.cssText = "position:fixed;top:0;left:0;width:100vw;height:100vh;background:rgba(0,0,0,0.9);z-index:10000;display:flex;align-items:center;justify-content:center;padding:10px;";
-        document.body.appendChild(mapModal);
-    }
+  let mapModal = document.getElementById("weatherRadarMapModal");
+  if (!mapModal) {
+    mapModal = document.createElement("div");
+    mapModal.id = "weatherRadarMapModal";
+    mapModal.style.cssText = "position:fixed;top:0;left:0;width:100vw;height:100vh;background:rgba(0,0,0,0.9);z-index:10000;display:flex;align-items:center;justify-content:center;padding:10px;";
+    document.body.appendChild(mapModal);
+  }
 
-    const hours = item?.hourly || Array.from({ length: 24 }, (_, i) => ({ time: `${i}:00`, value: Math.random() * 100 }));
-    
-    mapModal.innerHTML = `
-        <div style="background:#1e1e24;border-radius:12px;padding:16px;width:100%;max-width:850px;color:#fff;position:relative;box-shadow:0 8px 32px rgba(0,0,0,0.6);">
-            <button onclick="document.getElementById('weatherRadarMapModal').style.display='none'" style="position:absolute;top:12px;right:12px;background:none;border:none;color:#fff;font-size:24px;cursor:pointer;z-index:10;">✕</button>
-            <h3 style="margin:0 0 10px 0;font-size:16px;">
-                📡 ${item?.dayName || 'Forecast'} Radar Map — <span style="color:#38bdf8;text-transform:capitalize;">${mode}</span>
-            </h3>
-            
-            <!-- Map Canvas Overlay Container -->
-            <div style="position:relative;width:100%;height:380px;background:#0f172a;border-radius:8px;overflow:hidden;border:1px solid #334155;">
-                <canvas id="weatherRadarCanvas" style="width:100%;height:100%;display:block;"></canvas>
-            </div>
+  // Extract explicit coordinates directly from item or fallback to location state
+  const lat = item?.lat ?? (window.currentLat || 41.8781);
+  const lon = item?.lon ?? (window.currentLon || -87.6298);
 
-            <!-- Time Slider Bar -->
-            <div style="margin-top:14px;background:#2b2b36;padding:12px 16px;border-radius:8px;">
-                <div style="display:flex;justify-space-between;align-items:center;margin-bottom:6px;">
-                    <span style="font-size:12px;color:#94a3b8;">Timeline Scrubber</span>
-                    <strong id="radarTimeLabel" style="font-size:14px;color:#38bdf8;">12:00 AM</strong>
-                </div>
-                <input type="range" id="radarTimeSlider" min="0" max="${hours.length - 1}" value="0" style="width:100%;accent-color:#38bdf8;cursor:pointer;">
-            </div>
+  // Convert exact Lat/Lon into fixed XYZ tile grid numbers at zoom level 6
+  const zoom = 6;
+  const centerTile = latLonToTileXY(lat, lon, zoom);
+
+  const hours = item?.hourly || Array.from({ length: 24 }, (_, i) => ({
+    time: i === 0 ? '12:00 AM' : i < 12 ? `${i}:00 AM` : i === 12 ? '12:00 PM' : `${i - 12}:00 PM`,
+    timestamp: Date.now() - (23 - i) * 3600000
+  }));
+
+  mapModal.innerHTML = `
+    <div style="background:#1e1e24;border-radius:12px;padding:16px;width:100%;max-width:850px;color:#fff;position:relative;box-shadow:0 8px 32px rgba(0,0,0,0.6);">
+      <button onclick="document.getElementById('weatherRadarMapModal').style.display='none'" style="position:absolute;top:12px;right:12px;background:none;border:none;color:#fff;font-size:24px;cursor:pointer;z-index:10;">✕</button>
+      <h3 style="margin:0 0 10px 0;font-size:16px;display:flex;align-items:center;gap:8px;">
+        🛰️ Satellite & Radar Tile Map — <span style="color:#38bdf8;text-transform:capitalize;">${mode} Layer</span>
+      </h3>
+      <div style="font-size:12px;color:#94a3b8;margin-bottom:8px;">
+        Fixed Grid Center: Zoom ${zoom} | Tile [X: ${centerTile.x}, Y: ${centerTile.y}] (${lat.toFixed(4)}°, ${lon.toFixed(4)}°)
+      </div>
+      
+      <!-- Fixed Grid Tile Map Viewport -->
+      <div id="tileMapViewport" style="position:relative;width:100%;height:380px;background:#0b0f19;border-radius:8px;overflow:hidden;border:1px solid #334155;">
+        <div id="tileGridContainer" style="position:absolute;top:50%;left:50%;transform:translate(-50%, -50%);display:grid;grid-template-columns:repeat(3, 256px);grid-template-rows:repeat(3, 256px);gap:0;">
+          <!-- 3x3 Fixed Satellite Map Tile Grid -->
         </div>
-    `;
+        <canvas id="weatherRadarCanvas" style="position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:2;"></canvas>
+      </div>
 
-    mapModal.style.display = "flex";
-    
-    const radarCanvas = document.getElementById("weatherRadarCanvas");
-    const slider = document.getElementById("radarTimeSlider");
-    const label = document.getElementById("radarTimeLabel");
+      <!-- Time Slider Bar -->
+      <div style="margin-top:14px;background:#2b2b36;padding:12px 16px;border-radius:8px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+          <span style="font-size:12px;color:#94a3b8;">Satellite Time Scrubber</span>
+          <strong id="radarTimeLabel" style="font-size:14px;color:#38bdf8;">--:--</strong>
+        </div>
+        <input type="range" id="radarTimeSlider" min="0" max="${hours.length - 1}" value="${hours.length - 1}" style="width:100%;accent-color:#38bdf8;cursor:pointer;">
+      </div>
+    </div>
+  `;
 
-    // Palette mapping matching graph color themes
+  mapModal.style.display = "flex";
+
+  // Load Fixed 3x3 Base Satellite Tiles around calculated (X, Y)
+  renderFixedSatelliteTiles(centerTile.x, centerTile.y, zoom);
+
+  const radarCanvas = document.getElementById("weatherRadarCanvas");
+  const slider = document.getElementById("radarTimeSlider");
+  const label = document.getElementById("radarTimeLabel");
+
+  const drawRadarOverlay = (index) => {
+    const hourData = hours[index] || {};
+    label.innerText = hourData.time || `Frame ${index + 1}`;
+
+    const rect = radarCanvas.getBoundingClientRect();
+    radarCanvas.width = rect.width * (window.devicePixelRatio || 1);
+    radarCanvas.height = rect.height * (window.devicePixelRatio || 1);
+
+    const ctx = radarCanvas.getContext("2d");
+    ctx.clearRect(0, 0, radarCanvas.width, radarCanvas.height);
+
+    // Weather radar color palette maps matching graph parameters
     const paletteMap = {
-        temp: ['rgba(56,189,248,', 'rgba(251,146,60,', 'rgba(239,68,68,'],
-        feelsLike: ['rgba(56,189,248,', 'rgba(251,146,60,', 'rgba(239,68,68,'],
-        wind: ['rgba(59,130,246,', 'rgba(147,51,234,', 'rgba(236,72,153,'],
-        dos: ['rgba(34,197,94,', 'rgba(234,179,8,', 'rgba(239,68,68,'],
-        pressure: ['rgba(168,85,247,', 'rgba(99,102,241,', 'rgba(59,130,246,'],
-        humidity: ['rgba(14,165,233,', 'rgba(2,132,199,', 'rgba(3,105,161,'],
-        uv: ['rgba(250,204,21,', 'rgba(249,115,22,', 'rgba(220,38,38,'],
-        precip: ['rgba(56,189,248,', 'rgba(37,99,235,', 'rgba(29,78,216,']
+      temp: ['rgba(56,189,248,', 'rgba(251,146,60,', 'rgba(239,68,68,'],
+      wind: ['rgba(59,130,246,', 'rgba(147,51,234,', 'rgba(236,72,153,'],
+      dos: ['rgba(34,197,94,', 'rgba(234,179,8,', 'rgba(239,68,68,'],
+      precip: ['rgba(56,189,248,', 'rgba(37,99,235,', 'rgba(29,78,216,']
     };
 
-    const drawRadarFrame = (index) => {
-        const hourData = hours[index] || {};
-        label.innerText = hourData.time || `Hour ${index + 1}`;
+    const colors = paletteMap[mode] || paletteMap.temp;
+    const frameSeed = (index + 1) * 13;
 
-        const rect = radarCanvas.getBoundingClientRect();
-        radarCanvas.width = rect.width * (window.devicePixelRatio || 1);
-        radarCanvas.height = rect.height * (window.devicePixelRatio || 1);
-        
-        const ctx = radarCanvas.getContext("2d");
-        ctx.clearRect(0, 0, radarCanvas.width, radarCanvas.height);
+    // Render seamless radar layer over fixed satellite tile grid
+    for (let i = 0; i < 7; i++) {
+      const cx = (Math.sin(frameSeed + i * 1.5) * 0.35 + 0.5) * radarCanvas.width;
+      const cy = (Math.cos(frameSeed + i * 2.1) * 0.35 + 0.5) * radarCanvas.height;
+      const radius = (Math.sin(frameSeed + i * 2.8) * 0.15 + 0.25) * Math.min(radarCanvas.width, radarCanvas.height);
 
-        // Draw Map Grid / Radar Base
-        ctx.strokeStyle = "rgba(255, 255, 255, 0.05)";
-        ctx.lineWidth = 1;
-        for (let x = 0; x < radarCanvas.width; x += 40) {
-            ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, radarCanvas.height); ctx.stroke();
-        }
-        for (let y = 0; y < radarCanvas.height; y += 40) {
-            ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(radarCanvas.width, y); ctx.stroke();
-        }
+      const colorBase = colors[i % colors.length];
+      const grad = ctx.createRadialGradient(cx, cy, 0, cx, cy, radius);
+      grad.addColorStop(0, `${colorBase}0.70)`);
+      grad.addColorStop(0.6, `${colorBase}0.30)`);
+      grad.addColorStop(1, `${colorBase}0)`);
 
-        // Generate radial smooth radar contours (non-blocky radar tiles)
-        const colors = paletteMap[mode] || paletteMap.temp;
-        const seed = (index + 1) * 17;
-        
-        for (let i = 0; i < 6; i++) {
-            const cx = (Math.sin(seed + i) * 0.35 + 0.5) * radarCanvas.width;
-            const cy = (Math.cos(seed + i * 2) * 0.35 + 0.5) * radarCanvas.height;
-            const radius = (Math.sin(seed + i * 3) * 0.2 + 0.3) * Math.min(radarCanvas.width, radarCanvas.height);
+      ctx.fillStyle = grad;
+      ctx.beginPath();
+      ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  };
 
-            const colorBase = colors[i % colors.length];
-            const grad = ctx.createRadialGradient(cx, cy, 0, cx, cy, radius);
-            grad.addColorStop(0, `${colorBase}0.75)`);
-            grad.addColorStop(0.5, `${colorBase}0.35)`);
-            grad.addColorStop(1, `${colorBase}0)`);
+  slider.addEventListener("input", (e) => drawRadarOverlay(parseInt(e.target.value, 10)));
+  drawRadarOverlay(hours.length - 1);
+}
 
-            ctx.fillStyle = grad;
-            ctx.beginPath();
-            ctx.arc(cx, cy, radius, 0, Math.PI * 2);
-            ctx.fill();
-        }
-    };
+/**
+ * Converts Latitude & Longitude to Tile Grid X, Y at target Zoom Level
+ */
+function latLonToTileXY(lat, lon, zoom) {
+  const rad = lat * Math.PI / 180;
+  const n = Math.pow(2, zoom);
+  const xTile = Math.floor((lon + 180) / 360 * n);
+  const yTile = Math.floor((1 - Math.log(Math.tan(rad) + 1 / Math.cos(rad)) / Math.PI) / 2 * n);
+  return { x: xTile, y: yTile };
+}
 
-    slider.addEventListener("input", (e) => drawRadarFrame(parseInt(e.target.value, 10)));
-    drawRadarFrame(0);
+/**
+ * Fills fixed 3x3 grid container using Esri World Imagery Satellite Tiles
+ */
+function renderFixedSatelliteTiles(centerX, centerY, zoom) {
+  const container = document.getElementById("tileGridContainer");
+  if (!container) return;
+  container.innerHTML = "";
+
+  for (let dy = -1; dy <= 1; dy++) {
+    for (let dx = -1; dx <= 1; dx++) {
+      const tileX = centerX + dx;
+      const tileY = centerY + dy;
+
+      const img = document.createElement("img");
+      img.src = `https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/${zoom}/${tileY}/${tileX}`;
+      img.style.cssText = "width:256px;height:256px;display:block;background:#111;border:none;";
+      img.alt = `Satellite Tile Z${zoom} X${tileX} Y${tileY}`;
+
+      container.appendChild(img);
+    }
+  }
 }
    
 let activeMapItem = null;
