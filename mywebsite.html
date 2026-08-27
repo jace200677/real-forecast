@@ -1727,7 +1727,7 @@ function openWeatherMapModal(item, mode = 'temp', selectedDayIndex = 0) {
     document.body.appendChild(mapModal);
   }
 
-  // FIX: Destroy existing Leaflet map instance to prevent "already initialized" crash
+  // Destroy existing Leaflet map instance to prevent "already initialized" crash
   if (window._radarMapInstance) {
     window._radarMapInstance.remove();
     window._radarMapInstance = null;
@@ -1878,7 +1878,6 @@ function initTimezoneSyncedRadarModal(mapModal, item, mode, selectedDayIndex) {
 
   const worldBounds = L.latLngBounds(L.latLng(-90, -180), L.latLng(90, 180));
 
-  // FIX: Save map instance globally so it can be destroyed on next modal call
   window._radarMapInstance = L.map('leafletMap', {
     center: [lat, lon],
     zoom: 3,
@@ -1953,15 +1952,38 @@ function initTimezoneSyncedRadarModal(mapModal, item, mode, selectedDayIndex) {
   };
 
   function getGraphInterpolatedValue(minuteVal, geographicLat, geographicLng, activeKey) {
-    const timeFraction = minuteVal / 1440;
+    const targetHour = minuteVal / 60; 
     const len = dataset.length > 0 ? dataset.length : 24;
-    const exactIndex = timeFraction * (len - 1);
-    const i1 = Math.floor(exactIndex);
-    const i2 = Math.min(i1 + 1, len - 1);
-    const mix = exactIndex - i1;
 
-    const entry1 = dataset[i1] || {};
-    const entry2 = dataset[i2] || {};
+    const timeMappedData = dataset.map((entry, idx) => {
+      let entryHour = entry.hour;
+      if (entryHour === undefined) {
+        if (entry.dt) { 
+          entryHour = new Date(entry.dt * (entry.dt > 1e11 ? 1 : 1000)).getHours();
+        } else if (entry.time || entry.date) { 
+          entryHour = new Date(entry.time || entry.date).getHours();
+        } else {
+          entryHour = (idx / Math.max(1, len - 1)) * 23.99;
+        }
+      }
+      return { ...entry, _actualHour: entryHour };
+    });
+
+    timeMappedData.sort((a, b) => a._actualHour - b._actualHour);
+
+    let entry1 = timeMappedData[0] || {};
+    let entry2 = timeMappedData[timeMappedData.length - 1] || {};
+    let mix = 0;
+
+    for (let i = 0; i < timeMappedData.length - 1; i++) {
+      if (targetHour >= timeMappedData[i]._actualHour && targetHour <= timeMappedData[i+1]._actualHour) {
+        entry1 = timeMappedData[i];
+        entry2 = timeMappedData[i+1];
+        const spread = entry2._actualHour - entry1._actualHour;
+        mix = spread === 0 ? 0 : (targetHour - entry1._actualHour) / spread;
+        break;
+      }
+    }
 
     let val1 = entry1.value ?? entry1.temp ?? 50;
     let val2 = entry2.value ?? entry2.temp ?? 50;
@@ -1979,6 +2001,7 @@ function initTimezoneSyncedRadarModal(mapModal, item, mode, selectedDayIndex) {
 
     let temporalValue = val1 * (1 - mix) + val2 * mix;
     const latLngVariance = Math.sin((geographicLat - lat) * 0.08) * Math.cos((geographicLng - lon) * 0.08) * 10;
+    
     return Math.max(0, temporalValue + latLngVariance);
   }
 
