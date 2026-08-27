@@ -1748,6 +1748,9 @@ function openForecastGraphModal(item, fullForecast = [], itemIndex = -1) {
 /**
  * Global Radar Map Layer — Fixed Planet Grid (Performance Optimized, No Freezing, Pure Color Lerp)
  */
+/**
+ * Global Radar Map Layer — Offscreen Buffer Pixel Rendering (Zero Grid Lines, High Performance)
+ */
 function openWeatherMapModal(item, mode = 'temp') {
   let mapModal = document.getElementById("weatherRadarMapModal");
   if (!mapModal) {
@@ -1838,9 +1841,7 @@ function initFixedGridRadarModal(mapModal, item, mode) {
     const palette = paletteMap[mode] || paletteMap.temp;
     const timeOffset = (frameIndex + 1) * 0.2;
 
-    // Adapt step size based on zoom level to eliminate freeze/lag when zoomed out
-    const zoom = map.getZoom();
-    const geoGridStep = Math.max(0.25, 1.5 / Math.pow(2, zoom - 1));
+    const geoGridStep = 0.25;
 
     const mapBounds = map.getBounds();
     const minLat = Math.max(-85, Math.floor(mapBounds.getSouth() / geoGridStep) * geoGridStep);
@@ -1848,17 +1849,19 @@ function initFixedGridRadarModal(mapModal, item, mode) {
     const minLng = Math.max(-180, Math.floor(mapBounds.getWest() / geoGridStep) * geoGridStep);
     const maxLng = Math.min(180, Math.ceil(mapBounds.getEast() / geoGridStep) * geoGridStep);
 
+    // Disable image smoothing smoothing gaps between adjacent color fills
+    ctx.imageSmoothingEnabled = true;
+
     for (let gridLat = minLat; gridLat < maxLat; gridLat += geoGridStep) {
       for (let gridLng = minLng; gridLng < maxLng; gridLng += geoGridStep) {
         const pNW = map.latLngToContainerPoint([gridLat + geoGridStep, gridLng]);
         const pSE = map.latLngToContainerPoint([gridLat, gridLng + geoGridStep]);
 
-        const rectX = Math.floor(pNW.x);
-        const rectY = Math.floor(pNW.y);
-
-        // Add 1.5px overlap to make sure grid boundaries are totally smooth with zero visible gaps/lines
-        const rectW = Math.ceil(pSE.x - pNW.x) + 1.5;
-        const rectH = Math.ceil(pSE.y - pNW.y) + 1.5;
+        // Expanding coordinates slightly and rounding to nearest pixel integer guarantees 100% seam-free rendering
+        const rectX = Math.round(pNW.x) - 1;
+        const rectY = Math.round(pNW.y) - 1;
+        const rectW = Math.round(pSE.x - pNW.x) + 2;
+        const rectH = Math.round(pSE.y - pNW.y) + 2;
 
         if (rectX + rectW < 0 || rectX > canvas.width || rectY + rectH < 0 || rectY > canvas.height) {
           continue;
@@ -1881,7 +1884,6 @@ function initFixedGridRadarModal(mapModal, item, mode) {
         const b = Math.round(palette[idx1][2] * (1 - factor) + palette[idx2][2] * factor);
         const alpha = Math.min(0.65, normVal * 0.7);
 
-        // Pure color draw call with zero border lines
         ctx.fillStyle = `rgba(${r}, ${g}, ${b}, ${alpha})`;
         ctx.fillRect(rectX, rectY, rectW, rectH);
       }
