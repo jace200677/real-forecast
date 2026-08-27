@@ -2953,6 +2953,9 @@ async function handleWeatherHistory() {
 /**
  * Fetches historical grid observations with fixed date cutoff (2026-08-23 to today)
  */
+/**
+ * Fetches historical grid observations from 2026-08-23 up to the exact current date/time
+ */
 async function fetchHistoricalWeatherData(lat, lon) {
   // 1. Get grid points from coordinates
   const pointRes = await fetch(`https://api.weather.gov/points/${lat},${lon}`);
@@ -2960,10 +2963,9 @@ async function fetchHistoricalWeatherData(lat, lon) {
   const pointData = await pointRes.json();
   const { gridId, gridX, gridY } = pointData.properties;
 
-  // 2. Set strict date range: Start at 2026-08-23 up to current date
-  const startIso = '2026-08-23';
-  const endDate = new Date();
-  const endIso = endDate.toISOString().split('T')[0];
+  // 2. Set date range: Start at 2026-08-23, End strictly at current ISO timestamp
+  const startIso = '2026-08-23T00:00:00Z';
+  const endIso = new Date().toISOString(); // Caps request at exact current date & time
 
   // 3. Fetch station ID
   const historyRes = await fetch(
@@ -2975,9 +2977,9 @@ async function fetchHistoricalWeatherData(lat, lon) {
 
   if (!stationId) throw new Error('No weather stations found near location');
 
-  // 4. Fetch station observations within date range
+  // 4. Fetch station observations capped up to current date
   const obsRes = await fetch(
-    `https://api.weather.gov/stations/${stationId}/observations?start=${startIso}T00:00:00Z&end=${endIso}T23:59:59Z`
+    `https://api.weather.gov/stations/${stationId}/observations?start=${startIso}&end=${endIso}`
   );
   if (!obsRes.ok) throw new Error('Failed to fetch observation data');
   const obsData = await obsRes.json();
@@ -2986,24 +2988,26 @@ async function fetchHistoricalWeatherData(lat, lon) {
 }
 
 /**
- * Parses raw observation records and filters out any dates prior to 8/23/2026
+ * Parses raw observation records and filters strictly between 8/23/2026 and today
  */
 function parseHistoryObservations(observations) {
   const dailyMap = {};
-  const cutoffDate = '2026-08-23';
+  const startDateCutoff = '2026-08-23';
+  const todayCutoff = new Date().toISOString().split('T')[0]; // Current date cap (YYYY-MM-DD)
 
   observations.forEach((obs) => {
     const props = obs.properties;
     const dateKey = props.timestamp.split('T')[0];
 
-    // Enforce lower bound limit (8/23/2026)
-    if (dateKey < cutoffDate) return;
+    // Strictly enforce date bounds: 2026-08-23 <= dateKey <= Current Date
+    if (dateKey < startDateCutoff || dateKey > todayCutoff) return;
 
     if (!dailyMap[dateKey]) {
       dailyMap[dateKey] = {
         date: dateKey,
         temps: [],
         winds: [],
+        gusts: [],
         conditions: []
       };
     }
@@ -3018,18 +3022,24 @@ function parseHistoryObservations(observations) {
       dailyMap[dateKey].winds.push(windMph);
     }
 
+    if (props.windGust?.value !== null) {
+      const gustMph = props.windGust.value * 0.621371;
+      dailyMap[dateKey].gusts.push(gustMph);
+    }
+
     if (props.textDescription) {
       dailyMap[dateKey].conditions.push(props.textDescription);
     }
   });
 
-  // Calculate daily metrics sorted from newest to oldest
+  // Sort dates from newest (today) down to 8/23/2026
   return Object.values(dailyMap)
     .sort((a, b) => b.date.localeCompare(a.date))
     .map((day) => {
       const maxTemp = day.temps.length ? Math.round(Math.max(...day.temps)) : 'N/A';
       const minTemp = day.temps.length ? Math.round(Math.min(...day.temps)) : 'N/A';
       const maxWind = day.winds.length ? Math.round(Math.max(...day.winds)) : 0;
+      const maxGust = day.gusts.length ? Math.round(Math.max(...day.gusts)) : null;
       const condition = day.conditions[0] || 'Clear';
 
       return {
@@ -3037,6 +3047,7 @@ function parseHistoryObservations(observations) {
         highTemp: maxTemp,
         lowTemp: minTemp,
         wind: maxWind,
+        gust: maxGust,
         condition: condition,
         dos: calculateDOS(maxWind, condition),
         wis: calculateWIS(minTemp, maxWind, condition)
@@ -3095,13 +3106,14 @@ function renderHistoryModal(data) {
       <td style="padding: 10px;">${item.condition}</td>
       <td style="padding: 10px;">${item.highTemp}°F / ${item.lowTemp}°F</td>
       <td style="padding: 10px;">${item.wind} mph</td>
+      <td style="padding: 10px;">${item.gust ? item.gust + ' mph' : 'N/A'}</td>
       <td style="padding: 10px; font-weight: bold; color: ${item.dos < 5 ? '#ef4444' : '#22c55e'};">${item.dos}/10</td>
       <td style="padding: 10px; font-weight: bold; color: ${item.wis > 5 ? '#ef4444' : '#38bdf8'};">${item.wis}/10</td>
     </tr>
-  `).join('') : `<tr><td colspan="6" style="padding: 20px; text-align: center;">No history data found down to 8/23/2026.</td></tr>`;
+  `).join('') : `<tr><td colspan="7" style="padding: 20px; text-align: center;">No history data found down to 8/23/2026.</td></tr>`;
 
   modal.innerHTML = `
-    <div style="background: #1e293b; color: #fff; padding: 25px; border-radius: 10px; max-width: 800px; width: 90%; max-height: 80vh; overflow-y: auto;">
+    <div style="background: #1e293b; color: #fff; padding: 25px; border-radius: 10px; max-width: 900px; width: 90%; max-height: 80vh; overflow-y: auto;">
       <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
         <h2 style="margin: 0;"><i class="fas fa-history"></i> Weather History (Down to 8/23/2026)</h2>
         <button onclick="closeModal()" style="background: none; border: none; color: #fff; font-size: 1.5rem; cursor: pointer;">&times;</button>
@@ -3111,9 +3123,10 @@ function renderHistoryModal(data) {
           <tr style="border-bottom: 2px solid #38bdf8; color: #38bdf8;">
             <th style="padding: 10px;">Date</th>
             <th style="padding: 10px;">Condition</th>
-            <th style="padding: 10px;">High / Low</th>
-            <th style="padding: 10px;">Wind</th>
-            <th style="padding: 10px;">DOS</th>
+            <th style="padding: 10px;">Temp (°F)</th>
+            <th style="padding: 10px;">Wind (mph)</th>
+            <th style="padding: 10px;">Gust (mph)</th>
+            <th style="padding: 10px;">DOS Score</th>
             <th style="padding: 10px;">WIS</th>
           </tr>
         </thead>
