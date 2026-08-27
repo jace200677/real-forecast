@@ -1877,7 +1877,7 @@ function scrapeUniversalGraphValues(selectedDayIndex = 0) {
 
 /**
  * Custom Leaflet GridLayer rendering canvas tiles based on dataset timeline interpolation
- * Pure Indexing Mode: Directly maps slider timeline position to daily dataset entries (No Timezone Offsets)
+ * Direct Slider Minutes Mode: Reads exact slider position (0-1440 minutes) without timezone conversions
  */
 function createRadarGridLayer() {
   const CustomGridLayer = L.GridLayer.extend({
@@ -1958,14 +1958,12 @@ function createRadarGridLayer() {
       const currentPalette = paletteConfig[paletteKey] || paletteConfig.dos;
 
       const slider = document.getElementById("radarTimeSlider");
-      const sliderVal = slider ? parseInt(slider.value, 10) : 0;
-      const maxSlider = slider ? (parseInt(slider.max, 10) || 1440) : 1440;
+      const totalMinutes = slider ? parseInt(slider.value, 10) : 0;
       
-      // Pure 0 to 1 progress ratio across the slider range
-      const timelineProgress = Math.max(0, Math.min(1, sliderVal / maxSlider));
-
-      // Simple Day vs Night toggle based directly on slider percentage (First 50% = Day, Second 50% = Night)
-      const periodKey = timelineProgress >= 0.5 ? 'night' : 'day';
+      // Direct raw minute calculation (0 to 1440 mins)
+      // Day = 360m (6:00 AM) to 1080m (6:00 PM), Night = everything else
+      const isNight = totalMinutes < 360 || totalMinutes >= 1080;
+      const periodKey = isNight ? 'night' : 'day';
 
       const getEntryValue = (entry, key) => {
         if (typeof entry === 'number') return entry;
@@ -1996,8 +1994,9 @@ function createRadarGridLayer() {
       let baseVal = currentPalette.minVal;
 
       if (dsLen > 0) {
-        // Direct array indexing mapped proportionally to timeline progress
-        const exactIndexFloat = timelineProgress * (dsLen - 1);
+        // Direct linear position mapping across dataset length based on raw minutes (0 - 1440)
+        const targetHour = totalMinutes / 60;
+        const exactIndexFloat = (targetHour / 24) * (dsLen - 1);
         const lowIdx = Math.floor(exactIndexFloat);
         const highIdx = Math.min(dsLen - 1, Math.ceil(exactIndexFloat));
         const blend = exactIndexFloat - lowIdx;
