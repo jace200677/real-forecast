@@ -1620,7 +1620,298 @@ function renderForecast(dosForecast) {
         container.appendChild(card);
     });
 }
+function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, nextItem = null, forcedMinute = 0) {
+    if (!canvas) return null;
+    const rect = canvas.getBoundingClientRect();
+    const width = canvas.width;
 
+    const scaleFactor = Math.min(width / 650, 1.5);
+    const padLeft = Math.round(45 * scaleFactor);
+    const padRight = Math.round(20 * scaleFactor);
+    const graphWidth = width - padLeft - padRight;
+
+    let hoveredMinute;
+    if (forcedMinute !== null && forcedMinute !== undefined) {
+        hoveredMinute = Math.max(0, Math.min(1439, forcedMinute));
+    } else {
+        const x = clientX - rect.left;
+        if (x < padLeft || x > width - padRight) {
+            if (clientX === 0) {
+                hoveredMinute = 0;
+            } else {
+                return null;
+            }
+        } else {
+            const ratio = Math.max(0, Math.min(1, (x - padLeft) / graphWidth));
+            hoveredMinute = Math.round(ratio * 1439);
+        }
+    }
+
+    // Dynamic date extraction from item
+    const extractedDate = item?.dateStr || 
+                          item?.date || 
+                          item?.day || 
+                          item?.dt_txt || 
+                          (item?.dt ? new Date(item.dt * 1000).toLocaleDateString() : null) || 
+                          new Date().toLocaleDateString();
+
+    const h = Math.floor(hoveredMinute / 60);
+    const m = Math.round(hoveredMinute % 60);
+    const timeStr = `${h % 12 || 12}:${m < 10 ? '0' : ''}${m}${h >= 12 ? 'PM' : 'AM'}`;
+
+    const smoothStep = (v0, v1, t) => {
+        const factor = 0.5 * (1 - Math.cos(Math.max(0, Math.min(1, t)) * Math.PI));
+        return v0 + (v1 - v0) * factor;
+    };
+
+    const resolvePreviousItem = () => {
+        if (prevItem) return prevItem;
+        if (typeof forecastData !== "undefined" && Array.isArray(forecastData)) {
+            const idx = forecastData.findIndex(d => (d.dateStr || d.date) === extractedDate);
+            if (idx > 0) return forecastData[idx - 1];
+        }
+        return item?.yesterdayItem || item?.prevDay || null;
+    };
+
+    const resolveNextItem = () => {
+        if (nextItem) return nextItem;
+        if (typeof forecastData !== "undefined" && Array.isArray(forecastData)) {
+            const idx = forecastData.findIndex(d => (d.dateStr || d.date) === extractedDate);
+            if (idx >= 0 && idx < forecastData.length - 1) return forecastData[idx + 1];
+        }
+        return item?.tomorrowItem || item?.nextDay || null;
+    };
+
+    const effectivePrevItem = resolvePreviousItem();
+    const effectiveNextItem = resolveNextItem();
+
+    const getPreviousDayLowestTemp = () => {
+        if (extractedDate === "8/24/2026" || extractedDate === "08/24/2026") {
+            const prev = effectivePrevItem;
+            if (prev && Array.isArray(prev.overrideEvents) && prev.overrideEvents.length > 0) {
+                const eventTemps = prev.overrideEvents.filter(e => e.temp !== undefined).map(e => e.temp);
+                if (eventTemps.length > 0) return Math.min(...eventTemps);
+            }
+            return 48;
+        }
+        const prev = effectivePrevItem;
+        if (prev) {
+            if (Array.isArray(prev.tempRange) && prev.tempRange.length > 0) return Math.min(...prev.tempRange);
+            if (Array.isArray(prev.temps) && prev.temps.length > 0) return Math.min(...prev.temps);
+            if (prev.tempLowMin !== undefined) return prev.tempLowMin;
+            if (prev.tempMin !== undefined) return prev.tempMin;
+            if (prev.tempLow !== undefined) return prev.tempLow;
+        }
+        return item?.tempLow ?? 50;
+    };
+
+    const getNextDayLowestTemp = () => {
+        const next = effectiveNextItem;
+        if (next) {
+            if (Array.isArray(next.tempRange) && next.tempRange.length > 0) return Math.min(...next.tempRange);
+            if (Array.isArray(next.temps) && next.temps.length > 0) return Math.min(...next.temps);
+            if (next.tempLowMin !== undefined) return next.tempLowMin;
+            if (next.tempMin !== undefined) return next.tempMin;
+            if (next.tempLow !== undefined) return next.tempLow;
+        }
+        return item?.tempLow ?? 50;
+    };
+
+    const morningLow = getPreviousDayLowestTemp();
+    const todayLow = item?.tempLow ?? 50;
+    const todayHigh = item?.tempHigh ?? 75;
+    const tomorrowLow = getNextDayLowestTemp();
+    const prevHigh = (effectivePrevItem && effectivePrevItem.tempHigh !== undefined) ? effectivePrevItem.tempHigh : todayHigh;
+
+    let midnightStartTemp = Math.round((prevHigh + morningLow) / 2);
+    if (effectivePrevItem && Array.isArray(effectivePrevItem.overrideEvents) && effectivePrevItem.overrideEvents.length > 0) {
+        const prevEvents = [...effectivePrevItem.overrideEvents].sort((a, b) => a.minute - b.minute);
+        const lastEv = [...prevEvents].reverse().find(e => e.temp !== undefined);
+        if (lastEv) midnightStartTemp = lastEv.temp;
+    }
+
+    let midnightEndTemp = Math.round((todayHigh + tomorrowLow) / 2);
+    if (effectiveNextItem && Array.isArray(effectiveNextItem.overrideEvents) && effectiveNextItem.overrideEvents.length > 0) {
+        const nextEvents = [...effectiveNextItem.overrideEvents].sort((a, b) => a.minute - b.minute);
+        const firstEv = nextEvents.find(e => e.temp !== undefined);
+        if (firstEv) midnightEndTemp = firstEv.temp;
+    }
+
+    const isWinterInversion = item?.isWinterInversion || (todayHigh < morningLow);
+
+    const getDiurnalTemp = (m) => {
+        if (isWinterInversion) {
+            const tStart = Math.round((prevHigh + todayHigh) / 2);
+            if (m <= 360) return Math.round(smoothStep(tStart, todayHigh, m / 360));
+            else if (m <= 900) return Math.round(smoothStep(todayHigh, todayLow, (m - 360) / 540));
+            else return Math.round(smoothStep(todayLow, midnightEndTemp, (m - 900) / 539));
+        } else {
+            if (m <= 360) return Math.round(smoothStep(midnightStartTemp, morningLow, m / 360));
+            else if (m <= 900) return Math.round(smoothStep(morningLow, todayHigh, (m - 360) / 540));
+            else return Math.round(smoothStep(todayHigh, midnightEndTemp, (m - 900) / 539));
+        }
+    };
+
+    const peakMin = 15 * 60;
+    const getDiurnalFeelsLike = (m) => getDiurnalTemp(m) + (item?.feelsLikeOffset || 0);
+
+    const prevWind = (effectivePrevItem && effectivePrevItem.windMph !== undefined) ? effectivePrevItem.windMph : (item?.windMph || 10);
+    const nextWind = (effectiveNextItem && effectiveNextItem.windMph !== undefined) ? effectiveNextItem.windMph : (item?.windMph || 10);
+    const getDiurnalWind = (m) => {
+        const curWind = item?.windMph || 10;
+        const baseWind = (m <= 360) ? smoothStep((prevWind + curWind) / 2, curWind, m / 360) :
+                         (m <= 900) ? curWind :
+                         smoothStep(curWind, (curWind + nextWind) / 2, (m - 900) / 539);
+        const windRad = ((m - peakMin) / 1440) * Math.PI * 2;
+        return Math.round(baseWind * (0.6 + 0.4 * ((Math.cos(windRad) + 1) / 2)));
+    };
+
+    const prevGust = (effectivePrevItem && effectivePrevItem.gustMph !== undefined) ? effectivePrevItem.gustMph : (item?.gustMph || 15);
+    const nextGust = (effectiveNextItem && effectiveNextItem.gustMph !== undefined) ? effectiveNextItem.gustMph : (item?.gustMph || 15);
+    const getDiurnalGust = (m) => {
+        const curGust = item?.gustMph || 15;
+        const baseGust = (m <= 360) ? smoothStep((prevGust + curGust) / 2, curGust, m / 360) :
+                         (m <= 900) ? curGust :
+                         smoothStep(curGust, (curGust + nextGust) / 2, (m - 900) / 539);
+        const windRad = ((m - peakMin) / 1440) * Math.PI * 2;
+        return Math.round(baseGust * (0.65 + 0.35 * ((Math.cos(windRad) + 1) / 2)));
+    };
+
+    const prevDos = (effectivePrevItem && effectivePrevItem.score !== undefined) ? effectivePrevItem.score : (item?.score || 50);
+    const nextDos = (effectiveNextItem && effectiveNextItem.score !== undefined) ? effectiveNextItem.score : (item?.score || 50);
+    const getDiurnalDos = (m) => {
+        const curScore = item?.score || 50;
+        const baseScore = (m <= 360) ? smoothStep((prevDos + curScore) / 2, curScore, m / 360) :
+                          (m <= 900) ? curScore :
+                          smoothStep(curScore, (curScore + nextDos) / 2, (m - 900) / 539);
+        const dosTempRad = ((m - peakMin) / 1440) * Math.PI * 2;
+        return Math.round(baseScore * (0.5 + 0.5 * ((Math.cos(dosTempRad) + 1) / 2)));
+    };
+
+    const hasEvents = Array.isArray(item?.overrideEvents) && item.overrideEvents.length > 0;
+    const sortedEvents = hasEvents ? [...item.overrideEvents].sort((a, b) => a.minute - b.minute) : [];
+
+    const getInterpolatedVal = (m, key, fallbackFn) => {
+        if (!hasEvents) return fallbackFn(m);
+        const exact = sortedEvents.find(e => e.minute === m && e[key] !== undefined);
+        if (exact) return exact[key];
+        const prevEvent = [...sortedEvents].reverse().find(e => e.minute <= m && e[key] !== undefined);
+        const nextEvent = sortedEvents.find(e => e.minute >= m && e[key] !== undefined);
+
+        if (prevEvent && nextEvent) {
+            if (prevEvent.minute === nextEvent.minute) return prevEvent[key];
+            const t = (m - prevEvent.minute) / (nextEvent.minute - prevEvent.minute);
+            return Math.round(smoothStep(prevEvent[key], nextEvent[key], t));
+        } else if (prevEvent) {
+            const endVal = fallbackFn(1439);
+            if (m > prevEvent.minute && prevEvent.minute < 1439) {
+                const t = (m - prevEvent.minute) / (1439 - prevEvent.minute);
+                return Math.round(smoothStep(prevEvent[key], endVal, Math.min(1, t)));
+            }
+            return prevEvent[key];
+        } else if (nextEvent) {
+            const startVal = fallbackFn(0);
+            if (m < nextEvent.minute && nextEvent.minute > 0) {
+                const t = m / nextEvent.minute;
+                return Math.round(smoothStep(startVal, nextEvent[key], Math.max(0, t)));
+            }
+            return nextEvent[key];
+        }
+        return fallbackFn(m);
+    };
+
+    let resolvedValue = null;
+    let label = "";
+
+    switch (mode) {
+        case "temp":
+            resolvedValue = getInterpolatedVal(hoveredMinute, 'temp', getDiurnalTemp);
+            label = `${resolvedValue}°F`;
+            break;
+        case "feelsLike":
+            resolvedValue = getInterpolatedVal(hoveredMinute, 'feelsLike', getDiurnalFeelsLike);
+            label = `Feels Like ${resolvedValue}°F`;
+            break;
+        case "wind":
+            const w = getInterpolatedVal(hoveredMinute, 'wind', getDiurnalWind);
+            const g = getInterpolatedVal(hoveredMinute, 'gust', getDiurnalGust);
+            resolvedValue = { speed: w, gust: g };
+            label = `W: ${w} | G: ${g} mph`;
+            break;
+        case "dos":
+            resolvedValue = getInterpolatedVal(hoveredMinute, 'dos', getDiurnalDos);
+            label = `DOS: ${resolvedValue}`;
+            break;
+        default:
+            resolvedValue = getDiurnalTemp(hoveredMinute);
+            label = `${resolvedValue}`;
+    }
+
+    // Dynamic Multi-Threshold Color Evaluator matched to exact charts
+    const getDynamicColor = (val, currentMode) => {
+        if (currentMode === 'wind') {
+            // Photo 1: Green -> Yellow -> Orange -> Purple/Magenta
+            const speed = typeof val === 'object' ? (val.speed || 0) : val;
+            if (speed >= 50) return 'rgba(168, 85, 247, 0.55)';     // Purple / High Gust
+            if (speed >= 35) return 'rgba(239, 68, 68, 0.50)';      // Red / Severe
+            if (speed >= 25) return 'rgba(249, 115, 22, 0.45)';     // Warm Orange
+            if (speed >= 12) return 'rgba(234, 179, 8, 0.35)';      // Yellow
+            return 'rgba(34, 197, 94, 0.25)';                       // Low Green
+        } 
+
+        if (currentMode === 'dos') {
+            // Photo 2: Green -> Olive -> Brown -> Deep Orange / Amber gradient
+            if (val >= 100) return 'rgba(168, 85, 247, 0.60)';     // Purple Major Event
+            if (val >= 70)  return 'rgba(234, 88, 12, 0.55)';      // Deep Orange (Peak threshold)
+            if (val >= 40)  return 'rgba(161, 98, 7, 0.45)';       // Brownish Amber
+            if (val >= 20)  return 'rgba(101, 163, 13, 0.35)';      // Olive Green
+            return 'rgba(34, 197, 94, 0.25)';                       // Low Green
+        }
+
+        if (currentMode === 'temp' || currentMode === 'feelsLike') {
+            // Photo 3: Teal / Dark Cyan -> Bright Mint Green Gradient
+            if (val >= 90) return 'rgba(239, 68, 68, 0.55)';       // Hot Red
+            if (val >= 75) return 'rgba(249, 115, 22, 0.45)';      // Warm Orange
+            if (val >= 60) return 'rgba(74, 222, 128, 0.40)';      // Bright Mint Green (Peak threshold)
+            if (val >= 45) return 'rgba(45, 212, 191, 0.35)';      // Teal
+            return 'rgba(15, 118, 110, 0.30)';                     // Dark Cyan Low
+        }
+
+        return 'rgba(56, 189, 248, 0.25)';
+    };
+
+    const calculatedColor = getDynamicColor(resolvedValue, mode);
+
+    const RadarGridLayerClass = L.GridLayer.extend({
+        createTile: function(coords) {
+            const tile = document.createElement('canvas');
+            const size = this.getTileSize();
+            tile.width = size.x;
+            tile.height = size.y;
+            const ctx = tile.getContext('2d');
+
+            ctx.fillStyle = calculatedColor;
+            ctx.fillRect(0, 0, tile.width, tile.height);
+
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.05)';
+            ctx.strokeRect(0, 0, tile.width, tile.height);
+
+            return tile;
+        }
+    });
+
+    const activeGridLayer = new RadarGridLayerClass();
+    activeGridLayer._meta = {
+        value: resolvedValue,
+        label: label,
+        minute: hoveredMinute,
+        timeStr: timeStr,
+        dateStr: extractedDate,
+        color: calculatedColor
+    };
+
+    return activeGridLayer;
+}
 function openForecastGraphModal(item, fullForecast = [], itemIndex = -1) {
     let modal = document.getElementById("forecastGraphModal");
     if (!modal) {
@@ -1901,419 +2192,6 @@ function triggerRadarRedraw(forcedMinute) {
  * Synchronizes selected timezone, dataset, and initializes Leaflet map object
  */
 // Updated initialization function ready for use with the correct arguments
-function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, nextItem = null, forcedMinute = 0) {
-    if (!canvas) return null;
-    const rect = canvas.getBoundingClientRect();
-    const width = canvas.width;
-    const height = canvas.height;
-
-    const scaleFactor = Math.min(width / 650, 1.5);
-    const padLeft = Math.round(45 * scaleFactor);
-    const padRight = Math.round(20 * scaleFactor);
-    const graphWidth = width - padLeft - padRight;
-
-    let hoveredMinute;
-    if (forcedMinute !== null && forcedMinute !== undefined) {
-        hoveredMinute = Math.max(0, Math.min(1439, forcedMinute));
-    } else {
-        const x = clientX - rect.left;
-        if (x < padLeft || x > width - padRight) {
-            if (clientX === 0) {
-                hoveredMinute = 0;
-            } else {
-                return null;
-            }
-        } else {
-            const ratio = Math.max(0, Math.min(1, (x - padLeft) / graphWidth));
-            hoveredMinute = Math.round(ratio * 1439);
-        }
-    }
-
-    const h = Math.floor(hoveredMinute / 60);
-    const m = Math.round(hoveredMinute % 60);
-    const timeStr = `${h % 12 || 12}:${m < 10 ? '0' : ''}${m}${h >= 12 ? 'PM' : 'AM'}`;
-
-    const smoothStep = (v0, v1, t) => {
-        const factor = 0.5 * (1 - Math.cos(Math.max(0, Math.min(1, t)) * Math.PI));
-        return v0 + (v1 - v0) * factor;
-    };
-
-    const resolvePreviousItem = () => {
-        if (prevItem) return prevItem;
-        if (typeof forecastData !== "undefined" && Array.isArray(forecastData)) {
-            const idx = forecastData.findIndex(d => d.dateStr === item.dateStr);
-            if (idx > 0) return forecastData[idx - 1];
-        }
-        return item.yesterdayItem || item.prevDay || null;
-    };
-
-    const resolveNextItem = () => {
-        if (nextItem) return nextItem;
-        if (typeof forecastData !== "undefined" && Array.isArray(forecastData)) {
-            const idx = forecastData.findIndex(d => d.dateStr === item.dateStr);
-            if (idx >= 0 && idx < forecastData.length - 1) return forecastData[idx + 1];
-        }
-        return item.tomorrowItem || item.nextDay || null;
-    };
-
-    const effectivePrevItem = resolvePreviousItem();
-    const effectiveNextItem = resolveNextItem();
-
-    const getPreviousDayLowestTemp = () => {
-        if (item.dateStr === "8/24/2026" || item.dateStr === "08/24/2026") {
-            const prev = effectivePrevItem;
-            if (prev && Array.isArray(prev.overrideEvents) && prev.overrideEvents.length > 0) {
-                const eventTemps = prev.overrideEvents.filter(e => e.temp !== undefined).map(e => e.temp);
-                if (eventTemps.length > 0) return Math.min(...eventTemps);
-            }
-            return 48;
-        }
-        const prev = effectivePrevItem;
-        if (prev) {
-            if (Array.isArray(prev.tempRange) && prev.tempRange.length > 0) return Math.min(...prev.tempRange);
-            if (Array.isArray(prev.temps) && prev.temps.length > 0) return Math.min(...prev.temps);
-            if (prev.tempLowMin !== undefined) return prev.tempLowMin;
-            if (prev.tempMin !== undefined) return prev.tempMin;
-            if (prev.tempLow !== undefined) return prev.tempLow;
-        }
-        return item.tempLow;
-    };
-
-    const getNextDayLowestTemp = () => {
-        const next = effectiveNextItem;
-        if (next) {
-            if (Array.isArray(next.tempRange) && next.tempRange.length > 0) return Math.min(...next.tempRange);
-            if (Array.isArray(next.temps) && next.temps.length > 0) return Math.min(...next.temps);
-            if (next.tempLowMin !== undefined) return next.tempLowMin;
-            if (next.tempMin !== undefined) return next.tempMin;
-            if (next.tempLow !== undefined) return next.tempLow;
-        }
-        return item.tempLow;
-    };
-
-    const morningLow = getPreviousDayLowestTemp();
-    const todayLow = item.tempLow;
-    const todayHigh = item.tempHigh;
-    const tomorrowLow = getNextDayLowestTemp();
-    const prevHigh = (effectivePrevItem && effectivePrevItem.tempHigh !== undefined) ? effectivePrevItem.tempHigh : item.tempHigh;
-
-    let midnightStartTemp = Math.round((prevHigh + morningLow) / 2);
-    if (effectivePrevItem && Array.isArray(effectivePrevItem.overrideEvents) && effectivePrevItem.overrideEvents.length > 0) {
-        const prevEvents = [...effectivePrevItem.overrideEvents].sort((a, b) => a.minute - b.minute);
-        const lastEv = [...prevEvents].reverse().find(e => e.temp !== undefined);
-        if (lastEv) midnightStartTemp = lastEv.temp;
-    }
-
-    let midnightEndTemp = Math.round((todayHigh + tomorrowLow) / 2);
-    if (effectiveNextItem && Array.isArray(effectiveNextItem.overrideEvents) && effectiveNextItem.overrideEvents.length > 0) {
-        const nextEvents = [...effectiveNextItem.overrideEvents].sort((a, b) => a.minute - b.minute);
-        const firstEv = nextEvents.find(e => e.temp !== undefined);
-        if (firstEv) midnightEndTemp = firstEv.temp;
-    }
-
-    const isWinterInversion = item.isWinterInversion || (item.tempHigh < morningLow);
-
-    const getDiurnalTemp = (m) => {
-        if (isWinterInversion) {
-            const tStart = Math.round((prevHigh + todayHigh) / 2);
-            if (m <= 360) return Math.round(smoothStep(tStart, todayHigh, m / 360));
-            else if (m <= 900) return Math.round(smoothStep(todayHigh, todayLow, (m - 360) / 540));
-            else return Math.round(smoothStep(todayLow, midnightEndTemp, (m - 900) / 539));
-        } else {
-            if (m <= 360) return Math.round(smoothStep(midnightStartTemp, morningLow, m / 360));
-            else if (m <= 900) return Math.round(smoothStep(morningLow, todayHigh, (m - 360) / 540));
-            else return Math.round(smoothStep(todayHigh, midnightEndTemp, (m - 900) / 539));
-        }
-    };
-
-    const peakMin = 15 * 60;
-    const getDiurnalFeelsLike = (m) => getDiurnalTemp(m) + (item.feelsLikeOffset || 0);
-
-    const prevWind = (effectivePrevItem && effectivePrevItem.windMph !== undefined) ? effectivePrevItem.windMph : item.windMph;
-    const nextWind = (effectiveNextItem && effectiveNextItem.windMph !== undefined) ? effectiveNextItem.windMph : item.windMph;
-    const getDiurnalWind = (m) => {
-        const baseWind = (m <= 360) ? smoothStep((prevWind + item.windMph) / 2, item.windMph, m / 360) :
-                         (m <= 900) ? item.windMph :
-                         smoothStep(item.windMph, (item.windMph + nextWind) / 2, (m - 900) / 539);
-        const windRad = ((m - peakMin) / 1440) * Math.PI * 2;
-        return Math.round(baseWind * (0.6 + 0.4 * ((Math.cos(windRad) + 1) / 2)));
-    };
-
-    const prevGust = (effectivePrevItem && effectivePrevItem.gustMph !== undefined) ? effectivePrevItem.gustMph : item.gustMph;
-    const nextGust = (effectiveNextItem && effectiveNextItem.gustMph !== undefined) ? effectiveNextItem.gustMph : item.gustMph;
-    const getDiurnalGust = (m) => {
-        const baseGust = (m <= 360) ? smoothStep((prevGust + item.gustMph) / 2, item.gustMph, m / 360) :
-                         (m <= 900) ? item.gustMph :
-                         smoothStep(item.gustMph, (item.gustMph + nextGust) / 2, (m - 900) / 539);
-        const windRad = ((m - peakMin) / 1440) * Math.PI * 2;
-        return Math.round(baseGust * (0.65 + 0.35 * ((Math.cos(windRad) + 1) / 2)));
-    };
-
-    const prevDos = (effectivePrevItem && effectivePrevItem.score !== undefined) ? effectivePrevItem.score : item.score;
-    const nextDos = (effectiveNextItem && effectiveNextItem.score !== undefined) ? effectiveNextItem.score : item.score;
-    const getDiurnalDos = (m) => {
-        const baseScore = (m <= 360) ? smoothStep((prevDos + item.score) / 2, item.score, m / 360) :
-                          (m <= 900) ? item.score :
-                          smoothStep(item.score, (item.score + nextDos) / 2, (m - 900) / 539);
-        const dosTempRad = ((m - peakMin) / 1440) * Math.PI * 2;
-        return Math.round(baseScore * (0.5 + 0.5 * ((Math.cos(dosTempRad) + 1) / 2)));
-    };
-
-    const prevPressure = (effectivePrevItem && effectivePrevItem.pressure !== undefined) ? effectivePrevItem.pressure : (item.pressure || 29.92);
-    const nextPressure = (effectiveNextItem && effectiveNextItem.pressure !== undefined) ? effectiveNextItem.pressure : (item.pressure || 29.92);
-    const getDiurnalPressure = (m) => {
-        const baseP = (m <= 360) ? smoothStep((prevPressure + (item.pressure || 29.92)) / 2, item.pressure || 29.92, m / 360) :
-                      (m <= 900) ? (item.pressure || 29.92) :
-                      smoothStep(item.pressure || 29.92, ((item.pressure || 29.92) + nextPressure) / 2, (m - 900) / 539);
-        const rad = (m / 1440) * Math.PI * 4;
-        return +(baseP + 0.05 * Math.sin(rad)).toFixed(2);
-    };
-
-    const prevHumidity = (effectivePrevItem && effectivePrevItem.humidity !== undefined) ? effectivePrevItem.humidity : (item.humidity || 50);
-    const nextHumidity = (effectiveNextItem && effectiveNextItem.humidity !== undefined) ? effectiveNextItem.humidity : (item.humidity || 50);
-    const getDiurnalHumidity = (m) => {
-        const baseHum = (m <= 360) ? smoothStep((prevHumidity + (item.humidity || 50)) / 2, item.humidity || 50, m / 360) :
-                        (m <= 900) ? (item.humidity || 50) :
-                        smoothStep(item.humidity || 50, ((item.humidity || 50) + nextHumidity) / 2, (m - 900) / 539);
-        const rad = ((m - peakMin) / 1440) * Math.PI * 2;
-        return Math.max(0, Math.min(100, Math.round(baseHum - 20 * Math.cos(rad))));
-    };
-
-    const getDiurnalUv = (m) => {
-        const maxUv = item.uvIndex || 0;
-        if (m < 360 || m > 1200) return 0;
-        const rad = ((m - 360) / 840) * Math.PI;
-        return +(maxUv * Math.sin(rad)).toFixed(1);
-    };
-
-    const prevPrecip = (effectivePrevItem && effectivePrevItem.precipChance !== undefined) ? effectivePrevItem.precipChance : (item.precipChance || 0);
-    const nextPrecip = (effectiveNextItem && effectiveNextItem.precipChance !== undefined) ? effectiveNextItem.precipChance : (item.precipChance || 0);
-    const getDiurnalPrecip = (m) => {
-        if (m <= 360) return Math.round(smoothStep((prevPrecip + (item.precipChance || 0)) / 2, item.precipChance || 0, m / 360));
-        if (m <= 900) return item.precipChance || 0;
-        return Math.round(smoothStep(item.precipChance || 0, ((item.precipChance || 0) + nextPrecip) / 2, (m - 900) / 539));
-    };
-
-    const hasEvents = Array.isArray(item.overrideEvents) && item.overrideEvents.length > 0;
-    const sortedEvents = hasEvents ? [...item.overrideEvents].sort((a, b) => a.minute - b.minute) : [];
-
-    const getInterpolatedVal = (m, key, fallbackFn) => {
-        if (!hasEvents) return fallbackFn(m);
-        const exact = sortedEvents.find(e => e.minute === m && e[key] !== undefined);
-        if (exact) return exact[key];
-        const prevEvent = [...sortedEvents].reverse().find(e => e.minute <= m && e[key] !== undefined);
-        const nextEvent = sortedEvents.find(e => e.minute >= m && e[key] !== undefined);
-
-        if (prevEvent && nextEvent) {
-            if (prevEvent.minute === nextEvent.minute) return prevEvent[key];
-            const t = (m - prevEvent.minute) / (nextEvent.minute - prevEvent.minute);
-            return Math.round(smoothStep(prevEvent[key], nextEvent[key], t));
-        } else if (prevEvent) {
-            const endVal = fallbackFn(1439);
-            if (m > prevEvent.minute && prevEvent.minute < 1439) {
-                const t = (m - prevEvent.minute) / (1439 - prevEvent.minute);
-                return Math.round(smoothStep(prevEvent[key], endVal, Math.min(1, t)));
-            }
-            return prevEvent[key];
-        } else if (nextEvent) {
-            const startVal = fallbackFn(0);
-            if (m < nextEvent.minute && nextEvent.minute > 0) {
-                const t = m / nextEvent.minute;
-                return Math.round(smoothStep(startVal, nextEvent[key], Math.max(0, t)));
-            }
-            return nextEvent[key];
-        }
-        return fallbackFn(m);
-    };
-
-    let resolvedValue = null;
-    let label = "";
-
-    switch (mode) {
-        case "temp":
-            resolvedValue = getInterpolatedVal(hoveredMinute, 'temp', getDiurnalTemp);
-            label = `${resolvedValue}°F`;
-            break;
-        case "feelsLike":
-            resolvedValue = getInterpolatedVal(hoveredMinute, 'feelsLike', getDiurnalFeelsLike);
-            label = `Feels Like ${resolvedValue}°F`;
-            break;
-        case "wind":
-            const w = getInterpolatedVal(hoveredMinute, 'wind', getDiurnalWind);
-            const g = getInterpolatedVal(hoveredMinute, 'gust', getDiurnalGust);
-            resolvedValue = { speed: w, gust: g };
-            label = `W: ${w} | G: ${g} mph`;
-            break;
-        case "dos":
-            resolvedValue = getInterpolatedVal(hoveredMinute, 'dos', getDiurnalDos);
-            label = `DOS: ${resolvedValue}`;
-            break;
-        case "pressure":
-            resolvedValue = getInterpolatedVal(hoveredMinute, 'pressure', getDiurnalPressure);
-            label = `${resolvedValue.toFixed(2)} inHg`;
-            break;
-        case "humidity":
-            resolvedValue = getInterpolatedVal(hoveredMinute, 'humidity', getDiurnalHumidity);
-            label = `${resolvedValue}%`;
-            break;
-        case "uv":
-            resolvedValue = getInterpolatedVal(hoveredMinute, 'uv', getDiurnalUv);
-            label = `UV Index: ${resolvedValue}`;
-            break;
-        case "precip":
-            resolvedValue = getInterpolatedVal(hoveredMinute, 'precip', getDiurnalPrecip);
-            label = `Chance: ${resolvedValue}%`;
-            break;
-        default:
-            resolvedValue = getDiurnalTemp(hoveredMinute);
-            label = `${resolvedValue}`;
-    }
-
-    // Dynamic Multi-Threshold Color Evaluator
-    const getDynamicColor = (val, currentMode) => {
-        if (currentMode === 'temp' || currentMode === 'feelsLike') {
-            if (val >= 100) return 'rgba(153, 0, 0, 0.65)';        // Deep Purple Red
-            if (val >= 90)  return 'rgba(239, 68, 68, 0.55)';       // Extreme Heat Red
-            if (val >= 80)  return 'rgba(249, 115, 22, 0.50)';      // Hot Orange
-            if (val >= 70)  return 'rgba(234, 179, 8, 0.45)';       // Warm Yellow
-            if (val >= 60)  return 'rgba(34, 197, 94, 0.40)';       // Mild Green
-            if (val >= 45)  return 'rgba(6, 182, 212, 0.35)';       // Cool Cyan
-            if (val >= 32)  return 'rgba(59, 130, 246, 0.40)';      // Cold Blue
-            return 'rgba(147, 51, 234, 0.45)';                      // Freezing Violet
-        } 
-        
-        if (currentMode === 'precip') {
-            if (val <= 0) return 'rgba(0, 0, 0, 0.0)';
-            if (val >= 80) return 'rgba(147, 51, 234, 0.65)';       // Extreme Purple
-            if (val >= 60) return 'rgba(220, 38, 38, 0.55)';        // Heavy Red
-            if (val >= 40) return 'rgba(37, 99, 235, 0.45)';        // Moderate Blue
-            return 'rgba(56, 189, 248, 0.30)';                      // Light Rain Cyan
-        } 
-        
-        if (currentMode === 'wind') {
-            const speed = typeof val === 'object' ? (val.speed || 0) : val;
-            if (speed >= 40) return 'rgba(225, 29, 72, 0.60)';      // High Gale Red
-            if (speed >= 25) return 'rgba(249, 115, 22, 0.50)';     // Strong Orange
-            if (speed >= 12) return 'rgba(234, 179, 8, 0.35)';      // Breeze Yellow
-            return 'rgba(34, 197, 94, 0.20)';                       // Calm Green
-        } 
-
-        if (currentMode === 'dos') {
-            if (val >= 80) return 'rgba(34, 197, 94, 0.50)';       // Excellent Green
-            if (val >= 60) return 'rgba(56, 189, 248, 0.40)';       // Good Blue
-            if (val >= 40) return 'rgba(234, 179, 8, 0.40)';        // Moderate Yellow
-            return 'rgba(239, 68, 68, 0.50)';                       // Poor Red
-        }
-
-        if (currentMode === 'uv') {
-            if (val >= 11) return 'rgba(147, 51, 234, 0.60)';       // Extreme Violet
-            if (val >= 8)  return 'rgba(225, 29, 72, 0.50)';        // Very High Red
-            if (val >= 6)  return 'rgba(249, 115, 22, 0.45)';       // High Orange
-            if (val >= 3)  return 'rgba(234, 179, 8, 0.35)';        // Moderate Yellow
-            return 'rgba(34, 197, 94, 0.20)';                       // Low Green
-        }
-
-        if (currentMode === 'humidity') {
-            if (val >= 80) return 'rgba(30, 64, 175, 0.50)';        // Deep Blue
-            if (val >= 50) return 'rgba(56, 189, 248, 0.35)';       // Cyan
-            return 'rgba(251, 146, 60, 0.30)';                      // Dry Amber
-        }
-
-        return 'rgba(56, 189, 248, 0.25)';
-    };
-
-    const calculatedColor = getDynamicColor(resolvedValue, mode);
-
-    const RadarGridLayerClass = L.GridLayer.extend({
-        createTile: function(coords) {
-            const tile = document.createElement('canvas');
-            const size = this.getTileSize();
-            tile.width = size.x;
-            tile.height = size.y;
-            const ctx = tile.getContext('2d');
-
-            ctx.fillStyle = calculatedColor;
-            ctx.fillRect(0, 0, tile.width, tile.height);
-
-            ctx.strokeStyle = 'rgba(255, 255, 255, 0.05)';
-            ctx.strokeRect(0, 0, tile.width, tile.height);
-
-            return tile;
-        }
-    });
-
-    const activeGridLayer = new RadarGridLayerClass();
-    activeGridLayer._meta = {
-        value: resolvedValue,
-        label: label,
-        minute: hoveredMinute,
-        timeStr: timeStr,
-        color: calculatedColor
-    };
-
-    return activeGridLayer;
-}
-
-// --- Fully Synchronized Timeline Slider Event Observer ---
-const timelineSlider = document.getElementById('radarTimeSlider') || document.querySelector('input[type="range"]');
-
-if (timelineSlider) {
-    const updateRadarTimelineState = (sliderMinute) => {
-        const canvas = window._radarState?.canvas || document.querySelector('canvas') || document.getElementById('yourCanvasId');
-        const activeItem = window._radarState?.currentItem || (typeof item !== 'undefined' ? item : {});
-        const activeMode = window._radarState?.currentMode || (typeof mode !== 'undefined' ? mode : 'temp');
-        const activeMap = window._radarState?.map;
-
-        if (!activeMap) return;
-
-        // 1. Remove previous tile layer
-        if (window._radarState && window._radarState.radarTileLayer) {
-            activeMap.removeLayer(window._radarState.radarTileLayer);
-            window._radarState.radarTileLayer = null;
-        }
-
-        // 2. Generate updated tile layer with recalculated minute, values, and dynamic colors
-        const updatedLayer = createRadarGridLayer(
-            canvas, 
-            0, 
-            activeItem, 
-            activeMode, 
-            null, 
-            null, 
-            sliderMinute
-        );
-
-        // 3. Mount to Leaflet map and save state reference
-        if (updatedLayer) {
-            updatedLayer.addTo(activeMap);
-            window._radarState = window._radarState || {};
-            window._radarState.radarTileLayer = updatedLayer;
-
-            // 4. Update real-time UI text labels, badge values, and visual accents
-            const meta = updatedLayer._meta || {};
-            
-            const timeLabel = document.getElementById('radarTimeLabel') || document.getElementById('timeDisplayLabel');
-            if (timeLabel) {
-                const tz = typeof getTimezoneAbbreviation === 'function' ? getTimezoneAbbreviation() : '';
-                timeLabel.textContent = `${meta.timeStr} ${tz}`.trim();
-            }
-
-            const valueLabel = document.getElementById('radarValueDisplay') || document.getElementById('radarValueLabel');
-            if (valueLabel) {
-                valueLabel.textContent = meta.label || '';
-                valueLabel.style.color = meta.color ? meta.color.replace(/[\d\.]+\)$/g, '1.0)') : '#38bdf8';
-            }
-        }
-    };
-
-    timelineSlider.addEventListener('input', (e) => {
-        updateRadarTimelineState(parseInt(e.target.value, 10));
-    });
-
-    timelineSlider.addEventListener('change', (e) => {
-        updateRadarTimelineState(parseInt(e.target.value, 10));
-    });
-}
 
 /**
  * Creates modal DOM elements and handles open/close lifecycle
