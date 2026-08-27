@@ -1733,20 +1733,40 @@ function openWeatherMapModal(item, mode = 'temp', selectedDayIndex = 0) {
 }
 
 function initTimezoneSyncedRadarModal(mapModal, item, mode, selectedDayIndex) {
-  const lat = item?.lat ?? (window.currentLat || 45.3827);
-  const lon = item?.lon ?? (window.currentLon || -93.8761);
+  const lat = item?.lat ?? item?.latitude ?? (window.currentLat || 45.3827);
+  const lon = item?.lon ?? item?.longitude ?? (window.currentLon || -93.8761);
 
   const appTimezone = item?.timezone || item?.tz || Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
 
-  const daysArray = item?.daily || item?.forecast || item?.days || item?.weekly || [];
+  // **Robust Day Card Resolver**: Safely extract the target day from multiple common API response patterns
+  const extractDaysArray = (data) => {
+    if (!data) return [];
+    if (Array.isArray(data)) return data;
+    return data.daily || data.forecast || data.days || data.weekly || data.list || data.data || data.timeline || [];
+  };
+
+  let daysArray = extractDaysArray(item);
+  // Fallback if item itself is wrapped inside a weather response payload (e.g., item.data)
+  if (daysArray.length === 0 && item && typeof item === 'object') {
+    for (const key of Object.keys(item)) {
+      if (item[key] && typeof item[key] === 'object') {
+        const nested = extractDaysArray(item[key]);
+        if (nested.length > 0) {
+          daysArray = nested;
+          break;
+        }
+      }
+    }
+  }
+
   const targetDayCard = daysArray[selectedDayIndex] || daysArray[0] || item || {};
 
-  const rawDateStr = targetDayCard.date || targetDayCard.dayLabel || targetDayCard.title || null;
+  const rawDateStr = targetDayCard.date || targetDayCard.dayLabel || targetDayCard.title || targetDayCard.dt_txt || targetDayCard.dt || null;
   let formattedDisplayDate = `Day ${selectedDayIndex + 1}`;
   
   if (rawDateStr) {
     try {
-      const parsedDate = new Date(rawDateStr);
+      const parsedDate = typeof rawDateStr === 'number' ? new Date(rawDateStr * 1000) : new Date(rawDateStr);
       if (!isNaN(parsedDate)) {
         formattedDisplayDate = new Intl.DateTimeFormat('en-US', {
           timeZone: appTimezone,
@@ -1762,8 +1782,16 @@ function initTimezoneSyncedRadarModal(mapModal, item, mode, selectedDayIndex) {
     }
   }
 
-  // Extract explicit hourly datasets matching the user's graph curves
-  const hourlyRaw = targetDayCard.hourly || targetDayCard.timeline || targetDayCard.dataset || item?.hourly || item?.timeline || [];
+  // **Robust Hourly Timeline Resolver**: Checks target day card first, then falls back to parent or synthetic generator
+  const extractHourlyArray = (card) => {
+    if (!card) return [];
+    return card.hourly || card.timeline || card.dataset || card.hours || card.lead || [];
+  };
+
+  let hourlyRaw = extractHourlyArray(targetDayCard);
+  if (hourlyRaw.length === 0) {
+    hourlyRaw = extractHourlyArray(item);
+  }
   const dataset = hourlyRaw.length > 0 ? hourlyRaw : generateSyntheticDayTimeline(selectedDayIndex);
   
   const totalMinutes = 24 * 60;
@@ -1846,7 +1874,6 @@ function initTimezoneSyncedRadarModal(mapModal, item, mode, selectedDayIndex) {
   const offscreenCanvas = document.createElement("canvas");
   const offscreenCtx = offscreenCanvas.getContext("2d");
 
-  // Strict meteorological color lookup scales mapping exact graph values (Temp °F, Wind Speed, Wind Gusts up to 95+ mph)
   const exactPaletteMap = {
     temp: [
       { val: -20, rgb: [30, 64, 175] },
@@ -1893,7 +1920,6 @@ function initTimezoneSyncedRadarModal(mapModal, item, mode, selectedDayIndex) {
     const arr = [];
     for (let h = 0; h < 24; h++) {
       let temp = 50 + (dayIdx * 3) + Math.sin((h - 6) / 24 * Math.PI * 2) * 18;
-      // High wind curves matching your graph peak (~43 mph speed, ~76 mph gust around 2:35 PM / hour 14.5)
       let speed = 25 + Math.sin((h - 5) / 24 * Math.PI * 2) * 18;
       let gust = 45 + Math.sin((h - 5) / 24 * Math.PI * 2) * 31;
       arr.push({ hour: h, temp: temp, speed: Math.max(0, speed), gust: Math.max(0, gust), value: temp });
@@ -1901,11 +1927,8 @@ function initTimezoneSyncedRadarModal(mapModal, item, mode, selectedDayIndex) {
     return arr;
   }
 
-  // Precise spatial-temporal coordinate interpolation mapping across any region (lat/lon variance)
   function getGraphInterpolatedValue(minuteVal, geographicLat, geographicLng, activeKey) {
     const timeFraction = minuteVal / 1440;
-    
-    // Support dataset arrays or standard 24-point hourly arrays seamlessly
     const len = dataset.length > 0 ? dataset.length : 24;
     const exactIndex = timeFraction * (len - 1);
     const i1 = Math.floor(exactIndex);
@@ -1932,8 +1955,6 @@ function initTimezoneSyncedRadarModal(mapModal, item, mode, selectedDayIndex) {
     }
 
     let temporalValue = val1 * (1 - mix) + val2 * mix;
-    
-    // Geographic variance gradient: allows values to differ correctly across different parts of the map viewport
     const latLngVariance = Math.sin((geographicLat - lat) * 0.08) * Math.cos((geographicLng - lon) * 0.08) * (activeKey.includes('wind') ? 12 : 8);
     return Math.max(0, temporalValue + latLngVariance);
   }
