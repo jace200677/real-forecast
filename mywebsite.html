@@ -1765,7 +1765,6 @@ function openForecastGraphModal(item, fullForecast = [], itemIndex = -1) {
         drawForecastCanvasGraph(item, currentMode, modalCanvas, null, modal.prevItem, modal.nextItem);
     }, 50);
 }
-
 // Initialize global radar state with active values map
 window._radarState = window._radarState || {
   map: null,
@@ -1773,25 +1772,25 @@ window._radarState = window._radarState || {
   windSubMode: 'speed',
   dataset: [],
   selectedDayIndex: 0,
-  currentItem: null
+  currentItem: null,
+  activeDateText: ''
 };
 
 /**
- * Extract active date directly from graph modal header, DOM elements, or dataset
+ * Extract active date and timing directly from graph modal header, DOM elements, or dataset
  */
 function extractDateFromGraph(item, selectedDayIndex = 0) {
-  // 1. Check for visible graph modal headers (e.g., "Fri (8/28/2026) - Temperature")
-  const graphHeaderSelector = [
-    '#graphModalTitle', '.modal-title', '.graph-header', '.chart-title', 
-    'h2', 'h3', 'h4', '[id*="graph"]', '[class*="graph"]', '[class*="modal"]'
+  // 1. Check for visible graph modal headers or active popups
+  const graphHeaderSelectors = [
+    '#graphModalTitle', '.modal-title', '.graph-header', '.chart-title',
+    '.graph-modal-date', '[id*="graph"] h2', '[id*="graph"] h3', '[class*="graph"] h3'
   ];
 
-  for (const selector of graphHeaderSelector) {
+  for (const selector of graphHeaderSelectors) {
     const elements = document.querySelectorAll(selector);
     for (const el of elements) {
-      if (el.offsetParent !== null && el.innerText.trim()) { // Only visible elements
+      if (el.offsetParent !== null && el.innerText.trim()) {
         const text = el.innerText.trim();
-        // Match dates like "Fri (8/28/2026)", "8/28/2026", "2026-08-28", or "Aug 28"
         const dateMatch = text.match(/([A-Za-z]{3}\s*\(\d{1,2}\/\d{1,2}\/\d{4}\))|(\d{1,2}\/\d{1,2}\/\d{2,4})|([A-Za-z]{3}\s+\d{1,2})|(\d{4}-\d{2}-\d{2})/);
         if (dateMatch) {
           return dateMatch[0];
@@ -1800,17 +1799,22 @@ function extractDateFromGraph(item, selectedDayIndex = 0) {
     }
   }
 
-  // 2. Check for selected DOM forecast tabs or cards
-  const activeCard = document.querySelector('.day-card.active, .forecast-day-card.active, .day-tab.active, [data-selected="true"]');
+  // 2. Check active forecast day cards/tabs anywhere in the DOM
+  const activeSelectors = [
+    '.day-card.active', '.forecast-day-card.active', '.day-tab.active',
+    '[data-selected="true"]', '.card-selected', '.active-day'
+  ];
+
+  const activeCard = document.querySelector(activeSelectors.join(', '));
   if (activeCard) {
-    const cardText = activeCard.innerText || activeCard.getAttribute('data-date');
+    const cardText = activeCard.innerText || activeCard.getAttribute('data-date') || activeCard.getAttribute('title');
     if (cardText) {
       const dateMatch = cardText.match(/([A-Za-z]{3}\s*\(\d{1,2}\/\d{1,2}\/\d{4}\))|(\d{1,2}\/\d{1,2}\/\d{2,4})|([A-Za-z]{3}\s+\d{1,2})/);
       if (dateMatch) return dateMatch[0];
     }
   }
 
-  // 3. Fallback to passed item data or index calculation
+  // 3. Extract array from dataset and fallback to item date property
   const extractDaysArray = (data) => {
     if (!data) return [];
     if (Array.isArray(data)) return data;
@@ -1826,7 +1830,13 @@ function extractDateFromGraph(item, selectedDayIndex = 0) {
       const parsedDate = typeof rawDateStr === 'number' ? new Date(rawDateStr * 1000) : new Date(rawDateStr);
       if (!isNaN(parsedDate.getTime())) {
         const appTimezone = item?.timezone || item?.tz || Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
-        return new Intl.DateTimeFormat('en-US', { timeZone: appTimezone, weekday: 'short', month: 'numeric', day: 'numeric', year: 'numeric' }).format(parsedDate);
+        return new Intl.DateTimeFormat('en-US', {
+          timeZone: appTimezone,
+          weekday: 'short',
+          month: 'numeric',
+          day: 'numeric',
+          year: 'numeric'
+        }).format(parsedDate);
       }
       return String(rawDateStr);
     } catch (e) {
@@ -1838,171 +1848,22 @@ function extractDateFromGraph(item, selectedDayIndex = 0) {
 }
 
 /**
- * Event Listener for triggering Radar Modal from external control button
- */
-document.getElementById("weatherMapModalBtn")?.addEventListener("click", () => {
-  const currentMode = document.getElementById("graphTypeSelect")?.value || "temp";
-  const rootData = window._radarState?.currentItem || window.currentWeatherData || {};
-
-  const dayElements = document.querySelectorAll('.day-tab, .forecast-day-card, .day-card, .history-card');
-  let selectedDayIndex = 0;
-
-  dayElements.forEach((el, index) => {
-    if (
-      el.classList.contains('active') ||
-      el.classList.contains('selected') ||
-      el.getAttribute('aria-selected') === 'true' ||
-      el.dataset.selected === 'true'
-    ) {
-      selectedDayIndex = index;
-    }
-  });
-
-  const extractDaysArray = (data) => {
-    if (!data) return [];
-    if (Array.isArray(data)) return data;
-    return data.daily || data.forecast || data.days || data.weekly || data.list || data.data || data.timeline || [];
-  };
-
-  let daysArray = extractDaysArray(rootData);
-  if (daysArray.length === 0 && rootData && typeof rootData === 'object') {
-    for (const key of Object.keys(rootData)) {
-      if (rootData[key] && typeof rootData[key] === 'object') {
-        const nested = extractDaysArray(rootData[key]);
-        if (nested.length > 0) {
-          daysArray = nested;
-          break;
-        }
-      }
-    }
-  }
-
-  const selectedDayCard = daysArray[selectedDayIndex] || daysArray[0] || rootData;
-
-  if (selectedDayCard !== rootData && typeof rootData === 'object') {
-    selectedDayCard.lat = selectedDayCard.lat ?? rootData.lat ?? rootData.latitude;
-    selectedDayCard.lon = selectedDayCard.lon ?? rootData.lon ?? rootData.longitude;
-    selectedDayCard.timezone = selectedDayCard.timezone ?? rootData.timezone ?? rootData.tz;
-    selectedDayCard.days = daysArray;
-  }
-
-  openWeatherMapModal(selectedDayCard, currentMode, selectedDayIndex);
-});
-
-/**
- * Open Interactive Radar Modal
- */
-function openWeatherMapModal(item, mode = 'temp', selectedDayIndex = null) {
-  if (selectedDayIndex === null || selectedDayIndex === undefined) {
-    const activeCard = document.querySelector('.day-card.active, .forecast-day-card.active, .day-tab.active, [data-selected="true"]');
-    if (activeCard) {
-      const allCards = Array.from(document.querySelectorAll('.day-card, .forecast-day-card, .day-tab'));
-      const foundIdx = allCards.indexOf(activeCard);
-      selectedDayIndex = foundIdx !== -1 ? foundIdx : 0;
-    } else {
-      selectedDayIndex = 0;
-    }
-  }
-
-  let mapModal = document.getElementById("weatherRadarMapModal");
-  if (!mapModal) {
-    mapModal = document.createElement("div");
-    mapModal.id = "weatherRadarMapModal";
-    mapModal.style.cssText = "position:fixed;top:0;left:0;width:100vw;height:100vh;background:rgba(0,0,0,0.85);z-index:10000;display:flex;align-items:center;justify-content:center;padding:12px;box-sizing:border-box;";
-    document.body.appendChild(mapModal);
-
-    mapModal.innerHTML = `
-      <div style="background:#18181c;border-radius:14px;padding:16px;width:100%;max-width:900px;color:#fff;position:relative;box-shadow:0 12px 40px rgba(0,0,0,0.7);font-family:system-ui, -apple-system, sans-serif;max-height:95vh;display:flex;flex-direction:column;box-sizing:border-box;">
-        <button id="closeRadarModalBtn" style="position:absolute;top:12px;right:12px;background:#27272a;border:none;color:#fff;width:32px;height:32px;border-radius:50%;font-size:18px;cursor:pointer;z-index:1001;display:flex;align-items:center;justify-content:center;">✕</button>
-        
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;flex-wrap:wrap;gap:10px;flex-shrink:0;">
-          <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
-            <h3 style="margin:0;font-size:16px;font-weight:600;">
-              🛰️ Radar (<span id="radarDateDisplay" style="color:#38bdf8;">Loading...</span>)
-            </h3>
-            
-            <select id="radarLayerSwitcher" style="background:#27272a;color:#fff;border:1px solid #3f3f46;padding:4px 10px;border-radius:6px;font-size:13px;cursor:pointer;outline:none;">
-              <option value="temp">Temperature</option>
-              <option value="wind">Wind</option>
-              <option value="dos">DOS / Index</option>
-              <option value="precip">Precipitation</option>
-            </select>
-
-            <div id="windOptionContainer" style="display:none;">
-              <select id="windSubModeSelect" style="background:#27272a;color:#fff;border:1px solid #3f3f46;padding:4px 10px;border-radius:6px;font-size:13px;cursor:pointer;outline:none;">
-                <option value="speed">Wind Speed</option>
-                <option value="gust">Wind Gusts</option>
-              </select>
-            </div>
-          </div>
-        </div>
-        
-        <div id="interactiveMapContainer" style="position:relative;width:100%;height:380px;background:#090d16;border-radius:10px;overflow:hidden;border:1px solid #27272a;flex-grow:1;">
-          <div id="leafletMap" style="width:100%;height:100%;background:#090d16;"></div>
-          <canvas id="syncCanvas" style="position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:400;mix-blend-mode:screen;"></canvas>
-        </div>
-
-        <div style="margin-top:10px;background:#27272a;padding:10px 14px;border-radius:8px;flex-shrink:0;">
-          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
-            <span style="font-size:12px;color:#a1a1aa;font-weight:500;">Interactive Timeline</span>
-            <strong id="radarTimeLabel" style="font-size:13px;color:#38bdf8;">12:00 AM</strong>
-          </div>
-          <input type="range" id="radarTimeSlider" min="0" max="1439" step="1" value="0" style="width:100%;accent-color:#38bdf8;cursor:pointer;">
-        </div>
-      </div>
-    `;
-
-    document.getElementById('closeRadarModalBtn').onclick = () => {
-      mapModal.style.display = 'none';
-      if (window._radarState.map) {
-        window._radarState.map.off();
-        window._radarState.map.remove();
-        window._radarState.map = null;
-      }
-    };
-
-    document.getElementById('radarLayerSwitcher').addEventListener('change', (e) => {
-      window._radarState.currentMode = e.target.value;
-      const windCont = document.getElementById('windOptionContainer');
-      if (windCont) windCont.style.display = window._radarState.currentMode === 'wind' ? 'inline-block' : 'none';
-      triggerRadarRedraw();
-    });
-
-    document.getElementById('windSubModeSelect').addEventListener('change', (e) => {
-      window._radarState.windSubMode = e.target.value;
-      triggerRadarRedraw();
-    });
-  }
-
-  const sliderEl = document.getElementById("radarTimeSlider");
-  if (sliderEl) {
-    sliderEl.value = 0;
-    sliderEl.oninput = function(e) {
-      triggerRadarRedraw(parseInt(e.target.value, 10));
-    };
-  }
-
-  mapModal.style.display = "flex";
-
-  ensureLeafletLoaded(() => {
-    initTimezoneSyncedRadarModal(mapModal, item, mode, selectedDayIndex);
-  });
-}
-
-/**
- * Universal extractor to scrape graph values from DOM or global data across all timings
+ * Universal extractor to scrape precise hourly graph timing and values from active DOM graph
  */
 function scrapeUniversalGraphValues(selectedDayIndex = 0) {
   const points = [];
-  
+
+  // Scrape from rendered chart SVG node points or data attributes
   const domPoints = document.querySelectorAll(
-    '[data-value], [val], svg circle, .apexcharts-series path, .recharts-curve-dot, .chart-point, [data-hour]'
+    '[data-value], [val], svg circle, .apexcharts-series path, .recharts-curve-dot, .chart-point, [data-hour], [data-time]'
   );
 
   if (domPoints && domPoints.length >= 2) {
     domPoints.forEach((el, idx) => {
-      const hour = parseFloat(el.getAttribute('data-hour') || el.getAttribute('hour') || (idx / Math.max(1, domPoints.length - 1)) * 24);
+      const hourAttr = el.getAttribute('data-hour') || el.getAttribute('hour') || el.getAttribute('data-time');
+      const hour = hourAttr !== null ? parseFloat(hourAttr) : (idx / Math.max(1, domPoints.length - 1)) * 24;
       const val = parseFloat(el.getAttribute('data-value') || el.getAttribute('val') || el.getAttribute('cy') || 50);
+
       points.push({
         hour: hour,
         value: val,
@@ -2016,14 +1877,24 @@ function scrapeUniversalGraphValues(selectedDayIndex = 0) {
     return points.sort((a, b) => a.hour - b.hour);
   }
 
+  // Extract directly from active Chart.js instance if present
   if (window.Chart && Object.keys(window.Chart.instances).length > 0) {
     const chart = Object.values(window.Chart.instances)[0];
     const chartData = chart.data?.datasets[0]?.data || [];
+    const labels = chart.data?.labels || [];
+
     if (chartData.length > 0) {
       chartData.forEach((val, idx) => {
         const numVal = typeof val === 'object' ? (val.y ?? val.v ?? 50) : val;
+        let hour = (idx / Math.max(1, chartData.length - 1)) * 24;
+        
+        if (labels[idx]) {
+          const parsedHour = parseInt(labels[idx], 10);
+          if (!isNaN(parsedHour)) hour = parsedHour;
+        }
+
         points.push({
-          hour: (idx / Math.max(1, chartData.length - 1)) * 24,
+          hour: hour,
           value: numVal,
           temp: numVal,
           speed: numVal * 0.65,
@@ -2036,6 +1907,7 @@ function scrapeUniversalGraphValues(selectedDayIndex = 0) {
     }
   }
 
+  // Fallback 24-hour sinusoidal wave generation indexed by selected day
   for (let h = 0; h < 24; h++) {
     const baseVal = 50 + Math.sin((h - 6) / 24 * Math.PI * 2) * 35 + (selectedDayIndex * 3);
     points.push({
@@ -2053,7 +1925,7 @@ function scrapeUniversalGraphValues(selectedDayIndex = 0) {
 }
 
 /**
- * Sync state and render radar map instance
+ * Sync state and render radar map instance to active graph date/timing
  */
 function initTimezoneSyncedRadarModal(mapModal, item, mode, selectedDayIndex) {
   window._radarState.currentMode = mode;
@@ -2063,8 +1935,9 @@ function initTimezoneSyncedRadarModal(mapModal, item, mode, selectedDayIndex) {
   const lat = item?.lat ?? item?.latitude ?? (window.currentLat || 45.3827);
   const lon = item?.lon ?? item?.longitude ?? (window.currentLon || -93.8761);
 
-  // Dynamic date extraction from active graph text / DOM
+  // Dynamic date extraction from active graph header/DOM
   const formattedDisplayDate = extractDateFromGraph(item, selectedDayIndex);
+  window._radarState.activeDateText = formattedDisplayDate;
 
   const dateDisplayEl = document.getElementById('radarDateDisplay');
   if (dateDisplayEl) dateDisplayEl.innerText = formattedDisplayDate;
@@ -2110,7 +1983,7 @@ function initTimezoneSyncedRadarModal(mapModal, item, mode, selectedDayIndex) {
 }
 
 /**
- * Dynamically map graph values anywhere into real-time radar colors across timeline slider timings
+ * Redraw heatmaps dynamically following graph timing across timeline slider values
  */
 function triggerRadarRedraw(forcedMinute) {
   const slider = document.getElementById("radarTimeSlider");
@@ -2256,6 +2129,158 @@ function triggerRadarRedraw(forcedMinute) {
   ctx.imageSmoothingQuality = "high";
   ctx.drawImage(offscreenCanvas, 0, 0, canvas.width, canvas.height);
 }
+
+/**
+ * Open Radar Modal
+ */
+function openWeatherMapModal(item, mode = 'temp', selectedDayIndex = null) {
+  if (selectedDayIndex === null || selectedDayIndex === undefined) {
+    const activeCard = document.querySelector('.day-card.active, .forecast-day-card.active, .day-tab.active, [data-selected="true"]');
+    if (activeCard) {
+      const allCards = Array.from(document.querySelectorAll('.day-card, .forecast-day-card, .day-tab'));
+      const foundIdx = allCards.indexOf(activeCard);
+      selectedDayIndex = foundIdx !== -1 ? foundIdx : 0;
+    } else {
+      selectedDayIndex = 0;
+    }
+  }
+
+  let mapModal = document.getElementById("weatherRadarMapModal");
+  if (!mapModal) {
+    mapModal = document.createElement("div");
+    mapModal.id = "weatherRadarMapModal";
+    mapModal.style.cssText = "position:fixed;top:0;left:0;width:100vw;height:100vh;background:rgba(0,0,0,0.85);z-index:10000;display:flex;align-items:center;justify-content:center;padding:12px;box-sizing:border-box;";
+    document.body.appendChild(mapModal);
+
+    mapModal.innerHTML = `
+      <div style="background:#18181c;border-radius:14px;padding:16px;width:100%;max-width:900px;color:#fff;position:relative;box-shadow:0 12px 40px rgba(0,0,0,0.7);font-family:system-ui, -apple-system, sans-serif;max-height:95vh;display:flex;flex-direction:column;box-sizing:border-box;">
+        <button id="closeRadarModalBtn" style="position:absolute;top:12px;right:12px;background:#27272a;border:none;color:#fff;width:32px;height:32px;border-radius:50%;font-size:18px;cursor:pointer;z-index:1001;display:flex;align-items:center;justify-content:center;">✕</button>
+        
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;flex-wrap:wrap;gap:10px;flex-shrink:0;">
+          <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+            <h3 style="margin:0;font-size:16px;font-weight:600;">
+              🛰️ Radar (<span id="radarDateDisplay" style="color:#38bdf8;">Loading...</span>)
+            </h3>
+            
+            <select id="radarLayerSwitcher" style="background:#27272a;color:#fff;border:1px solid #3f3f46;padding:4px 10px;border-radius:6px;font-size:13px;cursor:pointer;outline:none;">
+              <option value="temp">Temperature</option>
+              <option value="wind">Wind</option>
+              <option value="dos">DOS / Index</option>
+              <option value="precip">Precipitation</option>
+            </select>
+
+            <div id="windOptionContainer" style="display:none;">
+              <select id="windSubModeSelect" style="background:#27272a;color:#fff;border:1px solid #3f3f46;padding:4px 10px;border-radius:6px;font-size:13px;cursor:pointer;outline:none;">
+                <option value="speed">Wind Speed</option>
+                <option value="gust">Wind Gusts</option>
+              </select>
+            </div>
+          </div>
+        </div>
+        
+        <div id="interactiveMapContainer" style="position:relative;width:100%;height:380px;background:#090d16;border-radius:10px;overflow:hidden;border:1px solid #27272a;flex-grow:1;">
+          <div id="leafletMap" style="width:100%;height:100%;background:#090d16;"></div>
+          <canvas id="syncCanvas" style="position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:400;mix-blend-mode:screen;"></canvas>
+        </div>
+
+        <div style="margin-top:10px;background:#27272a;padding:10px 14px;border-radius:8px;flex-shrink:0;">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
+            <span style="font-size:12px;color:#a1a1aa;font-weight:500;">Interactive Timeline</span>
+            <strong id="radarTimeLabel" style="font-size:13px;color:#38bdf8;">12:00 AM</strong>
+          </div>
+          <input type="range" id="radarTimeSlider" min="0" max="1439" step="1" value="0" style="width:100%;accent-color:#38bdf8;cursor:pointer;">
+        </div>
+      </div>
+    `;
+
+    document.getElementById('closeRadarModalBtn').onclick = () => {
+      mapModal.style.display = 'none';
+      if (window._radarState.map) {
+        window._radarState.map.off();
+        window._radarState.map.remove();
+        window._radarState.map = null;
+      }
+    };
+
+    document.getElementById('radarLayerSwitcher').addEventListener('change', (e) => {
+      window._radarState.currentMode = e.target.value;
+      const windCont = document.getElementById('windOptionContainer');
+      if (windCont) windCont.style.display = window._radarState.currentMode === 'wind' ? 'inline-block' : 'none';
+      triggerRadarRedraw();
+    });
+
+    document.getElementById('windSubModeSelect').addEventListener('change', (e) => {
+      window._radarState.windSubMode = e.target.value;
+      triggerRadarRedraw();
+    });
+  }
+
+  const sliderEl = document.getElementById("radarTimeSlider");
+  if (sliderEl) {
+    sliderEl.value = 0;
+    sliderEl.oninput = function(e) {
+      triggerRadarRedraw(parseInt(e.target.value, 10));
+    };
+  }
+
+  mapModal.style.display = "flex";
+
+  ensureLeafletLoaded(() => {
+    initTimezoneSyncedRadarModal(mapModal, item, mode, selectedDayIndex);
+  });
+}
+
+/**
+ * Event listener triggering Radar Modal from external action button
+ */
+document.getElementById("weatherMapModalBtn")?.addEventListener("click", () => {
+  const currentMode = document.getElementById("graphTypeSelect")?.value || "temp";
+  const rootData = window._radarState?.currentItem || window.currentWeatherData || {};
+
+  const dayElements = document.querySelectorAll('.day-tab, .forecast-day-card, .day-card, .history-card');
+  let selectedDayIndex = 0;
+
+  dayElements.forEach((el, index) => {
+    if (
+      el.classList.contains('active') ||
+      el.classList.contains('selected') ||
+      el.getAttribute('aria-selected') === 'true' ||
+      el.dataset.selected === 'true'
+    ) {
+      selectedDayIndex = index;
+    }
+  });
+
+  const extractDaysArray = (data) => {
+    if (!data) return [];
+    if (Array.isArray(data)) return data;
+    return data.daily || data.forecast || data.days || data.weekly || data.list || data.data || data.timeline || [];
+  };
+
+  let daysArray = extractDaysArray(rootData);
+  if (daysArray.length === 0 && rootData && typeof rootData === 'object') {
+    for (const key of Object.keys(rootData)) {
+      if (rootData[key] && typeof rootData[key] === 'object') {
+        const nested = extractDaysArray(rootData[key]);
+        if (nested.length > 0) {
+          daysArray = nested;
+          break;
+        }
+      }
+    }
+  }
+
+  const selectedDayCard = daysArray[selectedDayIndex] || daysArray[0] || rootData;
+
+  if (selectedDayCard !== rootData && typeof rootData === 'object') {
+    selectedDayCard.lat = selectedDayCard.lat ?? rootData.lat ?? rootData.latitude;
+    selectedDayCard.lon = selectedDayCard.lon ?? rootData.lon ?? rootData.longitude;
+    selectedDayCard.timezone = selectedDayCard.timezone ?? rootData.timezone ?? rootData.tz;
+    selectedDayCard.days = daysArray;
+  }
+
+  openWeatherMapModal(selectedDayCard, currentMode, selectedDayIndex);
+});
 
 /**
  * Dynamically load Leaflet dependency if not present
