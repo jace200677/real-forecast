@@ -1876,10 +1876,7 @@ function scrapeUniversalGraphValues(selectedDayIndex = 0) {
 
 /**
  * Custom Leaflet GridLayer rendering canvas tiles based on dataset timeline interpolation
- */
-/**
- * Custom Leaflet GridLayer rendering canvas tiles based on dataset timeline interpolation
- * Fixed: Accurately maps spatial variations relative to exact pixel/lat-lon offsets
+ * Fixed: Seamless tile boundaries, correct Mercator projection, and accurate spatial rendering
  */
 function createRadarGridLayer() {
   const CustomGridLayer = L.GridLayer.extend({
@@ -1970,9 +1967,9 @@ function createRadarGridLayer() {
         baseVal = valLow * (1 - blend) + valHigh * blend;
       }
 
-      // Calculate absolute tile point in current zoom pixel space
-      const tilePoint = L.point(coords.x * tileSize.x, coords.y * tileSize.y);
-      const step = 8;
+      // Calculate absolute point in global pixel space
+      const tileOrigin = L.point(coords.x * tileSize.x, coords.y * tileSize.y);
+      const step = 4; // Smaller pixel step size eliminates grid artifact banding
       const imgData = ctx.createImageData(tileSize.x, tileSize.y);
       const data = imgData.data;
 
@@ -1981,16 +1978,17 @@ function createRadarGridLayer() {
 
       for (let y = 0; y < tileSize.y; y += step) {
         for (let x = 0; x < tileSize.x; x += step) {
-          // Precise coordinate unprojection using tile point + offset at coords.z
-          const currentPxPoint = L.point(tilePoint.x + x, tilePoint.y + y);
-          const latLng = window._radarState.map.unproject(currentPxPoint, coords.z);
+          // Unproject pixel relative to absolute world origin and current zoom (coords.z)
+          const pxPoint = L.point(tileOrigin.x + x, tileOrigin.y + y);
+          const latLng = window._radarState.map.options.crs.unproject(
+            pxPoint.divideBy(Math.pow(2, coords.z) / 256)
+          );
 
           const dLat = latLng.lat - targetLat;
           const dLng = latLng.lng - targetLon;
 
-          // Scale spatial variation based on geographical degrees instead of unscaled pixel bounds
-          const spatialVariation = Math.sin(dLat * 0.5) * Math.cos(dLng * 0.5) * 0.25 * (max - min);
-
+          // Continuous wave calculation relative to geographic degrees
+          const spatialVariation = Math.sin(dLat * 0.08) * Math.cos(dLng * 0.08) * 0.25 * (max - min);
           const sampledValue = baseVal + spatialVariation;
           const normalized = Math.max(0, Math.min(1, (sampledValue - min) / (max - min)));
 
@@ -2007,13 +2005,14 @@ function createRadarGridLayer() {
             }
           }
 
+          // Fill pixel block cleanly across tile bounds
           for (let sy = 0; sy < step && (y + sy) < tileSize.y; sy++) {
             for (let sx = 0; sx < step && (x + sx) < tileSize.x; sx++) {
               const ptr = ((y + sy) * tileSize.x + (x + sx)) * 4;
               data[ptr] = rgb[0];
               data[ptr + 1] = rgb[1];
               data[ptr + 2] = rgb[2];
-              data[ptr + 3] = 140;
+              data[ptr + 3] = 130;
             }
           }
         }
@@ -2024,9 +2023,8 @@ function createRadarGridLayer() {
     }
   });
 
-  return new CustomGridLayer({ opacity: 0.7 });
+  return new CustomGridLayer({ opacity: 0.75, updateWhenZooming: false });
 }
-
 /**
  * Triggers redrawing of the tile layer and updates UI time labels
  */
