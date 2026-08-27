@@ -1770,8 +1770,6 @@ window._radarState = window._radarState || {
   currentMode: 'temp',
   windSubMode: 'speed',
   dataset: [],
-  dayStartTime: 0,
-  dayEndTime: 1440,
   renderPending: false
 };
 
@@ -1898,7 +1896,6 @@ function initTimezoneSyncedRadarModal(mapModal, item, mode, selectedDayIndex) {
   const windCont = document.getElementById('windOptionContainer');
   if (windCont) windCont.style.display = window._radarState.currentMode === 'wind' ? 'inline-block' : 'none';
 
-  // Extract precise hourly items bound to the active forecast card
   const extractHourlyArray = (card) => card ? (card.hourly || card.timeline || card.dataset || card.hours || card.lead || []) : [];
   let hourlyRaw = extractHourlyArray(targetDayCard);
   if (hourlyRaw.length === 0) hourlyRaw = extractHourlyArray(item);
@@ -1952,12 +1949,13 @@ function initTimezoneSyncedRadarModal(mapModal, item, mode, selectedDayIndex) {
 
 function triggerRadarRedraw(forcedMinute) {
   const slider = document.getElementById("radarTimeSlider");
-  const minuteVal = forcedMinute !== undefined ? forcedMinute : (slider ? parseInt(slider.value, 10) : 0);
+  const totalMinutes = forcedMinute !== undefined ? forcedMinute : (slider ? parseInt(slider.value, 10) : 0);
   
+  // Directly calculate time from total minutes (0 to 1439)
   const label = document.getElementById("radarTimeLabel");
   if (label) {
-    const hours24 = Math.floor(minuteVal / 60) % 24;
-    const mins = minuteVal % 60;
+    const hours24 = Math.floor(totalMinutes / 60) % 24;
+    const mins = totalMinutes % 60;
     const period = hours24 >= 12 ? 'PM' : 'AM';
     const hours12 = hours24 % 12 === 0 ? 12 : hours24 % 12;
     label.innerText = `${hours12}:${mins.toString().padStart(2, '0')} ${period}`;
@@ -2009,7 +2007,6 @@ function triggerRadarRedraw(forcedMinute) {
   };
   const palette = exactPaletteMap[activeKey] || exactPaletteMap.temp;
 
-  // Compute dataset metrics and match exact graph timeline values smoothly
   let min = Infinity, max = -Infinity;
   window._radarState.dataset.forEach(entry => {
     let v = entry[activeKey] ?? entry.value ?? entry.temp ?? 50;
@@ -2017,7 +2014,8 @@ function triggerRadarRedraw(forcedMinute) {
   });
   if (min === max) { min -= 10; max += 10; }
 
-  const targetHour = minuteVal / 60;
+  // Map totalMinutes smoothly across dataset elements
+  const targetHour = totalMinutes / 60;
   const dsLen = window._radarState.dataset.length;
   let baseVal = 50;
 
@@ -2046,7 +2044,6 @@ function triggerRadarRedraw(forcedMinute) {
       
       const normalized = Math.max(0, Math.min(1, (localizedVal - min) / (max - min)));
       
-      // Color interpolation across palette stops
       let rgb = palette[0].rgb;
       for (let i = 0; i < palette.length - 1; i++) {
         if (normalized >= palette[i].stop && normalized <= palette[i+1].stop) {
