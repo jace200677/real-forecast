@@ -1763,6 +1763,9 @@ function openForecastGraphModal(item, fullForecast = [], itemIndex = -1) {
 /**
  * MSN-Style Satellite Radar Map Layer — Continuous Organic Noise & Dynamic Overlay Controls
  */
+/**
+ * Global Weather Radar Layer — Full-Coverage Continuous Color Field & Dynamic Wind Modes
+ */
 function openWeatherMapModal(item, mode = 'temp') {
   let mapModal = document.getElementById("weatherRadarMapModal");
   if (!mapModal) {
@@ -1785,7 +1788,7 @@ function initFixedGridRadarModal(mapModal, item, mode) {
   }));
 
   let currentMode = mode;
-  let windSubMode = 'speed'; // Default for wind: 'speed' or 'gust'
+  let windSubMode = 'speed'; // Sub-mode selector for wind layer ('speed' vs 'gust')
 
   mapModal.innerHTML = `
     <div style="background:#18181c;border-radius:14px;padding:16px;width:100%;max-width:900px;color:#fff;position:relative;box-shadow:0 12px 40px rgba(0,0,0,0.7);font-family:system-ui, -apple-system, sans-serif;">
@@ -1793,12 +1796,12 @@ function initFixedGridRadarModal(mapModal, item, mode) {
       
       <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px;">
         <h3 style="margin:0;font-size:16px;font-weight:600;">
-          🛰️ Global Radar — <span id="radarModeTitle" style="color:#38bdf8;text-transform:capitalize;">${mode} Layer</span>
+          🛰️ Global Radar Overlay — <span id="radarModeTitle" style="color:#38bdf8;text-transform:capitalize;">${mode} Layer</span>
         </h3>
-        <!-- Dynamic Sub-menu Dropdown for Wind Options -->
+        <!-- Sub-menu Dropdown for Wind Options -->
         <div id="windOptionContainer" style="display:${mode === 'wind' ? 'inline-block' : 'none'};">
           <select id="windSubModeSelect" style="background:#27272a;color:#fff;border:1px solid #3f3f46;padding:4px 10px;border-radius:6px;font-size:13px;cursor:pointer;outline:none;">
-            <option value="speed" selected>Sustained Wind Speed</option>
+            <option value="speed" selected>Wind Speed</option>
             <option value="gust">Wind Gusts</option>
           </select>
         </div>
@@ -1821,7 +1824,6 @@ function initFixedGridRadarModal(mapModal, item, mode) {
 
   mapModal.style.display = "flex";
 
-  // Strict World Bounds
   const worldBounds = L.latLngBounds(L.latLng(-85, -180), L.latLng(85, 180));
 
   const map = L.map('leafletMap', {
@@ -1835,21 +1837,13 @@ function initFixedGridRadarModal(mapModal, item, mode) {
     maxBoundsViscosity: 1.0
   });
 
-  // MSN Weather-style Hybrid Satellite Map Tiles (Imagery + Boundaries/Labels)
+  // Base Satellite Map
   L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
     minZoom: 2,
     maxZoom: 18,
     noWrap: true,
     bounds: worldBounds,
     attribution: 'Tiles &copy; Esri'
-  }).addTo(map);
-
-  L.tileLayer('https://stamen-tiles.a.ssl.fastly.net/toner-hybrid/{z}/{y}/{x}.png', {
-    minZoom: 2,
-    maxZoom: 18,
-    noWrap: true,
-    opacity: 0.65,
-    bounds: worldBounds
   }).addTo(map);
 
   const canvas = document.getElementById("fixedTileCanvas");
@@ -1862,22 +1856,56 @@ function initFixedGridRadarModal(mapModal, item, mode) {
   const offscreenCanvas = document.createElement("canvas");
   const offscreenCtx = offscreenCanvas.getContext("2d");
 
-  // Palette definitions matching realistic MSN weather scales
+  // Multi-stop weather color palettes matching graph standards
   const paletteMap = {
-    temp: [[30, 64, 175], [56, 189, 248], [74, 222, 128], [250, 204, 21], [251, 146, 60], [239, 68, 68]],
-    wind_speed: [[15, 23, 42], [59, 130, 246], [99, 102, 241], [168, 85, 247], [236, 72, 153]],
-    wind_gust: [[15, 23, 42], [168, 85, 247], [236, 72, 153], [239, 68, 68], [255, 255, 255]],
-    dos: [[22, 101, 52], [34, 197, 94], [234, 179, 8], [239, 68, 68]],
-    precip: [[15, 23, 42], [56, 189, 248], [37, 99, 235], [29, 78, 216], [168, 85, 247]]
+    temp: [
+      [30, 64, 175],   // Deep Blue
+      [56, 189, 248],  // Cyan
+      [74, 222, 128],  // Green
+      [250, 204, 21],  // Yellow
+      [251, 146, 60],  // Orange
+      [239, 68, 68]    // Red
+    ],
+    wind_speed: [
+      [30, 58, 138],   // Calm (Navy)
+      [56, 189, 248],  // Light Breeze (Cyan)
+      [34, 197, 94],   // Moderate (Green)
+      [234, 179, 8],   // Fresh (Yellow)
+      [249, 115, 22],  // Strong (Orange)
+      [239, 68, 68],   // High Wind (Red)
+      [168, 85, 247]   // Violent (Purple)
+    ],
+    wind_gust: [
+      [59, 130, 246],  // Low Gust (Blue)
+      [34, 197, 94],   // Moderate Gust (Green)
+      [250, 204, 21],  // Strong Gust (Yellow)
+      [249, 115, 22],  // Heavy Gust (Orange)
+      [239, 68, 68],   // Severe Gust (Red)
+      [217, 70, 239],  // Extreme Gust (Magenta)
+      [255, 255, 255]  // Hurricane Gust (White)
+    ],
+    dos: [
+      [22, 101, 52],   // Low Risk
+      [34, 197, 94],   // Moderate
+      [234, 179, 8],   // High
+      [239, 68, 68]    // Extreme
+    ],
+    precip: [
+      [15, 23, 42],    // Clear
+      [56, 189, 248],  // Light Rain
+      [37, 99, 235],   // Moderate Rain
+      [29, 78, 216],   // Heavy Rain
+      [168, 85, 247]   // Extreme / Snow
+    ]
   };
 
-  // Organic continuous value generator (removes circular wave artifacts)
-  function getOrganicNoise(lat, lng, t) {
-    const x = lng * 0.035;
-    const y = lat * 0.035;
-    const n1 = Math.sin(x + t) * Math.cos(y + t * 0.8);
-    const n2 = Math.sin((x * 1.7) - (t * 0.5)) * Math.cos((y * 1.7) + (t * 0.5));
-    const n3 = Math.cos((x * 0.5) + (y * 0.8) + (t * 0.3));
+  // Organic continuous noise generator (eliminates square tiles & wave rings)
+  function getContinuousField(lat, lng, t) {
+    const x = lng * 0.04;
+    const y = lat * 0.04;
+    const n1 = Math.sin(x + t) * Math.cos(y + t * 0.7);
+    const n2 = Math.sin((x * 1.5) - (t * 0.4)) * Math.cos((y * 1.5) + (t * 0.4));
+    const n3 = Math.cos((x * 0.6) + (y * 0.9) + (t * 0.2));
     return Math.min(1, Math.max(0, (n1 + (n2 * 0.5) + (n3 * 0.5) + 2) / 4));
   }
 
@@ -1894,7 +1922,7 @@ function initFixedGridRadarModal(mapModal, item, mode) {
 
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-    // Scale down resolution for fast continuous pixel calculation without lag
+    // Downscale canvas buffer for high-speed continuous pixel interpolation
     const scaleFactor = 0.3;
     const bufferWidth = Math.ceil(canvas.width * scaleFactor);
     const bufferHeight = Math.ceil(canvas.height * scaleFactor);
@@ -1911,7 +1939,7 @@ function initFixedGridRadarModal(mapModal, item, mode) {
     }
 
     const palette = paletteMap[activePaletteKey] || paletteMap.temp;
-    const timeOffset = (frameIndex + 1) * 0.12;
+    const timeOffset = (frameIndex + 1) * 0.15;
 
     for (let y = 0; y < bufferHeight; y++) {
       const screenY = y / scaleFactor;
@@ -1920,13 +1948,14 @@ function initFixedGridRadarModal(mapModal, item, mode) {
 
         const latLng = map.containerPointToLatLng([screenX, screenY]);
 
-        // Clip pixels strictly to single planetary boundary to fix outscale
+        // Mask out-of-bounds latitude/longitude to keep fit to planet bounds
         if (latLng.lng < -180 || latLng.lng > 180 || latLng.lat < -85 || latLng.lat > 85) {
           continue;
         }
 
-        const normVal = getOrganicNoise(latLng.lat, latLng.lng, timeOffset);
+        const normVal = getContinuousField(latLng.lat, latLng.lng, timeOffset);
 
+        // Smooth color interpolation matching continuous scale curves
         const colorIdx = normVal * (palette.length - 1);
         const idx1 = Math.floor(colorIdx);
         const idx2 = Math.min(idx1 + 1, palette.length - 1);
@@ -1936,8 +1965,8 @@ function initFixedGridRadarModal(mapModal, item, mode) {
         const g = Math.round(palette[idx1][1] * (1 - factor) + palette[idx2][1] * factor);
         const b = Math.round(palette[idx1][2] * (1 - factor) + palette[idx2][2] * factor);
         
-        // Intensity mask for realistic weather dispersion
-        const alpha = Math.round(Math.min(0.72, Math.pow(normVal, 1.2) * 0.8) * 255);
+        // Transparency blending (0% at bottom end, up to 75% peak intensity)
+        const alpha = Math.round(Math.min(0.75, Math.pow(normVal, 1.1) * 0.8) * 255);
 
         const ptr = (y * bufferWidth + x) * 4;
         data[ptr] = r;
@@ -1949,6 +1978,7 @@ function initFixedGridRadarModal(mapModal, item, mode) {
 
     offscreenCtx.putImageData(imgData, 0, 0);
 
+    // Smoothly scale pixel data over the entire map viewport
     ctx.imageSmoothingEnabled = true;
     ctx.imageSmoothingQuality = "high";
     ctx.drawImage(offscreenCanvas, 0, 0, canvas.width, canvas.height);
@@ -1963,13 +1993,13 @@ function initFixedGridRadarModal(mapModal, item, mode) {
     }
   };
 
-  // Event handlers
+  // Map Listeners
   map.on('move', scheduleRedraw);
   map.on('zoom', scheduleRedraw);
   map.on('viewreset', scheduleRedraw);
 
   slider.addEventListener('input', scheduleRedraw);
-  
+
   if (windSelect) {
     windSelect.addEventListener('change', (e) => {
       windSubMode = e.target.value;
