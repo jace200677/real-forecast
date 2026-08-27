@@ -2209,7 +2209,7 @@ function initTimezoneSyncedRadarModal(mapModal, item, mode, selectedDayIndex) {
       minZoom: 2, maxZoom: 18, noWrap: true, bounds: worldBounds, attribution: 'Tiles &copy; Esri'
     }).addTo(window._radarState.map);
 
-    window._radarState.radarTileLayer = createRadarGridLayer();
+    window._radarState.radarTileLayer = createRadarGridLayer(null, 0, item, mode);
     window._radarState.radarTileLayer.addTo(window._radarState.map);
   } else {
     window._radarState.map.setView([lat, lon], window._radarState.map.getZoom());
