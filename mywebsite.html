@@ -1954,15 +1954,16 @@ function createRadarGridLayer() {
       const slider = document.getElementById("radarTimeSlider");
       const totalMinutes = slider ? parseInt(slider.value, 10) : 0;
       
+      // Strict period correction: Night occurs during night hours, Day occurs during day hours
       const isNight = totalMinutes < 360 || totalMinutes >= 1080;
       const periodKey = isNight ? 'night' : 'day';
 
-      // Universal key resolver mapping active layer modes to corresponding graph/card property attributes anywhere
-      const getEntryValue = (entry, key) => {
+      const getEntryValue = (entry, key, targetPeriodKey) => {
         if (typeof entry === 'number') return entry;
         if (!entry) return currentPalette.minVal;
 
-        const periodObj = entry[periodKey] || entry;
+        // Support explicit day/night object lookup matching the requested timeline state perfectly
+        const periodObj = entry[targetPeriodKey] || entry[periodKey] || entry;
 
         if (key === 'temp') {
           return periodObj.temp ?? periodObj.temperature ?? periodObj.tempRange ?? periodObj.high ?? entry.temp ?? entry.temperature ?? currentPalette.minVal;
@@ -1995,16 +1996,15 @@ function createRadarGridLayer() {
                currentPalette.minVal;
       };
 
-      // Retrieve selected day item or dataset fallback with graph data sync support
       const currentItem = window._radarState.currentItem || {};
       const activeDatasetKey = activeKey === 'speed' || activeKey === 'gust' ? 'wind' : activeKey;
       const graphDataset = window._radarState.graphDatasets?.[activeDatasetKey];
       const dataset = graphDataset || window._radarState.dataset || currentItem.hourly || currentItem.timeline || currentItem.hours || [];
       const dsLen = dataset.length;
-      let baseVal = currentPalette.minVal;
 
+      // Pre-calculate base timeline value at center/target location
+      let baseVal = currentPalette.minVal;
       if (dsLen > 0) {
-        // Direct minute-based sampling bound to active slider time
         const targetHour = totalMinutes / 60;
         const exactIndexFloat = (targetHour / 24) * (dsLen - 1);
         const lowIdx = Math.floor(exactIndexFloat);
@@ -2014,11 +2014,10 @@ function createRadarGridLayer() {
         const lowEntry = dataset[lowIdx] || {};
         const highEntry = dataset[highIdx] || {};
 
-        const valLow = getEntryValue(lowEntry, activeKey);
-        const valHigh = getEntryValue(highEntry, activeKey);
+        const valLow = getEntryValue(lowEntry, activeKey, periodKey);
+        const valHigh = getEntryValue(highEntry, activeKey, periodKey);
         baseVal = valLow * (1 - blend) + valHigh * blend;
 
-        // Extract time/date directly from interpolated graph points if available
         const extractedTime = lowEntry.time || lowEntry.timestamp || lowEntry.datetime || lowEntry.date ||
                               highEntry.time || highEntry.timestamp || highEntry.datetime || highEntry.date;
 
@@ -2030,9 +2029,7 @@ function createRadarGridLayer() {
           }
         }
       } else {
-        // Fallback directly to day-card scope values and timestamp metadata anywhere
-        baseVal = getEntryValue(currentItem, activeKey);
-
+        baseVal = getEntryValue(currentItem, activeKey, periodKey);
         const extractedTime = currentItem.time || currentItem.timestamp || currentItem.datetime || currentItem.date;
         if (extractedTime) {
           window._radarState.currentExtractedTime = extractedTime;
@@ -2048,19 +2045,26 @@ function createRadarGridLayer() {
       const imgData = ctx.createImageData(tileSize.x, tileSize.y);
       const data = imgData.data;
 
-      const targetLat = currentItem.lat ?? 45.3827;
-      const targetLon = currentItem.lon ?? -93.8761;
+      // Reference anchor lat/lon corresponding to the active graph location point anywhere
+      const targetLat = currentItem.lat ?? window._radarState.lat ?? 45.3827;
+      const targetLon = currentItem.lon ?? window._radarState.lon ?? -93.8761;
 
       for (let y = 0; y < tileSize.y; y += step) {
         for (let x = 0; x < tileSize.x; x += step) {
           const pxPoint = L.point(tileOrigin.x + x, tileOrigin.y + y);
           const latLng = window._radarState.map.unproject(pxPoint, coords.z);
 
+          // Compute exact geographical distance offset from the graph point for spatial fading
           const dLat = latLng.lat - targetLat;
           const dLng = latLng.lng - targetLon;
+          const distanceDeg = Math.sqrt(dLat * dLat + dLng * dLng);
 
-          const spatialVariation = Math.sin(dLat * 0.05) * Math.cos(dLng * 0.05) * 3.0; 
-          const sampledValue = baseVal + spatialVariation;
+          // Smooth distance-based fading factor (fades values smoothly away from the graph pixel location center)
+          const fadeFactor = Math.max(0, 1 - (distanceDeg / 12.0)); 
+          const spatialVariation = Math.sin(dLat * 0.1) * Math.cos(dLng * 0.1) * 2.0;
+          
+          // Blend towards default palette minimum value based on distance fade
+          const sampledValue = currentPalette.minVal + (baseVal + spatialVariation - currentPalette.minVal) * fadeFactor;
 
           const stops = currentPalette.stops;
           let rgb = stops[0].rgb;
@@ -2083,13 +2087,16 @@ function createRadarGridLayer() {
             }
           }
 
+          // Dynamic alpha scaling so regions far from the graph location fade out cleanly
+          const dynamicAlpha = Math.round(140 * fadeFactor);
+
           for (let sy = 0; sy < step && (y + sy) < tileSize.y; sy++) {
             for (let sx = 0; sx < step && (x + sx) < tileSize.x; sx++) {
               const ptr = ((y + sy) * tileSize.x + (x + sx)) * 4;
               data[ptr] = rgb[0];
               data[ptr + 1] = rgb[1];
               data[ptr + 2] = rgb[2];
-              data[ptr + 3] = 135;
+              data[ptr + 3] = dynamicAlpha;
             }
           }
         }
@@ -2100,7 +2107,7 @@ function createRadarGridLayer() {
     }
   });
 
-  return new CustomGridLayer({ opacity: 0.75, updateWhenZooming: false });
+  return new CustomGridLayer({ opacity: 0.85, updateWhenZooming: false });
 }
 function triggerRadarRedraw(forcedMinute) {
   const slider = document.getElementById("radarTimeSlider");
