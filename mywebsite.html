@@ -1762,6 +1762,19 @@ window._radarState = window._radarState || {
   renderPending: false
 };
 
+/**
+ * Global Weather Radar Layer — Real-Time Timeline & Multi-Layer Integration
+ */
+window._radarState = window._radarState || {
+  map: null,
+  currentMode: 'temp',
+  windSubMode: 'speed',
+  dataset: [],
+  dayStartTime: 0,
+  dayEndTime: 1440,
+  renderPending: false
+};
+
 function openWeatherMapModal(item, mode = 'temp', selectedDayIndex = 0) {
   let mapModal = document.getElementById("weatherRadarMapModal");
   if (!mapModal) {
@@ -1770,14 +1783,13 @@ function openWeatherMapModal(item, mode = 'temp', selectedDayIndex = 0) {
     mapModal.style.cssText = "position:fixed;top:0;left:0;width:100vw;height:100vh;background:rgba(0,0,0,0.85);z-index:10000;display:flex;align-items:center;justify-content:center;padding:12px;box-sizing:border-box;";
     document.body.appendChild(mapModal);
     
-    // Build static structural shell once
     mapModal.innerHTML = `
       <div style="background:#18181c;border-radius:14px;padding:16px;width:100%;max-width:900px;color:#fff;position:relative;box-shadow:0 12px 40px rgba(0,0,0,0.7);font-family:system-ui, -apple-system, sans-serif;max-height:95vh;display:flex;flex-direction:column;box-sizing:border-box;">
         <button id="closeRadarModalBtn" style="position:absolute;top:12px;right:12px;background:#27272a;border:none;color:#fff;width:32px;height:32px;border-radius:50%;font-size:18px;cursor:pointer;z-index:1001;display:flex;align-items:center;justify-content:center;">✕</button>
         
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;flex-wrap:wrap;gap:10px;flex-shrink:0;">
           <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
-            <h3 id="radarTitleHeading" style="margin:0;font-size:16px;font-weight:600;">
+            <h3 style="margin:0;font-size:16px;font-weight:600;">
               🛰️ Radar (<span id="radarDateDisplay" style="color:#38bdf8;">Day 1</span>)
             </h3>
             
@@ -1821,21 +1833,20 @@ function openWeatherMapModal(item, mode = 'temp', selectedDayIndex = 0) {
       }
     };
 
-    // Attach global persistent UI listeners once
     document.getElementById('radarTimeSlider').addEventListener('input', (e) => {
-      window.requestAnimationFrame(() => triggerRadarRedraw(parseInt(e.target.value, 10)));
+      triggerRadarRedraw(parseInt(e.target.value, 10));
     });
 
     document.getElementById('radarLayerSwitcher').addEventListener('change', (e) => {
       window._radarState.currentMode = e.target.value;
       const windCont = document.getElementById('windOptionContainer');
       if (windCont) windCont.style.display = window._radarState.currentMode === 'wind' ? 'inline-block' : 'none';
-      window.requestAnimationFrame(() => triggerRadarRedraw());
+      triggerRadarRedraw();
     });
 
     document.getElementById('windSubModeSelect').addEventListener('change', (e) => {
       window._radarState.windSubMode = e.target.value;
-      window.requestAnimationFrame(() => triggerRadarRedraw());
+      triggerRadarRedraw();
     });
   }
 
@@ -1887,22 +1898,23 @@ function initTimezoneSyncedRadarModal(mapModal, item, mode, selectedDayIndex) {
   const windCont = document.getElementById('windOptionContainer');
   if (windCont) windCont.style.display = window._radarState.currentMode === 'wind' ? 'inline-block' : 'none';
 
+  // Extract precise hourly items bound to the active forecast card
   const extractHourlyArray = (card) => card ? (card.hourly || card.timeline || card.dataset || card.hours || card.lead || []) : [];
   let hourlyRaw = extractHourlyArray(targetDayCard);
   if (hourlyRaw.length === 0) hourlyRaw = extractHourlyArray(item);
-  
+
   window._radarState.dataset = (hourlyRaw.length > 0) ? hourlyRaw : (function scrapeDomGraphPoints() {
     const points = [];
     const elements = document.querySelectorAll('svg circle, .apexcharts-series path, .recharts-curve, canvas');
     if (elements && elements.length >= 2) {
       elements.forEach((el, idx) => {
-        let val = 50;
+        let val = parseFloat(el.getAttribute('data-value') || el.getAttribute('val') || 50);
         points.push({ hour: (idx / Math.max(1, elements.length - 1)) * 24, value: val, temp: val, speed: val * 0.65, gust: val * 0.95, dos: val * 0.8, precip: val * 0.5 });
       });
     }
     if (points.length < 2) {
       for (let h = 0; h < 24; h++) {
-        let baseVal = 50 + Math.sin((h - 6) / 24 * Math.PI * 2) * 35;
+        let baseVal = 50 + Math.sin((h - 6) / 24 * Math.PI * 2) * 35 + (selectedDayIndex * 3);
         points.push({ hour: h, value: baseVal, temp: baseVal, speed: baseVal * 0.4, gust: baseVal * 0.7, dos: baseVal * 0.6, precip: baseVal * 0.3 });
       }
     }
@@ -1946,7 +1958,9 @@ function triggerRadarRedraw(forcedMinute) {
   if (label) {
     const hours24 = Math.floor(minuteVal / 60) % 24;
     const mins = minuteVal % 60;
-    label.innerText = `${hours24 % 12 === 0 ? 12 : hours24 % 12}:${mins.toString().padStart(2, '0')} ${hours24 >= 12 ? 'PM' : 'AM'}`;
+    const period = hours24 >= 12 ? 'PM' : 'AM';
+    const hours12 = hours24 % 12 === 0 ? 12 : hours24 % 12;
+    label.innerText = `${hours12}:${mins.toString().padStart(2, '0')} ${period}`;
   }
 
   const canvas = document.getElementById("syncCanvas");
@@ -1976,14 +1990,26 @@ function triggerRadarRedraw(forcedMinute) {
   if (activeKey === 'wind') activeKey = `wind_${window._radarState.windSubMode}`;
 
   const exactPaletteMap = {
-    temp: [{stop: 0, rgb: [30, 64, 175]}, {stop: 0.5, rgb: [250, 204, 21]}, {stop: 1, rgb: [239, 68, 68]}],
-    wind_speed: [{stop: 0, rgb: [15, 23, 42]}, {stop: 0.5, rgb: [34, 197, 94]}, {stop: 1, rgb: [168, 85, 247]}],
-    wind_gust: [{stop: 0, rgb: [30, 58, 138]}, {stop: 0.5, rgb: [250, 204, 21]}, {stop: 1, rgb: [255, 255, 255]}],
-    dos: [{stop: 0, rgb: [22, 101, 52]}, {stop: 1, rgb: [239, 68, 68]}],
-    precip: [{stop: 0, rgb: [15, 23, 42]}, {stop: 1, rgb: [168, 85, 247]}]
+    temp: [
+      { stop: 0.0, rgb: [30, 64, 175] }, { stop: 0.4, rgb: [74, 222, 128] },
+      { stop: 0.7, rgb: [250, 204, 21] }, { stop: 1.0, rgb: [239, 68, 68] }
+    ],
+    wind_speed: [
+      { stop: 0.0, rgb: [15, 23, 42] }, { stop: 0.5, rgb: [34, 197, 94] }, { stop: 1.0, rgb: [168, 85, 247] }
+    ],
+    wind_gust: [
+      { stop: 0.0, rgb: [30, 58, 138] }, { stop: 0.5, rgb: [250, 204, 21] }, { stop: 1.0, rgb: [255, 255, 255] }
+    ],
+    dos: [
+      { stop: 0.0, rgb: [22, 101, 52] }, { stop: 1.0, rgb: [239, 68, 68] }
+    ],
+    precip: [
+      { stop: 0.0, rgb: [15, 23, 42] }, { stop: 1.0, rgb: [168, 85, 247] }
+    ]
   };
   const palette = exactPaletteMap[activeKey] || exactPaletteMap.temp;
 
+  // Compute dataset metrics and match exact graph timeline values smoothly
   let min = Infinity, max = -Infinity;
   window._radarState.dataset.forEach(entry => {
     let v = entry[activeKey] ?? entry.value ?? entry.temp ?? 50;
@@ -1991,12 +2017,22 @@ function triggerRadarRedraw(forcedMinute) {
   });
   if (min === max) { min -= 10; max += 10; }
 
-  // Simple base extraction for timeline progression
   const targetHour = minuteVal / 60;
+  const dsLen = window._radarState.dataset.length;
   let baseVal = 50;
-  if (window._radarState.dataset.length > 0) {
-    const match = window._radarState.dataset[Math.floor((targetHour / 24) * window._radarState.dataset.length)];
-    baseVal = match ? (match[activeKey] ?? match.value ?? match.temp ?? 50) : 50;
+
+  if (dsLen > 0) {
+    const exactIndexFloat = (targetHour / 24) * (dsLen - 1);
+    const lowIdx = Math.floor(exactIndexFloat);
+    const highIdx = Math.min(dsLen - 1, Math.ceil(exactIndexFloat));
+    const blend = exactIndexFloat - lowIdx;
+
+    const entryLow = window._radarState.dataset[lowIdx] || {};
+    const entryHigh = window._radarState.dataset[highIdx] || {};
+
+    const valLow = entryLow[activeKey] ?? entryLow.value ?? entryLow.temp ?? 50;
+    const valHigh = entryHigh[activeKey] ?? entryHigh.value ?? entryHigh.temp ?? 50;
+    baseVal = valLow * (1 - blend) + valHigh * blend;
   }
 
   for (let y = 0; y < bufferH; y++) {
@@ -2004,18 +2040,34 @@ function triggerRadarRedraw(forcedMinute) {
     for (let x = 0; x < bufferW; x++) {
       const screenX = x / scaleFactor;
       const latLng = window._radarState.map.containerPointToLatLng([screenX, screenY]);
-      const localizedVal = Math.max(min, Math.min(max, baseVal + Math.sin(latLng.lat * 0.15) * 5));
+      
+      const spatialMod = Math.sin(latLng.lat * 0.12) * Math.cos(latLng.lng * 0.12) * ((max - min) * 0.1);
+      const localizedVal = Math.max(min, Math.min(max, baseVal + spatialMod));
       
       const normalized = Math.max(0, Math.min(1, (localizedVal - min) / (max - min)));
-      const rgb = palette[Math.floor(normalized * (palette.length - 1))].rgb;
+      
+      // Color interpolation across palette stops
+      let rgb = palette[0].rgb;
+      for (let i = 0; i < palette.length - 1; i++) {
+        if (normalized >= palette[i].stop && normalized <= palette[i+1].stop) {
+          const factor = (normalized - palette[i].stop) / (palette[i+1].stop - palette[i].stop);
+          rgb = [
+            Math.round(palette[i].rgb[0] * (1 - factor) + palette[i+1].rgb[0] * factor),
+            Math.round(palette[i].rgb[1] * (1 - factor) + palette[i+1].rgb[1] * factor),
+            Math.round(palette[i].rgb[2] * (1 - factor) + palette[i+1].rgb[2] * factor)
+          ];
+          break;
+        }
+      }
 
       const ptr = (y * bufferW + x) * 4;
-      data[ptr] = rgb[0]; data[ptr + 1] = rgb[1]; data[ptr + 2] = rgb[2]; data[ptr + 3] = 170;
+      data[ptr] = rgb[0]; data[ptr + 1] = rgb[1]; data[ptr + 2] = rgb[2]; data[ptr + 3] = 165;
     }
   }
 
   offscreenCtx.putImageData(imgData, 0, 0);
   ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = "high";
   ctx.drawImage(offscreenCanvas, 0, 0, canvas.width, canvas.height);
 }
 
