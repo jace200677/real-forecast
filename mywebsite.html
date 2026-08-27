@@ -1873,6 +1873,8 @@ function scrapeUniversalGraphValues(selectedDayIndex = 0) {
 
   return points;
 }
+// --- Complete Radar Chart and Timeline Slider Integration ---
+
 function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, nextItem = null, forcedMinute = null) {
     if (!canvas) return null;
     const rect = canvas.getBoundingClientRect();
@@ -2173,168 +2175,53 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
     return new RadarGridLayerClass();
 }
 
-// --- Timeline Slider Integration ---
-// Ensure you reference your actual active variables or global state container
+// --- Fully Robust Timeline Slider Listener ---
 const timelineSlider = document.querySelector('input[type="range"]');
 
 if (timelineSlider) {
     timelineSlider.addEventListener('input', (e) => {
         const sliderMinute = parseInt(e.target.value, 10);
 
-        // Fallback or pull dynamically from your app state if variables are scoped locally
-        const canvas = window._radarState?.canvas || document.getElementById('yourCanvasId');
-        const activeItem = window._radarState?.currentItem || item;
-        const activeMode = window._radarState?.currentMode || mode;
-        const activeMap = window._radarState?.map || map;
+        // Fetch operational scopes cleanly from active app state or global context
+        const activeCanvas = window._radarState?.canvas || document.querySelector('canvas');
+        const activeItem = window._radarState?.currentItem || (typeof item !== 'undefined' ? item : null);
+        const activeMode = window._radarState?.currentMode || (typeof mode !== 'undefined' ? mode : 'temp');
+        const activeMap = window._radarState?.map || (typeof map !== 'undefined' ? map : null);
 
-        // 1. Remove active layer from the Leaflet map
+        if (!activeMap || !activeCanvas || !activeItem) return;
+
+        // Remove old tile layer to prevent memory leaks and stacked tiles
         if (window._radarState && window._radarState.radarTileLayer) {
             activeMap.removeLayer(window._radarState.radarTileLayer);
         }
 
-        // 2. Re-create the radar grid layer with the explicit slider minute
+        // Re-create layer passing the explicit slider minute as forcedMinute
         const updatedLayer = createRadarGridLayer(
-            canvas, 
+            activeCanvas, 
             0, 
             activeItem, 
             activeMode, 
             null, 
             null, 
-            sliderMinute // Injects directly into forcedMinute
+            sliderMinute
         );
 
-        // 3. Add back to map and cache reference
         if (updatedLayer) {
             updatedLayer.addTo(activeMap);
             window._radarState = window._radarState || {};
             window._radarState.radarTileLayer = updatedLayer;
         }
 
-        // 4. Optional: Update time display text on screen if you have a label element
+        // Update UI time string labels if present
         const h = Math.floor(sliderMinute / 60);
         const m = Math.round(sliderMinute % 60);
-        const timeDisplay = document.getElementById('timeDisplayLabel'); // Update with your UI label ID
+        const timeDisplay = document.getElementById('timeDisplayLabel'); 
         if (timeDisplay) {
             timeDisplay.textContent = `${h % 12 || 12}:${m < 10 ? '0' : ''}${m} ${h >= 12 ? 'PM' : 'AM'}`;
         }
     });
 }
-function triggerRadarRedraw(forcedMinute) {
-  const slider = document.getElementById("radarTimeSlider");
-  const totalMinutes = forcedMinute !== undefined ? forcedMinute : (slider ? parseInt(slider.value, 10) : 0);
-
-  const label = document.getElementById("radarTimeLabel");
-  if (label) {
-    const hours24 = Math.floor(totalMinutes / 60) % 24;
-    const mins = totalMinutes % 60;
-    const period = hours24 >= 12 ? 'PM' : 'AM';
-    const hours12 = hours24 % 12 === 0 ? 12 : hours24 % 12;
-
-    const appTimezone = window._radarState.currentItem?.timezone || 
-                        window._radarState.currentItem?.tz || 
-                        Intl.DateTimeFormat().resolvedOptions().timeZone;
-
-    label.innerText = `${hours12}:${mins.toString().padStart(2, '0')} ${period} (${appTimezone})`;
-  }
-
-  if (window._radarState.radarTileLayer) {
-    window._radarState.radarTileLayer.redraw();
-  }
-}
-
-/**
- * Synchronizes selected timezone, dataset, and initializes Leaflet map object
- */
-// Updated initialization function ready for use with the correct arguments
-function initTimezoneSyncedRadarModal(mapModal, item, mode, selectedDayIndex) {
-  window._radarState.currentMode = mode;
-  window._radarState.selectedDayIndex = selectedDayIndex;
-  window._radarState.currentItem = item;
-
-  const lat = item?.lat ?? item?.latitude ?? (window.currentLat || 45.3827);
-  const lon = item?.lon ?? item?.longitude ?? (window.currentLon || -93.8761);
-
-  const formattedDisplayDate = extractDateFromGraph(item, selectedDayIndex);
-  window._radarState.activeDateText = formattedDisplayDate;
-
-  const dateDisplayEl = document.getElementById('radarDateDisplay');
-  if (dateDisplayEl) dateDisplayEl.innerText = formattedDisplayDate;
-
-  const layerSwitcherEl = document.getElementById('radarLayerSwitcher');
-  if (layerSwitcherEl) layerSwitcherEl.value = window._radarState.currentMode;
-
-  const windCont = document.getElementById('windOptionContainer');
-  if (windCont) windCont.style.display = window._radarState.currentMode === 'wind' ? 'inline-block' : 'none';
-
-  const extractHourlyArray = (card) => card ? (card.hourly || card.timeline || card.dataset || card.hours || card.lead || []) : [];
-  let hourlyRaw = extractHourlyArray(item);
-
-  window._radarState.dataset = (hourlyRaw.length > 0) ? hourlyRaw : scrapeUniversalGraphValues(selectedDayIndex);
-
-  if (!window._radarState.map) {
-    const worldBounds = L.latLngBounds(L.latLng(-90, -180), L.latLng(90, 180));
-    window._radarState.map = L.map('leafletMap', {
-      center: [lat, lon],
-      zoom: 4,
-      minZoom: 2,
-      maxZoom: 18,
-      zoomControl: true,
-      maxBounds: worldBounds,
-      maxBoundsViscosity: 1.0
-    });
-
-    L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
-      minZoom: 2, maxZoom: 18, noWrap: true, bounds: worldBounds, attribution: 'Tiles &copy; Esri'
-    }).addTo(window._radarState.map);
-
-    // Create a proper Leaflet GridLayer that actually renders custom canvas colors
-    window._radarState.radarTileLayer = L.gridLayer({
-      minZoom: 2,
-      maxZoom: 18,
-      noWrap: true,
-      bounds: worldBounds
-    });
-
-    window._radarState.radarTileLayer.createTile = function(coords) {
-      const tile = document.createElement('canvas');
-      const size = this.getTileSize();
-      tile.width = size.x;
-      tile.height = size.y;
-      const ctx = tile.getContext('2d');
-
-      // Call your evaluation logic per tile/pixel or derive color from item/mode values
-      const sampleData = createRadarGridLayer(tile, 0, item, mode);
-      
-      // Paint tile background or visual color representation based on the resolved value
-      ctx.fillStyle = 'rgba(0, 150, 255, 0.25)'; // Base tint overlay
-      ctx.fillRect(0, 0, tile.width, tile.height);
-
-      if (sampleData && sampleData.value !== null) {
-        ctx.fillStyle = '#ffffff';
-        ctx.font = '12px sans-serif';
-        ctx.fillText(sampleData.label || '', 10, 20);
-      }
-
-      return tile;
-    };
-
-    window._radarState.radarTileLayer.addTo(window._radarState.map);
-  } else {
-    window._radarState.map.setView([lat, lon], window._radarState.map.getZoom());
-  }
-
-  setTimeout(() => {
-    window._radarState.map.invalidateSize();
-    triggerRadarRedraw(0);
-  }, 250);
-}
-
-/**
- * Creates modal DOM elements and handles open/close lifecycle
- */
-/**
- * Main Weather Map Modal Opener
- */
+   
 function openWeatherMapModal(item, mode = 'temp', selectedDayIndex = null) {
   if (selectedDayIndex === null || selectedDayIndex === undefined) {
     const activeCard = document.querySelector('.day-card.active, .forecast-day-card.active, .day-tab.active, [data-selected="true"]');
