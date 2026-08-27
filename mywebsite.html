@@ -1951,7 +1951,6 @@ function triggerRadarRedraw(forcedMinute) {
   const slider = document.getElementById("radarTimeSlider");
   const totalMinutes = forcedMinute !== undefined ? forcedMinute : (slider ? parseInt(slider.value, 10) : 0);
   
-  // Directly calculate time from total minutes (0 to 1439)
   const label = document.getElementById("radarTimeLabel");
   if (label) {
     const hours24 = Math.floor(totalMinutes / 60) % 24;
@@ -2014,7 +2013,6 @@ function triggerRadarRedraw(forcedMinute) {
   });
   if (min === max) { min -= 10; max += 10; }
 
-  // Map totalMinutes smoothly across dataset elements
   const targetHour = totalMinutes / 60;
   const dsLen = window._radarState.dataset.length;
   let baseVal = 50;
