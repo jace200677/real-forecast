@@ -1798,9 +1798,6 @@ window._radarState = window._radarState || {
   renderPending: false
 };
 
-/**
- * Global Weather Radar Layer — Real-Time Timeline & Multi-Layer Integration
- */
 window._radarState = window._radarState || {
   map: null,
   currentMode: 'temp',
@@ -1811,7 +1808,22 @@ window._radarState = window._radarState || {
   renderPending: false
 };
 
-function openWeatherMapModal(item, mode = 'temp', selectedDayIndex = 0) {
+/**
+ * Open Radar Modal & sync with selected forecast card
+ */
+function openWeatherMapModal(item, mode = 'temp', selectedDayIndex = null) {
+  // If no day index is explicitly passed, auto-detect the active selected day card from DOM
+  if (selectedDayIndex === null || selectedDayIndex === undefined) {
+    const activeCard = document.querySelector('.day-card.active, .forecast-day-card.active, .day-tab.active, [data-selected="true"]');
+    if (activeCard) {
+      const allCards = Array.from(document.querySelectorAll('.day-card, .forecast-day-card, .day-tab'));
+      const foundIdx = allCards.indexOf(activeCard);
+      selectedDayIndex = foundIdx !== -1 ? foundIdx : 0;
+    } else {
+      selectedDayIndex = 0;
+    }
+  }
+
   let mapModal = document.getElementById("weatherRadarMapModal");
   if (!mapModal) {
     mapModal = document.createElement("div");
@@ -1882,7 +1894,6 @@ function openWeatherMapModal(item, mode = 'temp', selectedDayIndex = 0) {
     });
   }
 
-  // Reset slider position when opening a day
   const sliderEl = document.getElementById("radarTimeSlider");
   if (sliderEl) {
     sliderEl.value = 0;
@@ -1923,6 +1934,7 @@ function initTimezoneSyncedRadarModal(mapModal, item, mode, selectedDayIndex) {
     }
   }
 
+  // Isolate target selected card object
   const targetDayCard = daysArray[selectedDayIndex] || daysArray[0] || item || {};
   const rawDateStr = targetDayCard.date || targetDayCard.dayLabel || targetDayCard.title || targetDayCard.dt_txt || targetDayCard.dt || null;
   let formattedDisplayDate = `Day ${selectedDayIndex + 1}`;
@@ -1996,148 +2008,7 @@ function initTimezoneSyncedRadarModal(mapModal, item, mode, selectedDayIndex) {
   }, 250);
 }
 
-function triggerRadarRedraw(forcedMinute) {
-  const slider = document.getElementById("radarTimeSlider");
-  const totalMinutes = forcedMinute !== undefined ? forcedMinute : (slider ? parseInt(slider.value, 10) : 0);
-  
-  const label = document.getElementById("radarTimeLabel");
-  if (label) {
-    const hours24 = Math.floor(totalMinutes / 60) % 24;
-    const mins = totalMinutes % 60;
-    const period = hours24 >= 12 ? 'PM' : 'AM';
-    const hours12 = hours24 % 12 === 0 ? 12 : hours24 % 12;
-    label.innerText = `${hours12}:${mins.toString().padStart(2, '0')} ${period}`;
-  }
 
-  const canvas = document.getElementById("syncCanvas");
-  if (!canvas || !window._radarState.map) return;
-  const ctx = canvas.getContext("2d");
-
-  const rect = canvas.parentElement.getBoundingClientRect();
-  if (canvas.width !== Math.floor(rect.width) || canvas.height !== Math.floor(rect.height)) {
-    canvas.width = Math.floor(rect.width) || 300;
-    canvas.height = Math.floor(rect.height) || 150;
-  }
-
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-  const scaleFactor = 0.35;
-  const bufferW = Math.max(1, Math.ceil(canvas.width * scaleFactor));
-  const bufferH = Math.max(1, Math.ceil(canvas.height * scaleFactor));
-
-  const offscreenCanvas = document.createElement("canvas");
-  offscreenCanvas.width = bufferW;
-  offscreenCanvas.height = bufferH;
-  const offscreenCtx = offscreenCanvas.getContext("2d");
-  const imgData = offscreenCtx.createImageData(bufferW, bufferH);
-  const data = imgData.data;
-
-  const mode = window._radarState.currentMode;
-  let activeKey = mode;
-  let paletteKey = mode;
-
-  if (mode === 'wind') {
-    activeKey = window._radarState.windSubMode === 'gust' ? 'gust' : 'speed';
-    paletteKey = `wind_${window._radarState.windSubMode}`;
-  }
-
-  const exactPaletteMap = {
-    temp: [
-      { stop: 0.0, rgb: [30, 64, 175] }, { stop: 0.4, rgb: [74, 222, 128] },
-      { stop: 0.7, rgb: [250, 204, 21] }, { stop: 1.0, rgb: [239, 68, 68] }
-    ],
-    wind_speed: [
-      { stop: 0.0, rgb: [15, 23, 42] }, { stop: 0.5, rgb: [34, 197, 94] }, { stop: 1.0, rgb: [168, 85, 247] }
-    ],
-    wind_gust: [
-      { stop: 0.0, rgb: [30, 58, 138] }, { stop: 0.5, rgb: [250, 204, 21] }, { stop: 1.0, rgb: [255, 255, 255] }
-    ],
-    dos: [
-      { stop: 0.0, rgb: [22, 101, 52] }, { stop: 1.0, rgb: [239, 68, 68] }
-    ],
-    precip: [
-      { stop: 0.0, rgb: [15, 23, 42] }, { stop: 1.0, rgb: [168, 85, 247] }
-    ]
-  };
-  const palette = exactPaletteMap[paletteKey] || exactPaletteMap.temp;
-
-  const getEntryValue = (entry, key) => {
-    if (!entry) return 50;
-    return entry[key] ?? entry.value ?? entry.temp ?? 50;
-  };
-
-  let min = Infinity, max = -Infinity;
-  window._radarState.dataset.forEach(entry => {
-    let v = getEntryValue(entry, activeKey);
-    if (v < min) min = v; if (v > max) max = v;
-  });
-  if (min === max) { min -= 10; max += 10; }
-
-  const targetHour = totalMinutes / 60;
-  const dsLen = window._radarState.dataset.length;
-  let baseVal = 50;
-
-  if (dsLen > 0) {
-    const exactIndexFloat = (targetHour / 24) * (dsLen - 1);
-    const lowIdx = Math.floor(exactIndexFloat);
-    const highIdx = Math.min(dsLen - 1, Math.ceil(exactIndexFloat));
-    const blend = exactIndexFloat - lowIdx;
-
-    const entryLow = window._radarState.dataset[lowIdx];
-    const entryHigh = window._radarState.dataset[highIdx];
-
-    const valLow = getEntryValue(entryLow, activeKey);
-    const valHigh = getEntryValue(entryHigh, activeKey);
-    baseVal = valLow * (1 - blend) + valHigh * blend;
-  }
-
-  const timePhase = (totalMinutes / 1440) * Math.PI * 4;
-
-  for (let y = 0; y < bufferH; y++) {
-    const screenY = y / scaleFactor;
-    for (let x = 0; x < bufferW; x++) {
-      const screenX = x / scaleFactor;
-      const latLng = window._radarState.map.containerPointToLatLng([screenX, screenY]);
-      
-      const spatialMod = Math.sin(latLng.lat * 0.12 + timePhase) * Math.cos(latLng.lng * 0.12 + timePhase) * ((max - min) * 0.2);
-      const localizedVal = Math.max(min, Math.min(max, baseVal + spatialMod));
-      
-      const normalized = Math.max(0, Math.min(1, (localizedVal - min) / (max - min)));
-      
-      let rgb = palette[0].rgb;
-      for (let i = 0; i < palette.length - 1; i++) {
-        if (normalized >= palette[i].stop && normalized <= palette[i+1].stop) {
-          const factor = (normalized - palette[i].stop) / (palette[i+1].stop - palette[i].stop);
-          rgb = [
-            Math.round(palette[i].rgb[0] * (1 - factor) + palette[i+1].rgb[0] * factor),
-            Math.round(palette[i].rgb[1] * (1 - factor) + palette[i+1].rgb[1] * factor),
-            Math.round(palette[i].rgb[2] * (1 - factor) + palette[i+1].rgb[2] * factor)
-          ];
-          break;
-        }
-      }
-
-      const ptr = (y * bufferW + x) * 4;
-      data[ptr] = rgb[0]; data[ptr + 1] = rgb[1]; data[ptr + 2] = rgb[2]; data[ptr + 3] = 165;
-    }
-  }
-
-  offscreenCtx.putImageData(imgData, 0, 0);
-  ctx.imageSmoothingEnabled = true;
-  ctx.imageSmoothingQuality = "high";
-  ctx.drawImage(offscreenCanvas, 0, 0, canvas.width, canvas.height);
-}
-
-function ensureLeafletLoaded(callback) {
-  if (window.L) { callback(); return; }
-  const link = document.createElement("link");
-  link.rel = "stylesheet"; link.href = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.css";
-  document.head.appendChild(link);
-  const script = document.createElement("script");
-  script.src = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.js";
-  script.onload = callback;
-  document.head.appendChild(script);
-}
    
 let activeMapItem = null;
 
