@@ -1878,7 +1878,6 @@ function createRadarGridLayer() {
   const CustomGridLayer = L.GridLayer.extend({
     initialize: function (options) {
       L.GridLayer.prototype.initialize.call(this, options);
-      
       if (window._radarState && window._radarState.map) {
         this._bindRadarEvents(window._radarState.map);
       }
@@ -2019,6 +2018,17 @@ function createRadarGridLayer() {
         if (typeof entry === 'number') return entry;
         if (!entry) return currentPalette.minVal;
         const pObj = entry[periodKey] || entry;
+        
+        // Match keys used by drawForecast / dual lines graph (e.g. speed vs gust, or high/low/speed/gust/temp/dos)
+        if (mode === 'wind') {
+          const sub = window._radarState.windSubMode;
+          if (sub === 'gust') {
+            return pObj.gust ?? pObj.windGust ?? entry.gust ?? entry.windGust ?? currentPalette.minVal;
+          } else {
+            return pObj.speed ?? pObj.windSpeed ?? entry.speed ?? entry.windSpeed ?? currentPalette.minVal;
+          }
+        }
+
         return pObj[activeKey] ?? 
                pObj.dos ?? pObj.score ?? pObj.windSpeed ?? pObj.windGust ?? pObj.temp ?? pObj.value ?? pObj.speed ?? 
                entry[activeKey] ?? entry.dos ?? entry.score ?? entry.windSpeed ?? entry.windGust ?? entry.temp ?? entry.value ?? 
@@ -2048,7 +2058,6 @@ function createRadarGridLayer() {
       for (let y = 0; y < tileSize.y; y += step) {
         for (let x = 0; x < tileSize.x; x += step) {
           const pxPoint = L.point(tileOrigin.x + x, tileOrigin.y + y);
-          const latLng = window._radarState.map.unproject(pxPoint, coords.z);
 
           const dx = pxPoint.x - window._radarState.map.latLngToLayerPoint([targetLat, targetLon]).x;
           const dy = pxPoint.y - window._radarState.map.latLngToLayerPoint([targetLat, targetLon]).y;
@@ -2056,7 +2065,6 @@ function createRadarGridLayer() {
 
           let sampledValue = baseVal;
           if (dsLen > 1) {
-            const spreadFactor = Math.max(0, 1 - (pixelDist / 400));
             const spatialIndexShift = Math.floor((pixelDist / 50) % dsLen);
             const shiftedEntry = dataset[(Math.floor((targetHour / 24) * (dsLen - 1)) + spatialIndexShift) % dsLen];
             sampledValue = getValFromEntry(shiftedEntry) * 0.4 + baseVal * 0.6;
