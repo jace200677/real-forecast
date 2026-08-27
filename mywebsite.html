@@ -1891,65 +1891,80 @@ function createRadarGridLayer() {
         paletteKey = `wind_${window._radarState.windSubMode}`;
       }
 
-      const paletteConfig = {
-        temp: {
-          minVal: -20,
-          maxVal: 120,
-          stops: [
-            { val: -20, rgb: [30, 58, 138] },
-            { val: 32,  rgb: [56, 189, 248] },
-            { val: 65,  rgb: [34, 197, 94] },
-            { val: 85,  rgb: [234, 179, 8] },
-            { val: 120, rgb: [239, 68, 68] }
-          ]
-        },
-        wind_speed: {
-          minVal: 0,
-          maxVal: 100,
-          stops: [
-            { val: 0,   rgb: [15, 23, 42] },
-            { val: 20,  rgb: [56, 189, 248] },
-            { val: 40,  rgb: [34, 197, 94] },
-            { val: 70,  rgb: [234, 179, 8] },
-            { val: 100, rgb: [168, 85, 247] }
-          ]
-        },
-        wind_gust: {
-          minVal: 0,
-          maxVal: 120,
-          stops: [
-            { val: 0,   rgb: [15, 23, 42] },
-            { val: 30,  rgb: [56, 189, 248] },
-            { val: 60,  rgb: [234, 179, 8] },
-            { val: 90,  rgb: [239, 68, 68] },
-            { val: 120, rgb: [168, 85, 247] }
-          ]
-        },
-        dos: {
-          minVal: 0,
-          maxVal: 100,
-          stops: [
-            { val: 0,   rgb: [34, 197, 94] },
-            { val: 30,  rgb: [56, 189, 248] },
-            { val: 70,  rgb: [234, 179, 8] },
-            { val: 90,  rgb: [239, 68, 68] },
-            { val: 100, rgb: [168, 85, 247] }
-          ]
-        },
-        precip: {
-          minVal: 0,
-          maxVal: 100,
-          stops: [
-            { val: 0,   rgb: [15, 23, 42] },
-            { val: 25,  rgb: [56, 189, 248] },
-            { val: 50,  rgb: [59, 130, 246] },
-            { val: 75,  rgb: [34, 197, 94] },
-            { val: 100, rgb: [168, 85, 247] }
-          ]
+      // 1. Dynamic palette extraction: inherit exact Chart.js dataset stroke/fill colors if present
+      let dynamicStops = null;
+      let chartMin = null;
+      let chartMax = null;
+
+      if (window._radarState.chartInstance && window._radarState.chartInstance.data && window._radarState.chartInstance.data.datasets) {
+        const datasets = window._radarState.chartInstance.data.datasets;
+        let activeDs = datasets[0];
+        if (activeKey === 'gust' && datasets.length > 1) {
+          activeDs = datasets[1];
         }
+
+        if (activeDs) {
+          const dsData = activeDs.data || [];
+          const numericVals = dsData.map(v => typeof v === 'object' && v !== null ? (v.y ?? v.value ?? 0) : Number(v)).filter(v => !isNaN(v));
+          
+          if (numericVals.length > 0) {
+            chartMin = Math.min(...numericVals);
+            chartMax = Math.max(...numericVals);
+            if (chartMin === chartMax) chartMax = chartMin + 1; // Prevent zero-division
+          }
+
+          // Extract Chart.js dataset colors if available as arrays or strings
+          const borderColor = activeDs.borderColor;
+          const backgroundColor = activeDs.backgroundColor;
+          
+          let baseColorRgb = [56, 189, 248]; // default fallback sky blue
+          if (typeof borderColor === 'string') {
+            baseColorRgb = parseColorStringToRgb(borderColor) || baseColorRgb;
+          } else if (Array.isArray(borderColor) && borderColor.length > 0) {
+            baseColorRgb = parseColorStringToRgb(borderColor[0]) || baseColorRgb;
+          } else if (typeof backgroundColor === 'string') {
+            baseColorRgb = parseColorStringToRgb(backgroundColor) || baseColorRgb;
+          }
+
+          // Build dynamic gradient stops matching the chart's exact theme color range
+          dynamicStops = [
+            { val: 0,   rgb: [15, 23, 42] },
+            { val: 0.25, rgb: [baseColorRgb[0] >> 1, baseColorRgb[1] >> 1, baseColorRgb[2] >> 1] },
+            { val: 0.5,  rgb: baseColorRgb },
+            { val: 0.75, rgb: [Math.min(255, baseColorRgb[0] + 50), Math.min(255, baseColorRgb[1] + 50), Math.min(255, baseColorRgb[2] + 50)] },
+            { val: 1.0,  rgb: [168, 85, 247] }
+          ];
+        }
+      }
+
+      // Helper to parse CSS color strings (hex, rgb, rgba) into [r, g, b]
+      function parseColorStringToRgb(str) {
+        if (!str) return null;
+        if (str.startsWith('#')) {
+          let hex = str.slice(1);
+          if (hex.length === 3) hex = hex.split('').map(c => c + c).join('');
+          const num = parseInt(hex, 16);
+          return [num >> 16, (num >> 8) & 255, num & 255];
+        }
+        const rgbaMatch = str.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/);
+        if (rgbaMatch) {
+          return [parseInt(rgbaMatch[1]), parseInt(rgbaMatch[2]), parseInt(rgbaMatch[3])];
+        }
+        return null;
+      }
+
+      const paletteConfig = {
+        temp: { minVal: -20, maxVal: 120, stops: [{ val: -20, rgb: [30, 58, 138] }, { val: 32, rgb: [56, 189, 248] }, { val: 65, rgb: [34, 197, 94] }, { val: 85, rgb: [234, 179, 8] }, { val: 120, rgb: [239, 68, 68] }] },
+        wind_speed: { minVal: 0, maxVal: 100, stops: [{ val: 0, rgb: [15, 23, 42] }, { val: 20, rgb: [56, 189, 248] }, { val: 40, rgb: [34, 197, 94] }, { val: 70, rgb: [234, 179, 8] }, { val: 100, rgb: [168, 85, 247] }] },
+        wind_gust: { minVal: 0, maxVal: 120, stops: [{ val: 0, rgb: [15, 23, 42] }, { val: 30, rgb: [56, 189, 248] }, { val: 60, rgb: [234, 179, 8] }, { val: 90, rgb: [239, 68, 68] }, { val: 120, rgb: [168, 85, 247] }] },
+        dos: { minVal: 0, maxVal: 100, stops: [{ val: 0, rgb: [34, 197, 94] }, { val: 30, rgb: [56, 189, 248] }, { val: 70, rgb: [234, 179, 8] }, { val: 90, rgb: [239, 68, 68] }, { val: 100, rgb: [168, 85, 247] }] },
+        precip: { minVal: 0, maxVal: 100, stops: [{ val: 0, rgb: [15, 23, 42] }, { val: 25, rgb: [56, 189, 248] }, { val: 50, rgb: [59, 130, 246] }, { val: 75, rgb: [34, 197, 94] }, { val: 100, rgb: [168, 85, 247] }] }
       };
 
       const currentPalette = paletteConfig[paletteKey] || paletteConfig.dos;
+      const effectiveStops = dynamicStops || currentPalette.stops;
+      const effectiveMin = chartMin !== null ? chartMin : currentPalette.minVal;
+      const effectiveMax = chartMax !== null ? chartMax : currentPalette.maxVal;
 
       const slider = document.getElementById("radarTimeSlider");
       const totalMinutes = slider ? parseInt(slider.value, 10) : 0;
@@ -1959,24 +1974,24 @@ function createRadarGridLayer() {
 
       const getEntryValue = (entry, key) => {
         if (typeof entry === 'number') return entry;
-        if (!entry) return currentPalette.minVal;
+        if (!entry) return effectiveMin;
 
         const periodObj = entry[periodKey] || entry;
 
         if (key === 'temp') {
-          return periodObj.temp ?? periodObj.temperature ?? periodObj.tempRange ?? periodObj.high ?? entry.temp ?? entry.temperature ?? currentPalette.minVal;
+          return periodObj.temp ?? periodObj.temperature ?? periodObj.tempRange ?? periodObj.high ?? entry.temp ?? entry.temperature ?? effectiveMin;
         }
         if (key === 'dos') {
-          return periodObj.dos ?? periodObj.score ?? periodObj.outlookScore ?? periodObj.index ?? entry.dos ?? entry.score ?? currentPalette.minVal;
+          return periodObj.dos ?? periodObj.score ?? periodObj.outlookScore ?? periodObj.index ?? entry.dos ?? entry.score ?? effectiveMin;
         }
         if (key === 'speed') {
-          return periodObj.windSpeed ?? periodObj.speed ?? periodObj.wind ?? entry.windSpeed ?? entry.speed ?? currentPalette.minVal;
+          return periodObj.windSpeed ?? periodObj.speed ?? periodObj.wind ?? entry.windSpeed ?? entry.speed ?? effectiveMin;
         }
         if (key === 'gust') {
-          return periodObj.windGust ?? periodObj.gust ?? entry.windGust ?? entry.gust ?? currentPalette.minVal;
+          return periodObj.windGust ?? periodObj.gust ?? entry.windGust ?? entry.gust ?? effectiveMin;
         }
 
-        return periodObj[key] ?? entry[key] ?? currentPalette.minVal;
+        return periodObj[key] ?? entry[key] ?? effectiveMin;
       };
 
       const currentItem = window._radarState.currentItem || {};
@@ -2003,7 +2018,7 @@ function createRadarGridLayer() {
       }
 
       const dsLen = targetDataset.length;
-      let baseVal = currentPalette.minVal;
+      let baseVal = effectiveMin;
 
       if (dsLen > 0) {
         let matchedIndex = -1;
@@ -2066,23 +2081,50 @@ function createRadarGridLayer() {
           const spatialVariation = Math.sin(dLat * 0.05) * Math.cos(dLng * 0.05) * 3.0; 
           const sampledValue = baseVal + spatialVariation;
 
-          const stops = currentPalette.stops;
-          let rgb = stops[0].rgb;
+          // Normalize sampled value into a 0.0 - 1.0 ratio if using dynamic chart stops, or match absolute stops
+          let normalizedFactor = 0;
+          if (chartMin !== null && chartMax !== null && chartMax > chartMin) {
+            normalizedFactor = Math.max(0, Math.min(1, (sampledValue - effectiveMin) / (effectiveMax - effectiveMin)));
+          }
 
-          if (sampledValue <= stops[0].val) {
-            rgb = stops[0].rgb;
-          } else if (sampledValue >= stops[stops.length - 1].val) {
-            rgb = stops[stops.length - 1].rgb;
+          let rgb = effectiveStops[0].rgb;
+
+          if (chartMin !== null && chartMax !== null) {
+            // Map normalized 0-1 factor across dynamic stops
+            const scaledVal = normalizedFactor * (effectiveStops[effectiveStops.length - 1].val - effectiveStops[0].val) + effectiveStops[0].val;
+            if (scaledVal <= effectiveStops[0].val) {
+              rgb = effectiveStops[0].rgb;
+            } else if (scaledVal >= effectiveStops[effectiveStops.length - 1].val) {
+              rgb = effectiveStops[effectiveStops.length - 1].rgb;
+            } else {
+              for (let i = 0; i < effectiveStops.length - 1; i++) {
+                if (scaledVal >= effectiveStops[i].val && scaledVal <= effectiveStops[i + 1].val) {
+                  const factor = (scaledVal - effectiveStops[i].val) / (effectiveStops[i + 1].val - effectiveStops[i].val);
+                  rgb = [
+                    Math.round(effectiveStops[i].rgb[0] * (1 - factor) + effectiveStops[i + 1].rgb[0] * factor),
+                    Math.round(effectiveStops[i].rgb[1] * (1 - factor) + effectiveStops[i + 1].rgb[1] * factor),
+                    Math.round(effectiveStops[i].rgb[2] * (1 - factor) + effectiveStops[i + 1].rgb[2] * factor)
+                  ];
+                  break;
+                }
+              }
+            }
           } else {
-            for (let i = 0; i < stops.length - 1; i++) {
-              if (sampledValue >= stops[i].val && sampledValue <= stops[i + 1].val) {
-                const factor = (sampledValue - stops[i].val) / (stops[i + 1].val - stops[i].val);
-                rgb = [
-                  Math.round(stops[i].rgb[0] * (1 - factor) + stops[i + 1].rgb[0] * factor),
-                  Math.round(stops[i].rgb[1] * (1 - factor) + stops[i + 1].rgb[1] * factor),
-                  Math.round(stops[i].rgb[2] * (1 - factor) + stops[i + 1].rgb[2] * factor)
-                ];
-                break;
+            if (sampledValue <= effectiveStops[0].val) {
+              rgb = effectiveStops[0].rgb;
+            } else if (sampledValue >= effectiveStops[effectiveStops.length - 1].val) {
+              rgb = effectiveStops[effectiveStops.length - 1].rgb;
+            } else {
+              for (let i = 0; i < effectiveStops.length - 1; i++) {
+                if (sampledValue >= effectiveStops[i].val && sampledValue <= effectiveStops[i + 1].val) {
+                  const factor = (sampledValue - effectiveStops[i].val) / (effectiveStops[i + 1].val - effectiveStops[i].val);
+                  rgb = [
+                    Math.round(effectiveStops[i].rgb[0] * (1 - factor) + effectiveStops[i + 1].rgb[0] * factor),
+                    Math.round(effectiveStops[i].rgb[1] * (1 - factor) + effectiveStops[i + 1].rgb[1] * factor),
+                    Math.round(effectiveStops[i].rgb[2] * (1 - factor) + effectiveStops[i + 1].rgb[2] * factor)
+                  ];
+                  break;
+                }
               }
             }
           }
@@ -2093,7 +2135,7 @@ function createRadarGridLayer() {
               data[ptr] = rgb[0];
               data[ptr + 1] = rgb[1];
               data[ptr + 2] = rgb[2];
-              data[ptr + 3] = 230; // Increased opacity to 90% to prevent background map wash-out
+              data[ptr + 3] = 230;
             }
           }
         }
@@ -2104,7 +2146,7 @@ function createRadarGridLayer() {
     }
   });
 
-  return new CustomGridLayer({ opacity: 0.9, updateWhenZooming: false });
+  return new CustomGridLayer({ opacity: 0.75, updateWhenZooming: false });
 }
 function triggerRadarRedraw(forcedMinute) {
   const slider = document.getElementById("radarTimeSlider");
