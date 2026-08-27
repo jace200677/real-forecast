@@ -1729,6 +1729,9 @@ function openForecastGraphModal(item, fullForecast = [], itemIndex = -1) {
 /**
  * Global Weather Radar Layer — Tile-Based Dynamic Spatial Mapping (Fully Interactive & Multi-Layer)
  */
+/**
+ * Global Weather Radar Layer — Dynamically Paired Color & Value Scaling
+ */
 function openWeatherMapModal(item, mode = 'temp', selectedDayIndex = 0) {
   let mapModal = document.getElementById("weatherRadarMapModal");
   if (!mapModal) {
@@ -1751,7 +1754,6 @@ function openWeatherMapModal(item, mode = 'temp', selectedDayIndex = 0) {
 function initTimezoneSyncedRadarModal(mapModal, item, mode, selectedDayIndex) {
   const lat = item?.lat ?? item?.latitude ?? (window.currentLat || 45.3827);
   const lon = item?.lon ?? item?.longitude ?? (window.currentLon || -93.8761);
-
   const appTimezone = item?.timezone || item?.tz || Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
 
   const extractDaysArray = (data) => {
@@ -1774,7 +1776,6 @@ function initTimezoneSyncedRadarModal(mapModal, item, mode, selectedDayIndex) {
   }
 
   const targetDayCard = daysArray[selectedDayIndex] || daysArray[0] || item || {};
-
   const rawDateStr = targetDayCard.date || targetDayCard.dayLabel || targetDayCard.title || targetDayCard.dt_txt || targetDayCard.dt || null;
   let formattedDisplayDate = `Day ${selectedDayIndex + 1}`;
   
@@ -1961,47 +1962,58 @@ function initTimezoneSyncedRadarModal(mapModal, item, mode, selectedDayIndex) {
   const offscreenCanvas = document.createElement("canvas");
   const offscreenCtx = offscreenCanvas.getContext("2d");
 
+  // Base gradients mapping values directly onto continuous multi-stop color scales
   const exactPaletteMap = {
     temp: [
-      { val: -20, rgb: [30, 64, 175] },
-      { val: 10,  rgb: [56, 189, 248] },
-      { val: 32,  rgb: [74, 222, 128] },
-      { val: 65,  rgb: [250, 204, 21] },
-      { val: 85,  rgb: [251, 146, 60] },
-      { val: 105, rgb: [239, 68, 68] }
+      { stop: 0.0, rgb: [30, 64, 175] },   // Deep Cold Blue
+      { stop: 0.2, rgb: [56, 189, 248] },  // Cyan
+      { stop: 0.4, rgb: [74, 222, 128] },  // Green
+      { stop: 0.6, rgb: [250, 204, 21] },  // Yellow
+      { stop: 0.8, rgb: [251, 146, 60] },  // Orange
+      { stop: 1.0, rgb: [239, 68, 68] }    // Red Hot
     ],
     wind_speed: [
-      { val: 0,   rgb: [15, 23, 42] },
-      { val: 10,  rgb: [56, 189, 248] },
-      { val: 20,  rgb: [34, 197, 94] },
-      { val: 30,  rgb: [234, 179, 8] },
-      { val: 40,  rgb: [249, 115, 22] },
-      { val: 50,  rgb: [239, 68, 68] },
-      { val: 65,  rgb: [168, 85, 247] }
+      { stop: 0.0, rgb: [15, 23, 42] },
+      { stop: 0.2, rgb: [56, 189, 248] },
+      { stop: 0.4, rgb: [34, 197, 94] },
+      { stop: 0.6, rgb: [234, 179, 8] },
+      { stop: 0.8, rgb: [249, 115, 22] },
+      { stop: 1.0, rgb: [168, 85, 247] }
     ],
     wind_gust: [
-      { val: 0,   rgb: [30, 58, 138] },
-      { val: 15,  rgb: [34, 197, 94] },
-      { val: 30,  rgb: [250, 204, 21] },
-      { val: 45,  rgb: [249, 115, 22] },
-      { val: 60,  rgb: [239, 68, 68] },
-      { val: 75,  rgb: [217, 70, 239] },
-      { val: 95,  rgb: [255, 255, 255] }
+      { stop: 0.0, rgb: [30, 58, 138] },
+      { stop: 0.25, rgb: [34, 197, 94] },
+      { stop: 0.5, rgb: [250, 204, 21] },
+      { stop: 0.75, rgb: [239, 68, 68] },
+      { stop: 1.0, rgb: [255, 255, 255] }
     ],
     dos: [
-      { val: 0,   rgb: [22, 101, 52] },
-      { val: 50,  rgb: [34, 197, 94] },
-      { val: 80,  rgb: [234, 179, 8] },
-      { val: 100, rgb: [239, 68, 68] }
+      { stop: 0.0, rgb: [22, 101, 52] },
+      { stop: 0.5, rgb: [234, 179, 8] },
+      { stop: 1.0, rgb: [239, 68, 68] }
     ],
     precip: [
-      { val: 0,   rgb: [15, 23, 42] },
-      { val: 20,  rgb: [56, 189, 248] },
-      { val: 50,  rgb: [37, 99, 235] },
-      { val: 80,  rgb: [29, 78, 216] },
-      { val: 100, rgb: [168, 85, 247] }
+      { stop: 0.0, rgb: [15, 23, 42] },
+      { stop: 0.33, rgb: [56, 189, 248] },
+      { stop: 0.66, rgb: [37, 99, 235] },
+      { stop: 1.0, rgb: [168, 85, 247] }
     ]
   };
+
+  function getDatasetExtremes(activeKey) {
+    let min = Infinity;
+    let max = -Infinity;
+    dataset.forEach(entry => {
+      let v = entry[activeKey] ?? entry.value ?? entry.temp ?? 50;
+      if (v < min) min = v;
+      if (v > max) max = v;
+    });
+    if (min === max) {
+      min -= 10;
+      max += 10;
+    }
+    return { min, max };
+  }
 
   function getBaseGraphValue(minuteVal, activeKey) {
     const targetHour = minuteVal / 60; 
@@ -2037,21 +2049,23 @@ function initTimezoneSyncedRadarModal(mapModal, item, mode, selectedDayIndex) {
       }
     }
 
-    let val1 = entry1[activeKey] ?? entry1.value ?? 50;
-    let val2 = entry2[activeKey] ?? entry2.value ?? 50;
+    let val1 = entry1[activeKey] ?? entry1.value ?? entry1.temp ?? 50;
+    let val2 = entry2[activeKey] ?? entry2.value ?? entry2.temp ?? 50;
 
     return val1 * (1 - mix) + val2 * mix;
   }
 
-  function mapValueToColor(val, palette) {
-    if (val <= palette[0].val) return palette[0].rgb;
-    if (val >= palette[palette.length - 1].val) return palette[palette.length - 1].rgb;
+  function mapValueToColor(val, palette, minVal, maxVal) {
+    const normalized = Math.max(0, Math.min(1, (val - minVal) / (maxVal - minVal)));
+
+    if (normalized <= palette[0].stop) return palette[0].rgb;
+    if (normalized >= palette[palette.length - 1].stop) return palette[palette.length - 1].rgb;
 
     for (let i = 0; i < palette.length - 1; i++) {
       const p1 = palette[i];
       const p2 = palette[i + 1];
-      if (val >= p1.val && val <= p2.val) {
-        const factor = (val - p1.val) / (p2.val - p1.val);
+      if (normalized >= p1.stop && normalized <= p2.stop) {
+        const factor = (normalized - p1.stop) / (p2.stop - p1.stop);
         return [
           Math.round(p1.rgb[0] * (1 - factor) + p2.rgb[0] * factor),
           Math.round(p1.rgb[1] * (1 - factor) + p2.rgb[1] * factor),
@@ -2091,6 +2105,7 @@ function initTimezoneSyncedRadarModal(mapModal, item, mode, selectedDayIndex) {
     }
 
     const palette = exactPaletteMap[activeKey] || exactPaletteMap.temp;
+    const { min: minVal, max: maxVal } = getDatasetExtremes(activeKey);
     const baseVal = getBaseGraphValue(minuteVal, activeKey);
 
     for (let y = 0; y < bufferH; y++) {
@@ -2100,16 +2115,18 @@ function initTimezoneSyncedRadarModal(mapModal, item, mode, selectedDayIndex) {
 
         const latLng = map.containerPointToLatLng([screenX, screenY]);
         
-        const spatialModulation = Math.sin(latLng.lat * 0.15) * Math.cos(latLng.lng * 0.15) * 12;
-        const localizedVal = Math.max(palette[0].val, Math.min(palette[palette.length - 1].val, baseVal + spatialModulation));
+        // Spatial variance tied to current graph range span
+        const span = maxVal - minVal;
+        const spatialModulation = Math.sin(latLng.lat * 0.15) * Math.cos(latLng.lng * 0.15) * (span * 0.15);
+        const localizedVal = Math.max(minVal, Math.min(maxVal, baseVal + spatialModulation));
         
-        const rgb = mapValueToColor(localizedVal, palette);
+        const rgb = mapValueToColor(localizedVal, palette, minVal, maxVal);
 
         const ptr = (y * bufferW + x) * 4;
         data[ptr] = rgb[0];
         data[ptr + 1] = rgb[1];
         data[ptr + 2] = rgb[2];
-        data[ptr + 3] = 160; 
+        data[ptr + 3] = 170; 
       }
     }
 
