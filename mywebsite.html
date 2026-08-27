@@ -322,7 +322,12 @@
 
 <h1>USA 7-Day Daily Outlook Score (DOS)</h1>
 <div class="subtitle">Based on the Jace Fink National Weather Impact Index</div>
-
+<!-- Ensure it is placed directly inside an active header or main container -->
+<div class="header-nav">
+  <button id="historyBtn" class="btn btn-history">
+    <i class="fas fa-history"></i> Weather History
+  </button>
+</div>
 <!-- Search & Upload Buttons -->
 <div class="search-container">
     <input type="text" id="locationInput" class="search-input" placeholder="Enter Location or City (e.g. Minneapolis, MN)">
@@ -3162,7 +3167,8 @@ setInterval(updateTrafficButtonState, 1000);
 buildForecast();
 setInterval(updateStreamStatus, 60000);
 setInterval(buildForecast, 60000);
-</script>
 document.getElementById('historyBtn').addEventListener('click', handleWeatherHistory);
+</script>
+
 </body>
 </html>
