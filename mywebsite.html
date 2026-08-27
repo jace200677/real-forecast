@@ -2332,6 +2332,10 @@ function getTimezoneAbbreviation() {
 } 
 // --- Updated openWeatherMapModal & Fully Synchronized Radar Controller ---
 
+// --- Updated openWeatherMapModal & Fully Synchronized Radar Controller with Extracted Date Parsing ---
+
+// --- Updated openWeatherMapModal & Fully Synchronized Radar Controller with Extracted Date Parsing ---
+
 function openWeatherMapModal(item, mode = 'temp', selectedDayIndex = null) {
   if (selectedDayIndex === null || selectedDayIndex === undefined) {
     const activeCard = document.querySelector('.day-card.active, .forecast-day-card.active, .day-tab.active, [data-selected="true"]');
@@ -2414,7 +2418,6 @@ function openWeatherMapModal(item, mode = 'temp', selectedDayIndex = null) {
     });
   }
 
-  // Ensure state exists & tracks active item/mode properly
   window._radarState = window._radarState || {};
   window._radarState.currentItem = item;
   window._radarState.currentMode = mode;
@@ -2428,7 +2431,6 @@ function openWeatherMapModal(item, mode = 'temp', selectedDayIndex = null) {
 
   mapModal.style.display = "flex";
 
-  // Trigger Leaflet loading and timezone-synced initialization safely
   if (typeof ensureLeafletLoaded === 'function') {
     ensureLeafletLoaded(() => {
       if (typeof initTimezoneSyncedRadarModal === 'function') {
@@ -2443,12 +2445,10 @@ function openWeatherMapModal(item, mode = 'temp', selectedDayIndex = null) {
 // --- Unified Timezone-Synced Radar Modal Initialization Function ---
 
 function initTimezoneSyncedRadarModal(mapModalElement, forecastItem, defaultMode = 'temp', dayIndex = 0) {
-  // 1. Setup or reuse Leaflet Map inside '#leafletMap'
   let mapContainer = document.getElementById('leafletMap');
   if (!mapContainer) return;
 
   if (!window._radarState.map) {
-    // Default coordinates (falls back to Tower, MN area or lat/lon provided in item)
     const lat = forecastItem?.lat ?? forecastItem?.latitude ?? 47.8105;
     const lon = forecastItem?.lon ?? forecastItem?.longitude ?? -92.2785;
 
@@ -2457,10 +2457,10 @@ function initTimezoneSyncedRadarModal(mapModalElement, forecastItem, defaultMode
       attributionControl: false
     }).setView([lat, lon], 7);
 
-    // Add Dark Mode CartoDB Tile Layer for clean weather background styling
     L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
       maxZoom: 19,
-      subdomains: 'abcd'
+      subdomains: 'abcd',
+      attribution: '&copy; <a href="https://carto.com/">CARTO</a>'
     }).addTo(window._radarState.map);
   } else {
     window._radarState.map.invalidateSize();
@@ -2470,13 +2470,13 @@ function initTimezoneSyncedRadarModal(mapModalElement, forecastItem, defaultMode
   window._radarState.currentMode = defaultMode;
   window._radarState.canvas = document.querySelector('canvas') || mapContainer.querySelector('canvas');
 
-  // 2. Update Date / Title display header
+  // Robustly extract and format the active day's date string
   const dateDisplay = document.getElementById('radarDateDisplay');
-  if (dateDisplay && forecastItem) {
-    dateDisplay.textContent = forecastItem.dateStr || forecastItem.date || `Day ${dayIndex + 1}`;
+  if (dateDisplay) {
+    const extractedDate = getExtractedActiveDate(forecastItem, dayIndex);
+    dateDisplay.textContent = extractedDate;
   }
 
-  // 3. Connect Slider & Render Initial Minute State
   const timelineSlider = document.getElementById("radarTimeSlider") || document.querySelector('input[type="range"]');
   const timeDisplayLabel = document.getElementById("radarTimeLabel") || document.getElementById('timeDisplayLabel');
 
@@ -2484,7 +2484,6 @@ function initTimezoneSyncedRadarModal(mapModalElement, forecastItem, defaultMode
   renderRadarLayerAtMinute(initialMinute);
 
   if (timelineSlider) {
-    // Clone node to strip old listeners and prevent duplicate duplicate firing
     const newSlider = timelineSlider.cloneNode(true);
     timelineSlider.parentNode.replaceChild(newSlider, timelineSlider);
 
@@ -2493,6 +2492,138 @@ function initTimezoneSyncedRadarModal(mapModalElement, forecastItem, defaultMode
       renderRadarLayerAtMinute(sliderMinute);
     });
   }
+
+  window.triggerRadarRedraw = function(forcedMin = null) {
+    const currentMin = forcedMin !== null ? forcedMin : (timelineSlider ? parseInt(timelineSlider.value, 10) : 0);
+    renderRadarLayerAtMinute(currentMin);
+  };
+
+  function renderRadarLayerAtMinute(minute) {
+    const activeMap = window._radarState.map;
+    const activeCanvas = window._radarState.canvas;
+    const activeItem = window._radarState.currentItem;
+    const activeMode = window._radarState.currentMode;
+
+    if (!activeMap) return;
+
+    if (window._radarState.radarTileLayer) {
+      activeMap.removeLayer(window._radarState.radarTileLayer);
+      window._radarState.radarTileLayer = null;
+    }
+
+    if (typeof createRadarGridLayer === 'function' && activeCanvas) {
+      const updatedLayer = createRadarGridLayer(
+        activeCanvas,
+        0,
+        activeItem,
+        activeMode,
+        null,
+        null,
+        minute
+      );
+
+      if (updatedLayer) {
+        updatedLayer.addTo(activeMap);
+        window._radarState.radarTileLayer = updatedLayer;
+      }
+    }
+
+    const h = Math.floor(minute / 60);
+    const m = Math.round(minute % 60);
+    const timeStr = `${h % 12 || 12}:${m < 10 ? '0' : ''}${m} ${h >= 12 ? 'PM' : 'AM'}`;
+    const tzAbbr = getTimezoneAbbreviation();
+
+    if (timeDisplayLabel) {
+      timeDisplayLabel.textContent = `${timeStr} ${tzAbbr}`.trim();
+    }
+  }
+}
+
+// --- Extracted Date Resolution Helper ---
+function getExtractedActiveDate(item, dayIndex) {
+  if (!item) return `Day ${dayIndex + 1}`;
+
+  // 1. Check direct properties on the passed item card
+  if (item.dateStr) return item.dateStr;
+  if (item.date) return item.date;
+  if (item.dayName) return item.dayName;
+  if (item.title) return item.title;
+
+  // 2. Check if the active card DOM element contains a recognizable date text
+  const activeCardSelectors = ['.day-card.active', '.forecast-day-card.active', '.day-tab.active', '[data-selected="true"]'];
+  for (const selector of activeCardSelectors) {
+    const card = document.querySelector(selector);
+    if (card) {
+      const dateEl = card.querySelector('.date, .card-date, .day-title, h4, h5, span');
+      if (dateEl && dateEl.textContent.trim()) {
+        return dateEl.textContent.trim();
+      }
+      if (card.textContent.trim()) {
+        // Return first clean line of text if no specific sub-element matches
+        const cleanText = card.textContent.trim().split('\n')[0];
+        if (cleanText) return cleanText;
+      }
+    }
+  }
+
+  // 3. Fallback to array indexing from global data stores or item.days list
+  const daysList = item.days || window.forecastData || window.dailyData;
+  if (Array.isArray(daysList) && daysList[dayIndex]) {
+    const dayObj = daysList[dayIndex];
+    if (dayObj.dateStr) return dayObj.dateStr;
+    if (dayObj.date) return dayObj.date;
+    if (dayObj.day) return dayObj.day;
+  }
+
+  return `Day ${dayIndex + 1}`;
+}
+
+function getTimezoneAbbreviation() {
+  try {
+    const formatted = new Date().toLocaleTimeString('en-us', { timeZoneName: 'short' });
+    const parts = formatted.split(' ');
+    return parts[parts.length - 1] || '';
+  } catch (e) {
+    return '';
+  }
+}
+
+// --- Event Listener for Weather Map Modal Trigger Button ---
+document.getElementById("weatherMapModalBtn")?.addEventListener("click", () => {
+  const currentMode = document.getElementById("graphTypeSelect")?.value || "temp";
+  const rootData = window._radarState?.currentItem || window.currentWeatherData || {};
+  let selectedDayIndex = 0;
+
+  const dayElements = document.querySelectorAll('.day-tab, .forecast-day-card, .day-card, .history-card');
+  dayElements.forEach((el, index) => {
+    if (
+      el.classList.contains('active') ||
+      el.classList.contains('selected') ||
+      el.getAttribute('aria-selected') === 'true' ||
+      el.dataset.selected === 'true'
+    ) {
+      selectedDayIndex = index;
+    }
+  });
+
+  const extractDaysArray = (data) => {
+    if (!data) return [];
+    if (Array.isArray(data)) return data;
+    return data.daily || data.forecast || data.days || data.weekly || data.list || data.data || data.timeline || [];
+  };
+
+  let daysArray = extractDaysArray(rootData);
+  const selectedDayCard = daysArray[selectedDayIndex] || daysArray[0] || rootData;
+
+  if (selectedDayCard !== rootData && typeof rootData === 'object') {
+    selectedDayCard.lat = selectedDayCard.lat ?? rootData.lat ?? rootData.latitude;
+    selectedDayCard.lon = selectedDayCard.lon ?? rootData.lon ?? rootData.longitude;
+    selectedDayCard.timezone = selectedDayCard.timezone ?? rootData.timezone ?? rootData.tz;
+    selectedDayCard.days = daysArray;
+  }
+
+  openWeatherMapModal(selectedDayCard, currentMode, selectedDayIndex);
+});
 
   // Global helper function for timeline drawing triggers
   window.triggerRadarRedraw = function(forcedMin = null) {
