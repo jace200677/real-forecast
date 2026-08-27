@@ -1754,9 +1754,14 @@ function openForecastGraphModal(item, fullForecast = [], itemIndex = -1) {
 /**
  * Global Weather Radar Layer — Real-Time Timeline & Multi-Layer Integration
  */
-/**
- * Global Weather Radar Layer — Real-Time Timeline & Multi-Layer Integration
- */
+window._radarState = window._radarState || {
+  map: null,
+  currentMode: 'temp',
+  windSubMode: 'speed',
+  dataset: [],
+  renderPending: false
+};
+
 function openWeatherMapModal(item, mode = 'temp', selectedDayIndex = 0) {
   let mapModal = document.getElementById("weatherRadarMapModal");
   if (!mapModal) {
@@ -1764,16 +1769,77 @@ function openWeatherMapModal(item, mode = 'temp', selectedDayIndex = 0) {
     mapModal.id = "weatherRadarMapModal";
     mapModal.style.cssText = "position:fixed;top:0;left:0;width:100vw;height:100vh;background:rgba(0,0,0,0.85);z-index:10000;display:flex;align-items:center;justify-content:center;padding:12px;box-sizing:border-box;";
     document.body.appendChild(mapModal);
+    
+    // Build static structural shell once
+    mapModal.innerHTML = `
+      <div style="background:#18181c;border-radius:14px;padding:16px;width:100%;max-width:900px;color:#fff;position:relative;box-shadow:0 12px 40px rgba(0,0,0,0.7);font-family:system-ui, -apple-system, sans-serif;max-height:95vh;display:flex;flex-direction:column;box-sizing:border-box;">
+        <button id="closeRadarModalBtn" style="position:absolute;top:12px;right:12px;background:#27272a;border:none;color:#fff;width:32px;height:32px;border-radius:50%;font-size:18px;cursor:pointer;z-index:1001;display:flex;align-items:center;justify-content:center;">✕</button>
+        
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;flex-wrap:wrap;gap:10px;flex-shrink:0;">
+          <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+            <h3 id="radarTitleHeading" style="margin:0;font-size:16px;font-weight:600;">
+              🛰️ Radar (<span id="radarDateDisplay" style="color:#38bdf8;">Day 1</span>)
+            </h3>
+            
+            <select id="radarLayerSwitcher" style="background:#27272a;color:#fff;border:1px solid #3f3f46;padding:4px 10px;border-radius:6px;font-size:13px;cursor:pointer;outline:none;">
+              <option value="temp">Temperature</option>
+              <option value="wind">Wind</option>
+              <option value="dos">DOS / Index</option>
+              <option value="precip">Precipitation</option>
+            </select>
+
+            <div id="windOptionContainer" style="display:none;">
+              <select id="windSubModeSelect" style="background:#27272a;color:#fff;border:1px solid #3f3f46;padding:4px 10px;border-radius:6px;font-size:13px;cursor:pointer;outline:none;">
+                <option value="speed">Wind Speed</option>
+                <option value="gust">Wind Gusts</option>
+              </select>
+            </div>
+          </div>
+        </div>
+        
+        <div id="interactiveMapContainer" style="position:relative;width:100%;height:380px;background:#090d16;border-radius:10px;overflow:hidden;border:1px solid #27272a;flex-grow:1;">
+          <div id="leafletMap" style="width:100%;height:100%;background:#090d16;"></div>
+          <canvas id="syncCanvas" style="position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:400;mix-blend-mode:screen;"></canvas>
+        </div>
+
+        <div style="margin-top:10px;background:#27272a;padding:10px 14px;border-radius:8px;flex-shrink:0;">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
+            <span style="font-size:12px;color:#a1a1aa;font-weight:500;">Interactive Timeline</span>
+            <strong id="radarTimeLabel" style="font-size:13px;color:#38bdf8;">12:00 AM</strong>
+          </div>
+          <input type="range" id="radarTimeSlider" min="0" max="1439" step="1" value="0" style="width:100%;accent-color:#38bdf8;cursor:pointer;">
+        </div>
+      </div>
+    `;
+
+    document.getElementById('closeRadarModalBtn').onclick = () => {
+      mapModal.style.display = 'none';
+      if (window._radarState.map) {
+        window._radarState.map.off();
+        window._radarState.map.remove();
+        window._radarState.map = null;
+      }
+    };
+
+    // Attach global persistent UI listeners once
+    document.getElementById('radarTimeSlider').addEventListener('input', (e) => {
+      window.requestAnimationFrame(() => triggerRadarRedraw(parseInt(e.target.value, 10)));
+    });
+
+    document.getElementById('radarLayerSwitcher').addEventListener('change', (e) => {
+      window._radarState.currentMode = e.target.value;
+      const windCont = document.getElementById('windOptionContainer');
+      if (windCont) windCont.style.display = window._radarState.currentMode === 'wind' ? 'inline-block' : 'none';
+      window.requestAnimationFrame(() => triggerRadarRedraw());
+    });
+
+    document.getElementById('windSubModeSelect').addEventListener('change', (e) => {
+      window._radarState.windSubMode = e.target.value;
+      window.requestAnimationFrame(() => triggerRadarRedraw());
+    });
   }
 
-  // Clean up previous map instance entirely
-  if (window._radarMapInstance) {
-    try {
-      window._radarMapInstance.off();
-      window._radarMapInstance.remove();
-    } catch (e) {}
-    window._radarMapInstance = null;
-  }
+  mapModal.style.display = "flex";
 
   ensureLeafletLoaded(() => {
     initTimezoneSyncedRadarModal(mapModal, item, mode, selectedDayIndex);
@@ -1781,6 +1847,7 @@ function openWeatherMapModal(item, mode = 'temp', selectedDayIndex = 0) {
 }
 
 function initTimezoneSyncedRadarModal(mapModal, item, mode, selectedDayIndex) {
+  window._radarState.currentMode = mode;
   const lat = item?.lat ?? item?.latitude ?? (window.currentLat || 45.3827);
   const lon = item?.lon ?? item?.longitude ?? (window.currentLon || -93.8761);
   const appTimezone = item?.timezone || item?.tz || Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
@@ -1796,10 +1863,7 @@ function initTimezoneSyncedRadarModal(mapModal, item, mode, selectedDayIndex) {
     for (const key of Object.keys(item)) {
       if (item[key] && typeof item[key] === 'object') {
         const nested = extractDaysArray(item[key]);
-        if (nested.length > 0) {
-          daysArray = nested;
-          break;
-        }
+        if (nested.length > 0) { daysArray = nested; break; }
       }
     }
   }
@@ -1812,421 +1876,154 @@ function initTimezoneSyncedRadarModal(mapModal, item, mode, selectedDayIndex) {
     try {
       const parsedDate = typeof rawDateStr === 'number' ? new Date(rawDateStr * 1000) : new Date(rawDateStr);
       if (!isNaN(parsedDate)) {
-        formattedDisplayDate = new Intl.DateTimeFormat('en-US', {
-          timeZone: appTimezone,
-          weekday: 'short',
-          month: 'short',
-          day: 'numeric'
-        }).format(parsedDate);
-      } else {
-        formattedDisplayDate = rawDateStr;
-      }
-    } catch (e) {
-      formattedDisplayDate = rawDateStr;
-    }
+        formattedDisplayDate = new Intl.DateTimeFormat('en-US', { timeZone: appTimezone, weekday: 'short', month: 'short', day: 'numeric' }).format(parsedDate);
+      } else { formattedDisplayDate = rawDateStr; }
+    } catch (e) { formattedDisplayDate = rawDateStr; }
   }
 
-  const extractHourlyArray = (card) => {
-    if (!card) return [];
-    return card.hourly || card.timeline || card.dataset || card.hours || card.lead || [];
-  };
-
-  let hourlyRaw = extractHourlyArray(targetDayCard);
-  if (hourlyRaw.length === 0) {
-    hourlyRaw = extractHourlyArray(item);
-  }
+  document.getElementById('radarDateDisplay').innerText = formattedDisplayDate;
+  document.getElementById('radarLayerSwitcher').value = window._radarState.currentMode;
   
-  const dataset = (hourlyRaw.length > 0) ? hourlyRaw : (function scrapeDomGraphPoints() {
+  const windCont = document.getElementById('windOptionContainer');
+  if (windCont) windCont.style.display = window._radarState.currentMode === 'wind' ? 'inline-block' : 'none';
+
+  const extractHourlyArray = (card) => card ? (card.hourly || card.timeline || card.dataset || card.hours || card.lead || []) : [];
+  let hourlyRaw = extractHourlyArray(targetDayCard);
+  if (hourlyRaw.length === 0) hourlyRaw = extractHourlyArray(item);
+  
+  window._radarState.dataset = (hourlyRaw.length > 0) ? hourlyRaw : (function scrapeDomGraphPoints() {
     const points = [];
-    const selectors = [
-      'svg circle', '.apexcharts-series path', '.recharts-curve', '.recharts-dot', 
-      'canvas', '[class*="chart"] circle', '[class*="graph"] circle', 'path.highcharts-graph'
-    ];
-    
-    for (const sel of selectors) {
-      const elements = document.querySelectorAll(sel);
-      if (elements && elements.length >= 2) {
-        let minCy = Infinity;
-        let maxCy = -Infinity;
-        
-        elements.forEach(el => {
-          const cy = parseFloat(el.getAttribute('cy') || el.getAttribute('y') || 0);
-          if (cy < minCy) minCy = cy;
-          if (cy > maxCy) maxCy = cy;
-        });
-
-        if (maxCy === minCy) maxCy = minCy + 1;
-
-        elements.forEach((el, idx) => {
-          let explicitVal = el.getAttribute('data-value') || el.getAttribute('val') || el.dataset?.value;
-          let val;
-          
-          if (explicitVal !== null && !isNaN(parseFloat(explicitVal))) {
-            val = parseFloat(explicitVal);
-          } else {
-            const cy = parseFloat(el.getAttribute('cy') || el.getAttribute('y') || 0);
-            const normalized = 1 - ((cy - minCy) / (maxCy - minCy)); 
-            val = normalized * 100; 
-          }
-          
-          points.push({ 
-            hour: (idx / Math.max(1, elements.length - 1)) * 24, 
-            value: val, 
-            temp: val, 
-            speed: val * 0.65, 
-            gust: val * 0.95,
-            dos: val * 0.8,
-            precip: val * 0.5
-          });
-        });
-        break;
-      }
+    const elements = document.querySelectorAll('svg circle, .apexcharts-series path, .recharts-curve, canvas');
+    if (elements && elements.length >= 2) {
+      elements.forEach((el, idx) => {
+        let val = 50;
+        points.push({ hour: (idx / Math.max(1, elements.length - 1)) * 24, value: val, temp: val, speed: val * 0.65, gust: val * 0.95, dos: val * 0.8, precip: val * 0.5 });
+      });
     }
-
     if (points.length < 2) {
       for (let h = 0; h < 24; h++) {
-        let baseVal = 50 + Math.sin((h - 6) / 24 * Math.PI * 2) * 35 + (selectedDayIndex * 5);
-        points.push({ 
-          hour: h, 
-          value: baseVal, 
-          temp: baseVal, 
-          speed: Math.max(5, baseVal * 0.4), 
-          gust: Math.max(10, baseVal * 0.7),
-          dos: Math.max(0, baseVal * 0.6),
-          precip: Math.max(0, baseVal * 0.3)
-        });
+        let baseVal = 50 + Math.sin((h - 6) / 24 * Math.PI * 2) * 35;
+        points.push({ hour: h, value: baseVal, temp: baseVal, speed: baseVal * 0.4, gust: baseVal * 0.7, dos: baseVal * 0.6, precip: baseVal * 0.3 });
       }
     }
     return points;
   })();
 
-  const totalMinutes = 24 * 60;
-
-  const formatTimeFromMinutes = (totalMins) => {
-    const hours24 = Math.floor(totalMins / 60) % 24;
-    const mins = totalMins % 60;
-    const period = hours24 >= 12 ? 'PM' : 'AM';
-    const hours12 = hours24 % 12 === 0 ? 12 : hours24 % 12;
-    const paddedMins = mins.toString().padStart(2, '0');
-    return `${hours12}:${paddedMins} ${period}`;
-  };
-
-  let currentMode = mode;
-  let windSubMode = 'speed';
-
-  // Force clean inner structure injection on every execution
-  mapModal.innerHTML = `
-    <div style="background:#18181c;border-radius:14px;padding:16px;width:100%;max-width:900px;color:#fff;position:relative;box-shadow:0 12px 40px rgba(0,0,0,0.7);font-family:system-ui, -apple-system, sans-serif;max-height:95vh;display:flex;flex-direction:column;box-sizing:border-box;">
-      <button id="closeRadarModalBtn" style="position:absolute;top:12px;right:12px;background:#27272a;border:none;color:#fff;width:32px;height:32px;border-radius:50%;font-size:18px;cursor:pointer;z-index:1001;display:flex;align-items:center;justify-content:center;">✕</button>
-      
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;flex-wrap:wrap;gap:10px;flex-shrink:0;">
-        <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
-          <h3 style="margin:0;font-size:16px;font-weight:600;">
-            🛰️ Radar (<span style="color:#38bdf8;">${formattedDisplayDate}</span>)
-          </h3>
-          
-          <select id="radarLayerSwitcher" style="background:#27272a;color:#fff;border:1px solid #3f3f46;padding:4px 10px;border-radius:6px;font-size:13px;cursor:pointer;outline:none;">
-            <option value="temp" ${currentMode === 'temp' ? 'selected' : ''}>Temperature</option>
-            <option value="wind" ${currentMode === 'wind' ? 'selected' : ''}>Wind</option>
-            <option value="dos" ${currentMode === 'dos' ? 'selected' : ''}>DOS / Index</option>
-            <option value="precip" ${currentMode === 'precip' ? 'selected' : ''}>Precipitation</option>
-          </select>
-
-          <div id="windOptionContainer" style="display:${currentMode === 'wind' ? 'inline-block' : 'none'};">
-            <select id="windSubModeSelect" style="background:#27272a;color:#fff;border:1px solid #3f3f46;padding:4px 10px;border-radius:6px;font-size:13px;cursor:pointer;outline:none;">
-              <option value="speed" selected>Wind Speed</option>
-              <option value="gust">Wind Gusts</option>
-            </select>
-          </div>
-        </div>
-      </div>
-      
-      <div id="interactiveMapContainer" style="position:relative;width:100%;height:380px;background:#090d16;border-radius:10px;overflow:hidden;border:1px solid #27272a;flex-grow:1;">
-        <div id="leafletMap" style="width:100%;height:100%;background:#090d16;"></div>
-        <canvas id="syncCanvas" style="position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:400;mix-blend-mode:screen;"></canvas>
-      </div>
-
-      <div style="margin-top:10px;background:#27272a;padding:10px 14px;border-radius:8px;flex-shrink:0;">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
-          <span style="font-size:12px;color:#a1a1aa;font-weight:500;">Interactive Timeline</span>
-          <strong id="radarTimeLabel" style="font-size:13px;color:#38bdf8;">12:00 AM</strong>
-        </div>
-        <input type="range" id="radarTimeSlider" min="0" max="${totalMinutes - 1}" step="1" value="0" style="width:100%;accent-color:#38bdf8;cursor:pointer;">
-      </div>
-    </div>
-  `;
-
-  mapModal.style.display = "flex";
-
-  document.getElementById('closeRadarModalBtn').onclick = () => {
-    mapModal.style.display = 'none';
-  };
-
-  const worldBounds = L.latLngBounds(L.latLng(-90, -180), L.latLng(90, 180));
-
-  window._radarMapInstance = L.map('leafletMap', {
-    center: [lat, lon],
-    zoom: 3,
-    minZoom: 2,
-    maxZoom: 18,
-    zoomControl: true,
-    worldCopyJump: false,
-    maxBounds: worldBounds,
-    maxBoundsViscosity: 1.0
-  });
-
-  const map = window._radarMapInstance;
-
-  L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
-    minZoom: 2,
-    maxZoom: 18,
-    noWrap: true,
-    bounds: worldBounds,
-    attribution: 'Tiles &copy; Esri'
-  }).addTo(map);
-
-  const canvas = document.getElementById("syncCanvas");
-  const ctx = canvas.getContext("2d");
-  const slider = document.getElementById("radarTimeSlider");
-  const label = document.getElementById("radarTimeLabel");
-  const layerSwitcher = document.getElementById("radarLayerSwitcher");
-  const windSelect = document.getElementById("windSubModeSelect");
-  const windOptContainer = document.getElementById("windOptionContainer");
-
-  const offscreenCanvas = document.createElement("canvas");
-  const offscreenCtx = offscreenCanvas.getContext("2d");
-
-  const exactPaletteMap = {
-    temp: [
-      { stop: 0.0, rgb: [30, 64, 175] },
-      { stop: 0.2, rgb: [56, 189, 248] },
-      { stop: 0.4, rgb: [74, 222, 128] },
-      { stop: 0.6, rgb: [250, 204, 21] },
-      { stop: 0.8, rgb: [251, 146, 60] },
-      { stop: 1.0, rgb: [239, 68, 68] }
-    ],
-    wind_speed: [
-      { stop: 0.0, rgb: [15, 23, 42] },
-      { stop: 0.2, rgb: [56, 189, 248] },
-      { stop: 0.4, rgb: [34, 197, 94] },
-      { stop: 0.6, rgb: [234, 179, 8] },
-      { stop: 0.8, rgb: [249, 115, 22] },
-      { stop: 1.0, rgb: [168, 85, 247] }
-    ],
-    wind_gust: [
-      { stop: 0.0, rgb: [30, 58, 138] },
-      { stop: 0.25, rgb: [34, 197, 94] },
-      { stop: 0.5, rgb: [250, 204, 21] },
-      { stop: 0.75, rgb: [239, 68, 68] },
-      { stop: 1.0, rgb: [255, 255, 255] }
-    ],
-    dos: [
-      { stop: 0.0, rgb: [22, 101, 52] },
-      { stop: 0.5, rgb: [234, 179, 8] },
-      { stop: 1.0, rgb: [239, 68, 68] }
-    ],
-    precip: [
-      { stop: 0.0, rgb: [15, 23, 42] },
-      { stop: 0.33, rgb: [56, 189, 248] },
-      { stop: 0.66, rgb: [37, 99, 235] },
-      { stop: 1.0, rgb: [168, 85, 247] }
-    ]
-  };
-
-  function getDatasetExtremes(activeKey) {
-    let min = Infinity;
-    let max = -Infinity;
-    dataset.forEach(entry => {
-      let v = entry[activeKey] ?? entry.value ?? entry.temp ?? 50;
-      if (v < min) min = v;
-      if (v > max) max = v;
-    });
-    if (min === max) {
-      min -= 10;
-      max += 10;
-    }
-    return { min, max };
-  }
-
-  function getBaseGraphValue(minuteVal, activeKey) {
-    const targetHour = minuteVal / 60; 
-    const len = dataset.length > 0 ? dataset.length : 24;
-
-    const timeMappedData = dataset.map((entry, idx) => {
-      let entryHour = entry.hour;
-      if (entryHour === undefined) {
-        if (entry.dt) { 
-          entryHour = new Date(entry.dt * (entry.dt > 1e11 ? 1 : 1000)).getHours();
-        } else if (entry.time || entry.date) { 
-          entryHour = new Date(entry.time || entry.date).getHours();
-        } else {
-          entryHour = (idx / Math.max(1, len - 1)) * 23.99;
-        }
-      }
-      return { ...entry, _actualHour: entryHour };
+  if (!window._radarState.map) {
+    const worldBounds = L.latLngBounds(L.latLng(-90, -180), L.latLng(90, 180));
+    window._radarState.map = L.map('leafletMap', {
+      center: [lat, lon],
+      zoom: 3,
+      minZoom: 2,
+      maxZoom: 18,
+      zoomControl: true,
+      maxBounds: worldBounds,
+      maxBoundsViscosity: 1.0
     });
 
-    timeMappedData.sort((a, b) => a._actualHour - b._actualHour);
+    L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+      minZoom: 2, maxZoom: 18, noWrap: true, bounds: worldBounds, attribution: 'Tiles &copy; Esri'
+    }).addTo(window._radarState.map);
 
-    let entry1 = timeMappedData[0] || {};
-    let entry2 = timeMappedData[timeMappedData.length - 1] || {};
-    let mix = 0;
-
-    for (let i = 0; i < timeMappedData.length - 1; i++) {
-      if (targetHour >= timeMappedData[i]._actualHour && targetHour <= timeMappedData[i+1]._actualHour) {
-        entry1 = timeMappedData[i];
-        entry2 = timeMappedData[i+1];
-        const spread = entry2._actualHour - entry1._actualHour;
-        mix = spread === 0 ? 0 : (targetHour - entry1._actualHour) / spread;
-        break;
-      }
-    }
-
-    let val1 = entry1[activeKey] ?? entry1.value ?? entry1.temp ?? 50;
-    let val2 = entry2[activeKey] ?? entry2.value ?? entry2.temp ?? 50;
-
-    return val1 * (1 - mix) + val2 * mix;
-  }
-
-  function mapValueToColor(val, palette, minVal, maxVal) {
-    const normalized = Math.max(0, Math.min(1, (val - minVal) / (maxVal - minVal)));
-
-    if (normalized <= palette[0].stop) return palette[0].rgb;
-    if (normalized >= palette[palette.length - 1].stop) return palette[palette.length - 1].rgb;
-
-    for (let i = 0; i < palette.length - 1; i++) {
-      const p1 = palette[i];
-      const p2 = palette[i + 1];
-      if (normalized >= p1.stop && normalized <= p2.stop) {
-        const factor = (normalized - p1.stop) / (p2.stop - p1.stop);
-        return [
-          Math.round(p1.rgb[0] * (1 - factor) + p2.rgb[0] * factor),
-          Math.round(p1.rgb[1] * (1 - factor) + p2.rgb[1] * factor),
-          Math.round(p1.rgb[2] * (1 - factor) + p2.rgb[2] * factor)
-        ];
-      }
-    }
-    return palette[0].rgb;
-  }
-
-  let renderPending = false;
-
-  const drawSyncOverlay = (minuteVal) => {
-    if (!canvas || !ctx) return;
-    if (label) {
-      label.innerText = formatTimeFromMinutes(minuteVal);
-    }
-
-    const rect = canvas.parentElement.getBoundingClientRect();
-    if (canvas.width !== Math.floor(rect.width) || canvas.height !== Math.floor(rect.height)) {
-      canvas.width = Math.floor(rect.width) || 300;
-      canvas.height = Math.floor(rect.height) || 150;
-    }
-
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-    const scaleFactor = 0.35;
-    const bufferW = Math.max(1, Math.ceil(canvas.width * scaleFactor));
-    const bufferH = Math.max(1, Math.ceil(canvas.height * scaleFactor));
-
-    offscreenCanvas.width = bufferW;
-    offscreenCanvas.height = bufferH;
-
-    const imgData = offscreenCtx.createImageData(bufferW, bufferH);
-    const data = imgData.data;
-
-    let activeKey = currentMode;
-    if (currentMode === 'wind') {
-      activeKey = `wind_${windSubMode}`;
-    }
-
-    const palette = exactPaletteMap[activeKey] || exactPaletteMap.temp;
-    const { min: minVal, max: maxVal } = getDatasetExtremes(activeKey);
-    const baseVal = getBaseGraphValue(minuteVal, activeKey);
-
-    for (let y = 0; y < bufferH; y++) {
-      const screenY = y / scaleFactor;
-      for (let x = 0; x < bufferW; x++) {
-        const screenX = x / scaleFactor;
-
-        const latLng = map.containerPointToLatLng([screenX, screenY]);
-        
-        const span = maxVal - minVal;
-        const spatialModulation = Math.sin(latLng.lat * 0.15) * Math.cos(latLng.lng * 0.15) * (span * 0.15);
-        const localizedVal = Math.max(minVal, Math.min(maxVal, baseVal + spatialModulation));
-        
-        const rgb = mapValueToColor(localizedVal, palette, minVal, maxVal);
-
-        const ptr = (y * bufferW + x) * 4;
-        data[ptr] = rgb[0];
-        data[ptr + 1] = rgb[1];
-        data[ptr + 2] = rgb[2];
-        data[ptr + 3] = 170; 
-      }
-    }
-
-    offscreenCtx.putImageData(imgData, 0, 0);
-
-    ctx.imageSmoothingEnabled = true;
-    ctx.imageSmoothingQuality = "high";
-    ctx.drawImage(offscreenCanvas, 0, 0, canvas.width, canvas.height);
-
-    renderPending = false;
-  };
-
-  const scheduleRedraw = () => {
-    if (!renderPending) {
-      renderPending = true;
-      requestAnimationFrame(() => {
-        const currentSliderVal = slider ? parseInt(slider.value, 10) : 0;
-        drawSyncOverlay(currentSliderVal);
-      });
-    }
-  };
-
-  map.on('move', scheduleRedraw);
-  map.on('zoom', scheduleRedraw);
-  map.on('viewreset', scheduleRedraw);
-
-  if (slider) {
-    slider.addEventListener('input', (e) => {
-      drawSyncOverlay(parseInt(e.target.value, 10));
-    });
-  }
-
-  if (layerSwitcher) {
-    layerSwitcher.addEventListener('change', (e) => {
-      currentMode = e.target.value;
-      if (windOptContainer) {
-        windOptContainer.style.display = currentMode === 'wind' ? 'inline-block' : 'none';
-      }
-      scheduleRedraw();
-    });
-  }
-
-  if (windSelect) {
-    windSelect.addEventListener('change', (e) => {
-      windSubMode = e.target.value;
-      scheduleRedraw();
-    });
+    window._radarState.map.on('move', () => triggerRadarRedraw());
+    window._radarState.map.on('zoom', () => triggerRadarRedraw());
+    window._radarState.map.on('viewreset', () => triggerRadarRedraw());
+  } else {
+    window._radarState.map.setView([lat, lon], window._radarState.map.getZoom());
   }
 
   setTimeout(() => {
-    map.invalidateSize();
-    scheduleRedraw();
+    window._radarState.map.invalidateSize();
+    triggerRadarRedraw();
   }, 250);
 }
 
-function ensureLeafletLoaded(callback) {
-  if (window.L) {
-    callback();
-    return;
+function triggerRadarRedraw(forcedMinute) {
+  const slider = document.getElementById("radarTimeSlider");
+  const minuteVal = forcedMinute !== undefined ? forcedMinute : (slider ? parseInt(slider.value, 10) : 0);
+  
+  const label = document.getElementById("radarTimeLabel");
+  if (label) {
+    const hours24 = Math.floor(minuteVal / 60) % 24;
+    const mins = minuteVal % 60;
+    label.innerText = `${hours24 % 12 === 0 ? 12 : hours24 % 12}:${mins.toString().padStart(2, '0')} ${hours24 >= 12 ? 'PM' : 'AM'}`;
   }
-  const link = document.createElement("link");
-  link.rel = "stylesheet";
-  link.href = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.css";
-  document.head.appendChild(link);
 
+  const canvas = document.getElementById("syncCanvas");
+  if (!canvas || !window._radarState.map) return;
+  const ctx = canvas.getContext("2d");
+
+  const rect = canvas.parentElement.getBoundingClientRect();
+  if (canvas.width !== Math.floor(rect.width) || canvas.height !== Math.floor(rect.height)) {
+    canvas.width = Math.floor(rect.width) || 300;
+    canvas.height = Math.floor(rect.height) || 150;
+  }
+
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  const scaleFactor = 0.35;
+  const bufferW = Math.max(1, Math.ceil(canvas.width * scaleFactor));
+  const bufferH = Math.max(1, Math.ceil(canvas.height * scaleFactor));
+
+  const offscreenCanvas = document.createElement("canvas");
+  offscreenCanvas.width = bufferW;
+  offscreenCanvas.height = bufferH;
+  const offscreenCtx = offscreenCanvas.getContext("2d");
+  const imgData = offscreenCtx.createImageData(bufferW, bufferH);
+  const data = imgData.data;
+
+  let activeKey = window._radarState.currentMode;
+  if (activeKey === 'wind') activeKey = `wind_${window._radarState.windSubMode}`;
+
+  const exactPaletteMap = {
+    temp: [{stop: 0, rgb: [30, 64, 175]}, {stop: 0.5, rgb: [250, 204, 21]}, {stop: 1, rgb: [239, 68, 68]}],
+    wind_speed: [{stop: 0, rgb: [15, 23, 42]}, {stop: 0.5, rgb: [34, 197, 94]}, {stop: 1, rgb: [168, 85, 247]}],
+    wind_gust: [{stop: 0, rgb: [30, 58, 138]}, {stop: 0.5, rgb: [250, 204, 21]}, {stop: 1, rgb: [255, 255, 255]}],
+    dos: [{stop: 0, rgb: [22, 101, 52]}, {stop: 1, rgb: [239, 68, 68]}],
+    precip: [{stop: 0, rgb: [15, 23, 42]}, {stop: 1, rgb: [168, 85, 247]}]
+  };
+  const palette = exactPaletteMap[activeKey] || exactPaletteMap.temp;
+
+  let min = Infinity, max = -Infinity;
+  window._radarState.dataset.forEach(entry => {
+    let v = entry[activeKey] ?? entry.value ?? entry.temp ?? 50;
+    if (v < min) min = v; if (v > max) max = v;
+  });
+  if (min === max) { min -= 10; max += 10; }
+
+  // Simple base extraction for timeline progression
+  const targetHour = minuteVal / 60;
+  let baseVal = 50;
+  if (window._radarState.dataset.length > 0) {
+    const match = window._radarState.dataset[Math.floor((targetHour / 24) * window._radarState.dataset.length)];
+    baseVal = match ? (match[activeKey] ?? match.value ?? match.temp ?? 50) : 50;
+  }
+
+  for (let y = 0; y < bufferH; y++) {
+    const screenY = y / scaleFactor;
+    for (let x = 0; x < bufferW; x++) {
+      const screenX = x / scaleFactor;
+      const latLng = window._radarState.map.containerPointToLatLng([screenX, screenY]);
+      const localizedVal = Math.max(min, Math.min(max, baseVal + Math.sin(latLng.lat * 0.15) * 5));
+      
+      const normalized = Math.max(0, Math.min(1, (localizedVal - min) / (max - min)));
+      const rgb = palette[Math.floor(normalized * (palette.length - 1))].rgb;
+
+      const ptr = (y * bufferW + x) * 4;
+      data[ptr] = rgb[0]; data[ptr + 1] = rgb[1]; data[ptr + 2] = rgb[2]; data[ptr + 3] = 170;
+    }
+  }
+
+  offscreenCtx.putImageData(imgData, 0, 0);
+  ctx.imageSmoothingEnabled = true;
+  ctx.drawImage(offscreenCanvas, 0, 0, canvas.width, canvas.height);
+}
+
+function ensureLeafletLoaded(callback) {
+  if (window.L) { callback(); return; }
+  const link = document.createElement("link");
+  link.rel = "stylesheet"; link.href = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.css";
+  document.head.appendChild(link);
   const script = document.createElement("script");
   script.src = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.js";
   script.onload = callback;
