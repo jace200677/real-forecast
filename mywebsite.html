@@ -1766,49 +1766,7 @@ function openForecastGraphModal(item, fullForecast = [], itemIndex = -1) {
     }, 50);
 }
 
-/**
- * Global Weather Radar Layer — Real-Time Timeline & Multi-Layer Integration
- */
-window._radarState = window._radarState || {
-  map: null,
-  currentMode: 'temp',
-  windSubMode: 'speed',
-  dataset: [],
-  renderPending: false
-};
-
-/**
- * Global Weather Radar Layer — Real-Time Timeline & Multi-Layer Integration
- */
-window._radarState = window._radarState || {
-  map: null,
-  currentMode: 'temp',
-  windSubMode: 'speed',
-  dataset: [],
-  renderPending: false
-};
-
-window._radarState = window._radarState || {
-  map: null,
-  currentMode: 'temp',
-  windSubMode: 'speed',
-  dataset: [],
-  selectedDayIndex: 0, // Added state tracking
-  currentItem: null,
-  renderPending: false
-};
-
-window._radarState = window._radarState || {
-  map: null,
-  currentMode: 'temp',
-  windSubMode: 'speed',
-  dataset: [],
-  selectedDayIndex: 0,
-  currentItem: null,
-  renderPending: false
-};
-
-// Initialize global radar state
+// Initialize global radar state with active values map
 window._radarState = window._radarState || {
   map: null,
   currentMode: 'temp',
@@ -1825,7 +1783,6 @@ document.getElementById("weatherMapModalBtn")?.addEventListener("click", () => {
   const currentMode = document.getElementById("graphTypeSelect")?.value || "temp";
   const rootData = window._radarState?.currentItem || window.currentWeatherData || {};
 
-  // Extract selected card index automatically from UI selection
   const dayElements = document.querySelectorAll('.day-tab, .forecast-day-card, .day-card, .history-card');
   let selectedDayIndex = 0;
 
@@ -1861,7 +1818,6 @@ document.getElementById("weatherMapModalBtn")?.addEventListener("click", () => {
 
   const selectedDayCard = daysArray[selectedDayIndex] || daysArray[0] || rootData;
 
-  // Preserve location and timezone metadata
   if (selectedDayCard !== rootData && typeof rootData === 'object') {
     selectedDayCard.lat = selectedDayCard.lat ?? rootData.lat ?? rootData.latitude;
     selectedDayCard.lon = selectedDayCard.lon ?? rootData.lon ?? rootData.longitude;
@@ -1876,7 +1832,6 @@ document.getElementById("weatherMapModalBtn")?.addEventListener("click", () => {
  * Open Interactive Radar Modal
  */
 function openWeatherMapModal(item, mode = 'temp', selectedDayIndex = null) {
-  // Resolve selected day index from DOM if omitted
   if (selectedDayIndex === null || selectedDayIndex === undefined) {
     const activeCard = document.querySelector('.day-card.active, .forecast-day-card.active, .day-tab.active, [data-selected="true"]');
     if (activeCard) {
@@ -1974,6 +1929,72 @@ function openWeatherMapModal(item, mode = 'temp', selectedDayIndex = null) {
 }
 
 /**
+ * Universal extractor to scrape graph values from DOM or global data across all timings
+ */
+function scrapeUniversalGraphValues(selectedDayIndex = 0) {
+  const points = [];
+  
+  // 1. Check for DOM elements (SVG markers, ApexCharts, Recharts, data attributes)
+  const domPoints = document.querySelectorAll(
+    '[data-value], [val], svg circle, .apexcharts-series path, .recharts-curve-dot, .chart-point, [data-hour]'
+  );
+
+  if (domPoints && domPoints.length >= 2) {
+    domPoints.forEach((el, idx) => {
+      const hour = parseFloat(el.getAttribute('data-hour') || el.getAttribute('hour') || (idx / Math.max(1, domPoints.length - 1)) * 24);
+      const val = parseFloat(el.getAttribute('data-value') || el.getAttribute('val') || el.getAttribute('cy') || 50);
+      points.push({
+        hour: hour,
+        value: val,
+        temp: val,
+        speed: val * 0.65,
+        gust: val * 0.95,
+        dos: Math.max(1, Math.min(10, val / 10)),
+        precip: val * 0.05
+      });
+    });
+    return points.sort((a, b) => a.hour - b.hour);
+  }
+
+  // 2. Extract values from active chart tooltips or chart JS global instances
+  if (window.Chart && Object.keys(window.Chart.instances).length > 0) {
+    const chart = Object.values(window.Chart.instances)[0];
+    const chartData = chart.data?.datasets[0]?.data || [];
+    if (chartData.length > 0) {
+      chartData.forEach((val, idx) => {
+        const numVal = typeof val === 'object' ? (val.y ?? val.v ?? 50) : val;
+        points.push({
+          hour: (idx / Math.max(1, chartData.length - 1)) * 24,
+          value: numVal,
+          temp: numVal,
+          speed: numVal * 0.65,
+          gust: numVal * 0.95,
+          dos: Math.max(1, Math.min(10, numVal / 10)),
+          precip: numVal * 0.05
+        });
+      });
+      return points;
+    }
+  }
+
+  // 3. Fallback smooth sin wave generation anchored to day selection
+  for (let h = 0; h < 24; h++) {
+    const baseVal = 50 + Math.sin((h - 6) / 24 * Math.PI * 2) * 35 + (selectedDayIndex * 3);
+    points.push({
+      hour: h,
+      value: baseVal,
+      temp: baseVal,
+      speed: baseVal * 0.4,
+      gust: baseVal * 0.7,
+      dos: Math.max(1, Math.min(10, baseVal / 10)),
+      precip: baseVal * 0.03
+    });
+  }
+
+  return points;
+}
+
+/**
  * Sync state and render radar map instance
  */
 function initTimezoneSyncedRadarModal(mapModal, item, mode, selectedDayIndex) {
@@ -2001,7 +2022,6 @@ function initTimezoneSyncedRadarModal(mapModal, item, mode, selectedDayIndex) {
     }
   }
 
-  // Isolate selected forecast card day
   const targetDayCard = daysArray[selectedDayIndex] || daysArray[0] || item || {};
   const rawDateStr = targetDayCard.date || targetDayCard.dayLabel || targetDayCard.title || targetDayCard.dt_txt || targetDayCard.dt || null;
   let formattedDisplayDate = `Day ${selectedDayIndex + 1}`;
@@ -2028,23 +2048,8 @@ function initTimezoneSyncedRadarModal(mapModal, item, mode, selectedDayIndex) {
   let hourlyRaw = extractHourlyArray(targetDayCard);
   if (hourlyRaw.length === 0) hourlyRaw = extractHourlyArray(item);
 
-  window._radarState.dataset = (hourlyRaw.length > 0) ? hourlyRaw : (function scrapeDomGraphPoints() {
-    const points = [];
-    const elements = document.querySelectorAll('svg circle, .apexcharts-series path, .recharts-curve, canvas');
-    if (elements && elements.length >= 2) {
-      elements.forEach((el, idx) => {
-        let val = parseFloat(el.getAttribute('data-value') || el.getAttribute('val') || 50);
-        points.push({ hour: (idx / Math.max(1, elements.length - 1)) * 24, value: val, temp: val, speed: val * 0.65, gust: val * 0.95, dos: val * 0.8, precip: val * 0.5 });
-      });
-    }
-    if (points.length < 2) {
-      for (let h = 0; h < 24; h++) {
-        let baseVal = 50 + Math.sin((h - 6) / 24 * Math.PI * 2) * 35 + (selectedDayIndex * 3);
-        points.push({ hour: h, value: baseVal, temp: baseVal, speed: baseVal * 0.4, gust: baseVal * 0.7, dos: baseVal * 0.6, precip: baseVal * 0.3 });
-      }
-    }
-    return points;
-  })();
+  // Directly extract dataset from hourly parameters or dynamically scrape graph
+  window._radarState.dataset = (hourlyRaw.length > 0) ? hourlyRaw : scrapeUniversalGraphValues(selectedDayIndex);
 
   if (!window._radarState.map) {
     const worldBounds = L.latLngBounds(L.latLng(-90, -180), L.latLng(90, 180));
@@ -2076,7 +2081,7 @@ function initTimezoneSyncedRadarModal(mapModal, item, mode, selectedDayIndex) {
 }
 
 /**
- * Redraw timeline frame overlay on canvas
+ * Dynamically map graph values anywhere into real-time radar colors across timeline slider timings
  */
 function triggerRadarRedraw(forcedMinute) {
   const slider = document.getElementById("radarTimeSlider");
@@ -2123,38 +2128,51 @@ function triggerRadarRedraw(forcedMinute) {
     paletteKey = `wind_${window._radarState.windSubMode}`;
   }
 
+  // Define heat map palettes based on graph metric values
   const exactPaletteMap = {
     temp: [
-      { stop: 0.0, rgb: [30, 64, 175] }, { stop: 0.4, rgb: [74, 222, 128] },
-      { stop: 0.7, rgb: [250, 204, 21] }, { stop: 1.0, rgb: [239, 68, 68] }
+      { stop: 0.0, rgb: [30, 64, 175] },   // Cold (Blue)
+      { stop: 0.4, rgb: [74, 222, 128] },  // Mild (Green)
+      { stop: 0.7, rgb: [250, 204, 21] },  // Warm (Yellow)
+      { stop: 1.0, rgb: [239, 68, 68] }    // Hot (Red)
     ],
     wind_speed: [
-      { stop: 0.0, rgb: [15, 23, 42] }, { stop: 0.5, rgb: [34, 197, 94] }, { stop: 1.0, rgb: [168, 85, 247] }
+      { stop: 0.0, rgb: [15, 23, 42] },
+      { stop: 0.5, rgb: [34, 197, 94] },
+      { stop: 1.0, rgb: [168, 85, 247] }
     ],
     wind_gust: [
-      { stop: 0.0, rgb: [30, 58, 138] }, { stop: 0.5, rgb: [250, 204, 21] }, { stop: 1.0, rgb: [255, 255, 255] }
+      { stop: 0.0, rgb: [30, 58, 138] },
+      { stop: 0.5, rgb: [250, 204, 21] },
+      { stop: 1.0, rgb: [255, 255, 255] }
     ],
     dos: [
-      { stop: 0.0, rgb: [22, 101, 52] }, { stop: 1.0, rgb: [239, 68, 68] }
+      { stop: 0.0, rgb: [22, 101, 52] },   // Low DOS Index
+      { stop: 1.0, rgb: [239, 68, 68] }    // High DOS Hazard
     ],
     precip: [
-      { stop: 0.0, rgb: [15, 23, 42] }, { stop: 1.0, rgb: [168, 85, 247] }
+      { stop: 0.0, rgb: [15, 23, 42] },
+      { stop: 1.0, rgb: [168, 85, 247] }
     ]
   };
   const palette = exactPaletteMap[paletteKey] || exactPaletteMap.temp;
 
+  // Resolves single item value safely from graph point datasets
   const getEntryValue = (entry, key) => {
+    if (typeof entry === 'number') return entry;
     if (!entry) return 50;
-    return entry[key] ?? entry.value ?? entry.temp ?? 50;
+    return entry[key] ?? entry.value ?? entry.temp ?? entry.speed ?? 50;
   };
 
   let min = Infinity, max = -Infinity;
   window._radarState.dataset.forEach(entry => {
     let v = getEntryValue(entry, activeKey);
-    if (v < min) min = v; if (v > max) max = v;
+    if (v < min) min = v;
+    if (v > max) max = v;
   });
   if (min === max) { min -= 10; max += 10; }
 
+  // Extract graph value interpolated precisely at selected slider time (0–24 Hours)
   const targetHour = totalMinutes / 60;
   const dsLen = window._radarState.dataset.length;
   let baseVal = 50;
@@ -2175,6 +2193,7 @@ function triggerRadarRedraw(forcedMinute) {
 
   const timePhase = (totalMinutes / 1440) * Math.PI * 4;
 
+  // Render radar dynamic heatmap pixels mapping normalized graph values to colors
   for (let y = 0; y < bufferH; y++) {
     const screenY = y / scaleFactor;
     for (let x = 0; x < bufferW; x++) {
@@ -2200,7 +2219,10 @@ function triggerRadarRedraw(forcedMinute) {
       }
 
       const ptr = (y * bufferW + x) * 4;
-      data[ptr] = rgb[0]; data[ptr + 1] = rgb[1]; data[ptr + 2] = rgb[2]; data[ptr + 3] = 165;
+      data[ptr] = rgb[0];
+      data[ptr + 1] = rgb[1];
+      data[ptr + 2] = rgb[2];
+      data[ptr + 3] = 165; // Transparency
     }
   }
 
@@ -2223,7 +2245,6 @@ function ensureLeafletLoaded(callback) {
   script.onload = callback;
   document.head.appendChild(script);
 }
-
 
    
 let activeMapItem = null;
