@@ -1620,6 +1620,8 @@ function renderForecast(dosForecast) {
         container.appendChild(card);
     });
 }
+
+
 function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, nextItem = null, forcedMinute = 0) {
     if (!canvas) return null;
     const rect = canvas.getBoundingClientRect();
@@ -1905,37 +1907,83 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
         minute: hoveredMinute,
         timeStr: timeStr,
         dateStr: extractedDate,
-        color: calculatedColor
+        color: calculatedColor,
+        mode: mode
     };
 
     return activeGridLayer;
 }
 
-// Global dynamic handler to enforce minute synchronization across slider interactions
-const bindRadarTimeSlider = () => {
-    const timelineSlider = document.getElementById('radarTimeSlider') || document.querySelector('input[type="range"]');
-    if (!timelineSlider) return;
-
-    const handleSliderSync = (e) => {
-        const sliderVal = parseInt(e.target.value, 10) || 0;
-        // Map any range scale to 0–1439 total daily minutes
-        const maxVal = parseInt(e.target.max, 10) || 1439;
-        const totalMinutes = Math.round((sliderVal / maxVal) * 1439);
-
-        if (typeof window.triggerRadarRedraw === 'function') {
-            window.triggerRadarRedraw(totalMinutes);
-        }
-    };
-
-    timelineSlider.addEventListener('input', handleSliderSync);
-    timelineSlider.addEventListener('change', handleSliderSync);
+// Global controller for dynamic updates across Mode Selection, Slider, and Extracted Date changes
+window.RadarState = {
+    map: null,
+    canvas: null,
+    currentLayer: null,
+    currentItem: null,
+    currentMode: 'temp',
+    currentMinute: 0
 };
 
-// Initialize listener binding
+window.updateActiveRadarLayer = (overrides = {}) => {
+    const s = window.RadarState;
+
+    if (overrides.item !== undefined) s.currentItem = overrides.item;
+    if (overrides.mode !== undefined) s.currentMode = overrides.mode;
+    if (overrides.minute !== undefined) s.currentMinute = overrides.minute;
+    if (overrides.canvas !== undefined) s.canvas = overrides.canvas;
+    if (overrides.map !== undefined) s.map = overrides.map;
+
+    if (!s.map || !s.canvas || !s.currentItem) return;
+
+    if (s.currentLayer) {
+        s.map.removeLayer(s.currentLayer);
+    }
+
+    const newLayer = createRadarGridLayer(
+        s.canvas, 
+        0, 
+        s.currentItem, 
+        s.currentMode, 
+        overrides.prevItem || null, 
+        overrides.nextItem || null, 
+        s.currentMinute
+    );
+
+    if (newLayer) {
+        newLayer.addTo(s.map);
+        s.currentLayer = newLayer;
+    }
+};
+
+// Event Listeners for dynamic UI binding
+const bindRadarControls = () => {
+    // 1. Time Slider Binding
+    const timelineSlider = document.getElementById('radarTimeSlider') || document.querySelector('input[type="range"]');
+    if (timelineSlider) {
+        const handleSliderSync = (e) => {
+            const sliderVal = parseInt(e.target.value, 10) || 0;
+            const maxVal = parseInt(e.target.max, 10) || 1439;
+            const totalMinutes = Math.round((sliderVal / maxVal) * 1439);
+            window.updateActiveRadarLayer({ minute: totalMinutes });
+        };
+        timelineSlider.addEventListener('input', handleSliderSync);
+        timelineSlider.addEventListener('change', handleSliderSync);
+    }
+
+    // 2. Mode Selector Dropdown Binding
+    const modeSelect = document.getElementById('modeSelect') || document.querySelector('select[name="mode"]');
+    if (modeSelect) {
+        modeSelect.addEventListener('change', (e) => {
+            window.updateActiveRadarLayer({ mode: e.target.value });
+        });
+    }
+};
+
+// Initialize listeners on DOM ready
 if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', bindRadarTimeSlider);
+    document.addEventListener('DOMContentLoaded', bindRadarControls);
 } else {
-    bindRadarTimeSlider();
+    bindRadarControls();
 }
 function openForecastGraphModal(item, fullForecast = [], itemIndex = -1) {
     let modal = document.getElementById("forecastGraphModal");
