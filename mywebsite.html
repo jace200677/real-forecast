@@ -1787,6 +1787,9 @@ function openForecastGraphModal(item, fullForecast = [], itemIndex = -1) {
 /**
  * Global Weather Radar Layer — Direct Graph-Driven Multi-Day Parsing & Seamless Timing Sync
  */
+/**
+ * Global Weather Radar Layer — Robust Multi-Day, Timezone-Aware, Exact Graph-Synced Modal
+ */
 function openWeatherMapModal(item, mode = 'temp', selectedDayIndex = 0) {
   let mapModal = document.getElementById("weatherRadarMapModal");
   if (!mapModal) {
@@ -1797,22 +1800,44 @@ function openWeatherMapModal(item, mode = 'temp', selectedDayIndex = 0) {
   }
 
   ensureLeafletLoaded(() => {
-    initDirectGraphSyncedRadarModal(mapModal, item, mode, selectedDayIndex);
+    initTimezoneSyncedRadarModal(mapModal, item, mode, selectedDayIndex);
   });
 }
 
-function initDirectGraphSyncedRadarModal(mapModal, item, mode, selectedDayIndex) {
+function initTimezoneSyncedRadarModal(mapModal, item, mode, selectedDayIndex) {
   const lat = item?.lat ?? (window.currentLat || 45.3827);
   const lon = item?.lon ?? (window.currentLon || -93.8761);
 
-  // Parse multi-day structures from your application context (daily, forecast, days, or weekly cards)
+  // Extract timezone context safely (e.g., item.timezone, item.tz, or system local fallback)
+  const appTimezone = item?.timezone || item?.tz || Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+
+  // Multi-day dataset parsing
   const daysArray = item?.daily || item?.forecast || item?.days || item?.weekly || [];
   const targetDayCard = daysArray[selectedDayIndex] || daysArray[0] || item || {};
 
-  // Extract explicit date string from the active graph day card if available
-  const activeDayDateLabel = targetDayCard.date || targetDayCard.dayLabel || targetDayCard.title || `Day ${selectedDayIndex + 1}`;
+  // Extract and parse explicit date strings with timezone validation
+  const rawDateStr = targetDayCard.date || targetDayCard.dayLabel || targetDayCard.title || null;
+  let formattedDisplayDate = `Day ${selectedDayIndex + 1}`;
+  
+  if (rawDateStr) {
+    try {
+      const parsedDate = new Date(rawDateStr);
+      if (!isNaN(parsedDate)) {
+        formattedDisplayDate = new Intl.DateTimeFormat('en-US', {
+          timeZone: appTimezone,
+          weekday: 'short',
+          month: 'short',
+          day: 'numeric'
+        }).format(parsedDate);
+      } else {
+        formattedDisplayDate = rawDateStr;
+      }
+    } catch (e) {
+      formattedDisplayDate = rawDateStr;
+    }
+  }
 
-  // Extract hourly timeline specifically tied to the active day card, falling back to global timelines
+  // Extract hourly timelines explicitly tied to the target day card or root container
   const hourlyRaw = targetDayCard.hourly || targetDayCard.timeline || targetDayCard.dataset || item?.hourly || item?.timeline || [];
   const dataset = hourlyRaw.length > 0 ? hourlyRaw : generateSyntheticDayTimeline(mode, selectedDayIndex);
   
@@ -1830,7 +1855,6 @@ function initDirectGraphSyncedRadarModal(mapModal, item, mode, selectedDayIndex)
   let currentMode = mode;
   let windSubMode = 'speed';
 
-  // Clean UI layout without any on-screen day selector buttons (card managed externally via your main graph UI)
   mapModal.innerHTML = `
     <div style="background:#18181c;border-radius:14px;padding:16px;width:100%;max-width:900px;color:#fff;position:relative;box-shadow:0 12px 40px rgba(0,0,0,0.7);font-family:system-ui, -apple-system, sans-serif;">
       <button onclick="document.getElementById('weatherRadarMapModal').style.display='none'" style="position:absolute;top:12px;right:12px;background:#27272a;border:none;color:#fff;width:32px;height:32px;border-radius:50%;font-size:18px;cursor:pointer;z-index:1001;display:flex;align-items:center;justify-content:center;">✕</button>
@@ -1838,7 +1862,7 @@ function initDirectGraphSyncedRadarModal(mapModal, item, mode, selectedDayIndex)
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:10px;">
         <div style="display:flex;align-items:center;gap:12px;">
           <h3 style="margin:0;font-size:16px;font-weight:600;">
-            🛰️ Radar Overlay (<span id="activeGraphDateLabel" style="color:#38bdf8;">${activeDayDateLabel}</span>) — <span id="radarModeTitle" style="color:#38bdf8;text-transform:capitalize;">${mode} Layer</span>
+            🛰️ Radar Overlay (<span style="color:#38bdf8;">${formattedDisplayDate}</span> • <span style="color:#a1a1aa;font-size:12px;">${appTimezone}</span>) — <span id="radarModeTitle" style="color:#38bdf8;text-transform:capitalize;">${mode} Layer</span>
           </h3>
           <div id="windOptionContainer" style="display:${mode === 'wind' ? 'inline-block' : 'none'};">
             <select id="windSubModeSelect" style="background:#27272a;color:#fff;border:1px solid #3f3f46;padding:4px 10px;border-radius:6px;font-size:13px;cursor:pointer;outline:none;">
@@ -1856,7 +1880,7 @@ function initDirectGraphSyncedRadarModal(mapModal, item, mode, selectedDayIndex)
 
       <div style="margin-top:14px;background:#27272a;padding:12px 16px;border-radius:8px;">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
-          <span style="font-size:12px;color:#a1a1aa;font-weight:500;">Timeline Scrubber (Synced to Graph)</span>
+          <span style="font-size:12px;color:#a1a1aa;font-weight:500;">Exact Graph-Synced Timeline</span>
           <strong id="radarTimeLabel" style="font-size:14px;color:#38bdf8;">--:--</strong>
         </div>
         <input type="range" id="radarTimeSlider" min="0" max="${totalMinutes - 1}" step="1" value="${totalMinutes - 1}" style="width:100%;accent-color:#38bdf8;cursor:pointer;">
@@ -1897,7 +1921,7 @@ function initDirectGraphSyncedRadarModal(mapModal, item, mode, selectedDayIndex)
   const offscreenCanvas = document.createElement("canvas");
   const offscreenCtx = offscreenCanvas.getContext("2d");
 
-  // Strict meteorological color mapping tables for Temperature (°F), Wind Speed, and Wind Gusts
+  // Strict meteorological color lookup tables matching exact graph scales (Temp in °F, Wind Speed, Gusts)
   const exactPaletteMap = {
     temp: [
       { val: -20, rgb: [30, 64, 175] },
@@ -1951,7 +1975,7 @@ function initDirectGraphSyncedRadarModal(mapModal, item, mode, selectedDayIndex)
     return arr;
   }
 
-  // Exact graph data extraction ensuring precise key binding for temperature, wind speed, and wind gusts
+  // Robust graph interpolation mapping explicitly to dataset keys for correct values everywhere
   function getGraphInterpolatedValue(minuteVal, geographicLat, geographicLng, activeKey) {
     const timeFraction = minuteVal / 1440;
     const exactIndex = timeFraction * (dataset.length - 1);
