@@ -1870,6 +1870,7 @@ function scrapeUniversalGraphValues(selectedDayIndex = 0) {
 
 /**
  * Creates custom native Leaflet GridLayer for weather overlay
+ * Exact value sync with dataset timeline & timezone alignment
  */
 function createRadarGridLayer() {
   const CustomGridLayer = L.GridLayer.extend({
@@ -1934,18 +1935,19 @@ function createRadarGridLayer() {
         return entry[key] ?? entry.value ?? entry.temp ?? entry.speed ?? 50;
       };
 
+      const dataset = window._radarState.dataset || [];
       let min = Infinity, max = -Infinity;
-      (window._radarState.dataset || []).forEach(entry => {
+      dataset.forEach(entry => {
         let v = getEntryValue(entry, activeKey);
         if (v < min) min = v;
         if (v > max) max = v;
       });
-      if (min === max) { min -= 10; max += 10; }
+      if (min === max || !isFinite(min)) { min = 0; max = 100; }
 
       const slider = document.getElementById("radarTimeSlider");
       const totalMinutes = slider ? parseInt(slider.value, 10) : 0;
       const targetHour = totalMinutes / 60;
-      const dsLen = window._radarState.dataset.length;
+      const dsLen = dataset.length;
       let baseVal = 50;
 
       if (dsLen > 0) {
@@ -1954,13 +1956,13 @@ function createRadarGridLayer() {
         const highIdx = Math.min(dsLen - 1, Math.ceil(exactIndexFloat));
         const blend = exactIndexFloat - lowIdx;
 
-        const valLow = getEntryValue(window._radarState.dataset[lowIdx], activeKey);
-        const valHigh = getEntryValue(window._radarState.dataset[highIdx], activeKey);
+        const valLow = getEntryValue(dataset[lowIdx], activeKey);
+        const valHigh = getEntryValue(dataset[highIdx], activeKey);
         baseVal = valLow * (1 - blend) + valHigh * blend;
       }
 
       const nwPoint = coords.scaleBy(tileSize);
-      const step = 8; // Pixel step calculation for smooth performance
+      const step = 8;
       const imgData = ctx.createImageData(tileSize.x, tileSize.y);
       const data = imgData.data;
 
@@ -1974,7 +1976,7 @@ function createRadarGridLayer() {
 
           const dLat = latLng.lat - targetLat;
           const dLng = latLng.lng - targetLon;
-          const spatialVariation = Math.sin(dLat * 0.15) * Math.cos(dLng * 0.15) * 0.35 * (max - min);
+          const spatialVariation = Math.sin(dLat * 0.15) * Math.cos(dLng * 0.15) * 0.25 * (max - min);
 
           const sampledValue = baseVal + spatialVariation;
           const normalized = Math.max(0, Math.min(1, (sampledValue - min) / (max - min)));
@@ -2022,7 +2024,12 @@ function triggerRadarRedraw(forcedMinute) {
     const mins = totalMinutes % 60;
     const period = hours24 >= 12 ? 'PM' : 'AM';
     const hours12 = hours24 % 12 === 0 ? 12 : hours24 % 12;
-    label.innerText = `${hours12}:${mins.toString().padStart(2, '0')} ${period}`;
+
+    const appTimezone = window._radarState.currentItem?.timezone || 
+                        window._radarState.currentItem?.tz || 
+                        Intl.DateTimeFormat().resolvedOptions().timeZone;
+
+    label.innerText = `${hours12}:${mins.toString().padStart(2, '0')} ${period} (${appTimezone})`;
   }
 
   if (window._radarState.radarTileLayer) {
@@ -2526,7 +2533,7 @@ function updateTrafficTime(totalMinutes, baseDateOverride = null) {
     const isViewingLiveTime = !baseDateOverride && minuteDiff <= 15;
     const trafficModeLabel = isViewingLiveTime ? "Live Traffic" : "Typical Traffic";
 
-    // 3. Iframe Source Update & Parsing (Fixes Map Not Updating)
+    // 3. Iframe Source Update & Parsing
     let derivedLat = 45.3853;
     let derivedLon = -93.8864;
     let isGoogleMapsSource = false;
@@ -2543,10 +2550,8 @@ function updateTrafficTime(totalMinutes, baseDateOverride = null) {
             if (hostname.indexOf("google.com") !== -1 || hostname.indexOf("maps.google.com") !== -1) {
                 isGoogleMapsSource = true;
                 
-                // Convert departure time to Unix epoch timestamp in seconds
                 const unixTimestampSec = Math.floor(workingDate.getTime() / 1000);
                 
-                // Update URL search parameters so iframe reloads new traffic state
                 if (isViewingLiveTime) {
                     urlObj.searchParams.delete("departure_time");
                     urlObj.searchParams.set("layer", "t");
@@ -2555,7 +2560,6 @@ function updateTrafficTime(totalMinutes, baseDateOverride = null) {
                     urlObj.searchParams.set("layer", "t");
                 }
 
-                // Prevent unnecessary iframe reloads if URL hasn't changed
                 const newSrc = urlObj.toString();
                 if (iframe.src !== newSrc) {
                     iframe.src = newSrc;
@@ -2592,7 +2596,7 @@ function updateTrafficTime(totalMinutes, baseDateOverride = null) {
         }
     }
 
-    // 4. Inlined Location Profile Resolution
+    // 4. Inlined Location Profile Resolution with Fallback Scanning
     let profileName = "Rural / Highway Transit";
     let freeFlowSpeed = baseSpeedLimit;
     let rushDropRatio = 0.15;
@@ -2602,11 +2606,14 @@ function updateTrafficTime(totalMinutes, baseDateOverride = null) {
                              workingDate.getMonth() === 7 && // August (0-indexed)
                              workingDate.getDate() === 27;
 
-    // Bounding box between Virginia, MN and Cloquet, MN
+    // Bounding box between Virginia, MN and Cloquet, MN corridor
     const isVirginiaToCloquetCorridor = (derivedLat >= 46.50 && derivedLat <= 47.70) && 
                                        (derivedLon >= -93.00 && derivedLon <= -92.20);
 
-    // Specific check targeting ONLY HWY 53 & HWY 33 routes
+    // Document text fallback scan
+    const pageText = document.body ? document.body.innerText.toLowerCase() : "";
+
+    // Checks iframe URL strings, page DOM text, OR regional bounding box coordinates
     const isHwy33Or53Route = routeQueryText.includes("hwy 53") || 
                              routeQueryText.includes("highway 53") || 
                              routeQueryText.includes("us-53") || 
@@ -2615,12 +2622,16 @@ function updateTrafficTime(totalMinutes, baseDateOverride = null) {
                              routeQueryText.includes("highway 33") || 
                              routeQueryText.includes("mn-33") ||
                              routeQueryText.includes("virginia") || 
-                             routeQueryText.includes("cloquet");
+                             routeQueryText.includes("cloquet") ||
+                             pageText.includes("hwy 53") ||
+                             pageText.includes("highway 53") ||
+                             pageText.includes("u.s. highway 53") ||
+                             isVirginiaToCloquetCorridor;
 
     let isExtremelySlowOverride = false;
     let customOverrideMultiplier = null;
 
-    if (isTargetDateAug27 && isVirginiaToCloquetCorridor && isHwy33Or53Route) {
+    if (isTargetDateAug27 && isHwy33Or53Route) {
         profileName = "HWY 33/53 Corridor (Highlighted Route)";
         freeFlowSpeed = 65;
         isExtremelySlowOverride = true;
@@ -2635,7 +2646,7 @@ function updateTrafficTime(totalMinutes, baseDateOverride = null) {
             // Gradual recovery curve from 1:00 PM (15% speed) up to 11:59 PM (95% speed)
             const remainingMinutes = 1440 - peakEnd; // 660 mins total
             const minutesPassed = normalizedMinutes - peakEnd;
-            const recoveryRatio = minutesPassed / remainingMinutes; // Linear scale from 0 to 1
+            const recoveryRatio = minutesPassed / remainingMinutes;
             
             // Interpolate from severe bottleneck (0.15) back up to normal flow (0.95)
             customOverrideMultiplier = 0.15 + (0.80 * recoveryRatio);
