@@ -1908,10 +1908,10 @@ function initTimezoneSyncedRadarModal(mapModal, item, mode, selectedDayIndex) {
   let windSubMode = 'speed';
 
   mapModal.innerHTML = `
-    <div style="background:#18181c;border-radius:14px;padding:16px;width:100%;max-width:900px;color:#fff;position:relative;box-shadow:0 12px 40px rgba(0,0,0,0.7);font-family:system-ui, -apple-system, sans-serif;">
+    <div style="background:#18181c;border-radius:14px;padding:16px;width:100%;max-width:900px;color:#fff;position:relative;box-shadow:0 12px 40px rgba(0,0,0,0.7);font-family:system-ui, -apple-system, sans-serif;max-height:95vh;display:flex;flex-direction:column;box-sizing:border-box;">
       <button onclick="document.getElementById('weatherRadarMapModal').style.display='none'" style="position:absolute;top:12px;right:12px;background:#27272a;border:none;color:#fff;width:32px;height:32px;border-radius:50%;font-size:18px;cursor:pointer;z-index:1001;display:flex;align-items:center;justify-content:center;">✕</button>
       
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:10px;">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;flex-wrap:wrap;gap:10px;flex-shrink:0;">
         <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
           <h3 style="margin:0;font-size:16px;font-weight:600;">
             🛰️ Radar (<span style="color:#38bdf8;">${formattedDisplayDate}</span>)
@@ -1933,15 +1933,15 @@ function initTimezoneSyncedRadarModal(mapModal, item, mode, selectedDayIndex) {
         </div>
       </div>
       
-      <div id="interactiveMapContainer" style="position:relative;width:100%;height:450px;background:#090d16;border-radius:10px;overflow:hidden;border:1px solid #27272a;">
+      <div id="interactiveMapContainer" style="position:relative;width:100%;height:380px;background:#090d16;border-radius:10px;overflow:hidden;border:1px solid #27272a;flex-grow:1;">
         <div id="leafletMap" style="width:100%;height:100%;background:#090d16;"></div>
         <canvas id="syncCanvas" style="position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:400;mix-blend-mode:screen;"></canvas>
       </div>
 
-      <div style="margin-top:14px;background:#27272a;padding:12px 16px;border-radius:8px;">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+      <div style="margin-top:10px;background:#27272a;padding:10px 14px;border-radius:8px;flex-shrink:0;">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
           <span style="font-size:12px;color:#a1a1aa;font-weight:500;">Interactive Timeline</span>
-          <strong id="radarTimeLabel" style="font-size:14px;color:#38bdf8;">--:--</strong>
+          <strong id="radarTimeLabel" style="font-size:13px;color:#38bdf8;">12:00 AM</strong>
         </div>
         <input type="range" id="radarTimeSlider" min="0" max="${totalMinutes - 1}" step="1" value="0" style="width:100%;accent-color:#38bdf8;cursor:pointer;">
       </div>
@@ -2100,19 +2100,21 @@ function initTimezoneSyncedRadarModal(mapModal, item, mode, selectedDayIndex) {
   let renderPending = false;
 
   const drawSyncOverlay = (minuteVal) => {
-    label.innerText = formatTimeFromMinutes(minuteVal);
+    if (label) {
+      label.innerText = formatTimeFromMinutes(minuteVal);
+    }
 
     const rect = canvas.parentElement.getBoundingClientRect();
-    if (canvas.width !== rect.width || canvas.height !== rect.height) {
-      canvas.width = rect.width;
-      canvas.height = rect.height;
+    if (canvas.width !== Math.floor(rect.width) || canvas.height !== Math.floor(rect.height)) {
+      canvas.width = Math.floor(rect.width) || 300;
+      canvas.height = Math.floor(rect.height) || 150;
     }
 
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
     const scaleFactor = 0.35;
-    const bufferW = Math.ceil(canvas.width * scaleFactor);
-    const bufferH = Math.ceil(canvas.height * scaleFactor);
+    const bufferW = Math.max(1, Math.ceil(canvas.width * scaleFactor));
+    const bufferH = Math.max(1, Math.ceil(canvas.height * scaleFactor));
 
     offscreenCanvas.width = bufferW;
     offscreenCanvas.height = bufferH;
@@ -2163,7 +2165,8 @@ function initTimezoneSyncedRadarModal(mapModal, item, mode, selectedDayIndex) {
     if (!renderPending) {
       renderPending = true;
       requestAnimationFrame(() => {
-        drawSyncOverlay(parseInt(slider.value, 10));
+        const currentSliderVal = slider ? parseInt(slider.value, 10) : 0;
+        drawSyncOverlay(currentSliderVal);
       });
     }
   };
@@ -2172,18 +2175,21 @@ function initTimezoneSyncedRadarModal(mapModal, item, mode, selectedDayIndex) {
   map.on('zoom', scheduleRedraw);
   map.on('viewreset', scheduleRedraw);
 
-  // Directly attach input event listener without delay or bottlenecks
-  slider.addEventListener('input', (e) => {
-    drawSyncOverlay(parseInt(e.target.value, 10));
-  });
+  if (slider) {
+    slider.addEventListener('input', (e) => {
+      drawSyncOverlay(parseInt(e.target.value, 10));
+    });
+  }
 
-  layerSwitcher.addEventListener('change', (e) => {
-    currentMode = e.target.value;
-    if (windOptContainer) {
-      windOptContainer.style.display = currentMode === 'wind' ? 'inline-block' : 'none';
-    }
-    scheduleRedraw();
-  });
+  if (layerSwitcher) {
+    layerSwitcher.addEventListener('change', (e) => {
+      currentMode = e.target.value;
+      if (windOptContainer) {
+        windOptContainer.style.display = currentMode === 'wind' ? 'inline-block' : 'none';
+      }
+      scheduleRedraw();
+    });
+  }
 
   if (windSelect) {
     windSelect.addEventListener('change', (e) => {
