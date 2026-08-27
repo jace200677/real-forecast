@@ -1630,9 +1630,10 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
     const padRight = Math.round(20 * scaleFactor);
     const graphWidth = width - padLeft - padRight;
 
+    // Normalize minute input to standard total daily minutes range (0 - 1439)
     let hoveredMinute;
     if (forcedMinute !== null && forcedMinute !== undefined) {
-        hoveredMinute = Math.max(0, Math.min(1439, forcedMinute));
+        hoveredMinute = Math.max(0, Math.min(1439, parseInt(forcedMinute, 10) || 0));
     } else {
         const x = clientX - rect.left;
         if (x < padLeft || x > width - padRight) {
@@ -1847,34 +1848,31 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
             label = `${resolvedValue}`;
     }
 
-    // Dynamic Multi-Threshold Color Evaluator matched to exact charts
+    // Dynamic Multi-Threshold Color Evaluator matched to exact chart gradients
     const getDynamicColor = (val, currentMode) => {
         if (currentMode === 'wind') {
-            // Photo 1: Green -> Yellow -> Orange -> Purple/Magenta
             const speed = typeof val === 'object' ? (val.speed || 0) : val;
-            if (speed >= 50) return 'rgba(168, 85, 247, 0.55)';     // Purple / High Gust
-            if (speed >= 35) return 'rgba(239, 68, 68, 0.50)';      // Red / Severe
-            if (speed >= 25) return 'rgba(249, 115, 22, 0.45)';     // Warm Orange
-            if (speed >= 12) return 'rgba(234, 179, 8, 0.35)';      // Yellow
-            return 'rgba(34, 197, 94, 0.25)';                       // Low Green
+            if (speed >= 50) return 'rgba(168, 85, 247, 0.55)';
+            if (speed >= 35) return 'rgba(239, 68, 68, 0.50)';
+            if (speed >= 25) return 'rgba(249, 115, 22, 0.45)';
+            if (speed >= 12) return 'rgba(234, 179, 8, 0.35)';
+            return 'rgba(34, 197, 94, 0.25)';
         } 
 
         if (currentMode === 'dos') {
-            // Photo 2: Green -> Olive -> Brown -> Deep Orange / Amber gradient
-            if (val >= 100) return 'rgba(168, 85, 247, 0.60)';     // Purple Major Event
-            if (val >= 70)  return 'rgba(234, 88, 12, 0.55)';      // Deep Orange (Peak threshold)
-            if (val >= 40)  return 'rgba(161, 98, 7, 0.45)';       // Brownish Amber
-            if (val >= 20)  return 'rgba(101, 163, 13, 0.35)';      // Olive Green
-            return 'rgba(34, 197, 94, 0.25)';                       // Low Green
+            if (val >= 100) return 'rgba(168, 85, 247, 0.60)';
+            if (val >= 70)  return 'rgba(234, 88, 12, 0.55)';
+            if (val >= 40)  return 'rgba(161, 98, 7, 0.45)';
+            if (val >= 20)  return 'rgba(101, 163, 13, 0.35)';
+            return 'rgba(34, 197, 94, 0.25)';
         }
 
         if (currentMode === 'temp' || currentMode === 'feelsLike') {
-            // Photo 3: Teal / Dark Cyan -> Bright Mint Green Gradient
-            if (val >= 90) return 'rgba(239, 68, 68, 0.55)';       // Hot Red
-            if (val >= 75) return 'rgba(249, 115, 22, 0.45)';      // Warm Orange
-            if (val >= 60) return 'rgba(74, 222, 128, 0.40)';      // Bright Mint Green (Peak threshold)
-            if (val >= 45) return 'rgba(45, 212, 191, 0.35)';      // Teal
-            return 'rgba(15, 118, 110, 0.30)';                     // Dark Cyan Low
+            if (val >= 90) return 'rgba(239, 68, 68, 0.55)';
+            if (val >= 75) return 'rgba(249, 115, 22, 0.45)';
+            if (val >= 60) return 'rgba(74, 222, 128, 0.40)';
+            if (val >= 45) return 'rgba(45, 212, 191, 0.35)';
+            return 'rgba(15, 118, 110, 0.30)';
         }
 
         return 'rgba(56, 189, 248, 0.25)';
@@ -1911,6 +1909,33 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
     };
 
     return activeGridLayer;
+}
+
+// Global dynamic handler to enforce minute synchronization across slider interactions
+const bindRadarTimeSlider = () => {
+    const timelineSlider = document.getElementById('radarTimeSlider') || document.querySelector('input[type="range"]');
+    if (!timelineSlider) return;
+
+    const handleSliderSync = (e) => {
+        const sliderVal = parseInt(e.target.value, 10) || 0;
+        // Map any range scale to 0–1439 total daily minutes
+        const maxVal = parseInt(e.target.max, 10) || 1439;
+        const totalMinutes = Math.round((sliderVal / maxVal) * 1439);
+
+        if (typeof window.triggerRadarRedraw === 'function') {
+            window.triggerRadarRedraw(totalMinutes);
+        }
+    };
+
+    timelineSlider.addEventListener('input', handleSliderSync);
+    timelineSlider.addEventListener('change', handleSliderSync);
+};
+
+// Initialize listener binding
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', bindRadarTimeSlider);
+} else {
+    bindRadarTimeSlider();
 }
 function openForecastGraphModal(item, fullForecast = [], itemIndex = -1) {
     let modal = document.getElementById("forecastGraphModal");
