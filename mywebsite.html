@@ -1757,6 +1757,9 @@ function openForecastGraphModal(item, fullForecast = [], itemIndex = -1) {
 /**
  * Global Radar Map Layer — Single Planet Bounds & Seamless Color Overlay
  */
+/**
+ * Global Radar Map Layer — Fitted Planet & Smooth Color Scale
+ */
 function openWeatherMapModal(item, mode = 'temp') {
   let mapModal = document.getElementById("weatherRadarMapModal");
   if (!mapModal) {
@@ -1802,13 +1805,12 @@ function initFixedGridRadarModal(mapModal, item, mode) {
 
   mapModal.style.display = "flex";
 
-  // Strict World Bounds to prevent world repetition (tiling copy)
   const worldBounds = L.latLngBounds(L.latLng(-85, -180), L.latLng(85, 180));
 
   const map = L.map('leafletMap', {
     center: [lat, lon],
     zoom: 2,
-    minZoom: 2, // Set minimum zoom so the map fits the container without repeating
+    minZoom: 1,
     maxZoom: 18,
     zoomControl: true,
     worldCopyJump: false,
@@ -1817,9 +1819,9 @@ function initFixedGridRadarModal(mapModal, item, mode) {
   });
 
   L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
-    minZoom: 2,
+    minZoom: 1,
     maxZoom: 18,
-    noWrap: true, // Prevents base tile layer repetition
+    noWrap: true,
     bounds: worldBounds,
     attribution: 'Tiles &copy; Esri'
   }).addTo(map);
@@ -1832,11 +1834,37 @@ function initFixedGridRadarModal(mapModal, item, mode) {
   const offscreenCanvas = document.createElement("canvas");
   const offscreenCtx = offscreenCanvas.getContext("2d");
 
+  // Multi-stop weather radar color scales
   const paletteMap = {
-    temp: [[56, 189, 248], [251, 146, 60], [239, 68, 68]],
-    wind: [[59, 130, 246], [147, 51, 234], [236, 72, 153]],
-    dos:  [[34, 197, 94],  [234, 179, 8],  [239, 68, 68]],
-    precip: [[56, 189, 248], [37, 99, 235], [29, 78, 216]]
+    temp: [
+      [30, 64, 175],   // Deep blue (Cold)
+      [56, 189, 248],  // Light blue
+      [74, 222, 128],  // Green
+      [250, 204, 21],  // Yellow
+      [251, 146, 60],  // Orange
+      [239, 68, 68]    // Red (Hot)
+    ],
+    wind: [
+      [15, 23, 42],    // Dark slate
+      [59, 130, 246],  // Blue
+      [147, 51, 234],  // Purple
+      [236, 72, 153],  // Pink
+      [244, 114, 182]  // Light magenta
+    ],
+    dos: [
+      [22, 101, 52],   // Dark green
+      [34, 197, 94],   // Green
+      [234, 179, 8],   // Yellow
+      [239, 68, 68],   // Red
+      [168, 85, 247]   // Purple
+    ],
+    precip: [
+      [15, 23, 42],    // Transparent / clear
+      [56, 189, 248],  // Light rain
+      [37, 99, 235],   // Moderate rain
+      [29, 78, 216],   // Heavy rain
+      [168, 85, 247]   // Extreme / Snow
+    ]
   };
 
   let renderPending = false;
@@ -1852,7 +1880,7 @@ function initFixedGridRadarModal(mapModal, item, mode) {
 
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-    const scaleFactor = 0.25; 
+    const scaleFactor = 0.35; 
     const bufferWidth = Math.ceil(canvas.width * scaleFactor);
     const bufferHeight = Math.ceil(canvas.height * scaleFactor);
 
@@ -1863,7 +1891,7 @@ function initFixedGridRadarModal(mapModal, item, mode) {
     const data = imgData.data;
 
     const palette = paletteMap[mode] || paletteMap.temp;
-    const timeOffset = (frameIndex + 1) * 0.2;
+    const timeOffset = (frameIndex + 1) * 0.15;
 
     for (let y = 0; y < bufferHeight; y++) {
       const screenY = y / scaleFactor;
@@ -1871,8 +1899,8 @@ function initFixedGridRadarModal(mapModal, item, mode) {
         const screenX = x / scaleFactor;
 
         const latLng = map.containerPointToLatLng([screenX, screenY]);
-        
-        // Skip pixels outside the single world longitude bounds (-180 to 180)
+
+        // Strict boundary check: only fill within actual global coordinates
         if (latLng.lng < -180 || latLng.lng > 180 || latLng.lat < -85 || latLng.lat > 85) {
           continue;
         }
@@ -1880,10 +1908,12 @@ function initFixedGridRadarModal(mapModal, item, mode) {
         const geoLat = latLng.lat;
         const geoLng = latLng.lng;
 
-        const val1 = Math.sin(geoLat * 0.08 + timeOffset) * Math.cos(geoLng * 0.08 + timeOffset);
-        const val2 = Math.cos(geoLat * 0.15 - timeOffset * 0.5) * Math.sin(geoLng * 0.15 + timeOffset * 0.5);
+        // Expanded wave simulation for continuous planetary coverage
+        const val1 = Math.sin(geoLat * 0.05 + timeOffset) * Math.cos(geoLng * 0.05 + timeOffset);
+        const val2 = Math.cos(geoLat * 0.1 - timeOffset * 0.4) * Math.sin(geoLng * 0.1 + timeOffset * 0.4);
         const normVal = Math.min(1, Math.max(0, (val1 + val2 + 2) / 4));
 
+        // Smooth color interpolation across multi-stop color palette
         const colorIdx = normVal * (palette.length - 1);
         const idx1 = Math.floor(colorIdx);
         const idx2 = Math.min(idx1 + 1, palette.length - 1);
@@ -1892,7 +1922,7 @@ function initFixedGridRadarModal(mapModal, item, mode) {
         const r = Math.round(palette[idx1][0] * (1 - factor) + palette[idx2][0] * factor);
         const g = Math.round(palette[idx1][1] * (1 - factor) + palette[idx2][1] * factor);
         const b = Math.round(palette[idx1][2] * (1 - factor) + palette[idx2][2] * factor);
-        const alpha = Math.round(Math.min(0.65, normVal * 0.7) * 255);
+        const alpha = Math.round(Math.min(0.7, normVal * 0.75) * 255);
 
         const ptr = (y * bufferWidth + x) * 4;
         data[ptr] = r;
@@ -1926,6 +1956,7 @@ function initFixedGridRadarModal(mapModal, item, mode) {
 
   setTimeout(() => {
     map.invalidateSize();
+    map.fitBounds(worldBounds); // Fits full planet directly to container on launch
     scheduleRedraw();
   }, 200);
 }
