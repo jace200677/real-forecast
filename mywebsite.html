@@ -1669,19 +1669,44 @@ function openForecastGraphModal(item, fullForecast = [], itemIndex = -1) {
         
         // Attach click handler for Weather Map Modal Button
         document.getElementById("weatherMapModalBtn").addEventListener("click", () => {
-    const currentMode = document.getElementById("graphTypeSelect").value || "temp";
+    const currentMode = document.getElementById("graphTypeSelect")?.value || "temp";
     
-    // Find the currently selected day index from your day tabs or cards
-    const dayTabs = document.querySelectorAll('.day-tab, .forecast-day-card'); // Update selector to match your UI
+    // 1. Collect all day elements from your UI
+    const dayTabs = document.querySelectorAll('.day-tab, .forecast-day-card'); 
     let selectedDayIndex = 0;
     
     dayTabs.forEach((tab, index) => {
-        if (tab.classList.contains('active') || tab.classList.contains('selected')) {
+        if (tab.classList.contains('active') || tab.classList.contains('selected') || tab.getAttribute('aria-selected') === 'true') {
             selectedDayIndex = index;
         }
     });
 
-    openWeatherMapModal(modal.currentItem, currentMode, selectedDayIndex);
+    // 2. Extract the days array using the same robust fallback checks
+    const data = modal.currentItem;
+    const extractDaysArray = (obj) => {
+        if (!obj) return [];
+        if (Array.isArray(obj)) return obj;
+        return obj.daily || obj.forecast || obj.days || obj.weekly || obj.list || obj.data || obj.timeline || [];
+    };
+
+    let daysArray = extractDaysArray(data);
+    if (daysArray.length === 0 && data && typeof data === 'object') {
+        for (const key of Object.keys(data)) {
+            if (data[key] && typeof data[key] === 'object') {
+                const nested = extractDaysArray(data[key]);
+                if (nested.length > 0) {
+                    daysArray = nested;
+                    break;
+                }
+            }
+        }
+    }
+
+    // 3. Isolate the exact selected day forecast card object
+    const selectedDayCard = daysArray[selectedDayIndex] || daysArray[0] || data || {};
+
+    // 4. Pass the specific card directly (or pass the parent item alongside the correct index)
+    openWeatherMapModal(selectedDayCard, currentMode, selectedDayIndex);
 });
         
         const updateScrubber = (clientX) => {
