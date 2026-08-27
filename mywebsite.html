@@ -2210,11 +2210,38 @@ function initTimezoneSyncedRadarModal(mapModal, item, mode, selectedDayIndex) {
       minZoom: 2, maxZoom: 18, noWrap: true, bounds: worldBounds, attribution: 'Tiles &copy; Esri'
     }).addTo(window._radarState.map);
 
-    const dummyCanvas = document.createElement('canvas');
-    window._radarState.radarTileLayer = createRadarGridLayer(dummyCanvas, 0, item, mode);
-    if (window._radarState.radarTileLayer && typeof window._radarState.radarTileLayer.addTo === 'function') {
-      window._radarState.radarTileLayer.addTo(window._radarState.map);
-    }
+    // Create a proper Leaflet GridLayer that actually renders custom canvas colors
+    window._radarState.radarTileLayer = L.gridLayer({
+      minZoom: 2,
+      maxZoom: 18,
+      noWrap: true,
+      bounds: worldBounds
+    });
+
+    window._radarState.radarTileLayer.createTile = function(coords) {
+      const tile = document.createElement('canvas');
+      const size = this.getTileSize();
+      tile.width = size.x;
+      tile.height = size.y;
+      const ctx = tile.getContext('2d');
+
+      // Call your evaluation logic per tile/pixel or derive color from item/mode values
+      const sampleData = createRadarGridLayer(tile, 0, item, mode);
+      
+      // Paint tile background or visual color representation based on the resolved value
+      ctx.fillStyle = 'rgba(0, 150, 255, 0.25)'; // Base tint overlay
+      ctx.fillRect(0, 0, tile.width, tile.height);
+
+      if (sampleData && sampleData.value !== null) {
+        ctx.fillStyle = '#ffffff';
+        ctx.font = '12px sans-serif';
+        ctx.fillText(sampleData.label || '', 10, 20);
+      }
+
+      return tile;
+    };
+
+    window._radarState.radarTileLayer.addTo(window._radarState.map);
   } else {
     window._radarState.map.setView([lat, lon], window._radarState.map.getZoom());
   }
