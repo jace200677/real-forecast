@@ -1893,36 +1893,36 @@ function createRadarGridLayer() {
 
       const paletteConfig = {
         temp: {
-          minVal: 0,
-          maxVal: 100,
+          minVal: -20,
+          maxVal: 120,
           stops: [
-            { val: 0,   rgb: [30, 58, 138] },
+            { val: -20, rgb: [30, 58, 138] },
             { val: 32,  rgb: [56, 189, 248] },
             { val: 65,  rgb: [34, 197, 94] },
             { val: 85,  rgb: [234, 179, 8] },
-            { val: 100, rgb: [239, 68, 68] }
+            { val: 120, rgb: [239, 68, 68] }
           ]
         },
         wind_speed: {
           minVal: 0,
-          maxVal: 60,
+          maxVal: 100,
           stops: [
-            { val: 0,  rgb: [15, 23, 42] },
-            { val: 15, rgb: [56, 189, 248] },
-            { val: 30, rgb: [34, 197, 94] },
-            { val: 45, rgb: [234, 179, 8] },
-            { val: 60, rgb: [168, 85, 247] }
+            { val: 0,   rgb: [15, 23, 42] },
+            { val: 20,  rgb: [56, 189, 248] },
+            { val: 40,  rgb: [34, 197, 94] },
+            { val: 70,  rgb: [234, 179, 8] },
+            { val: 100, rgb: [168, 85, 247] }
           ]
         },
         wind_gust: {
           minVal: 0,
-          maxVal: 80,
+          maxVal: 120,
           stops: [
-            { val: 0,  rgb: [15, 23, 42] },
-            { val: 20, rgb: [56, 189, 248] },
-            { val: 45, rgb: [234, 179, 8] },
-            { val: 65, rgb: [239, 68, 68] },
-            { val: 80, rgb: [168, 85, 247] }
+            { val: 0,   rgb: [15, 23, 42] },
+            { val: 30,  rgb: [56, 189, 248] },
+            { val: 60,  rgb: [234, 179, 8] },
+            { val: 90,  rgb: [239, 68, 68] },
+            { val: 120, rgb: [168, 85, 247] }
           ]
         },
         dos: {
@@ -1976,27 +1976,11 @@ function createRadarGridLayer() {
           return periodObj.windGust ?? periodObj.gust ?? entry.windGust ?? entry.gust ?? currentPalette.minVal;
         }
 
-        return periodObj[key] ?? 
-               periodObj.dos ?? 
-               periodObj.score ?? 
-               periodObj.windSpeed ?? 
-               periodObj.windGust ?? 
-               periodObj.temp ?? 
-               periodObj.value ?? 
-               periodObj.speed ?? 
-               entry[key] ?? 
-               entry.dos ?? 
-               entry.score ?? 
-               entry.windSpeed ?? 
-               entry.windGust ?? 
-               entry.temp ?? 
-               entry.value ?? 
-               currentPalette.minVal;
+        return periodObj[key] ?? entry[key] ?? currentPalette.minVal;
       };
 
       const currentItem = window._radarState.currentItem || {};
 
-      // 1. Gather all possible dataset sources from Chart.js, global states, or forecast builders
       let targetDataset = [];
       
       if (typeof window.buildForecast === 'function' && currentItem.hourly) {
@@ -2022,7 +2006,6 @@ function createRadarGridLayer() {
       let baseVal = currentPalette.minVal;
 
       if (dsLen > 0) {
-        // 2. Direct exact matching using active extracted time or DOM text anchor
         let matchedIndex = -1;
         const activeDateFilter = window._radarState.currentExtractedTime || document.getElementById('radarDateDisplay')?.innerText;
 
@@ -2037,7 +2020,6 @@ function createRadarGridLayer() {
           const matchedEntry = targetDataset[matchedIndex];
           baseVal = typeof matchedEntry === 'object' && matchedEntry !== null ? (matchedEntry.y ?? getEntryValue(matchedEntry, activeKey)) : getEntryValue(matchedEntry, activeKey);
         } else {
-          // 3. Fallback to proportional timeline interpolation based on slider minutes (0 - 1440)
           const targetHour = totalMinutes / 60;
           const exactIndexFloat = (targetHour / 24) * (dsLen - 1);
           const lowIdx = Math.floor(exactIndexFloat);
@@ -2111,7 +2093,7 @@ function createRadarGridLayer() {
               data[ptr] = rgb[0];
               data[ptr + 1] = rgb[1];
               data[ptr + 2] = rgb[2];
-              data[ptr + 3] = 135;
+              data[ptr + 3] = 230; // Increased opacity to 90% to prevent background map wash-out
             }
           }
         }
@@ -2122,7 +2104,7 @@ function createRadarGridLayer() {
     }
   });
 
-  return new CustomGridLayer({ opacity: 0.75, updateWhenZooming: false });
+  return new CustomGridLayer({ opacity: 0.9, updateWhenZooming: false });
 }
 function triggerRadarRedraw(forcedMinute) {
   const slider = document.getElementById("radarTimeSlider");
