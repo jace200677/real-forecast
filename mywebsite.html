@@ -2221,7 +2221,117 @@ if (timelineSlider) {
         }
     });
 }
-   
+// --- Comprehensive Timezone-Synced Radar Modal & Timeline Controller ---
+
+function initTimezoneSyncedRadarModal(mapInstance, forecastItem, defaultMode = 'temp') {
+    // 1. Initialize or update global application state for the modal view
+    window._radarState = window._radarState || {
+        map: mapInstance,
+        currentItem: forecastItem,
+        currentMode: defaultMode,
+        canvas: null,
+        radarTileLayer: null
+    };
+
+    // 2. Select DOM Elements (matches your interactive timeline modal structure)
+    const timelineSlider = document.querySelector('input[type="range"]');
+    const canvasElement = document.querySelector('canvas'); 
+    const timeDisplayLabel = document.getElementById('timeDisplayLabel') || document.querySelector('.time-display-label') || document.querySelector('.text-right');
+
+    window._radarState.canvas = canvasElement;
+
+    if (!canvasElement) {
+        console.warn("Radar canvas element not found in modal viewport.");
+        return;
+    }
+
+    // 3. Configure the Range Slider for 24-Hour Minute Scale (0 to 1439)
+    if (timelineSlider) {
+        timelineSlider.min = 0;
+        timelineSlider.max = 1439;
+        
+        // Set initial slider position to start of day or current local time minutes
+        const now = new Date();
+        const currentMinuteOfDay = now.getHours() * 60 + now.getMinutes();
+        const initialMinute = parseInt(timelineSlider.value, 10) || currentMinuteOfDay;
+        timelineSlider.value = initialMinute;
+
+        // Render initial map layer corresponding to starting minute
+        renderRadarLayerAtMinute(initialMinute);
+    } else {
+        // Fallback render if no slider exists yet
+        renderRadarLayerAtMinute(0);
+    }
+
+    // 4. Attach Timezone-Synced Input Event Listener
+    if (timelineSlider) {
+        // Remove old listeners to prevent stacking duplicates on re-init
+        const newSlider = timelineSlider.cloneNode(true);
+        timelineSlider.parentNode.replaceChild(newSlider, timelineSlider);
+
+        newSlider.addEventListener('input', (e) => {
+            const sliderMinute = parseInt(e.target.value, 10);
+            renderRadarLayerAtMinute(sliderMinute);
+        });
+    }
+
+    // Helper function to handle map layer replacement and timezone label updates
+    function renderRadarLayerAtMinute(minute) {
+        const activeMap = window._radarState.map;
+        const activeCanvas = window._radarState.canvas;
+        const activeItem = window._radarState.currentItem;
+        const activeMode = window._radarState.currentMode;
+
+        if (!activeMap || !activeCanvas || !activeItem) return;
+
+        // Remove previous tile layer to clear map memory & overlapping layers
+        if (window._radarState.radarTileLayer) {
+            activeMap.removeLayer(window._radarState.radarTileLayer);
+        }
+
+        // Generate updated grid layer using forcedMinute
+        const updatedLayer = createRadarGridLayer(
+            activeCanvas, 
+            0, 
+            activeItem, 
+            activeMode, 
+            null, 
+            null, 
+            minute
+        );
+
+        if (updatedLayer) {
+            updatedLayer.addTo(activeMap);
+            window._radarState.radarTileLayer = updatedLayer;
+        }
+
+        // Calculate hours and minutes for display label
+        const h = Math.floor(minute / 60);
+        const m = Math.round(minute % 60);
+        const timeStr = `${h % 12 || 12}:${m < 10 ? '0' : ''}${m} ${h >= 12 ? 'PM' : 'AM'}`;
+
+        // Get accurate local/target timezone abbreviation
+        const tzAbbr = getLocalTimezoneAbbreviation(window._radarState.currentItem?.dateStr);
+
+        // Update UI Label if available
+        if (timeDisplayLabel) {
+            timeDisplayLabel.textContent = `${timeStr} ${tzAbbr}`.trim();
+        }
+    }
+}
+
+// Helper to determine accurate local or forecast-specific timezone abbreviation
+function getTimezoneAbbreviation() {
+    try {
+        const formatted = new Date().toLocaleTimeString('en-us', { timeZoneName: 'short' });
+        const parts = formatted.split(' ');
+        return parts[parts.length - 1] || '';
+    } catch (e) {
+        return '';
+    }
+} 
+// --- Updated openWeatherMapModal & Fully Synchronized Radar Controller ---
+
 function openWeatherMapModal(item, mode = 'temp', selectedDayIndex = null) {
   if (selectedDayIndex === null || selectedDayIndex === undefined) {
     const activeCard = document.querySelector('.day-card.active, .forecast-day-card.active, .day-tab.active, [data-selected="true"]');
@@ -2283,7 +2393,7 @@ function openWeatherMapModal(item, mode = 'temp', selectedDayIndex = null) {
 
     document.getElementById('closeRadarModalBtn').onclick = () => {
       mapModal.style.display = 'none';
-      if (window._radarState.map) {
+      if (window._radarState && window._radarState.map) {
         window._radarState.map.off();
         window._radarState.map.remove();
         window._radarState.map = null;
@@ -2304,36 +2414,148 @@ function openWeatherMapModal(item, mode = 'temp', selectedDayIndex = null) {
     });
   }
 
+  // Ensure state exists & tracks active item/mode properly
   window._radarState = window._radarState || {};
+  window._radarState.currentItem = item;
   window._radarState.currentMode = mode;
+  window._radarState.selectedDayIndex = selectedDayIndex;
+
   const layerSwitcher = document.getElementById('radarLayerSwitcher');
   if (layerSwitcher) layerSwitcher.value = mode;
 
   const windCont = document.getElementById('windOptionContainer');
   if (windCont) windCont.style.display = mode === 'wind' ? 'inline-block' : 'none';
 
-  const sliderEl = document.getElementById("radarTimeSlider");
-  if (sliderEl) {
-    sliderEl.value = 0;
-    sliderEl.oninput = function(e) {
-      if (typeof triggerRadarRedraw === 'function') triggerRadarRedraw(parseInt(e.target.value, 10));
-    };
-  }
-
   mapModal.style.display = "flex";
 
+  // Trigger Leaflet loading and timezone-synced initialization safely
   if (typeof ensureLeafletLoaded === 'function') {
     ensureLeafletLoaded(() => {
       if (typeof initTimezoneSyncedRadarModal === 'function') {
         initTimezoneSyncedRadarModal(mapModal, item, mode, selectedDayIndex);
       }
     });
+  } else if (typeof initTimezoneSyncedRadarModal === 'function') {
+    initTimezoneSyncedRadarModal(mapModal, item, mode, selectedDayIndex);
   }
 }
 
-/**
- * Event Listener for Weather Map Modal Trigger Button
- */
+// --- Unified Timezone-Synced Radar Modal Initialization Function ---
+
+function initTimezoneSyncedRadarModal(mapModalElement, forecastItem, defaultMode = 'temp', dayIndex = 0) {
+  // 1. Setup or reuse Leaflet Map inside '#leafletMap'
+  let mapContainer = document.getElementById('leafletMap');
+  if (!mapContainer) return;
+
+  if (!window._radarState.map) {
+    // Default coordinates (falls back to Tower, MN area or lat/lon provided in item)
+    const lat = forecastItem?.lat ?? forecastItem?.latitude ?? 47.8105;
+    const lon = forecastItem?.lon ?? forecastItem?.longitude ?? -92.2785;
+
+    window._radarState.map = L.map('leafletMap', {
+      zoomControl: true,
+      attributionControl: false
+    }).setView([lat, lon], 7);
+
+    // Add Dark Mode CartoDB Tile Layer for clean weather background styling
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+      maxZoom: 19,
+      subdomains: 'abcd'
+    }).addTo(window._radarState.map);
+  } else {
+    window._radarState.map.invalidateSize();
+  }
+
+  window._radarState.currentItem = forecastItem;
+  window._radarState.currentMode = defaultMode;
+  window._radarState.canvas = document.querySelector('canvas') || mapContainer.querySelector('canvas');
+
+  // 2. Update Date / Title display header
+  const dateDisplay = document.getElementById('radarDateDisplay');
+  if (dateDisplay && forecastItem) {
+    dateDisplay.textContent = forecastItem.dateStr || forecastItem.date || `Day ${dayIndex + 1}`;
+  }
+
+  // 3. Connect Slider & Render Initial Minute State
+  const timelineSlider = document.getElementById("radarTimeSlider") || document.querySelector('input[type="range"]');
+  const timeDisplayLabel = document.getElementById("radarTimeLabel") || document.getElementById('timeDisplayLabel');
+
+  const initialMinute = timelineSlider ? parseInt(timelineSlider.value, 10) || 0 : 0;
+  renderRadarLayerAtMinute(initialMinute);
+
+  if (timelineSlider) {
+    // Clone node to strip old listeners and prevent duplicate duplicate firing
+    const newSlider = timelineSlider.cloneNode(true);
+    timelineSlider.parentNode.replaceChild(newSlider, timelineSlider);
+
+    newSlider.addEventListener('input', (e) => {
+      const sliderMinute = parseInt(e.target.value, 10);
+      renderRadarLayerAtMinute(sliderMinute);
+    });
+  }
+
+  // Global helper function for timeline drawing triggers
+  window.triggerRadarRedraw = function(forcedMin = null) {
+    const currentMin = forcedMin !== null ? forcedMin : (newSlider ? parseInt(newSlider.value, 10) : 0);
+    renderRadarLayerAtMinute(currentMin);
+  };
+
+  function renderRadarLayerAtMinute(minute) {
+    const activeMap = window._radarState.map;
+    const activeCanvas = window._radarState.canvas;
+    const activeItem = window._radarState.currentItem;
+    const activeMode = window._radarState.currentMode;
+
+    if (!activeMap) return;
+
+    // Remove old Leaflet grid layer to avoid overlapping rendering artifacts
+    if (window._radarState.radarTileLayer) {
+      activeMap.removeLayer(window._radarState.radarTileLayer);
+      window._radarState.radarTileLayer = null;
+    }
+
+    // Generate fresh grid layer instance using the selected minute
+    if (typeof createRadarGridLayer === 'function' && activeCanvas) {
+      const updatedLayer = createRadarGridLayer(
+        activeCanvas,
+        0,
+        activeItem,
+        activeMode,
+        null,
+        null,
+        minute
+      );
+
+      if (updatedLayer) {
+        updatedLayer.addTo(activeMap);
+        window._radarState.radarTileLayer = updatedLayer;
+      }
+    }
+
+    // Format time string (e.g. 12:30 PM)
+    const h = Math.floor(minute / 60);
+    const m = Math.round(minute % 60);
+    const timeStr = `${h % 12 || 12}:${m < 10 ? '0' : ''}${m} ${h >= 12 ? 'PM' : 'AM'}`;
+    const tzAbbr = getTimezoneAbbreviation();
+
+    if (timeDisplayLabel) {
+      timeDisplayLabel.textContent = `${timeStr} ${tzAbbr}`.trim();
+    }
+  }
+}
+
+// Timezone abbreviation helper utility
+function getTimezoneAbbreviation() {
+  try {
+    const formatted = new Date().toLocaleTimeString('en-us', { timeZoneName: 'short' });
+    const parts = formatted.split(' ');
+    return parts[parts.length - 1] || '';
+  } catch (e) {
+    return '';
+  }
+}
+
+// --- Event Listener for Weather Map Modal Trigger Button ---
 document.getElementById("weatherMapModalBtn")?.addEventListener("click", () => {
   const currentMode = document.getElementById("graphTypeSelect")?.value || "temp";
   const rootData = window._radarState?.currentItem || window.currentWeatherData || {};
@@ -2369,7 +2591,6 @@ document.getElementById("weatherMapModalBtn")?.addEventListener("click", () => {
 
   openWeatherMapModal(selectedDayCard, currentMode, selectedDayIndex);
 });
-
 /**
  * Coordinate Resolution Helper inside Tile Renderers / Grid Layers
  */
