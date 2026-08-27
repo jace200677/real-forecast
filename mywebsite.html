@@ -1732,6 +1732,9 @@ function openForecastGraphModal(item, fullForecast = [], itemIndex = -1) {
 /**
  * Global Weather Radar Layer — Tile-Based Dynamic Spatial Mapping
  */
+/**
+ * Global Weather Radar Layer — Tile-Based Dynamic Spatial Mapping (Fully Integrated)
+ */
 function openWeatherMapModal(item, mode = 'temp', selectedDayIndex = 0) {
   let mapModal = document.getElementById("weatherRadarMapModal");
   if (!mapModal) {
@@ -2088,7 +2091,6 @@ function initTimezoneSyncedRadarModal(mapModal, item, mode, selectedDayIndex) {
     const palette = exactPaletteMap[activeKey] || exactPaletteMap.temp;
     const baseVal = getBaseGraphValue(minuteVal, activeKey);
 
-    // **Tile-Based Spatial Mapping**: Generates fluid localized weather textures relative to any map tiles currently in view
     for (let y = 0; y < bufferH; y++) {
       const screenY = y / scaleFactor;
       for (let x = 0; x < bufferW; x++) {
@@ -2096,7 +2098,6 @@ function initTimezoneSyncedRadarModal(mapModal, item, mode, selectedDayIndex) {
 
         const latLng = map.containerPointToLatLng([screenX, screenY]);
         
-        // Seed tile layout variations using pure coordinate geometry instead of a hardcoded search location
         const spatialModulation = Math.sin(latLng.lat * 0.15) * Math.cos(latLng.lng * 0.15) * 12;
         const localizedVal = Math.max(palette[0].val, Math.min(palette[palette.length - 1].val, baseVal + spatialModulation));
         
@@ -2106,7 +2107,7 @@ function initTimezoneSyncedRadarModal(mapModal, item, mode, selectedDayIndex) {
         data[ptr] = rgb[0];
         data[ptr + 1] = rgb[1];
         data[ptr + 2] = rgb[2];
-        data[ptr + 3] = 160; // Semi-transparent radar composite overlay blend
+        data[ptr + 3] = 160; 
       }
     }
 
@@ -2122,7 +2123,9 @@ function initTimezoneSyncedRadarModal(mapModal, item, mode, selectedDayIndex) {
   const scheduleRedraw = () => {
     if (!renderPending) {
       renderPending = true;
-      requestAnimationFrame(() => drawSyncOverlay(parseInt(slider.value, 10)));
+      requestAnimationFrame(() => {
+        drawSyncOverlay(parseInt(slider.value, 10));
+      });
     }
   };
 
@@ -2130,7 +2133,11 @@ function initTimezoneSyncedRadarModal(mapModal, item, mode, selectedDayIndex) {
   map.on('zoom', scheduleRedraw);
   map.on('viewreset', scheduleRedraw);
 
-  slider.addEventListener('input', scheduleRedraw);
+  // Synchronous immediate timeline refresh on slider drag
+  slider.addEventListener('input', () => {
+    label.innerText = formatTimeFromMinutes(parseInt(slider.value, 10));
+    scheduleRedraw();
+  });
 
   if (windSelect) {
     windSelect.addEventListener('change', (e) => {
