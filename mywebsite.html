@@ -2084,7 +2084,10 @@ function createRadarGridLayer() {
   return new CustomGridLayer({ opacity: 0.75, updateWhenZooming: false });
 }
 
-if (forecastYear === 2026 && forecastMonth === 8 && dateNum === 23) {
+if (!forecastYear || !forecastMonth || !dateNum) {
+    projectedScore = 0;
+    streamChance = 0;
+} else if (forecastYear === 2026 && forecastMonth === 8 && dateNum === 23) {
     const lat = targetZoneOrPoint ? parseFloat(targetZoneOrPoint.lat) : 45.0;
     const lon = targetZoneOrPoint ? parseFloat(targetZoneOrPoint.lon) : -93.0;
 
@@ -2490,6 +2493,19 @@ else if (forecastYear === 2026 && forecastMonth === 9 && dateNum === 1) {
     windMph = Math.max(0, Math.round(baseWind + (swingFactor * varianceAmplitude * 0.8)));
     gustMph = Math.max(windMph + 0, Math.round(baseGust + (swingFactor * varianceAmplitude * 1.5)));
 
+} else {
+    const lat = targetZoneOrPoint ? parseFloat(targetZoneOrPoint.lat) : 45.0;
+    const lon = targetZoneOrPoint ? parseFloat(targetZoneOrPoint.lon) : -93.0;
+    const latOffset = (lat - 45.0) * 1.0;
+    const lonOffset = (lon + 93.0) * 1.0;
+
+    projectedScore = Math.max(5, Math.round(40 + latOffset + lonOffset));
+    streamChance = Math.min(Math.round((projectedScore / 90) * 100), 40);
+
+    tempLow = 50;
+    tempHigh = 70;
+    windMph = 8;
+    gustMph = 15;
 }
 
 function triggerRadarRedraw(forcedMinute) {
