@@ -1765,9 +1765,10 @@ function openForecastGraphModal(item, fullForecast = [], itemIndex = -1) {
         drawForecastCanvasGraph(item, currentMode, modalCanvas, null, modal.prevItem, modal.nextItem);
     }, 50);
 }
-// Initialize global radar state with active values map
+// Initialize global radar state
 window._radarState = window._radarState || {
   map: null,
+  radarTileLayer: null,
   currentMode: 'temp',
   windSubMode: 'speed',
   dataset: [],
@@ -1776,9 +1777,6 @@ window._radarState = window._radarState || {
   activeDateText: ''
 };
 
-/**
- * Extract active date and timing directly from graph modal header, DOM elements, or dataset
- */
 function extractDateFromGraph(item, selectedDayIndex = 0) {
   const graphHeaderSelectors = [
     '#graphModalTitle', '.modal-title', '.graph-header', '.chart-title',
@@ -1791,19 +1789,12 @@ function extractDateFromGraph(item, selectedDayIndex = 0) {
       if (el.offsetParent !== null && el.innerText.trim()) {
         const text = el.innerText.trim();
         const dateMatch = text.match(/([A-Za-z]{3}\s*\(\d{1,2}\/\d{1,2}\/\d{4}\))|(\d{1,2}\/\d{1,2}\/\d{2,4})|([A-Za-z]{3}\s+\d{1,2})|(\d{4}-\d{2}-\d{2})/);
-        if (dateMatch) {
-          return dateMatch[0];
-        }
+        if (dateMatch) return dateMatch[0];
       }
     }
   }
 
-  const activeSelectors = [
-    '.day-card.active', '.forecast-day-card.active', '.day-tab.active',
-    '[data-selected="true"]', '.card-selected', '.active-day'
-  ];
-
-  const activeCard = document.querySelector(activeSelectors.join(', '));
+  const activeCard = document.querySelector('.day-card.active, .forecast-day-card.active, .day-tab.active, [data-selected="true"]');
   if (activeCard) {
     const cardText = activeCard.innerText || activeCard.getAttribute('data-date') || activeCard.getAttribute('title');
     if (cardText) {
@@ -1812,13 +1803,7 @@ function extractDateFromGraph(item, selectedDayIndex = 0) {
     }
   }
 
-  const extractDaysArray = (data) => {
-    if (!data) return [];
-    if (Array.isArray(data)) return data;
-    return data.daily || data.forecast || data.days || data.weekly || data.list || data.data || data.timeline || [];
-  };
-
-  const daysArray = extractDaysArray(item);
+  const daysArray = item?.daily || item?.forecast || item?.days || item?.weekly || item?.list || item?.data || item?.timeline || [];
   const targetDayCard = daysArray[selectedDayIndex] || daysArray[0] || item || {};
   const rawDateStr = targetDayCard.date || targetDayCard.dayLabel || targetDayCard.title || targetDayCard.dt_txt || targetDayCard.dt;
 
@@ -1844,15 +1829,9 @@ function extractDateFromGraph(item, selectedDayIndex = 0) {
   return `Day ${selectedDayIndex + 1}`;
 }
 
-/**
- * Universal extractor to scrape precise hourly graph timing and values from active DOM graph
- */
 function scrapeUniversalGraphValues(selectedDayIndex = 0) {
   const points = [];
-
-  const domPoints = document.querySelectorAll(
-    '[data-value], [val], svg circle, .apexcharts-series path, .recharts-curve-dot, .chart-point, [data-hour], [data-time]'
-  );
+  const domPoints = document.querySelectorAll('[data-value], [val], svg circle, .apexcharts-series path, .recharts-curve-dot, .chart-point, [data-hour], [data-time]');
 
   if (domPoints && domPoints.length >= 2) {
     domPoints.forEach((el, idx) => {
@@ -1873,35 +1852,6 @@ function scrapeUniversalGraphValues(selectedDayIndex = 0) {
     return points.sort((a, b) => a.hour - b.hour);
   }
 
-  if (window.Chart && Object.keys(window.Chart.instances).length > 0) {
-    const chart = Object.values(window.Chart.instances)[0];
-    const chartData = chart.data?.datasets[0]?.data || [];
-    const labels = chart.data?.labels || [];
-
-    if (chartData.length > 0) {
-      chartData.forEach((val, idx) => {
-        const numVal = typeof val === 'object' ? (val.y ?? val.v ?? 50) : val;
-        let hour = (idx / Math.max(1, chartData.length - 1)) * 24;
-        
-        if (labels[idx]) {
-          const parsedHour = parseInt(labels[idx], 10);
-          if (!isNaN(parsedHour)) hour = parsedHour;
-        }
-
-        points.push({
-          hour: hour,
-          value: numVal,
-          temp: numVal,
-          speed: numVal * 0.65,
-          gust: numVal * 0.95,
-          dos: Math.max(1, Math.min(10, numVal / 10)),
-          precip: numVal * 0.03
-        });
-      });
-      return points;
-    }
-  }
-
   for (let h = 0; h < 24; h++) {
     const baseVal = 50 + Math.sin((h - 6) / 24 * Math.PI * 2) * 35 + (selectedDayIndex * 3);
     points.push({
@@ -1919,8 +1869,167 @@ function scrapeUniversalGraphValues(selectedDayIndex = 0) {
 }
 
 /**
- * Sync state and render radar map instance to active graph date/timing
+ * Creates custom native Leaflet GridLayer for weather overlay
  */
+function createRadarGridLayer() {
+  const CustomGridLayer = L.GridLayer.extend({
+    createTile: function (coords) {
+      const tile = document.createElement('canvas');
+      const tileSize = this.getTileSize();
+      tile.width = tileSize.x;
+      tile.height = tileSize.y;
+      const ctx = tile.getContext('2d');
+
+      const mode = window._radarState.currentMode;
+      let activeKey = mode;
+      let paletteKey = mode;
+
+      if (mode === 'wind') {
+        activeKey = window._radarState.windSubMode === 'gust' ? 'gust' : 'speed';
+        paletteKey = `wind_${window._radarState.windSubMode}`;
+      }
+
+      const exactPaletteMap = {
+        temp: [
+          { stop: 0.00, rgb: [30, 58, 138] },
+          { stop: 0.25, rgb: [56, 189, 248] },
+          { stop: 0.50, rgb: [34, 197, 94] },
+          { stop: 0.75, rgb: [234, 179, 8] },
+          { stop: 1.00, rgb: [239, 68, 68] }
+        ],
+        wind_speed: [
+          { stop: 0.00, rgb: [15, 23, 42] },
+          { stop: 0.30, rgb: [56, 189, 248] },
+          { stop: 0.65, rgb: [34, 197, 94] },
+          { stop: 0.85, rgb: [234, 179, 8] },
+          { stop: 1.00, rgb: [168, 85, 247] }
+        ],
+        wind_gust: [
+          { stop: 0.00, rgb: [15, 23, 42] },
+          { stop: 0.35, rgb: [56, 189, 248] },
+          { stop: 0.65, rgb: [234, 179, 8] },
+          { stop: 0.85, rgb: [239, 68, 68] },
+          { stop: 1.00, rgb: [168, 85, 247] }
+        ],
+        dos: [
+          { stop: 0.00, rgb: [34, 197, 94] },
+          { stop: 0.35, rgb: [56, 189, 248] },
+          { stop: 0.70, rgb: [234, 179, 8] },
+          { stop: 1.00, rgb: [239, 68, 68] }
+        ],
+        precip: [
+          { stop: 0.00, rgb: [15, 23, 42] },
+          { stop: 0.30, rgb: [56, 189, 248] },
+          { stop: 0.65, rgb: [59, 130, 246] },
+          { stop: 0.85, rgb: [34, 197, 94] },
+          { stop: 1.00, rgb: [168, 85, 247] }
+        ]
+      };
+
+      const palette = exactPaletteMap[paletteKey] || exactPaletteMap.temp;
+
+      const getEntryValue = (entry, key) => {
+        if (typeof entry === 'number') return entry;
+        if (!entry) return 50;
+        return entry[key] ?? entry.value ?? entry.temp ?? entry.speed ?? 50;
+      };
+
+      let min = Infinity, max = -Infinity;
+      (window._radarState.dataset || []).forEach(entry => {
+        let v = getEntryValue(entry, activeKey);
+        if (v < min) min = v;
+        if (v > max) max = v;
+      });
+      if (min === max) { min -= 10; max += 10; }
+
+      const slider = document.getElementById("radarTimeSlider");
+      const totalMinutes = slider ? parseInt(slider.value, 10) : 0;
+      const targetHour = totalMinutes / 60;
+      const dsLen = window._radarState.dataset.length;
+      let baseVal = 50;
+
+      if (dsLen > 0) {
+        const exactIndexFloat = (targetHour / 24) * (dsLen - 1);
+        const lowIdx = Math.floor(exactIndexFloat);
+        const highIdx = Math.min(dsLen - 1, Math.ceil(exactIndexFloat));
+        const blend = exactIndexFloat - lowIdx;
+
+        const valLow = getEntryValue(window._radarState.dataset[lowIdx], activeKey);
+        const valHigh = getEntryValue(window._radarState.dataset[highIdx], activeKey);
+        baseVal = valLow * (1 - blend) + valHigh * blend;
+      }
+
+      const nwPoint = coords.scaleBy(tileSize);
+      const step = 8; // Pixel step calculation for smooth performance
+      const imgData = ctx.createImageData(tileSize.x, tileSize.y);
+      const data = imgData.data;
+
+      const targetLat = window._radarState.currentItem?.lat ?? 45.3827;
+      const targetLon = window._radarState.currentItem?.lon ?? -93.8761;
+
+      for (let y = 0; y < tileSize.y; y += step) {
+        for (let x = 0; x < tileSize.x; x += step) {
+          const point = L.point(nwPoint.x + x, nwPoint.y + y);
+          const latLng = window._radarState.map.unproject(point, coords.z);
+
+          const dLat = latLng.lat - targetLat;
+          const dLng = latLng.lng - targetLon;
+          const spatialVariation = Math.sin(dLat * 0.15) * Math.cos(dLng * 0.15) * 0.35 * (max - min);
+
+          const sampledValue = baseVal + spatialVariation;
+          const normalized = Math.max(0, Math.min(1, (sampledValue - min) / (max - min)));
+
+          let rgb = palette[0].rgb;
+          for (let i = 0; i < palette.length - 1; i++) {
+            if (normalized >= palette[i].stop && normalized <= palette[i + 1].stop) {
+              const factor = (normalized - palette[i].stop) / (palette[i + 1].stop - palette[i].stop);
+              rgb = [
+                Math.round(palette[i].rgb[0] * (1 - factor) + palette[i + 1].rgb[0] * factor),
+                Math.round(palette[i].rgb[1] * (1 - factor) + palette[i + 1].rgb[1] * factor),
+                Math.round(palette[i].rgb[2] * (1 - factor) + palette[i + 1].rgb[2] * factor)
+              ];
+              break;
+            }
+          }
+
+          for (let sy = 0; sy < step && (y + sy) < tileSize.y; sy++) {
+            for (let sx = 0; sx < step && (x + sx) < tileSize.x; sx++) {
+              const ptr = ((y + sy) * tileSize.x + (x + sx)) * 4;
+              data[ptr] = rgb[0];
+              data[ptr + 1] = rgb[1];
+              data[ptr + 2] = rgb[2];
+              data[ptr + 3] = 140;
+            }
+          }
+        }
+      }
+
+      ctx.putImageData(imgData, 0, 0);
+      return tile;
+    }
+  });
+
+  return new CustomGridLayer({ opacity: 0.7 });
+}
+
+function triggerRadarRedraw(forcedMinute) {
+  const slider = document.getElementById("radarTimeSlider");
+  const totalMinutes = forcedMinute !== undefined ? forcedMinute : (slider ? parseInt(slider.value, 10) : 0);
+
+  const label = document.getElementById("radarTimeLabel");
+  if (label) {
+    const hours24 = Math.floor(totalMinutes / 60) % 24;
+    const mins = totalMinutes % 60;
+    const period = hours24 >= 12 ? 'PM' : 'AM';
+    const hours12 = hours24 % 12 === 0 ? 12 : hours24 % 12;
+    label.innerText = `${hours12}:${mins.toString().padStart(2, '0')} ${period}`;
+  }
+
+  if (window._radarState.radarTileLayer) {
+    window._radarState.radarTileLayer.redraw();
+  }
+}
+
 function initTimezoneSyncedRadarModal(mapModal, item, mode, selectedDayIndex) {
   window._radarState.currentMode = mode;
   window._radarState.selectedDayIndex = selectedDayIndex;
@@ -1950,7 +2059,7 @@ function initTimezoneSyncedRadarModal(mapModal, item, mode, selectedDayIndex) {
     const worldBounds = L.latLngBounds(L.latLng(-90, -180), L.latLng(90, 180));
     window._radarState.map = L.map('leafletMap', {
       center: [lat, lon],
-      zoom: 3,
+      zoom: 4,
       minZoom: 2,
       maxZoom: 18,
       zoomControl: true,
@@ -1962,9 +2071,8 @@ function initTimezoneSyncedRadarModal(mapModal, item, mode, selectedDayIndex) {
       minZoom: 2, maxZoom: 18, noWrap: true, bounds: worldBounds, attribution: 'Tiles &copy; Esri'
     }).addTo(window._radarState.map);
 
-    window._radarState.map.on('move', () => triggerRadarRedraw());
-    window._radarState.map.on('zoom', () => triggerRadarRedraw());
-    window._radarState.map.on('viewreset', () => triggerRadarRedraw());
+    window._radarState.radarTileLayer = createRadarGridLayer();
+    window._radarState.radarTileLayer.addTo(window._radarState.map);
   } else {
     window._radarState.map.setView([lat, lon], window._radarState.map.getZoom());
   }
@@ -1975,171 +2083,6 @@ function initTimezoneSyncedRadarModal(mapModal, item, mode, selectedDayIndex) {
   }, 250);
 }
 
-/**
- * Dynamically sample spatial map coordinates to generate radar overlays matching weather graph color scales
- */
-function triggerRadarRedraw(forcedMinute) {
-  const slider = document.getElementById("radarTimeSlider");
-  const totalMinutes = forcedMinute !== undefined ? forcedMinute : (slider ? parseInt(slider.value, 10) : 0);
-
-  const label = document.getElementById("radarTimeLabel");
-  if (label) {
-    const hours24 = Math.floor(totalMinutes / 60) % 24;
-    const mins = totalMinutes % 60;
-    const period = hours24 >= 12 ? 'PM' : 'AM';
-    const hours12 = hours24 % 12 === 0 ? 12 : hours24 % 12;
-    label.innerText = `${hours12}:${mins.toString().padStart(2, '0')} ${period}`;
-  }
-
-  const canvas = document.getElementById("syncCanvas");
-  if (!canvas || !window._radarState.map) return;
-  const ctx = canvas.getContext("2d");
-
-  const rect = canvas.parentElement.getBoundingClientRect();
-  if (canvas.width !== Math.floor(rect.width) || canvas.height !== Math.floor(rect.height)) {
-    canvas.width = Math.floor(rect.width) || 300;
-    canvas.height = Math.floor(rect.height) || 150;
-  }
-
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-  const scaleFactor = 0.35;
-  const bufferW = Math.max(1, Math.ceil(canvas.width * scaleFactor));
-  const bufferH = Math.max(1, Math.ceil(canvas.height * scaleFactor));
-
-  const offscreenCanvas = document.createElement("canvas");
-  offscreenCanvas.width = bufferW;
-  offscreenCanvas.height = bufferH;
-  const offscreenCtx = offscreenCanvas.getContext("2d");
-  const imgData = offscreenCtx.createImageData(bufferW, bufferH);
-  const data = imgData.data;
-
-  const mode = window._radarState.currentMode;
-  let activeKey = mode;
-  let paletteKey = mode;
-
-  if (mode === 'wind') {
-    activeKey = window._radarState.windSubMode === 'gust' ? 'gust' : 'speed';
-    paletteKey = `wind_${window._radarState.windSubMode}`;
-  }
-
-  // Weather graph color scale mapping
-  const exactPaletteMap = {
-    temp: [
-      { stop: 0.00, rgb: [30, 58, 138] },   // Deep Blue (Freezing/Cold)
-      { stop: 0.25, rgb: [56, 189, 248] },  // Cyan (Cool)
-      { stop: 0.50, rgb: [34, 197, 94] },   // Green (Mild)
-      { stop: 0.75, rgb: [234, 179, 8] },   // Warm Yellow/Orange
-      { stop: 1.00, rgb: [239, 68, 68] }    // Red (Hot)
-    ],
-    wind_speed: [
-      { stop: 0.00, rgb: [15, 23, 42] },    // Dark slate (Calm)
-      { stop: 0.30, rgb: [56, 189, 248] },  // Light Blue (Breezy)
-      { stop: 0.65, rgb: [34, 197, 94] },   // Green (Windy)
-      { stop: 0.85, rgb: [234, 179, 8] },   // Yellow (High Wind)
-      { stop: 1.00, rgb: [168, 85, 247] }   // Purple (Severe Wind)
-    ],
-    wind_gust: [
-      { stop: 0.00, rgb: [15, 23, 42] },    // Calm
-      { stop: 0.35, rgb: [56, 189, 248] },  // Cyan
-      { stop: 0.65, rgb: [234, 179, 8] },   // Yellow/Orange
-      { stop: 0.85, rgb: [239, 68, 68] },   // Red (Strong Gusts)
-      { stop: 1.00, rgb: [168, 85, 247] }   // Purple (Extreme Gusts)
-    ],
-    dos: [
-      { stop: 0.00, rgb: [34, 197, 94] },   // Green (Good / Low Risk)
-      { stop: 0.35, rgb: [56, 189, 248] },  // Light Blue (Moderate)
-      { stop: 0.70, rgb: [234, 179, 8] },   // Yellow (Elevated Risk)
-      { stop: 1.00, rgb: [239, 68, 68] }    // Red (High Risk / Critical Index)
-    ],
-    precip: [
-      { stop: 0.00, rgb: [15, 23, 42] },    // Dry / Clear
-      { stop: 0.30, rgb: [56, 189, 248] },  // Light Rain
-      { stop: 0.65, rgb: [59, 130, 246] },  // Moderate Rain
-      { stop: 0.85, rgb: [34, 197, 94] },   // Heavy Rain
-      { stop: 1.00, rgb: [168, 85, 247] }   // Downpour / Extreme
-    ]
-  };
-
-  const palette = exactPaletteMap[paletteKey] || exactPaletteMap.temp;
-
-  const getEntryValue = (entry, key) => {
-    if (typeof entry === 'number') return entry;
-    if (!entry) return 50;
-    return entry[key] ?? entry.value ?? entry.temp ?? entry.speed ?? 50;
-  };
-
-  let min = Infinity, max = -Infinity;
-  window._radarState.dataset.forEach(entry => {
-    let v = getEntryValue(entry, activeKey);
-    if (v < min) min = v;
-    if (v > max) max = v;
-  });
-  if (min === max) { min -= 10; max += 10; }
-
-  const targetHour = totalMinutes / 60;
-  const dsLen = window._radarState.dataset.length;
-  let baseVal = 50;
-
-  if (dsLen > 0) {
-    const exactIndexFloat = (targetHour / 24) * (dsLen - 1);
-    const lowIdx = Math.floor(exactIndexFloat);
-    const highIdx = Math.min(dsLen - 1, Math.ceil(exactIndexFloat));
-    const blend = exactIndexFloat - lowIdx;
-
-    const entryLow = window._radarState.dataset[lowIdx];
-    const entryHigh = window._radarState.dataset[highIdx];
-
-    const valLow = getEntryValue(entryLow, activeKey);
-    const valHigh = getEntryValue(entryHigh, activeKey);
-    baseVal = valLow * (1 - blend) + valHigh * blend;
-  }
-
-  const centerLatLng = window._radarState.map.getCenter();
-
-  for (let y = 0; y < bufferH; y++) {
-    for (let x = 0; x < bufferW; x++) {
-      const screenX = (x / bufferW) * canvas.width;
-      const screenY = (y / bufferH) * canvas.height;
-      const latLng = window._radarState.map.containerPointToLatLng([screenX, screenY]);
-
-      const dLat = latLng.lat - centerLatLng.lat;
-      const dLng = latLng.lng - centerLatLng.lng;
-      const spatialVariation = Math.sin(dLat * 0.5) * Math.cos(dLng * 0.5) * 0.25 * (max - min);
-
-      const sampledValue = baseVal + spatialVariation;
-      const normalized = Math.max(0, Math.min(1, (sampledValue - min) / (max - min)));
-
-      let rgb = palette[0].rgb;
-      for (let i = 0; i < palette.length - 1; i++) {
-        if (normalized >= palette[i].stop && normalized <= palette[i+1].stop) {
-          const factor = (normalized - palette[i].stop) / (palette[i+1].stop - palette[i].stop);
-          rgb = [
-            Math.round(palette[i].rgb[0] * (1 - factor) + palette[i+1].rgb[0] * factor),
-            Math.round(palette[i].rgb[1] * (1 - factor) + palette[i+1].rgb[1] * factor),
-            Math.round(palette[i].rgb[2] * (1 - factor) + palette[i+1].rgb[2] * factor)
-          ];
-          break;
-        }
-      }
-
-      const ptr = (y * bufferW + x) * 4;
-      data[ptr] = rgb[0];
-      data[ptr + 1] = rgb[1];
-      data[ptr + 2] = rgb[2];
-      data[ptr + 3] = 160;
-    }
-  }
-
-  offscreenCtx.putImageData(imgData, 0, 0);
-  ctx.imageSmoothingEnabled = true;
-  ctx.imageSmoothingQuality = "high";
-  ctx.drawImage(offscreenCanvas, 0, 0, canvas.width, canvas.height);
-}
-
-/**
- * Open Radar Modal
- */
 function openWeatherMapModal(item, mode = 'temp', selectedDayIndex = null) {
   if (selectedDayIndex === null || selectedDayIndex === undefined) {
     const activeCard = document.querySelector('.day-card.active, .forecast-day-card.active, .day-tab.active, [data-selected="true"]');
@@ -2187,7 +2130,6 @@ function openWeatherMapModal(item, mode = 'temp', selectedDayIndex = null) {
         
         <div id="interactiveMapContainer" style="position:relative;width:100%;height:380px;background:#090d16;border-radius:10px;overflow:hidden;border:1px solid #27272a;flex-grow:1;">
           <div id="leafletMap" style="width:100%;height:100%;background:#090d16;"></div>
-          <canvas id="syncCanvas" style="position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:400;mix-blend-mode:screen;"></canvas>
         </div>
 
         <div style="margin-top:10px;background:#27272a;padding:10px 14px;border-radius:8px;flex-shrink:0;">
@@ -2206,6 +2148,7 @@ function openWeatherMapModal(item, mode = 'temp', selectedDayIndex = null) {
         window._radarState.map.off();
         window._radarState.map.remove();
         window._radarState.map = null;
+        window._radarState.radarTileLayer = null;
       }
     };
 
@@ -2237,16 +2180,12 @@ function openWeatherMapModal(item, mode = 'temp', selectedDayIndex = null) {
   });
 }
 
-/**
- * Event listener triggering Radar Modal from external action button
- */
 document.getElementById("weatherMapModalBtn")?.addEventListener("click", () => {
   const currentMode = document.getElementById("graphTypeSelect")?.value || "temp";
   const rootData = window._radarState?.currentItem || window.currentWeatherData || {};
-
-  const dayElements = document.querySelectorAll('.day-tab, .forecast-day-card, .day-card, .history-card');
   let selectedDayIndex = 0;
 
+  const dayElements = document.querySelectorAll('.day-tab, .forecast-day-card, .day-card, .history-card');
   dayElements.forEach((el, index) => {
     if (
       el.classList.contains('active') ||
@@ -2265,18 +2204,6 @@ document.getElementById("weatherMapModalBtn")?.addEventListener("click", () => {
   };
 
   let daysArray = extractDaysArray(rootData);
-  if (daysArray.length === 0 && rootData && typeof rootData === 'object') {
-    for (const key of Object.keys(rootData)) {
-      if (rootData[key] && typeof rootData[key] === 'object') {
-        const nested = extractDaysArray(rootData[key]);
-        if (nested.length > 0) {
-          daysArray = nested;
-          break;
-        }
-      }
-    }
-  }
-
   const selectedDayCard = daysArray[selectedDayIndex] || daysArray[0] || rootData;
 
   if (selectedDayCard !== rootData && typeof rootData === 'object') {
@@ -2289,9 +2216,6 @@ document.getElementById("weatherMapModalBtn")?.addEventListener("click", () => {
   openWeatherMapModal(selectedDayCard, currentMode, selectedDayIndex);
 });
 
-/**
- * Dynamically load Leaflet dependency if not present
- */
 function ensureLeafletLoaded(callback) {
   if (window.L) { callback(); return; }
   const link = document.createElement("link");
@@ -2671,7 +2595,42 @@ function updateTrafficTime(totalMinutes, baseDateOverride = null) {
     let freeFlowSpeed = baseSpeedLimit;
     let rushDropRatio = 0.15;
 
-    if (Math.abs(derivedLat - 40.7128) < 0.2 && Math.abs(derivedLon - (-74.0060)) < 0.2) {
+    // Check target date: August 27, 2026
+    const isTargetDateAug27 = workingDate.getFullYear() === 2026 && 
+                             workingDate.getMonth() === 7 && // August (0-indexed)
+                             workingDate.getDate() === 27;
+
+    // Bounding box for Virginia, MN to Cloquet, MN (US-53 / MN-33 corridor)
+    const isVirginiaToCloquetCorridor = (derivedLat >= 46.50 && derivedLat <= 47.70) && 
+                                       (derivedLon >= -93.00 && derivedLon <= -92.20);
+
+    let isExtremelySlowOverride = false;
+    let customOverrideMultiplier = null;
+
+    if (isTargetDateAug27 && isVirginiaToCloquetCorridor) {
+        profileName = "Virginia to Cloquet Corridor (Highlighted Route)";
+        freeFlowSpeed = 65;
+        isExtremelySlowOverride = true;
+
+        const peakStart = 420;  // 7:00 AM in minutes
+        const peakEnd   = 780;  // 1:00 PM in minutes
+
+        if (normalizedMinutes >= peakStart && normalizedMinutes <= peakEnd) {
+            // Severe Gridlock: Drops speeds down to ~10 mph (85% reduction)
+            customOverrideMultiplier = 0.15;
+        } else if (normalizedMinutes > peakEnd) {
+            // Gradual recovery curve from 1:00 PM (15% speed) up to 11:59 PM (95% speed)
+            const remainingMinutes = 1440 - peakEnd; // 660 mins total
+            const minutesPassed = normalizedMinutes - peakEnd;
+            const recoveryRatio = minutesPassed / remainingMinutes; // Linear scale from 0 to 1
+            
+            // Interpolate from severe bottleneck (0.15) back up to normal flow (0.95)
+            customOverrideMultiplier = 0.15 + (0.80 * recoveryRatio);
+        } else {
+            // Morning before 7:00 AM starts slightly reduced due to incoming flow
+            customOverrideMultiplier = 0.85;
+        }
+    } else if (Math.abs(derivedLat - 40.7128) < 0.2 && Math.abs(derivedLon - (-74.0060)) < 0.2) {
         profileName = "NYC Urban Core";
         freeFlowSpeed = 25;
         rushDropRatio = 0.65;
@@ -2699,7 +2658,20 @@ function updateTrafficTime(totalMinutes, baseDateOverride = null) {
         ? "Google Maps (" + trafficModeLabel + ")" 
         : "Traffic-Planner.com (" + trafficModeLabel + ")";
 
-    if (isLateNight) {
+    if (isExtremelySlowOverride && customOverrideMultiplier !== null) {
+        speedMultiplier = customOverrideMultiplier;
+        
+        if (normalizedMinutes >= 420 && normalizedMinutes <= 780) {
+            statusText = sourceLabel + ": SEVERE GRIDLOCK (7AM-1PM PEAK) (" + profileName + ")";
+            statusColor = "#dc2626"; // Deep Red
+        } else if (normalizedMinutes > 780) {
+            statusText = sourceLabel + ": RECOVERING ROUTE TRAFFIC (" + profileName + ")";
+            statusColor = speedMultiplier < 0.50 ? "#f59e0b" : "#fbbf24"; // Orange to Yellow
+        } else {
+            statusText = sourceLabel + ": PRE-PEAK ROUTE FLOW (" + profileName + ")";
+            statusColor = "#4ade80";
+        }
+    } else if (isLateNight) {
         speedMultiplier = 1.05;
         statusText = sourceLabel + ": NIGHTTIME CLEAR (" + profileName + ")";
         statusColor = "#38bdf8";
@@ -2720,7 +2692,7 @@ function updateTrafficTime(totalMinutes, baseDateOverride = null) {
     const calculatedSpeedMph = Math.round(freeFlowSpeed * speedMultiplier);
 
     if (isPostAug25 || isGoogleMapsSource) {
-        statusText += " — Google Traffic Speed: " + calculatedSpeedMph + " mph";
+        statusText += " — Route Traffic Speed: " + calculatedSpeedMph + " mph";
     }
 
     impactEl.innerText = statusText;
