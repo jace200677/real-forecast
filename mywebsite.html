@@ -1425,8 +1425,8 @@ async function buildForecast() {
             
             streamChance = Math.min(Math.round((projectedScore / 90) * 100), 95);
 
-            const latOffset = (lat - 45.0) * 2.5;
-            const lonOffset = (lon + 93.0) * 1.8;
+            const latOffset = (lat - 47.0) * 2.5;
+            const lonOffset = (lon + 91.0) * 1.8;
             const latOffset1 = (lat - 45.0);
             const varianceAmplitude = exactDaysOut * 1.5 * (1 - confidenceFactor); 
             const swingFactor = Math.sin(exactDaysOut * 1.2);
