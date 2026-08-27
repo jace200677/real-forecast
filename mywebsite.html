@@ -1882,6 +1882,10 @@ function scrapeUniversalGraphValues(selectedDayIndex = 0) {
  * Custom Leaflet GridLayer rendering canvas tiles based on dataset timeline interpolation
  * Fixed: Dynamically resolves Day vs Night nested graph properties matching active slider time
  */
+/**
+ * Custom Leaflet GridLayer rendering canvas tiles based on dataset timeline interpolation
+ * Fixed: Strict UTC / Date.now() timestamp matching for Day/Night alignment
+ */
 function createRadarGridLayer() {
   const CustomGridLayer = L.GridLayer.extend({
     createTile: function (coords) {
@@ -1962,18 +1966,23 @@ function createRadarGridLayer() {
 
       const slider = document.getElementById("radarTimeSlider");
       const totalMinutes = slider ? parseInt(slider.value, 10) : 0;
-      const hourOfDay = (totalMinutes / 60) % 24;
       
-      // Determine Day (6:00 AM - 6:00 PM) vs Night active period
-      const isNight = hourOfDay < 6 || hourOfDay >= 18;
+      // Calculate target timestamp in UTC using Date.now() start of UTC day baseline
+      const now = new Date();
+      const startOfUTCDay = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
+      const targetUTCTimestamp = startOfUTCDay + (totalMinutes * 60 * 1000);
+      
+      const targetDate = new Date(targetUTCTimestamp);
+      const utcHour = targetDate.getUTCHours();
+      
+      // Determine Day (12:00 UTC to 00:00 UTC) vs Night in UTC
+      const isNight = utcHour < 12;
       const periodKey = isNight ? 'night' : 'day';
 
-      // Reads values whether stored directly or nested inside day/night forecast objects
       const getEntryValue = (entry, key) => {
         if (typeof entry === 'number') return entry;
         if (!entry) return currentPalette.minVal;
 
-        // Check active period object first (day or night)
         const periodObj = entry[periodKey] || entry;
 
         return periodObj[key] ?? 
@@ -1999,11 +2008,29 @@ function createRadarGridLayer() {
       let baseVal = currentPalette.minVal;
 
       if (dsLen > 0) {
-        const targetHour = totalMinutes / 60;
-        const exactIndexFloat = (targetHour / 24) * (dsLen - 1);
-        const lowIdx = Math.floor(exactIndexFloat);
-        const highIdx = Math.min(dsLen - 1, Math.ceil(exactIndexFloat));
-        const blend = exactIndexFloat - lowIdx;
+        // Find dataset entry matching UTC timestamp directly if timestamps are present
+        let lowIdx = 0;
+        let highIdx = 0;
+        let blend = 0;
+
+        const firstTime = dataset[0].timestamp || dataset[0].time;
+        if (firstTime) {
+          const startTime = new Date(firstTime).getTime();
+          const endTime = new Date(dataset[dsLen - 1].timestamp || dataset[dsLen - 1].time).getTime();
+          const totalDuration = endTime - startTime || 1;
+          
+          const progress = Math.max(0, Math.min(1, (targetUTCTimestamp - startTime) / totalDuration));
+          const exactIndexFloat = progress * (dsLen - 1);
+          lowIdx = Math.floor(exactIndexFloat);
+          highIdx = Math.min(dsLen - 1, Math.ceil(exactIndexFloat));
+          blend = exactIndexFloat - lowIdx;
+        } else {
+          const targetHour = (totalMinutes / 60);
+          const exactIndexFloat = (targetHour / 24) * (dsLen - 1);
+          lowIdx = Math.floor(exactIndexFloat);
+          highIdx = Math.min(dsLen - 1, Math.ceil(exactIndexFloat));
+          blend = exactIndexFloat - lowIdx;
+        }
 
         const valLow = getEntryValue(dataset[lowIdx], activeKey);
         const valHigh = getEntryValue(dataset[highIdx], activeKey);
@@ -2069,9 +2096,6 @@ function createRadarGridLayer() {
 
   return new CustomGridLayer({ opacity: 0.75, updateWhenZooming: false });
 }
-/**
- * Triggers redrawing of the tile layer and updates UI time labels
- */
 function triggerRadarRedraw(forcedMinute) {
   const slider = document.getElementById("radarTimeSlider");
   const totalMinutes = forcedMinute !== undefined ? forcedMinute : (slider ? parseInt(slider.value, 10) : 0);
