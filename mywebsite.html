@@ -1780,7 +1780,6 @@ window._radarState = window._radarState || {
  * Extract active date and timing directly from graph modal header, DOM elements, or dataset
  */
 function extractDateFromGraph(item, selectedDayIndex = 0) {
-  // 1. Check for visible graph modal headers or active popups
   const graphHeaderSelectors = [
     '#graphModalTitle', '.modal-title', '.graph-header', '.chart-title',
     '.graph-modal-date', '[id*="graph"] h2', '[id*="graph"] h3', '[class*="graph"] h3'
@@ -1799,7 +1798,6 @@ function extractDateFromGraph(item, selectedDayIndex = 0) {
     }
   }
 
-  // 2. Check active forecast day cards/tabs anywhere in the DOM
   const activeSelectors = [
     '.day-card.active', '.forecast-day-card.active', '.day-tab.active',
     '[data-selected="true"]', '.card-selected', '.active-day'
@@ -1814,7 +1812,6 @@ function extractDateFromGraph(item, selectedDayIndex = 0) {
     }
   }
 
-  // 3. Extract array from dataset and fallback to item date property
   const extractDaysArray = (data) => {
     if (!data) return [];
     if (Array.isArray(data)) return data;
@@ -1853,7 +1850,6 @@ function extractDateFromGraph(item, selectedDayIndex = 0) {
 function scrapeUniversalGraphValues(selectedDayIndex = 0) {
   const points = [];
 
-  // Scrape from rendered chart SVG node points or data attributes
   const domPoints = document.querySelectorAll(
     '[data-value], [val], svg circle, .apexcharts-series path, .recharts-curve-dot, .chart-point, [data-hour], [data-time]'
   );
@@ -1877,7 +1873,6 @@ function scrapeUniversalGraphValues(selectedDayIndex = 0) {
     return points.sort((a, b) => a.hour - b.hour);
   }
 
-  // Extract directly from active Chart.js instance if present
   if (window.Chart && Object.keys(window.Chart.instances).length > 0) {
     const chart = Object.values(window.Chart.instances)[0];
     const chartData = chart.data?.datasets[0]?.data || [];
@@ -1907,7 +1902,6 @@ function scrapeUniversalGraphValues(selectedDayIndex = 0) {
     }
   }
 
-  // Fallback 24-hour sinusoidal wave generation indexed by selected day
   for (let h = 0; h < 24; h++) {
     const baseVal = 50 + Math.sin((h - 6) / 24 * Math.PI * 2) * 35 + (selectedDayIndex * 3);
     points.push({
@@ -1935,7 +1929,6 @@ function initTimezoneSyncedRadarModal(mapModal, item, mode, selectedDayIndex) {
   const lat = item?.lat ?? item?.latitude ?? (window.currentLat || 45.3827);
   const lon = item?.lon ?? item?.longitude ?? (window.currentLon || -93.8761);
 
-  // Dynamic date extraction from active graph header/DOM
   const formattedDisplayDate = extractDateFromGraph(item, selectedDayIndex);
   window._radarState.activeDateText = formattedDisplayDate;
 
@@ -1983,7 +1976,7 @@ function initTimezoneSyncedRadarModal(mapModal, item, mode, selectedDayIndex) {
 }
 
 /**
- * Redraw heatmaps dynamically following graph timing across timeline slider values
+ * Dynamically map graph values to visual radar heatmaps without location dependence
  */
 function triggerRadarRedraw(forcedMinute) {
   const slider = document.getElementById("radarTimeSlider");
@@ -2090,17 +2083,16 @@ function triggerRadarRedraw(forcedMinute) {
     baseVal = valLow * (1 - blend) + valHigh * blend;
   }
 
-  const timePhase = (totalMinutes / 1440) * Math.PI * 4;
+  const centerBufferX = bufferW / 2;
+  const centerBufferY = bufferH / 2;
+  const maxRadius = Math.hypot(bufferW, bufferH) / 2;
 
   for (let y = 0; y < bufferH; y++) {
-    const screenY = y / scaleFactor;
     for (let x = 0; x < bufferW; x++) {
-      const screenX = x / scaleFactor;
-      const latLng = window._radarState.map.containerPointToLatLng([screenX, screenY]);
-
-      const spatialMod = Math.sin(latLng.lat * 0.12 + timePhase) * Math.cos(latLng.lng * 0.12 + timePhase) * ((max - min) * 0.2);
-      const localizedVal = Math.max(min, Math.min(max, baseVal + spatialMod));
-
+      const distFromCenter = Math.hypot(x - centerBufferX, y - centerBufferY);
+      const distRatio = Math.min(1, distFromCenter / maxRadius);
+      
+      const localizedVal = baseVal - (distRatio * 0.15 * (max - min));
       const normalized = Math.max(0, Math.min(1, (localizedVal - min) / (max - min)));
 
       let rgb = palette[0].rgb;
@@ -2120,7 +2112,7 @@ function triggerRadarRedraw(forcedMinute) {
       data[ptr] = rgb[0];
       data[ptr + 1] = rgb[1];
       data[ptr + 2] = rgb[2];
-      data[ptr + 3] = 165;
+      data[ptr + 3] = Math.round((1 - distRatio * 0.4) * 165);
     }
   }
 
@@ -2294,8 +2286,7 @@ function ensureLeafletLoaded(callback) {
   script.src = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.js";
   script.onload = callback;
   document.head.appendChild(script);
-}
-   
+}  
 let activeMapItem = null;
 
 // Global Google Map, Traffic Layer, and transit references for Post-8/25/2026 handling
