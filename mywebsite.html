@@ -1726,6 +1726,9 @@ function openForecastGraphModal(item, fullForecast = [], itemIndex = -1) {
  * Opens a fully interactive (Pan/Zoom) Weather Satellite Map
  * using Leaflet.js and a continuous smooth-lerp WebGL Canvas Overlay.
  */
+/**
+ * Radar Map Layer with Fixed Grid Tiles (Independent of Map Zoom Level)
+ */
 function openWeatherMapModal(item, mode) {
   let mapModal = document.getElementById("weatherRadarMapModal");
   if (!mapModal) {
@@ -1735,13 +1738,12 @@ function openWeatherMapModal(item, mode) {
     document.body.appendChild(mapModal);
   }
 
-  // Load Leaflet CSS & JS dynamically if not present
   ensureLeafletLoaded(() => {
-    initInteractiveMapModal(mapModal, item, mode);
+    initFixedGridRadarModal(mapModal, item, mode);
   });
 }
 
-function initInteractiveMapModal(mapModal, item, mode) {
+function initFixedGridRadarModal(mapModal, item, mode) {
   const lat = item?.lat ?? (window.currentLat || 45.3827);
   const lon = item?.lon ?? (window.currentLon || -93.8761);
   const hours = item?.hourly || Array.from({ length: 24 }, (_, i) => ({
@@ -1752,19 +1754,17 @@ function initInteractiveMapModal(mapModal, item, mode) {
     <div style="background:#1e1e24;border-radius:12px;padding:16px;width:100%;max-width:850px;color:#fff;position:relative;box-shadow:0 8px 32px rgba(0,0,0,0.6);">
       <button onclick="document.getElementById('weatherRadarMapModal').style.display='none'" style="position:absolute;top:12px;right:12px;background:none;border:none;color:#fff;font-size:24px;cursor:pointer;z-index:1001;">✕</button>
       <h3 style="margin:0 0 10px 0;font-size:16px;">
-        🛰️ Satellite Radar Map — <span style="color:#38bdf8;text-transform:capitalize;">${mode} Layer</span>
+        🛰️ Fixed Radar Tile Overlay — <span style="color:#38bdf8;text-transform:capitalize;">${mode} Layer</span>
       </h3>
       
-      <!-- Interactive Leaflet Map Container -->
       <div id="interactiveMapContainer" style="position:relative;width:100%;height:400px;background:#0b0f19;border-radius:8px;overflow:hidden;border:1px solid #334155;">
         <div id="leafletMap" style="width:100%;height:100%;"></div>
-        <canvas id="lerpOverlayCanvas" style="position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:400;mix-blend-mode:screen;"></canvas>
+        <canvas id="fixedTileCanvas" style="position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:400;mix-blend-mode:screen;"></canvas>
       </div>
 
-      <!-- Time Slider -->
       <div style="margin-top:14px;background:#2b2b36;padding:12px 16px;border-radius:8px;">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
-          <span style="font-size:12px;color:#94a3b8;">Time Scrubber</span>
+          <span style="font-size:12px;color:#94a3b8;">Radar Scrubber</span>
           <strong id="radarTimeLabel" style="font-size:14px;color:#38bdf8;">--:--</strong>
         </div>
         <input type="range" id="radarTimeSlider" min="0" max="${hours.length - 1}" value="${hours.length - 1}" style="width:100%;accent-color:#38bdf8;cursor:pointer;">
@@ -1774,26 +1774,29 @@ function initInteractiveMapModal(mapModal, item, mode) {
 
   mapModal.style.display = "flex";
 
-  // Initialize Leaflet Satellite Map
   const map = L.map('leafletMap', {
     center: [lat, lon],
     zoom: 7,
     zoomControl: true
   });
 
-  // Fixed Satellite Tiles (Esri World Imagery)
   L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
-    attribution: 'Tiles &copy; Esri',
     maxZoom: 18
   }).addTo(map);
 
-  const canvas = document.getElementById("lerpOverlayCanvas");
+  const canvas = document.getElementById("fixedTileCanvas");
   const ctx = canvas.getContext("2d");
   const slider = document.getElementById("radarTimeSlider");
   const label = document.getElementById("radarTimeLabel");
 
-  // Smooth Bilinear Lerp Overlay Renderer
-  const renderLerpOverlay = (frameIndex) => {
+  const paletteMap = {
+    temp: [[56, 189, 248], [251, 146, 60], [239, 68, 68]],
+    wind: [[59, 130, 246], [147, 51, 234], [236, 72, 153]],
+    dos:  [[34, 197, 94],  [234, 179, 8],  [239, 68, 68]],
+    precip: [[56, 189, 248], [37, 99, 235], [29, 78, 216]]
+  };
+
+  const drawFixedTileOverlay = (frameIndex) => {
     label.innerText = hours[frameIndex]?.time || `Frame ${frameIndex + 1}`;
 
     const rect = canvas.parentElement.getBoundingClientRect();
@@ -1802,35 +1805,21 @@ function initInteractiveMapModal(mapModal, item, mode) {
 
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-    // Color maps matching graph themes
-    const colorPalettes = {
-      temp: [ [56, 189, 248], [251, 146, 60], [239, 68, 68] ],
-      wind: [ [59, 130, 246], [147, 51, 234], [236, 72, 153] ],
-      dos:  [ [34, 197, 94],  [234, 179, 8],  [239, 68, 68] ],
-      precip: [ [56, 189, 248], [37, 99, 235], [29, 78, 216] ]
-    };
-    const palette = colorPalettes[mode] || colorPalettes.temp;
+    const palette = paletteMap[mode] || paletteMap.temp;
+    const tileSize = 64; // Fixed tile grid dimension in screen coordinates
+    const timeOffset = (frameIndex + 1) * 0.2;
 
-    // Generate grid sample points based on current map view bounds
-    const bounds = map.getBounds();
-    const cols = 20;
-    const rows = 20;
-    const imgData = ctx.createImageData(canvas.width, canvas.height);
-    const data = imgData.data;
+    for (let x = 0; x < canvas.width; x += tileSize) {
+      for (let y = 0; y < canvas.height; y += tileSize) {
+        // Map screen tile center to Lat/Lon spatial coordinates
+        const centerLatLng = map.containerPointToLatLng([x + tileSize / 2, y + tileSize / 2]);
 
-    const t = (frameIndex + 1) * 0.15;
+        // Calculate tile intensity based on world location coordinates
+        const val1 = Math.sin(centerLatLng.lat * 0.8 + timeOffset) * Math.cos(centerLatLng.lng * 0.8 + timeOffset);
+        const val2 = Math.cos(centerLatLng.lat * 1.5 - timeOffset * 0.5) * Math.sin(centerLatLng.lng * 1.5 + timeOffset * 0.5);
+        const normVal = (val1 + val2 + 2) / 4; // Normalized between 0 and 1
 
-    for (let y = 0; y < canvas.height; y += 4) {
-      for (let x = 0; x < canvas.width; x += 4) {
-        // Map pixel screen position to Map Geo-Coordinates
-        const point = map.containerPointToLatLng([x, y]);
-        
-        // Perlin-style continuous wave function (Lerp field)
-        const val1 = Math.sin(point.lat * 1.5 + t) * Math.cos(point.lng * 1.5 + t);
-        const val2 = Math.cos(point.lat * 2.8 - t * 0.5) * Math.sin(point.lng * 2.8 + t * 0.5);
-        const normVal = (val1 + val2 + 2) / 4; // Normalize between 0 and 1
-
-        // Interpolate (Lerp) colors seamlessly
+        // Interpolate (Lerp) tile colors smoothly across fixed tile bounds
         const colorIdx = normVal * (palette.length - 1);
         const idx1 = Math.floor(colorIdx);
         const idx2 = Math.min(idx1 + 1, palette.length - 1);
@@ -1839,57 +1828,28 @@ function initInteractiveMapModal(mapModal, item, mode) {
         const r = Math.round(palette[idx1][0] * (1 - factor) + palette[idx2][0] * factor);
         const g = Math.round(palette[idx1][1] * (1 - factor) + palette[idx2][1] * factor);
         const b = Math.round(palette[idx1][2] * (1 - factor) + palette[idx2][2] * factor);
-        const alpha = Math.round(normVal * 120); // Smooth alpha gradient
+        const alpha = Math.min(0.65, normVal * 0.7);
 
-        // Apply pixel data (4x4 blocks for optimal performance)
-        for (let dy = 0; dy < 4; dy++) {
-          for (let dx = 0; dx < 4; dx++) {
-            const px = x + dx;
-            const py = y + dy;
-            if (px < canvas.width && py < canvas.height) {
-              const pIdx = (py * canvas.width + px) * 4;
-              data[pIdx] = r;
-              data[pIdx + 1] = g;
-              data[pIdx + 2] = b;
-              data[pIdx + 3] = alpha;
-            }
-          }
-        }
+        // Render fixed grid tile cell
+        ctx.fillStyle = `rgba(${r}, ${g}, ${b}, ${alpha})`;
+        ctx.fillRect(x + 1, y + 1, tileSize - 2, tileSize - 2);
+
+        // Subtly outline fixed radar grid squares
+        ctx.strokeStyle = "rgba(255, 255, 255, 0.08)";
+        ctx.lineWidth = 1;
+        ctx.strokeRect(x, y, tileSize, tileSize);
       }
     }
-
-    ctx.putImageData(imgData, 0, 0);
   };
 
-  // Re-render continuous overlay whenever user Pans or Zooms
-  map.on('move', () => renderLerpOverlay(parseInt(slider.value, 10)));
-  map.on('zoomend', () => renderLerpOverlay(parseInt(slider.value, 10)));
-  slider.addEventListener('input', (e) => renderLerpOverlay(parseInt(e.target.value, 10)));
+  map.on('move', () => drawFixedTileOverlay(parseInt(slider.value, 10)));
+  map.on('zoomend', () => drawFixedTileOverlay(parseInt(slider.value, 10)));
+  slider.addEventListener('input', (e) => drawFixedTileOverlay(parseInt(e.target.value, 10)));
 
-  // Initial render after Leaflet calculates map container size
   setTimeout(() => {
     map.invalidateSize();
-    renderLerpOverlay(hours.length - 1);
+    drawFixedTileOverlay(hours.length - 1);
   }, 100);
-}
-
-/**
- * Dynamically loads Leaflet map CSS and JS scripts
- */
-function ensureLeafletLoaded(callback) {
-  if (window.L) {
-    callback();
-    return;
-  }
-  const link = document.createElement("link");
-  link.rel = "stylesheet";
-  link.href = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.css";
-  document.head.appendChild(link);
-
-  const script = document.createElement("script");
-  script.src = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.js";
-  script.onload = callback;
-  document.head.appendChild(script);
 }
    
 let activeMapItem = null;
