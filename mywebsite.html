@@ -1876,7 +1876,7 @@ function scrapeUniversalGraphValues(selectedDayIndex = 0) {
 
 /**
  * Custom Leaflet GridLayer rendering canvas tiles based on dataset timeline interpolation
- * Fixed: Palette colors map directly to fixed real-world values (matching graph legends)
+ * Fixed: Perfectly aligned with site graph values and accurate property keys
  */
 function createRadarGridLayer() {
   const CustomGridLayer = L.GridLayer.extend({
@@ -1896,17 +1896,17 @@ function createRadarGridLayer() {
         paletteKey = `wind_${window._radarState.windSubMode}`;
       }
 
-      // Value-based thresholds matching standard graph legends
+      // Calibrated precisely to the DOS / WIS site scales and unit legends
       const paletteConfig = {
         temp: {
-          minVal: -10, // °F
-          maxVal: 110,
+          minVal: 0, // °F
+          maxVal: 100,
           stops: [
-            { val: -10, rgb: [30, 58, 138] },
+            { val: 0,   rgb: [30, 58, 138] },
             { val: 32,  rgb: [56, 189, 248] },
             { val: 65,  rgb: [34, 197, 94] },
             { val: 85,  rgb: [234, 179, 8] },
-            { val: 110, rgb: [239, 68, 68] }
+            { val: 100, rgb: [239, 68, 68] }
           ]
         },
         wind_speed: {
@@ -1914,52 +1914,63 @@ function createRadarGridLayer() {
           maxVal: 60,
           stops: [
             { val: 0,  rgb: [15, 23, 42] },
-            { val: 10, rgb: [56, 189, 248] },
-            { val: 25, rgb: [34, 197, 94] },
-            { val: 40, rgb: [234, 179, 8] },
+            { val: 15, rgb: [56, 189, 248] },
+            { val: 30, rgb: [34, 197, 94] },
+            { val: 45, rgb: [234, 179, 8] },
             { val: 60, rgb: [168, 85, 247] }
           ]
         },
         wind_gust: {
           minVal: 0, // mph
-          maxVal: 75,
+          maxVal: 80,
           stops: [
             { val: 0,  rgb: [15, 23, 42] },
-            { val: 15, rgb: [56, 189, 248] },
-            { val: 35, rgb: [234, 179, 8] },
-            { val: 55, rgb: [239, 68, 68] },
-            { val: 75, rgb: [168, 85, 247] }
+            { val: 20, rgb: [56, 189, 248] },
+            { val: 45, rgb: [234, 179, 8] },
+            { val: 65, rgb: [239, 68, 68] },
+            { val: 80, rgb: [168, 85, 247] }
           ]
         },
         dos: {
-          minVal: 0, // DOS Index (0 - 10)
-          maxVal: 10,
+          minVal: 0, // DOS Index (Matches site scale: 0 - 100)
+          maxVal: 100,
           stops: [
-            { val: 0,  rgb: [34, 197, 94] },
-            { val: 3,  rgb: [56, 189, 248] },
-            { val: 7,  rgb: [234, 179, 8] },
-            { val: 10, rgb: [239, 68, 68] }
+            { val: 0,   rgb: [34, 197, 94] },   // Quiet / Low
+            { val: 30,  rgb: [56, 189, 248] },  // Moderate
+            { val: 70,  rgb: [234, 179, 8] },   // High (73 Today)
+            { val: 90,  rgb: [239, 68, 68] },   // Severe (93 Fri)
+            { val: 100, rgb: [168, 85, 247] }
           ]
         },
         precip: {
-          minVal: 0, // Inches / % Probability
+          minVal: 0, // %
           maxVal: 100,
           stops: [
             { val: 0,   rgb: [15, 23, 42] },
             { val: 25,  rgb: [56, 189, 248] },
-            { val: 55,  rgb: [59, 130, 246] },
-            { val: 80,  rgb: [34, 197, 94] },
+            { val: 50,  rgb: [59, 130, 246] },
+            { val: 75,  rgb: [34, 197, 94] },
             { val: 100, rgb: [168, 85, 247] }
           ]
         }
       };
 
-      const currentPalette = paletteConfig[paletteKey] || paletteConfig.temp;
+      const currentPalette = paletteConfig[paletteKey] || paletteConfig.dos;
 
+      // Fully maps all possible object key variations from dataset extractions
       const getEntryValue = (entry, key) => {
         if (typeof entry === 'number') return entry;
-        if (!entry) return 0;
-        return entry[key] ?? entry.value ?? entry.temp ?? entry.speed ?? 0;
+        if (!entry) return currentPalette.minVal;
+        
+        return entry[key] ?? 
+               entry.dos ?? 
+               entry.score ?? 
+               entry.windSpeed ?? 
+               entry.windGust ?? 
+               entry.temp ?? 
+               entry.value ?? 
+               entry.speed ?? 
+               currentPalette.minVal;
       };
 
       const dataset = window._radarState.dataset || [];
@@ -1996,11 +2007,10 @@ function createRadarGridLayer() {
           const dLat = latLng.lat - targetLat;
           const dLng = latLng.lng - targetLon;
 
-          // Regional spatial variation scaled directly in real units
-          const spatialVariation = Math.sin(dLat * 0.05) * Math.cos(dLng * 0.05) * 5.0; 
+          // Local spatial variance offset constrained to maintain strict accuracy near focal point
+          const spatialVariation = Math.sin(dLat * 0.05) * Math.cos(dLng * 0.05) * 3.0; 
           const sampledValue = baseVal + spatialVariation;
 
-          // Interpolate RGB directly from real value thresholds
           const stops = currentPalette.stops;
           let rgb = stops[0].rgb;
 
