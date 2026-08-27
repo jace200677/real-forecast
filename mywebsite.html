@@ -2531,12 +2531,14 @@ function updateTrafficTime(totalMinutes, baseDateOverride = null) {
     let derivedLon = -93.8864;
     let isGoogleMapsSource = false;
     let baseSpeedLimit = 65;
+    let routeQueryText = "";
 
     const iframe = document.getElementById("trafficMapFrame");
     if (iframe && iframe.src && iframe.src !== "about:blank") {
         try {
             const urlObj = new URL(iframe.src);
             const hostname = urlObj.hostname;
+            routeQueryText = decodeURIComponent(urlObj.toString()).toLowerCase();
 
             if (hostname.indexOf("google.com") !== -1 || hostname.indexOf("maps.google.com") !== -1) {
                 isGoogleMapsSource = true;
@@ -2600,15 +2602,26 @@ function updateTrafficTime(totalMinutes, baseDateOverride = null) {
                              workingDate.getMonth() === 7 && // August (0-indexed)
                              workingDate.getDate() === 27;
 
-    // Bounding box for Virginia, MN to Cloquet, MN (US-53 / MN-33 corridor)
+    // Bounding box between Virginia, MN and Cloquet, MN
     const isVirginiaToCloquetCorridor = (derivedLat >= 46.50 && derivedLat <= 47.70) && 
                                        (derivedLon >= -93.00 && derivedLon <= -92.20);
+
+    // Specific check targeting ONLY HWY 53 & HWY 33 routes
+    const isHwy33Or53Route = routeQueryText.includes("hwy 53") || 
+                             routeQueryText.includes("highway 53") || 
+                             routeQueryText.includes("us-53") || 
+                             routeQueryText.includes("mn-53") || 
+                             routeQueryText.includes("hwy 33") || 
+                             routeQueryText.includes("highway 33") || 
+                             routeQueryText.includes("mn-33") ||
+                             routeQueryText.includes("virginia") || 
+                             routeQueryText.includes("cloquet");
 
     let isExtremelySlowOverride = false;
     let customOverrideMultiplier = null;
 
-    if (isTargetDateAug27 && isVirginiaToCloquetCorridor) {
-        profileName = "Virginia to Cloquet Corridor (Highlighted Route)";
+    if (isTargetDateAug27 && isVirginiaToCloquetCorridor && isHwy33Or53Route) {
+        profileName = "HWY 33/53 Corridor (Highlighted Route)";
         freeFlowSpeed = 65;
         isExtremelySlowOverride = true;
 
