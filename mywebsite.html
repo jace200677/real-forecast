@@ -2015,21 +2015,76 @@ function createRadarGridLayer() {
 
       if (dsLen > 0) {
         let matchedIndex = -1;
-        const activeDateFilter = window._radarState.currentExtractedTime || document.getElementById('radarDateDisplay')?.innerText;
+        
+        // Helper to parse dataset timestamps/labels into absolute minutes from midnight
+        const parseEntryMinutes = (entry) => {
+          const rawTime = entry?.x || entry?.time || entry?.timestamp || entry?.datetime || entry?.date || entry?.label;
+          if, (!rawTime) return null;
+          if (typeof rawTime === 'number') {
+            // Assume timestamp or raw hour float
+            return rawTime < 24 ? rawTime * 60 : null;
+          }
+          const str = String(rawTime);
+          // Match standard time formats like "3 PM", "15:00", "3:30 AM"
+          const timeMatch = str.match(/(\d{1,2})(?::(\d{2}))?\s*(am|pm)?/i);
+          if (timeMatch) {
+            let hours = parseInt(timeMatch[1], 10);
+            const minutes = timeMatch[2] ? parseInt(timeMatch[2], 10) : 0;
+            const ampm = timeMatch[3] ? timeMatch[3].toLowerCase() : null;
+            if (ampm === 'pm' && hours < 12) hours += 12;
+            if (ampm === 'am' && hours === 12) hours = 0;
+            return hours * 60 + minutes;
+          }
+          return null;
+        };
 
-        if (activeDateFilter) {
-          matchedIndex = targetDataset.findIndex(entry => {
-            const entryTime = entry?.x || entry?.time || entry?.timestamp || entry?.datetime || entry?.date || entry?.label;
-            return entryTime && (String(entryTime).includes(String(activeDateFilter)) || String(activeDateFilter).includes(String(entryTime)));
-          });
+        // 1. Prioritize explicit time-slider alignment against graph dataset point timestamps
+        if (slider) {
+          let closestIdx = 0;
+          let minDiff = Infinity;
+          for (let i = 0; i < dsLen; i++) {
+            const entryMins = parseEntryMinutes(targetDataset[i]);
+            if (entryMins !== null) {
+              const diff = Math.abs(entryMins - totalMinutes);
+              if (diff < minDiff) {
+                minDiff = diff;
+                closestIdx = i;
+              }
+            }
+          }
+          // If dataset entries map closely to a timeline, snap or interpolate based on slider
+          if (minDiff <= 180) { // within a 3-hour window match threshold
+            matchedIndex = closestIdx;
+          }
+        }
+
+        // 2. Fallback to extracted date/time string display element if available
+        if (matchedIndex === -1) {
+          const activeDateFilter = window._radarState.currentExtractedTime || document.getElementById('radarDateDisplay')?.innerText;
+          if (activeDateFilter) {
+            matchedIndex = targetDataset.findIndex(entry => {
+              const entryTime = entry?.x || entry?.time || entry?.timestamp || entry?.datetime || entry?.date || entry?.label;
+              return entryTime && (String(entryTime).includes(String(activeDateFilter)) || String(activeDateFilter).includes(String(entryTime)));
+            });
+          }
         }
 
         if (matchedIndex !== -1) {
           const matchedEntry = targetDataset[matchedIndex];
           baseVal = typeof matchedEntry === 'object' && matchedEntry !== null ? (matchedEntry.y ?? getEntryValue(matchedEntry, activeKey)) : getEntryValue(matchedEntry, activeKey);
+          
+          // Sync display view with matched graph entry time label
+          const matchedTime = matchedEntry?.x || matchedEntry?.time || matchedEntry?.timestamp || matchedEntry?.datetime || matchedEntry?.date || matchedEntry?.label;
+          if (matchedTime) {
+            window._radarState.currentExtractedTime = matchedTime;
+            const radarDateDisplay = document.getElementById('radarDateDisplay');
+            if (radarDateDisplay && typeof matchedTime === 'string') {
+              radarDateDisplay.innerText = matchedTime;
+            }
+          }
         } else {
-          const targetHour = totalMinutes / 60;
-          const exactIndexFloat = (targetHour / 24) * (dsLen - 1);
+          // Precise fractional interpolation mapped directly across the graph dataset timeline span matching the slider position
+          const exactIndexFloat = (totalMinutes / 1440) * (dsLen - 1);
           const lowIdx = Math.floor(exactIndexFloat);
           const highIdx = Math.min(dsLen - 1, Math.ceil(exactIndexFloat));
           const blend = exactIndexFloat - lowIdx;
@@ -2111,7 +2166,7 @@ function createRadarGridLayer() {
     }
   });
 
-  return new CustomGridLayer({ opacity: 0.9, updateWhenZooming: false });
+  return new CustomGridLayer({ opacity: 0.75, updateWhenZooming: false });
 }
 function triggerRadarRedraw(forcedMinute) {
   const slider = document.getElementById("radarTimeSlider");
