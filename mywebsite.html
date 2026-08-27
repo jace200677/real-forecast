@@ -1721,6 +1721,9 @@ function openForecastGraphModal(item, fullForecast = [], itemIndex = -1) {
 /**
  * Global Weather Radar Layer — Robust Multi-Day, Timezone-Aware, Direct Graph-Interpolation Overlay
  */
+/**
+ * Global Weather Radar Layer — Robust Multi-Day, Timezone-Aware, Direct Graph-Interpolation Overlay
+ */
 function openWeatherMapModal(item, mode = 'temp', selectedDayIndex = 0) {
   let mapModal = document.getElementById("weatherRadarMapModal");
   if (!mapModal) {
@@ -1741,7 +1744,6 @@ function initTimezoneSyncedRadarModal(mapModal, item, mode, selectedDayIndex) {
 
   const appTimezone = item?.timezone || item?.tz || Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
 
-  // **Robust Day Card Resolver**: Safely extract the target day from multiple common API response patterns
   const extractDaysArray = (data) => {
     if (!data) return [];
     if (Array.isArray(data)) return data;
@@ -1784,7 +1786,6 @@ function initTimezoneSyncedRadarModal(mapModal, item, mode, selectedDayIndex) {
     }
   }
 
-  // **Robust Hourly Timeline Resolver**: Checks target day card first, then falls back to parent or synthetic generator
   const extractHourlyArray = (card) => {
     if (!card) return [];
     return card.hourly || card.timeline || card.dataset || card.hours || card.lead || [];
