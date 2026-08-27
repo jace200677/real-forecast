@@ -1727,13 +1727,7 @@ function openForecastGraphModal(item, fullForecast = [], itemIndex = -1) {
 }
 
 /**
- * Global Weather Radar Layer — Fixed Graph-Interpolation Overlay
- */
-/**
- * Global Weather Radar Layer — Tile-Based Dynamic Spatial Mapping
- */
-/**
- * Global Weather Radar Layer — Tile-Based Dynamic Spatial Mapping (Fully Integrated)
+ * Global Weather Radar Layer — Tile-Based Dynamic Spatial Mapping (Fully Interactive & Multi-Layer)
  */
 function openWeatherMapModal(item, mode = 'temp', selectedDayIndex = 0) {
   let mapModal = document.getElementById("weatherRadarMapModal");
@@ -1850,7 +1844,9 @@ function initTimezoneSyncedRadarModal(mapModal, item, mode, selectedDayIndex) {
             value: val, 
             temp: val, 
             speed: val * 0.65, 
-            gust: val * 0.95 
+            gust: val * 0.95,
+            dos: val * 0.8,
+            precip: val * 0.5
           });
         });
         break;
@@ -1860,7 +1856,15 @@ function initTimezoneSyncedRadarModal(mapModal, item, mode, selectedDayIndex) {
     if (points.length < 2) {
       for (let h = 0; h < 24; h++) {
         let baseVal = 50 + Math.sin((h - 6) / 24 * Math.PI * 2) * 35 + (selectedDayIndex * 5);
-        points.push({ hour: h, value: baseVal, temp: baseVal, speed: Math.max(5, baseVal * 0.4), gust: Math.max(10, baseVal * 0.7) });
+        points.push({ 
+          hour: h, 
+          value: baseVal, 
+          temp: baseVal, 
+          speed: Math.max(5, baseVal * 0.4), 
+          gust: Math.max(10, baseVal * 0.7),
+          dos: Math.max(0, baseVal * 0.6),
+          precip: Math.max(0, baseVal * 0.3)
+        });
       }
     }
     return points;
@@ -1885,11 +1889,19 @@ function initTimezoneSyncedRadarModal(mapModal, item, mode, selectedDayIndex) {
       <button onclick="document.getElementById('weatherRadarMapModal').style.display='none'" style="position:absolute;top:12px;right:12px;background:#27272a;border:none;color:#fff;width:32px;height:32px;border-radius:50%;font-size:18px;cursor:pointer;z-index:1001;display:flex;align-items:center;justify-content:center;">✕</button>
       
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:10px;">
-        <div style="display:flex;align-items:center;gap:12px;">
+        <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
           <h3 style="margin:0;font-size:16px;font-weight:600;">
-            🛰️ Radar Overlay (<span style="color:#38bdf8;">${formattedDisplayDate}</span> • <span style="color:#a1a1aa;font-size:12px;">${appTimezone}</span>) — <span id="radarModeTitle" style="color:#38bdf8;text-transform:capitalize;">${mode} Layer</span>
+            🛰️ Radar (<span style="color:#38bdf8;">${formattedDisplayDate}</span>)
           </h3>
-          <div id="windOptionContainer" style="display:${mode === 'wind' ? 'inline-block' : 'none'};">
+          
+          <select id="radarLayerSwitcher" style="background:#27272a;color:#fff;border:1px solid #3f3f46;padding:4px 10px;border-radius:6px;font-size:13px;cursor:pointer;outline:none;">
+            <option value="temp" ${currentMode === 'temp' ? 'selected' : ''}>Temperature</option>
+            <option value="wind" ${currentMode === 'wind' ? 'selected' : ''}>Wind</option>
+            <option value="dos" ${currentMode === 'dos' ? 'selected' : ''}>DOS / Index</option>
+            <option value="precip" ${currentMode === 'precip' ? 'selected' : ''}>Precipitation</option>
+          </select>
+
+          <div id="windOptionContainer" style="display:${currentMode === 'wind' ? 'inline-block' : 'none'};">
             <select id="windSubModeSelect" style="background:#27272a;color:#fff;border:1px solid #3f3f46;padding:4px 10px;border-radius:6px;font-size:13px;cursor:pointer;outline:none;">
               <option value="speed" selected>Wind Speed</option>
               <option value="gust">Wind Gusts</option>
@@ -1905,7 +1917,7 @@ function initTimezoneSyncedRadarModal(mapModal, item, mode, selectedDayIndex) {
 
       <div style="margin-top:14px;background:#27272a;padding:12px 16px;border-radius:8px;">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
-          <span style="font-size:12px;color:#a1a1aa;font-weight:500;">Tile-Synced Graph Timeline</span>
+          <span style="font-size:12px;color:#a1a1aa;font-weight:500;">Interactive Timeline</span>
           <strong id="radarTimeLabel" style="font-size:14px;color:#38bdf8;">--:--</strong>
         </div>
         <input type="range" id="radarTimeSlider" min="0" max="${totalMinutes - 1}" step="1" value="${totalMinutes - 1}" style="width:100%;accent-color:#38bdf8;cursor:pointer;">
@@ -1942,8 +1954,9 @@ function initTimezoneSyncedRadarModal(mapModal, item, mode, selectedDayIndex) {
   const ctx = canvas.getContext("2d");
   const slider = document.getElementById("radarTimeSlider");
   const label = document.getElementById("radarTimeLabel");
+  const layerSwitcher = document.getElementById("radarLayerSwitcher");
   const windSelect = document.getElementById("windSubModeSelect");
-  const modeTitle = document.getElementById("radarModeTitle");
+  const windOptContainer = document.getElementById("windOptionContainer");
 
   const offscreenCanvas = document.createElement("canvas");
   const offscreenCtx = offscreenCanvas.getContext("2d");
@@ -2024,19 +2037,8 @@ function initTimezoneSyncedRadarModal(mapModal, item, mode, selectedDayIndex) {
       }
     }
 
-    let val1 = entry1.value ?? entry1.temp ?? 50;
-    let val2 = entry2.value ?? entry2.temp ?? 50;
-
-    if (activeKey === 'temp') {
-      val1 = entry1.temp ?? entry1.value ?? 55;
-      val2 = entry2.temp ?? entry2.value ?? 55;
-    } else if (activeKey === 'wind_speed') {
-      val1 = entry1.speed ?? entry1.value ?? 25;
-      val2 = entry2.speed ?? entry2.value ?? 25;
-    } else if (activeKey === 'wind_gust') {
-      val1 = entry1.gust ?? entry1.value ?? 45;
-      val2 = entry2.gust ?? entry2.value ?? 45;
-    }
+    let val1 = entry1[activeKey] ?? entry1.value ?? 50;
+    let val2 = entry2[activeKey] ?? entry2.value ?? 50;
 
     return val1 * (1 - mix) + val2 * mix;
   }
@@ -2133,22 +2135,19 @@ function initTimezoneSyncedRadarModal(mapModal, item, mode, selectedDayIndex) {
   map.on('zoom', scheduleRedraw);
   map.on('viewreset', scheduleRedraw);
 
-  // Synchronous immediate timeline refresh on slider drag
-  slider.addEventListener('input', () => {
-    label.innerText = formatTimeFromMinutes(parseInt(slider.value, 10));
+  slider.addEventListener('input', scheduleRedraw);
+
+  layerSwitcher.addEventListener('change', (e) => {
+    currentMode = e.target.value;
+    if (windOptContainer) {
+      windOptContainer.style.display = currentMode === 'wind' ? 'inline-block' : 'none';
+    }
     scheduleRedraw();
   });
 
   if (windSelect) {
     windSelect.addEventListener('change', (e) => {
       windSubMode = e.target.value;
-      modeTitle.innerText = `Wind ${windSubMode === 'gust' ? 'Gusts' : 'Speed'} Layer`;
-      
-      const windOptContainer = document.getElementById('windOptionContainer');
-      if (windOptContainer) {
-        windOptContainer.style.display = currentMode === 'wind' ? 'inline-block' : 'none';
-      }
-
       scheduleRedraw();
     });
   }
