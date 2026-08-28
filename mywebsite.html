@@ -3355,28 +3355,34 @@ function ensureGoogleMapsApiLoaded(callback) {
     document.head.appendChild(script);
 }
 function getSelectedDayCardDate(canvas, activeX, item, mode, prevItem, nextItem) {
-    // 1. Check explicit item properties first (Ensures data passed from the active graph/timeline takes precedence)
+    // 1. Resolve base reference date from canvas dataset or fallback to current Central Time (CDT/CST)
+    let baseDate = new Date();
+    if (canvas && canvas.dataset && canvas.dataset.baseDate) {
+        const parsedDatasetDate = new Date(canvas.dataset.baseDate);
+        if (!isNaN(parsedDatasetDate)) {
+            baseDate = parsedDatasetDate;
+        }
+    }
+
+    // Format current base date components to ensure consistent matching across latitude/longitude bounds
+    const cdtOptions = { timeZone: 'America/Chicago', year: 'numeric', month: 'numeric', day: 'numeric', hour12: false };
+    const formatter = new Intl.DateTimeFormat('en-US', cdtOptions);
+    
+    const getDefaultTodayStr = () => {
+        const defaultParts = formatter.formatToParts(baseDate);
+        let defM = '8', defD = '28', defY = '2026';
+        defaultParts.forEach(p => {
+            if (p.type === 'month') defM = p.value;
+            if (p.type === 'day') defD = p.value;
+            if (p.type === 'year') defY = p.value;
+        });
+        return `${defM}/${defD}/${defY}`;
+    };
+
+    // 2. Check explicit item properties first (Ensures data passed from the active graph/timeline takes precedence)
     if (item) {
         const isTodayLabel = (item.day && ['today', 'now'].includes(item.day.toLowerCase().trim())) || item.dayIndex === 0;
         
-        let baseDate = new Date();
-        if (canvas && canvas.dataset && canvas.dataset.baseDate) {
-            const parsedDatasetDate = new Date(canvas.dataset.baseDate);
-            if (!isNaN(parsedDatasetDate)) baseDate = parsedDatasetDate;
-        }
-        const formatter = new Intl.DateTimeFormat('en-US', { timeZone: 'America/Chicago', year: 'numeric', month: 'numeric', day: 'numeric', hour12: false });
-        
-        const getDefaultTodayStr = () => {
-            const defaultParts = formatter.formatToParts(baseDate);
-            let defM = '8', defD = '28', defY = '2026';
-            defaultParts.forEach(p => {
-                if (p.type === 'month') defM = p.value;
-                if (p.type === 'day') defD = p.value;
-                if (p.type === 'year') defY = p.value;
-            });
-            return `${defM}/${defD}/${defY}`;
-        };
-
         if (isTodayLabel) {
             return { dateStr: getDefaultTodayStr() };
         }
@@ -3392,7 +3398,7 @@ function getSelectedDayCardDate(canvas, activeX, item, mode, prevItem, nextItem)
         }
     }
 
-    // 2. Check active DOM cards (UI-driven date selection)
+    // 3. Check active DOM cards (UI-driven date selection)
     const activeCard = document.querySelector('.day-card.active, .forecast-day-card.active, .day-tab.active, [data-selected="true"]');
     if (activeCard) {
         const cardText = activeCard.innerText || activeCard.getAttribute('data-date') || activeCard.getAttribute('title');
@@ -3404,7 +3410,7 @@ function getSelectedDayCardDate(canvas, activeX, item, mode, prevItem, nextItem)
         }
     }
 
-    // 3. Check modal header title or graph DOM elements
+    // 4. Check modal header title or graph DOM elements
     const graphHeaderSelectors = [
         '#graphModalTitle', '.modal-title', '.graph-header', '.chart-title',
         '.graph-modal-date', '[id*="graph"] h2', '[id*="graph"] h3', '[class*="graph"] h3'
@@ -3419,32 +3425,8 @@ function getSelectedDayCardDate(canvas, activeX, item, mode, prevItem, nextItem)
             }
         }
     }
-
-    // Determine base reference date from canvas dataset or fallback to current Central Time (CDT/CST)
-    let baseDate = new Date();
-    if (canvas && canvas.dataset && canvas.dataset.baseDate) {
-        const parsedDatasetDate = new Date(canvas.dataset.baseDate);
-        if (!isNaN(parsedDatasetDate)) {
-            baseDate = parsedDatasetDate;
-        }
-    }
-
-    // Format current base date components to ensure consistent matching
-    const cdtOptions = { timeZone: 'America/Chicago', year: 'numeric', month: 'numeric', day: 'numeric', hour12: false };
-    const formatter = new Intl.DateTimeFormat('en-US', cdtOptions);
     
-    const getDefaultTodayStr = () => {
-        const defaultParts = formatter.formatToParts(baseDate);
-        let defM = '8', defD = '28', defY = '2026';
-        defaultParts.forEach(p => {
-            if (p.type === 'month') defM = p.value;
-            if (p.type === 'day') defD = p.value;
-            if (p.type === 'year') defY = p.value;
-        });
-        return `${defM}/${defD}/${defY}`;
-    };
-    
-    // If forecast index or offset is provided on the item object (e.g. item.dayIndex)
+    // 5. If forecast index or offset is provided on the item object (e.g. item.dayIndex)
     if (item && typeof item.dayIndex === 'number') {
         const targetDate = new Date(baseDate.getTime());
         targetDate.setDate(baseDate.getDate() + item.dayIndex);
@@ -3458,7 +3440,7 @@ function getSelectedDayCardDate(canvas, activeX, item, mode, prevItem, nextItem)
         return { dateStr: `${m}/${d}/${y}` };
     }
 
-    // Fallback: If item.day matches a known weekday or label relative to today, parse accordingly
+    // 6. Fallback: If item.day matches a known weekday or label relative to today, parse accordingly
     const daysOfWeek = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
     if (item && typeof item.day === 'string') {
         const lowerDay = item.day.toLowerCase().trim();
