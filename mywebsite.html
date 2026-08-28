@@ -2751,12 +2751,12 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
         return 'rgba(56, 189, 248, 0.35)';
     };
 
-    // Helper to calculate lat/lon bounds for any Leaflet tile
+    // Corrected Leaflet Web Mercator projection for lat/lon tile bounds
     const getTileLatLonBounds = (x, y, z) => {
         const tile2lng = (x, z) => (x / Math.pow(2, z)) * 360 - 180;
         const tile2lat = (y, z) => {
             const n = Math.PI - (2 * Math.PI * y) / Math.pow(2, z);
-            return (180 / Math.PI) * Math.atan(0.5 * (Math.expm1(n) + 1 / (Math.expm1(n) + 1)));
+            return (180 / Math.PI) * Math.atan(0.5 * (Math.exp(n) - Math.exp(-n)));
         };
 
         return {
@@ -3263,19 +3263,6 @@ function getSelectedDayCardDate(canvas, activeX, item, mode, prevItem, nextItem)
         }
     }
 
-    // 3. Check explicit item properties
-    if (item) {
-        if (typeof item.dateStr === 'string' && item.dateStr.trim() !== '') {
-            return { dateStr: item.dateStr };
-        }
-        if (typeof item.date === 'string' && item.date.trim() !== '') {
-            return { dateStr: item.date };
-        }
-        if (item.formattedDate) {
-            return { dateStr: item.formattedDate };
-        }
-    }
-
     // Determine base reference date from canvas dataset or fallback to current Central Time (CDT/CST)
     let baseDate = new Date();
     if (canvas && canvas.dataset && canvas.dataset.baseDate) {
@@ -3288,6 +3275,36 @@ function getSelectedDayCardDate(canvas, activeX, item, mode, prevItem, nextItem)
     // Format current base date components to ensure consistent matching
     const cdtOptions = { timeZone: 'America/Chicago', year: 'numeric', month: 'numeric', day: 'numeric', hour12: false };
     const formatter = new Intl.DateTimeFormat('en-US', cdtOptions);
+    
+    const getDefaultTodayStr = () => {
+        const defaultParts = formatter.formatToParts(baseDate);
+        let defM = '8', defD = '28', defY = '2026';
+        defaultParts.forEach(p => {
+            if (p.type === 'month') defM = p.value;
+            if (p.type === 'day') defD = p.value;
+            if (p.type === 'year') defY = p.value;
+        });
+        return `${defM}/${defD}/${defY}`;
+    };
+
+    // 3. Check explicit item properties (Strictly ignore if item explicitly marks itself as a future/different offset day unless requested)
+    if (item) {
+        const isTodayLabel = (item.day && ['today', 'now'].includes(item.day.toLowerCase().trim())) || item.dayIndex === 0;
+        
+        if (isTodayLabel) {
+            return { dateStr: getDefaultTodayStr() };
+        }
+
+        if (typeof item.dateStr === 'string' && item.dateStr.trim() !== '') {
+            return { dateStr: item.dateStr };
+        }
+        if (typeof item.date === 'string' && item.date.trim() !== '') {
+            return { dateStr: item.date };
+        }
+        if (item.formattedDate) {
+            return { dateStr: item.formattedDate };
+        }
+    }
     
     // If forecast index or offset is provided on the item object (e.g. item.dayIndex)
     if (item && typeof item.dayIndex === 'number') {
@@ -3338,16 +3355,8 @@ function getSelectedDayCardDate(canvas, activeX, item, mode, prevItem, nextItem)
         }
     }
 
-    // Default safe fallback matching baseDate parts
-    const defaultParts = formatter.formatToParts(baseDate);
-    let defM = '8', defD = '28', defY = '2026';
-    defaultParts.forEach(p => {
-        if (p.type === 'month') defM = p.value;
-        if (p.type === 'day') defD = p.value;
-        if (p.type === 'year') defY = p.value;
-    });
-
-    return { dateStr: `${defM}/${defD}/${defY}` };
+    // Default safe fallback matching baseDate parts (Today)
+    return { dateStr: getDefaultTodayStr() };
 }
 
 // **Time Slider Controller Integration**
