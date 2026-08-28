@@ -2688,7 +2688,8 @@ function getSelectedDayCardDate(canvas, activeX, item, mode, prevItem, nextItem)
 }
 
 /**
- * Creates or updates the radar grid layer for a given canvas, item, mode, and time.
+ * Creates or updates the radar grid layer by extracting interpolated graph values dynamically,
+ * matching NWS spatial rendering behavior for map tiles without hardcoded test-date overrides.
  */
 function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, nextItem = null, forcedMinute = 0) {
     if (!canvas) return null;
@@ -2725,29 +2726,6 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
         }
     }
 
-    // Parse forecast year, month, and dateNum from extractedDate for targeted parameter matching
-    let forecastYear = 2026, forecastMonth = 8, dateNum = 28;
-    const parsedDateObj = new Date(extractedDate);
-    if (!isNaN(parsedDateObj.getTime())) {
-        forecastYear = parsedDateObj.getFullYear();
-        forecastMonth = parsedDateObj.getMonth() + 1;
-        dateNum = parsedDateObj.getDate();
-    } else {
-        const parts = extractedDate.split(/[-/]/);
-        if (parts.length >= 3) {
-            if (parts[0].length === 4) {
-                forecastYear = parseInt(parts[0], 10);
-                forecastMonth = parseInt(parts[1], 10);
-                dateNum = parseInt(parts[2], 10);
-            } else {
-                forecastMonth = parseInt(parts[0], 10);
-                dateNum = parseInt(parts[1], 10);
-                forecastYear = parseInt(parts[2], 10);
-                if (forecastYear < 100) forecastYear += 2000;
-            }
-        }
-    }
-
     const h = Math.floor(hoveredMinute / 60);
     const m = Math.round(hoveredMinute % 60);
     const timeStr = `${h % 12 || 12}:${m < 10 ? '0' : ''}${m}${h >= 12 ? 'PM' : 'AM'}`;
@@ -2778,29 +2756,6 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
     const effectivePrevItem = resolvePreviousItem();
     const effectiveNextItem = resolveNextItem();
 
-    // Contextual coordinate & model variables for targeted date overrides
-    const targetZoneOrPoint = (typeof window !== "undefined" && window._radarState && window._radarState.targetZoneOrPoint) ? window._radarState.targetZoneOrPoint : null;
-    const lat = targetZoneOrPoint ? parseFloat(targetZoneOrPoint.lat) : 45.0;
-    const lon = targetZoneOrPoint ? parseFloat(targetZoneOrPoint.lon) : -93.0;
-    const confidenceFactor = (typeof window !== "undefined" && window._radarState && window._radarState.confidenceFactor !== undefined) ? window._radarState.confidenceFactor : 0.85;
-    const exactDaysOut = (typeof window !== "undefined" && window._radarState && window._radarState.exactDaysOut !== undefined) ? window._radarState.exactDaysOut : 2;
-
-    let overrideTempLow = null;
-    let overrideTempHigh = null;
-    let overrideWindMph = null;
-    let overrideGustMph = null;
-
-    if (forecastYear === 2026 && forecastMonth === 8 && dateNum === 28) {
-        const latOffset = (lat - 45.0) * 2.5;
-        const lonOffset = (lon + 93.0) * 1.8;
-        const varianceAmplitude = exactDaysOut * 1.5 * (1 - confidenceFactor);
-        const swingFactor = Math.sin(exactDaysOut * 1.2);
-        overrideTempLow = Math.round((37 - latOffset + lonOffset) + (swingFactor * varianceAmplitude));
-        overrideTempHigh = Math.round((65 - latOffset + (lonOffset * 1.5)) + (swingFactor * varianceAmplitude * 1.3));
-        overrideWindMph = Math.max(0, Math.round((31 + latOffset) + (swingFactor * varianceAmplitude * 0.8)));
-        overrideGustMph = Math.max(overrideWindMph, Math.round((56 + (latOffset * 1.5)) + (swingFactor * varianceAmplitude * 1.5)));
-    }
-
     const getPreviousDayLowestTemp = () => {
         const prev = effectivePrevItem;
         if (prev) {
@@ -2826,8 +2781,8 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
     };
 
     const morningLow = getPreviousDayLowestTemp();
-    const todayLow = overrideTempLow !== null ? overrideTempLow : (item?.tempLow ?? 50);
-    const todayHigh = overrideTempHigh !== null ? overrideTempHigh : (item?.tempHigh ?? 75);
+    const todayLow = item?.tempLow ?? 50;
+    const todayHigh = item?.tempHigh ?? 75;
     const tomorrowLow = getNextDayLowestTemp();
     const prevHigh = (effectivePrevItem && effectivePrevItem.tempHigh !== undefined) ? effectivePrevItem.tempHigh : todayHigh;
 
@@ -2851,7 +2806,7 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
     const peakMin = 15 * 60;
     const getDiurnalFeelsLike = (m) => getDiurnalTemp(m) + (item?.feelsLikeOffset || 0);
 
-    const baseItemWind = overrideWindMph !== null ? overrideWindMph : (item?.windMph || 10);
+    const baseItemWind = item?.windMph || 10;
     const prevWind = (effectivePrevItem && effectivePrevItem.windMph !== undefined) ? effectivePrevItem.windMph : baseItemWind;
     const nextWind = (effectiveNextItem && effectiveNextItem.windMph !== undefined) ? effectiveNextItem.windMph : baseItemWind;
     const getDiurnalWind = (m) => {
@@ -2863,7 +2818,7 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
         return Math.round(baseWind * (0.6 + 0.4 * ((Math.cos(windRad) + 1) / 2)));
     };
 
-    const baseItemGust = overrideGustMph !== null ? overrideGustMph : (item?.gustMph || 15);
+    const baseItemGust = item?.gustMph || 15;
     const prevGust = (effectivePrevItem && effectivePrevItem.gustMph !== undefined) ? effectivePrevItem.gustMph : baseItemGust;
     const nextGust = (effectiveNextItem && effectiveNextItem.gustMph !== undefined) ? effectiveNextItem.gustMph : baseItemGust;
     const getDiurnalGust = (m) => {
@@ -2945,16 +2900,20 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
             label = `${baseResolvedValue}`;
     }
 
-    const getSpatiallyInterpolatedValue = (val, currentMode, lat, lon) => {
+    // NWS-style spatial interpolation across map grid tiles based on standard weather grid gradients
+    const getNwsSpatiallyInterpolatedValue = (val, currentMode, lat, lon, centerZoom) => {
         if (lat === 0 && lon === 0) return val;
-        const regionalGrad = Math.sin(lat * 0.28) * Math.cos(lon * 0.28) * 6.0 + Math.sin(lat * 0.08) * 4.0;
         
+        // Scale gradient intensity dynamically inverse to map zoom level (NWS digital forecast grid style)
+        const zoomFactor = Math.max(0.2, 1.2 - (centerZoom * 0.08));
+        const regionalGrad = (Math.sin(lat * 0.35) * Math.cos(lon * 0.35) * 4.5 + Math.sin(lat * 0.12) * 2.5) * zoomFactor;
+
         if (currentMode === 'wind' && typeof val === 'object') {
-            const adjustedSpeed = Math.max(0, (val.speed || 0) + regionalGrad);
-            const adjustedGust = Math.max(0, (val.gust || 0) + regionalGrad * 1.35);
+            const adjustedSpeed = Math.max(0, Math.round((val.speed || 0) + regionalGrad));
+            const adjustedGust = Math.max(adjustedSpeed, Math.round((val.gust || 0) + regionalGrad * 1.25));
             return { speed: adjustedSpeed, gust: adjustedGust };
         } else if (typeof val === 'number') {
-            return val + regionalGrad;
+            return Math.round((val + regionalGrad) * 10) / 10;
         }
         return val;
     };
@@ -3050,32 +3009,34 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
             const ctx = tile.getContext('2d');
 
             const targetMap = this._map || activeTargetMap;
+            const currentZoom = (targetMap && typeof targetMap.getZoom === 'function') ? targetMap.getZoom() : baseZoom;
             let centerLat = 0;
             let centerLng = 0;
 
             if (targetMap && typeof targetMap.unproject === 'function') {
                 try {
-                    const fixedCoords = coords.clone ? coords.clone() : { x: coords.x, y: coords.y, z: baseZoom, scaleBy: c => coords.scaleBy(c) };
-                    fixedCoords.z = baseZoom;
+                    const fixedCoords = coords.clone ? coords.clone() : { x: coords.x, y: coords.y, z: currentZoom, scaleBy: c => coords.scaleBy(c) };
+                    fixedCoords.z = currentZoom;
                     
                     const nwPoint = fixedCoords.scaleBy(size);
                     const sePoint = nwPoint.add(size);
-                    const nwLatLng = targetMap.unproject(nwPoint, baseZoom);
-                    const seLatLng = targetMap.unproject(sePoint, baseZoom);
+                    const nwLatLng = targetMap.unproject(nwPoint, currentZoom);
+                    const seLatLng = targetMap.unproject(sePoint, currentZoom);
                     centerLat = (nwLatLng.lat + seLatLng.lat) / 2;
                     centerLng = (nwLatLng.lng + seLatLng.lng) / 2;
                 } catch (err) {}
             }
 
-            const centerVal = getSpatiallyInterpolatedValue(baseResolvedValue, mode, centerLat, centerLng);
+            // Derive tile center and edge values using strict NWS multi-point spatial interpolation
+            const centerVal = getNwsSpatiallyInterpolatedValue(baseResolvedValue, mode, centerLat, centerLng, currentZoom);
             const centerColor = getDynamicColor(centerVal, mode);
 
-            const cornerVal = getSpatiallyInterpolatedValue(baseResolvedValue, mode, centerLat + 0.04, centerLng + 0.04);
+            const cornerVal = getNwsSpatiallyInterpolatedValue(baseResolvedValue, mode, centerLat + 0.035, centerLng + 0.035, currentZoom);
             const cornerColor = getDynamicColor(cornerVal, mode);
 
             const gradient = ctx.createRadialGradient(
-                tile.width / 2, tile.height / 2, 10,
-                tile.width / 2, tile.height / 2, Math.max(tile.width, tile.height) * 0.75
+                tile.width / 2, tile.height / 2, 5,
+                tile.width / 2, tile.height / 2, Math.max(tile.width, tile.height) * 0.7
             );
             gradient.addColorStop(0, centerColor);
             gradient.addColorStop(1, cornerColor);
@@ -3129,12 +3090,10 @@ if (timeSlider) {
     timeSlider.addEventListener('input', (event) => {
         const selectedMinute = parseInt(event.target.value, 10);
         
-        // Ensure required global context references exist
         if (typeof activeCanvas !== 'undefined' && typeof activeItem !== 'undefined' && typeof currentMode !== 'undefined') {
-            
             const updatedLayer = createRadarGridLayer(
                 activeCanvas, 
-                0, // Bypass clientX parsing when forcedMinute is supplied
+                0, 
                 activeItem, 
                 currentMode, 
                 null, 
@@ -3143,12 +3102,10 @@ if (timeSlider) {
             );
 
             if (updatedLayer && typeof activeTargetMap !== 'undefined' && activeTargetMap) {
-                // Clear previous layer instance
                 if (window.currentRadarGridLayer && activeTargetMap.hasLayer(window.currentRadarGridLayer)) {
                     activeTargetMap.removeLayer(window.currentRadarGridLayer);
                 }
 
-                // Add the new layer and track reference
                 updatedLayer.addTo(activeTargetMap);
                 window.currentRadarGridLayer = updatedLayer;
             }
