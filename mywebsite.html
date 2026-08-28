@@ -2879,7 +2879,25 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
     // Safely evaluate mode strings supporting both standard short names and explicit wind sub-types
     const normalizedMode = (mode || "").toLowerCase();
 
-    switch (normalizedMode) {
+    // Conditionally manage visibility of the wind sub-mode selector container based on whether the active mode relates to wind
+    const windOptionContainer = document.getElementById('windOptionContainer');
+    const windSubModeSelect = document.getElementById('windSubModeSelect');
+    const isWindMode = normalizedMode === 'wind' || normalizedMode === 'windspeed' || normalizedMode === 'wind_speed' || normalizedMode === 'gust' || normalizedMode === 'windgust' || normalizedMode === 'wind_gust';
+
+    if (windOptionContainer) {
+        windOptionContainer.style.display = isWindMode ? 'block' : 'none';
+    }
+
+    let effectiveSubMode = normalizedMode;
+    if (isWindMode && windSubModeSelect) {
+        if (windSubModeSelect.value === 'gust') {
+            effectiveSubMode = 'gust';
+        } else {
+            effectiveSubMode = 'wind';
+        }
+    }
+
+    switch (effectiveSubMode) {
         case "temp":
         case "temperature":
             baseResolvedValue = getInterpolatedVal(hoveredMinute, 'temp', getDiurnalTemp);
@@ -3041,11 +3059,11 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
                 } catch (err) {}
             }
 
-            const centerVal = getNwsSpatiallyInterpolatedValue(baseResolvedValue, mode, centerLat, centerLng, currentZoom);
-            const centerColor = getDynamicColor(centerVal, mode);
+            const centerVal = getNwsSpatiallyInterpolatedValue(baseResolvedValue, effectiveSubMode, centerLat, centerLng, currentZoom);
+            const centerColor = getDynamicColor(centerVal, effectiveSubMode);
 
-            const cornerVal = getNwsSpatiallyInterpolatedValue(baseResolvedValue, mode, centerLat + 0.035, centerLng + 0.035, currentZoom);
-            const cornerColor = getDynamicColor(cornerVal, mode);
+            const cornerVal = getNwsSpatiallyInterpolatedValue(baseResolvedValue, effectiveSubMode, centerLat + 0.035, centerLng + 0.035, currentZoom);
+            const cornerColor = getDynamicColor(cornerVal, effectiveSubMode);
 
             const gradient = ctx.createRadialGradient(
                 tile.width / 2, tile.height / 2, 5,
@@ -3072,8 +3090,8 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
         minute: hoveredMinute,
         timeStr: timeStr,
         dateStr: extractedDate,
-        color: getDynamicColor(baseResolvedValue, mode),
-        mode: mode
+        color: getDynamicColor(baseResolvedValue, effectiveSubMode),
+        mode: effectiveSubMode
     };
 
     if (activeTargetMap) {
@@ -3096,6 +3114,41 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
     return activeGridLayer;
 }
 
+// **Time Slider and Wind Sub-Mode Controller Integration**
+const timeSlider = document.getElementById('timeSlider'); 
+const windSubModeSelect = document.getElementById('windSubModeSelect');
+
+const triggerLayerRefresh = () => {
+    if (typeof activeCanvas !== 'undefined' && typeof activeItem !== 'undefined' && typeof currentMode !== 'undefined') {
+        const currentMinute = timeSlider ? parseInt(timeSlider.value, 10) || 0 : 0;
+        const updatedLayer = createRadarGridLayer(
+            activeCanvas, 
+            0, 
+            activeItem, 
+            currentMode, 
+            null, 
+            null, 
+            currentMinute
+        );
+
+        if (updatedLayer && typeof activeTargetMap !== 'undefined' && activeTargetMap) {
+            if (window.currentRadarGridLayer && activeTargetMap.hasLayer(window.currentRadarGridLayer)) {
+                activeTargetMap.removeLayer(window.currentRadarGridLayer);
+            }
+
+            updatedLayer.addTo(activeTargetMap);
+            window.currentRadarGridLayer = updatedLayer;
+        }
+    }
+};
+
+if (timeSlider) {
+    timeSlider.addEventListener('input', triggerLayerRefresh);
+}
+
+if (windSubModeSelect) {
+    windSubModeSelect.addEventListener('change', triggerLayerRefresh);
+}
 // **Time Slider Controller Integration**
 const timeSlider = document.getElementById('timeSlider'); 
 
