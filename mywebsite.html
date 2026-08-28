@@ -3219,7 +3219,7 @@ function openWeatherMapModal(item, mode = 'temp', selectedDayIndex = null) {
 
     document.getElementById('closeRadarModalBtn').onclick = () => {
       mapModal.style.display = 'none';
-      if (window._radarState.map) {
+      if (window._radarState?.map) {
         window._radarState.map.off();
         window._radarState.map.remove();
         window._radarState.map = null;
@@ -3242,19 +3242,12 @@ function openWeatherMapModal(item, mode = 'temp', selectedDayIndex = null) {
 
   window._radarState = window._radarState || {};
   window._radarState.currentMode = mode;
+  
   const layerSwitcher = document.getElementById('radarLayerSwitcher');
   if (layerSwitcher) layerSwitcher.value = mode;
 
   const windCont = document.getElementById('windOptionContainer');
   if (windCont) windCont.style.display = mode === 'wind' ? 'inline-block' : 'none';
-
-  const sliderEl = document.getElementById("radarTimeSlider");
-  if (sliderEl) {
-    sliderEl.value = 0;
-    sliderEl.oninput = function(e) {
-      if (typeof triggerRadarRedraw === 'function') triggerRadarRedraw(parseInt(e.target.value, 10));
-    };
-  }
 
   mapModal.style.display = "flex";
 
@@ -3264,6 +3257,8 @@ function openWeatherMapModal(item, mode = 'temp', selectedDayIndex = null) {
         initTimezoneSyncedRadarModal(mapModal, item, mode, selectedDayIndex);
       }
     });
+  } else if (typeof initTimezoneSyncedRadarModal === 'function') {
+    initTimezoneSyncedRadarModal(mapModal, item, mode, selectedDayIndex);
   }
 }
 
@@ -3305,69 +3300,66 @@ document.getElementById("weatherMapModalBtn")?.addEventListener("click", () => {
 
   openWeatherMapModal(selectedDayCard, currentMode, selectedDayIndex);
 });
-function initTimezoneSyncedRadarModal(mapModalElement, forecastItem, defaultMode = 'temp', dayIndex = 0) {
-  // 1. Setup or reuse Leaflet Map inside '#leafletMap'
-  let mapContainer = document.getElementById('leafletMap');
-  if (!mapContainer) return;
 
-  // Initialize radar state object if not yet defined
+function initTimezoneSyncedRadarModal(mapModalElement, forecastItem, defaultMode = 'temp', dayIndex = 0) {
+  const mapContainer = document.getElementById('leafletMap');
+  if (!mapContainer || typeof L === 'undefined') return;
+
   window._radarState = window._radarState || {};
 
-  if (!window._radarState.map) {
-    // Default coordinates (falls back to Tower, MN area or lat/lon provided in item)
-    const lat = forecastItem?.lat ?? forecastItem?.latitude ?? 47.8105;
-    const lon = forecastItem?.lon ?? forecastItem?.longitude ?? -92.2785;
+  const lat = forecastItem?.lat ?? forecastItem?.latitude ?? 47.8105;
+  const lon = forecastItem?.lon ?? forecastItem?.longitude ?? -92.2785;
 
+  if (!window._radarState.map) {
     window._radarState.map = L.map('leafletMap', {
       zoomControl: true,
       attributionControl: false
     }).setView([lat, lon], 7);
 
-    // Default to Satellite Leaflet Map Style (Esri World Imagery)
     L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
       maxZoom: 19,
-      attribution: 'Tiles &copy; Esri &mdash; Source: Esri, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-EGP, and the GIS User Community'
+      attribution: 'Tiles &copy; Esri'
     }).addTo(window._radarState.map);
   } else {
-    window._radarState.map.invalidateSize();
+    window._radarState.map.setView([lat, lon]);
+    setTimeout(() => window._radarState.map.invalidateSize(), 100);
   }
 
   window._radarState.currentItem = forecastItem;
   window._radarState.currentMode = defaultMode;
-  window._radarState.canvas = document.querySelector('canvas') || mapContainer.querySelector('canvas');
+  window._radarState.canvas = mapContainer.querySelector('canvas') || document.querySelector('canvas');
 
-  // 2. Extract Date dynamically (falls back to forecastItem values or current date)
-  const extractedDate = getSelectedDayCardDate(window._radarState.canvas, 0, forecastItem, defaultMode, null, null, 0).dateStr;
-
-  const dateDisplay = document.getElementById('radarDateDisplay');
-  if (dateDisplay) {
-    dateDisplay.textContent = extractedDate;
+  // Extract date dynamically
+  if (typeof getSelectedDayCardDate === 'function') {
+    const extractedDate = getSelectedDayCardDate(window._radarState.canvas, dayIndex, forecastItem, defaultMode, null, null, 0)?.dateStr;
+    const dateDisplay = document.getElementById('radarDateDisplay');
+    if (dateDisplay && extractedDate) {
+      dateDisplay.textContent = extractedDate;
+    }
   }
 
-  // 3. Connect Slider & Render Initial Minute State
-  const timelineSlider = document.getElementById("radarTimeSlider") || document.querySelector('input[type="range"]');
-  const timeDisplayLabel = document.getElementById("radarTimeLabel") || document.getElementById('timeDisplayLabel');
-
-  const initialMinute = timelineSlider ? parseInt(timelineSlider.value, 10) || 0 : 0;
-  renderRadarLayerAtMinute(initialMinute);
-
-  let newSlider = timelineSlider;
+  // Bind slider controls
+  const timelineSlider = document.getElementById("radarTimeSlider");
   if (timelineSlider) {
-    // Clone node to strip old listeners and prevent duplicate firing
-    newSlider = timelineSlider.cloneNode(true);
-    timelineSlider.parentNode.replaceChild(newSlider, timelineSlider);
-
-    newSlider.addEventListener('input', (e) => {
+    timelineSlider.value = 0;
+    timelineSlider.oninput = (e) => {
       const sliderMinute = parseInt(e.target.value, 10);
-      renderRadarLayerAtMinute(sliderMinute);
-    });
+      if (typeof renderRadarLayerAtMinute === 'function') {
+        renderRadarLayerAtMinute(sliderMinute);
+      }
+    };
   }
 
-  // Global helper function for timeline drawing triggers
   window.triggerRadarRedraw = function(forcedMin = null) {
-    const currentMin = forcedMin !== null ? forcedMin : (newSlider ? parseInt(newSlider.value, 10) : 0);
-    renderRadarLayerAtMinute(currentMin);
+    const slider = document.getElementById("radarTimeSlider");
+    const currentMin = forcedMin !== null ? forcedMin : (slider ? parseInt(slider.value, 10) : 0);
+    if (typeof renderRadarLayerAtMinute === 'function') {
+      renderRadarLayerAtMinute(currentMin);
+    }
   };
+
+  // Initial draw
+  window.triggerRadarRedraw(0);
 }
 
 function renderRadarLayerAtMinute(minute) {
