@@ -2712,6 +2712,38 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
         return match ? match[0] : str.trim();
     };
 
+    const activeTargetMap = (typeof window !== "undefined" && window._radarState && window._radarState.map) ? window._radarState.map : (typeof map !== "undefined" ? map : null);
+    const currentGlobalPoint = (typeof targetZoneOrPoint !== 'undefined' && targetZoneOrPoint) ? targetZoneOrPoint : (window._targetZoneOrPoint || null);
+    
+    // Resolve target timezone hierarchy (item -> point -> state -> browser fallback)
+    const targetTimezone = item?.timezone || item?.tz || 
+                           currentGlobalPoint?.timezone || currentGlobalPoint?.tz || 
+                           window._radarState?.timezone || 
+                           (typeof Intl !== 'undefined' && Intl.DateTimeFormat ? Intl.DateTimeFormat().resolvedOptions().timeZone : 'UTC');
+
+    // Extract timezone abbreviation (e.g. CDT, EDT, PST)
+    const getTimezoneAbbr = (dateObj, timeZoneStr) => {
+        try {
+            const parts = new Intl.DateTimeFormat('en-US', {
+                timeZone: timeZoneStr,
+                timeZoneName: 'short'
+            }).formatToParts(dateObj);
+            const tzPart = parts.find(p => p.type === 'timeZoneName');
+            return tzPart ? tzPart.value : '';
+        } catch (e) {
+            return '';
+        }
+    };
+
+    // Format current date in target timezone as YYYY-MM-DD fallback
+    const getTargetTzDateStr = (timeZoneStr) => {
+        try {
+            return new Intl.DateTimeFormat('en-CA', { timeZone: timeZoneStr }).format(new Date());
+        } catch (e) {
+            return new Date().toISOString().split('T')[0];
+        }
+    };
+
     // Resolve minute position from forced value, client X interaction, slider DOM, or state
     let hoveredMinute = null;
     if (forcedMinute !== null && forcedMinute !== undefined) {
@@ -2737,7 +2769,7 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
         }
     }
 
-    let extractedDate = item?.dateStr || item?.date || new Date().toISOString().split('T')[0];
+    let extractedDate = item?.dateStr || item?.date || getTargetTzDateStr(targetTimezone);
     let cardMetrics = {};
     const activeCard = document.querySelector('.day-card.active, .forecast-day-card.active, .day-tab.active, .swiper-slide-active, [data-selected="true"], [aria-selected="true"], .selected-day');
     
@@ -2788,7 +2820,12 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
 
     const h = Math.floor(hoveredMinute / 60);
     const m = Math.round(hoveredMinute % 60);
-    const timeStr = `${h % 12 || 12}:${m < 10 ? '0' : ''}${m}${h >= 12 ? 'PM' : 'AM'}`;
+
+    // Build time object for timezone abbreviation lookup
+    const tzRefDate = new Date();
+    tzRefDate.setHours(h, m, 0, 0);
+    const tzAbbr = getTimezoneAbbr(tzRefDate, targetTimezone);
+    const timeStr = `${h % 12 || 12}:${m < 10 ? '0' : ''}${m}${h >= 12 ? 'PM' : 'AM'}${tzAbbr ? ' ' + tzAbbr : ''}`;
 
     const smoothStep = (v0, v1, t) => {
         const factor = 0.5 * (1 - Math.cos(Math.max(0, Math.min(1, t)) * Math.PI));
@@ -2818,9 +2855,6 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
     const effectivePrevItem = resolvePreviousItem();
     const effectiveNextItem = resolveNextItem();
 
-    const activeTargetMap = (typeof window !== "undefined" && window._radarState && window._radarState.map) ? window._radarState.map : (typeof map !== "undefined" ? map : null);
-    const currentGlobalPoint = (typeof targetZoneOrPoint !== 'undefined' && targetZoneOrPoint) ? targetZoneOrPoint : (window._targetZoneOrPoint || null);
-    
     const lat = currentGlobalPoint && currentGlobalPoint.lat ? parseFloat(currentGlobalPoint.lat) : 47.80;
     const lon = currentGlobalPoint && currentGlobalPoint.lon ? parseFloat(currentGlobalPoint.lon) : -92.37;
 
@@ -3231,7 +3265,9 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
         timeStr: timeStr,
         dateStr: extractedDate,
         color: getDynamicColor(baseResolvedValue, effectiveSubMode),
-        mode: effectiveSubMode
+        mode: effectiveSubMode,
+        timezone: targetTimezone,
+        tzAbbr: tzAbbr
     };
 
     if (activeTargetMap) {
