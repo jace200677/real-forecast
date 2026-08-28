@@ -2541,7 +2541,7 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
     };
 
     const peakMin = 15 * 60;
-    const getDiurnalFeelsLike = (m) => getDiurnalTemp(m) + (item?.feelsLikeOffset || 0);
+    const getDiurnalFeelsLike = (m) => getDiurnalTemp(m);
 
     const baseItemWind = baseMetrics.windMph;
     const prevWind = effectivePrevItem?.windMph ?? effectivePrevItem?.wind ?? baseItemWind;
@@ -2582,8 +2582,7 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
         const baseP = (m <= 360) ? smoothStep((prevPressure + resolvedPressure) / 2, resolvedPressure, m / 360) :
                       (m <= 900) ? resolvedPressure :
                       smoothStep(resolvedPressure, (resolvedPressure + nextPressure) / 2, (m - 900) / 539);
-        const rad = (m / 1440) * Math.PI * 4;
-        return +(baseP + 0.05 * Math.sin(rad)).toFixed(2);
+        return +baseP.toFixed(2);
     };
 
     const resolvedHumidity = cardMetrics.humidity ?? item?.humidity ?? 50;
@@ -2593,8 +2592,7 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
         const baseHum = (m <= 360) ? smoothStep((prevHumidity + resolvedHumidity) / 2, resolvedHumidity, m / 360) :
                         (m <= 900) ? resolvedHumidity :
                         smoothStep(resolvedHumidity, (resolvedHumidity + nextHumidity) / 2, (m - 900) / 539);
-        const rad = ((m - peakMin) / 1440) * Math.PI * 2;
-        return Math.max(0, Math.min(100, Math.round(baseHum - 20 * Math.cos(rad))));
+        return Math.max(0, Math.min(100, Math.round(baseHum)));
     };
 
     const getDiurnalUv = (m) => {
@@ -2762,64 +2760,19 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
         }
     }
 
-    const pseudoNoise2D = (x, y) => {
-        const n = Math.sin(x * 12.9898 + y * 78.233) * 43758.5453123;
-        return n - Math.floor(n);
-    };
-
-    const getSmoothNoise2D = (x, y) => {
-        const i = Math.floor(x);
-        const j = Math.floor(y);
-        const fx = x - i;
-        const fy = y - j;
-        const sx = fx * fx * (3 - 2 * fx);
-        const sy = fy * fy * (3 - 2 * fy);
-
-        const n00 = pseudoNoise2D(i, j);
-        const n10 = pseudoNoise2D(i + 1, j);
-        const n01 = pseudoNoise2D(i, j + 1);
-        const n11 = pseudoNoise2D(i + 1, j + 1);
-
-        const nx0 = n00 + (n10 - n00) * sx;
-        const nx1 = n01 + (n11 - n01) * sx;
-        return nx0 + (nx1 - nx0) * sy;
-    };
-
+    // Direct return of actual interpolated base value without adding or subtracting artificial spatial variations
     const getLocalValueAtCoordinates = (lat, lon, baseVal, modeType) => {
-        const latOffset = lat - centerLat;
-        const lonOffset = lon - centerLon;
-        const distFromCenter = Math.sqrt(latOffset * latOffset + lonOffset * lonOffset);
-
-        const spatialScale = 3.5;
-        const rawNoise = getSmoothNoise2D(lat * spatialScale, lon * spatialScale);
-        const noiseFactor = (rawNoise - 0.5) * 2;
-        const latGradient = -latOffset * 0.45;
-
-        let localVal = baseVal;
-
-        if (['temp', 'temperature', 'feelslike', 'feels_like'].includes(modeType)) {
-            localVal = baseVal + latGradient * 3.0 + noiseFactor * 4.5 - (distFromCenter * 1.2);
-            return Math.round(localVal);
-        } else if (['wind', 'gust'].includes(modeType)) {
-            localVal = baseVal * (1.0 + noiseFactor * 0.25) + (distFromCenter * 2.0);
-            return Math.max(0, Math.round(localVal));
-        } else if (modeType === 'dos') {
-            localVal = baseVal + noiseFactor * 8.0 - (distFromCenter * 2.0);
-            return Math.max(0, Math.min(100, Math.round(localVal)));
-        } else if (modeType === 'precip') {
-            localVal = baseVal + noiseFactor * 18.0;
-            return Math.max(0, Math.min(100, Math.round(localVal)));
-        } else if (modeType === 'humidity') {
-            localVal = baseVal - latGradient * 2.0 + noiseFactor * 12.0;
-            return Math.max(0, Math.min(100, Math.round(localVal)));
-        } else if (modeType === 'pressure') {
-            localVal = baseVal + (noiseFactor * 0.08) + (latOffset * 0.015);
-            return +localVal.toFixed(2);
-        } else if (modeType === 'uv') {
-            localVal = baseVal - (latOffset * 0.2) + (noiseFactor * 0.5);
-            return Math.max(0, +localVal.toFixed(1));
+        if (baseVal === null || baseVal === undefined) return baseVal;
+        const mType = (modeType || "").toLowerCase();
+        if (mType === 'pressure') {
+            return +Number(baseVal).toFixed(2);
         }
-
+        if (mType === 'uv') {
+            return +Number(baseVal).toFixed(1);
+        }
+        if (typeof baseVal === 'number') {
+            return Math.round(baseVal);
+        }
         return baseVal;
     };
 
@@ -2981,53 +2934,65 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
         getLocalValue: getLocalValueAtCoordinates
     };
 
-    const attachMapInteractionHandlers = (mapObj, layerData) => {
-        if (!mapObj) return;
+   const attachMapInteractionHandlers = (mapObj, layerData) => {
+    if (!mapObj) return;
 
-        if (!mapObj._radarTooltip) {
-            mapObj._radarTooltip = L.tooltip({
-                permanent: false,
-                direction: 'top',
-                sticky: true,
-                className: 'radar-grid-tooltip'
-            });
-        }
+    if (!mapObj._radarTooltip) {
+        mapObj._radarTooltip = L.tooltip({
+            permanent: false,
+            direction: 'top',
+            sticky: true,
+            className: 'radar-grid-tooltip'
+        });
+    }
 
-        const updateTooltipPosition = (e) => {
-            const localVal = layerData.getLocalValue(e.latlng.lat, e.latlng.lng, layerData.value, layerData.mode);
+    const updateTooltipPosition = (e) => {
+        const localVal = layerData.getLocalValue(e.latlng.lat, e.latlng.lng, layerData.value, layerData.mode);
 
-            let localLabel = `${localVal}`;
-            if (['temp', 'temperature'].includes(layerData.mode)) localLabel = `${localVal}°F`;
-            else if (['feelslike', 'feels_like'].includes(layerData.mode)) localLabel = `Feels Like ${localVal}°F`;
-            else if (['wind', 'gust'].includes(layerData.mode)) localLabel = `${layerData.mode.toUpperCase()}: ${localVal} mph`;
-            else if (layerData.mode === 'dos') localLabel = `DOS: ${localVal}`;
-            else if (layerData.mode === 'precip') localLabel = `Chance: ${localVal}%`;
-            else if (layerData.mode === 'humidity') localLabel = `Humidity: ${localVal}%`;
-            else if (layerData.mode === 'pressure') localLabel = `${localVal} inHg`;
-            else if (layerData.mode === 'uv') localLabel = `UV Index: ${localVal}`;
+        let localLabel = `${localVal}`;
+        if (['temp', 'temperature'].includes(layerData.mode)) localLabel = `${localVal}°F`;
+        else if (['feelslike', 'feels_like'].includes(layerData.mode)) localLabel = `Feels Like ${localVal}°F`;
+        else if (['wind', 'gust'].includes(layerData.mode)) localLabel = `${layerData.mode.toUpperCase()}: ${localVal} mph`;
+        else if (layerData.mode === 'dos') localLabel = `DOS: ${localVal}`;
+        else if (layerData.mode === 'precip') localLabel = `Chance: ${localVal}%`;
+        else if (layerData.mode === 'humidity') localLabel = `Humidity: ${localVal}%`;
+        else if (layerData.mode === 'pressure') localLabel = `${localVal} inHg`;
+        else if (layerData.mode === 'uv') localLabel = `UV Index: ${localVal}`;
 
-            const tooltipContent = `
-                <div style="font-family: sans-serif; font-size: 12px; padding: 3px 6px; text-align: center;">
-                    <strong>${localLabel}</strong><br/>
-                    <small style="opacity: 0.8;">${layerData.timeStr} (${layerData.dateStr})</small><br/>
-                    <small style="opacity: 0.65; font-size: 10px;">${e.latlng.lat.toFixed(2)}°, ${e.latlng.lng.toFixed(2)}°</small>
-                </div>
-            `;
+        const tooltipContent = `
+            <div style="font-family: sans-serif; font-size: 12px; padding: 3px 6px; text-align: center;">
+                <strong>${localLabel}</strong><br/>
+                <small style="opacity: 0.8;">${layerData.timeStr} (${layerData.dateStr})</small><br/>
+                <small style="opacity: 0.65; font-size: 10px;">${e.latlng.lat.toFixed(2)}°, ${e.latlng.lng.toFixed(2)}°</small>
+            </div>
+        `;
 
-            mapObj._radarTooltip
-                .setLatLng(e.latlng)
-                .setContent(tooltipContent)
-                .openOn(mapObj);
-        };
-
-        if (mapObj._radarInteractHandler) {
-            mapObj.off('click tap', mapObj._radarInteractHandler);
-        }
-
-        mapObj._radarInteractHandler = (e) => updateTooltipPosition(e);
-        mapObj.on('click tap', mapObj._radarInteractHandler);
+        mapObj._radarTooltip
+            .setLatLng(e.latlng)
+            .setContent(tooltipContent)
+            .openOn(mapObj);
     };
 
+    // Clean up previous event listeners if layer updates
+    if (mapObj._radarInteractHandler) {
+        mapObj.off('mousemove click tap', mapObj._radarInteractHandler);
+    }
+    if (mapObj._radarMouseOutHandler) {
+        mapObj.off('mouseout', mapObj._radarMouseOutHandler);
+    }
+
+    // Bind hover (mousemove) along with click and tap
+    mapObj._radarInteractHandler = (e) => updateTooltipPosition(e);
+    mapObj.on('mousemove click tap', mapObj._radarInteractHandler);
+
+    // Hide tooltip when the cursor leaves the map container
+    mapObj._radarMouseOutHandler = () => {
+        if (mapObj._radarTooltip) {
+            mapObj.closeTooltip(mapObj._radarTooltip);
+        }
+    };
+    mapObj.on('mouseout', mapObj._radarMouseOutHandler);
+};
     if (activeTargetMap) {
         attachMapInteractionHandlers(activeTargetMap, activeGridLayer._meta);
 
