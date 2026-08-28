@@ -2714,6 +2714,8 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
     }
 
     let extractedDate = item?.dateStr || item?.date || new Date().toISOString().split('T')[0];
+    let cardMetrics = {};
+    
     const activeCard = document.querySelector('.day-card.active, .forecast-day-card.active, .day-tab.active, [data-selected="true"]');
     if (activeCard) {
         const cardText = activeCard.innerText || activeCard.getAttribute('data-date') || activeCard.getAttribute('title') || '';
@@ -2721,6 +2723,19 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
         if (dateMatch && dateMatch[0]) {
             extractedDate = dateMatch[0];
         }
+
+        cardMetrics = {
+            score: activeCard.dataset.score !== undefined ? parseFloat(activeCard.dataset.score) : null,
+            tempHigh: activeCard.dataset.high !== undefined ? parseFloat(activeCard.dataset.high) : (activeCard.dataset.tempHigh !== undefined ? parseFloat(activeCard.dataset.tempHigh) : null),
+            tempLow: activeCard.dataset.low !== undefined ? parseFloat(activeCard.dataset.low) : (activeCard.dataset.tempLow !== undefined ? parseFloat(activeCard.dataset.tempLow) : null),
+            windMph: activeCard.dataset.wind !== undefined ? parseFloat(activeCard.dataset.wind) : (activeCard.dataset.windMph !== undefined ? parseFloat(activeCard.dataset.windMph) : null),
+            gustMph: activeCard.dataset.gust !== undefined ? parseFloat(activeCard.dataset.gust) : (activeCard.dataset.gustMph !== undefined ? parseFloat(activeCard.dataset.gustMph) : null),
+            humidity: activeCard.dataset.humidity !== undefined ? parseFloat(activeCard.dataset.humidity) : null,
+            pressure: activeCard.dataset.pressure !== undefined ? parseFloat(activeCard.dataset.pressure) : null,
+            uvIndex: activeCard.dataset.uv !== undefined ? parseFloat(activeCard.dataset.uv) : (activeCard.dataset.uvIndex !== undefined ? parseFloat(activeCard.dataset.uvIndex) : null),
+            precipChance: activeCard.dataset.precip !== undefined ? parseFloat(activeCard.dataset.precip) : (activeCard.dataset.precipChance !== undefined ? parseFloat(activeCard.dataset.precipChance) : null),
+            condition: activeCard.dataset.condition || activeCard.getAttribute('data-weather') || ''
+        };
     }
 
     const h = Math.floor(hoveredMinute / 60);
@@ -2779,18 +2794,20 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
     const dateNum = targetDateParts.dateNum;
 
     const getOverrideScoreAndWeather = (m) => {
-        let projectedScore = item?.score ?? 5;
-        let windMph = item?.windMph ?? 31;
-        let gustMph = item?.gustMph ?? 56;
-        let tempLow = item?.tempLow ?? 37;
-        let tempHigh = item?.tempHigh ?? 65;
+        let projectedScore = cardMetrics.score ?? item?.score ?? 5;
+        let windMph = cardMetrics.windMph ?? item?.windMph ?? 31;
+        let gustMph = cardMetrics.gustMph ?? item?.gustMph ?? 56;
+        let tempLow = cardMetrics.tempLow ?? item?.tempLow ?? 37;
+        let tempHigh = cardMetrics.tempHigh ?? item?.tempHigh ?? 65;
 
         if (forecastYear === 2026 && forecastMonth === 8 && dateNum === 28) {
             const latOffset = (lat - 47.80) * 2.5;
             const lonOffset = (lon + 92.37) * 1.8;
             projectedScore = Math.max(5, Math.round(5 + latOffset + lonOffset));
-            windMph = 31; gustMph = 56;
-            tempLow = 37; tempHigh = 65;
+            windMph = cardMetrics.windMph ?? 31; 
+            gustMph = cardMetrics.gustMph ?? 56;
+            tempLow = cardMetrics.tempLow ?? 37; 
+            tempHigh = cardMetrics.tempHigh ?? 65;
         }
 
         return { score: projectedScore, windMph, gustMph, tempLow, tempHigh };
@@ -2902,39 +2919,42 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
         return Math.round(baseScore * (0.5 + 0.5 * ((Math.cos(dosTempRad) + 1) / 2)));
     };
 
-    const prevPressure = effectivePrevItem?.pressure ?? (item?.pressure || 29.92);
-    const nextPressure = effectiveNextItem?.pressure ?? (item?.pressure || 29.92);
+    const resolvedPressure = cardMetrics.pressure ?? item?.pressure ?? 29.92;
+    const prevPressure = effectivePrevItem?.pressure ?? resolvedPressure;
+    const nextPressure = effectiveNextItem?.pressure ?? resolvedPressure;
     const getDiurnalPressure = (m) => {
-        const baseP = (m <= 360) ? smoothStep((prevPressure + (item?.pressure || 29.92)) / 2, item?.pressure || 29.92, m / 360) :
-                      (m <= 900) ? (item?.pressure || 29.92) :
-                      smoothStep(item?.pressure || 29.92, ((item?.pressure || 29.92) + nextPressure) / 2, (m - 900) / 539);
+        const baseP = (m <= 360) ? smoothStep((prevPressure + resolvedPressure) / 2, resolvedPressure, m / 360) :
+                      (m <= 900) ? resolvedPressure :
+                      smoothStep(resolvedPressure, (resolvedPressure + nextPressure) / 2, (m - 900) / 539);
         const rad = (m / 1440) * Math.PI * 4;
         return +(baseP + 0.05 * Math.sin(rad)).toFixed(2);
     };
 
-    const prevHumidity = effectivePrevItem?.humidity ?? (item?.humidity || 50);
-    const nextHumidity = effectiveNextItem?.humidity ?? (item?.humidity || 50);
+    const resolvedHumidity = cardMetrics.humidity ?? item?.humidity ?? 50;
+    const prevHumidity = effectivePrevItem?.humidity ?? resolvedHumidity;
+    const nextHumidity = effectiveNextItem?.humidity ?? resolvedHumidity;
     const getDiurnalHumidity = (m) => {
-        const baseHum = (m <= 360) ? smoothStep((prevHumidity + (item?.humidity || 50)) / 2, item?.humidity || 50, m / 360) :
-                        (m <= 900) ? (item?.humidity || 50) :
-                        smoothStep(item?.humidity || 50, ((item?.humidity || 50) + nextHumidity) / 2, (m - 900) / 539);
+        const baseHum = (m <= 360) ? smoothStep((prevHumidity + resolvedHumidity) / 2, resolvedHumidity, m / 360) :
+                        (m <= 900) ? resolvedHumidity :
+                        smoothStep(resolvedHumidity, (resolvedHumidity + nextHumidity) / 2, (m - 900) / 539);
         const rad = ((m - peakMin) / 1440) * Math.PI * 2;
         return Math.max(0, Math.min(100, Math.round(baseHum - 20 * Math.cos(rad))));
     };
 
     const getDiurnalUv = (m) => {
-        const maxUv = item?.uvIndex || 0;
+        const maxUv = cardMetrics.uvIndex ?? item?.uvIndex ?? 0;
         if (m < 360 || m > 1200) return 0;
         const rad = ((m - 360) / 840) * Math.PI;
         return +(maxUv * Math.sin(rad)).toFixed(1);
     };
 
-    const prevPrecip = effectivePrevItem?.precipChance ?? (item?.precipChance || 0);
-    const nextPrecip = effectiveNextItem?.precipChance ?? (item?.precipChance || 0);
+    const resolvedPrecip = cardMetrics.precipChance ?? item?.precipChance ?? 0;
+    const prevPrecip = effectivePrevItem?.precipChance ?? resolvedPrecip;
+    const nextPrecip = effectiveNextItem?.precipChance ?? resolvedPrecip;
     const getDiurnalPrecip = (m) => {
-        if (m <= 360) return Math.round(smoothStep((prevPrecip + (item?.precipChance || 0)) / 2, item?.precipChance || 0, m / 360));
-        if (m <= 900) return item?.precipChance || 0;
-        return Math.round(smoothStep(item?.precipChance || 0, ((item?.precipChance || 0) + nextPrecip) / 2, (m - 900) / 539));
+        if (m <= 360) return Math.round(smoothStep((prevPrecip + resolvedPrecip) / 2, resolvedPrecip, m / 360));
+        if (m <= 900) return resolvedPrecip;
+        return Math.round(smoothStep(resolvedPrecip, (resolvedPrecip + nextPrecip) / 2, (m - 900) / 539));
     };
 
     const hasEvents = Array.isArray(item?.overrideEvents) && item.overrideEvents.length > 0;
