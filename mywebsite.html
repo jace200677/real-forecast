@@ -2038,7 +2038,8 @@ function getInterpolatedValuesAt(item, minute, mode = "temp", prevItem = null, n
 }
 
 // 2. Optimized Layer Factory using shared interpolation helper
-function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, nextItem = null, forcedMinute = 0) {
+// Changed default forcedMinute parameter to null
+function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, nextItem = null, forcedMinute = null) {
     if (!canvas) return null;
     const rect = canvas.getBoundingClientRect();
     const width = canvas.width;
@@ -2049,9 +2050,12 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
     const graphWidth = width - padLeft - padRight;
 
     let hoveredMinute;
+    
+    // Check if forcedMinute is explicitly provided as a number
     if (forcedMinute !== null && forcedMinute !== undefined) {
         hoveredMinute = Math.max(0, Math.min(1439, parseInt(forcedMinute, 10) || 0));
-    } else {
+    } else if (clientX !== null && clientX !== undefined) {
+        // Safe check for mouse hover interaction
         const x = clientX - rect.left;
         if (x < padLeft || x > width - padRight) {
             if (clientX === 0) hoveredMinute = 0;
@@ -2060,6 +2064,8 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
             const ratio = Math.max(0, Math.min(1, (x - padLeft) / graphWidth));
             hoveredMinute = Math.round(ratio * 1439);
         }
+    } else {
+        hoveredMinute = 0; // Fallback minute when neither is provided
     }
 
     const h = Math.floor(hoveredMinute / 60);
@@ -2122,7 +2128,7 @@ function updateForecastUI(selectedItem, currentMinute, mode, mapInstance, curren
         }
         const newLayer = createRadarGridLayer(
             document.getElementById('radarCanvas'), 
-            0, 
+            null, // Pass null for clientX when forcing minute
             selectedItem, 
             mode, 
             null, 
