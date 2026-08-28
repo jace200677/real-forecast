@@ -2932,11 +2932,13 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
         if (currentMode === 'wind') {
             const speed = (typeof val === 'object' ? (val.speed || 0) : val);
             const stops = [
-                { threshold: 0, color: 'rgba(34, 197, 94, 0.35)' },
-                { threshold: 12, color: 'rgba(234, 179, 8, 0.45)' },
-                { threshold: 25, color: 'rgba(249, 115, 22, 0.55)' },
-                { threshold: 35, color: 'rgba(239, 68, 68, 0.62)' },
-                { threshold: 50, color: 'rgba(168, 85, 247, 0.70)' }
+                { threshold: 0, color: 'rgba(115, 130, 205, 0.70)' },   // Deep purple/blue start
+                { threshold: 6, color: 'rgba(95, 175, 215, 0.65)' },    // Light icy blue
+                { threshold: 10, color: 'rgba(65, 195, 185, 0.60)' },   // Cyan-teal transition
+                { threshold: 20, color: 'rgba(55, 170, 95, 0.60)' },    // Forest green
+                { threshold: 35, color: 'rgba(195, 205, 55, 0.65)' },   // Yellow-green lime
+                { threshold: 45, color: 'rgba(235, 155, 45, 0.70)' },   // Warm amber/orange
+                { threshold: 70, color: 'rgba(200, 45, 55, 0.75)' }     // Deep red end
             ];
             if (speed <= stops[0].threshold) return stops[0].color;
             if (speed >= stops[stops.length - 1].threshold) return stops[stops.length - 1].color;
@@ -2968,11 +2970,13 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
         if (currentMode === 'temp' || currentMode === 'feelsLike') {
             const tempVal = (typeof val === 'number' ? val : 60);
             const stops = [
-                { threshold: 30, color: 'rgba(15, 118, 110, 0.40)' },
-                { threshold: 45, color: 'rgba(45, 212, 191, 0.45)' },
-                { threshold: 60, color: 'rgba(74, 222, 128, 0.50)' },
-                { threshold: 75, color: 'rgba(249, 115, 22, 0.58)' },
-                { threshold: 90, color: 'rgba(239, 68, 68, 0.70)' }
+                { threshold: -5, color: 'rgba(125, 110, 210, 0.75)' },  // Deep purple start (-5°F)
+                { threshold: 15, color: 'rgba(105, 155, 220, 0.70)' },  // Soft slate blue (15°F)
+                { threshold: 30, color: 'rgba(85, 190, 205, 0.65)' },   // Cyan-blue (30°F)
+                { threshold: 50, color: 'rgba(65, 165, 115, 0.60)' },   // Teal-green midpoint (50°F)
+                { threshold: 70, color: 'rgba(105, 195, 75, 0.62)' },   // Vibrant lime green (70°F)
+                { threshold: 85, color: 'rgba(235, 185, 45, 0.68)' },   // Warm yellow-orange (85°F)
+                { threshold: 100, color: 'rgba(205, 45, 45, 0.75)' }    // Intense red (100°F)
             ];
             if (tempVal <= stops[0].threshold) return stops[0].color;
             if (tempVal >= stops[stops.length - 1].threshold) return stops[stops.length - 1].color;
