@@ -2697,7 +2697,6 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
     const padTop = Math.round(30 * scaleFactor);
     const padBottom = Math.round(35 * scaleFactor);
     const graphWidth = width - padLeft - padRight;
-    const graphHeight = canvas.height - padTop - padBottom;
 
     let hoveredMinute;
     if (forcedMinute !== null && forcedMinute !== undefined) {
@@ -2774,56 +2773,20 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
     const lat = currentGlobalPoint && currentGlobalPoint.lat ? parseFloat(currentGlobalPoint.lat) : 47.80;
     const lon = currentGlobalPoint && currentGlobalPoint.lon ? parseFloat(currentGlobalPoint.lon) : -92.37;
 
-    const parseTargetDateParts = (dateStr) => {
-        const d = new Date(dateStr);
-        if (!isNaN(d.getTime())) {
-            return { year: d.getFullYear(), month: d.getMonth() + 1, dateNum: d.getDate() };
-        }
-        const match = dateStr.match(/(\d{1,2})\/(\d{1,2})\/(\d{2,4})/);
-        if (match) {
-            let yr = parseInt(match[3], 10);
-            if (yr < 100) yr += 2000;
-            return { year: yr, month: parseInt(match[1], 10), dateNum: parseInt(match[2], 10) };
-        }
-        return { year: 2026, month: 8, dateNum: 28 };
-    };
-
-    const targetDateParts = parseTargetDateParts(extractedDate);
-    const forecastYear = targetDateParts.year;
-    const forecastMonth = targetDateParts.month;
-    const dateNum = targetDateParts.dateNum;
-
-    const getOverrideScoreAndWeather = (m) => {
-        let projectedScore = cardMetrics.score ?? item?.score ?? 5;
-        let windMph = cardMetrics.windMph ?? item?.windMph ?? 31;
-        let gustMph = cardMetrics.gustMph ?? item?.gustMph ?? 56;
-        let tempLow = cardMetrics.tempLow ?? item?.tempLow ?? 37;
-        let tempHigh = cardMetrics.tempHigh ?? item?.tempHigh ?? 65;
-
-        if (forecastYear === 2026 && forecastMonth === 8 && dateNum === 28) {
-            const latOffset = (lat - 47.80) * 2.5;
-            const lonOffset = (lon + 92.37) * 1.8;
-            projectedScore = Math.max(5, Math.round(5 + latOffset + lonOffset));
-            windMph = cardMetrics.windMph ?? 31; 
-            gustMph = cardMetrics.gustMph ?? 56;
-            tempLow = cardMetrics.tempLow ?? 37; 
-            tempHigh = cardMetrics.tempHigh ?? 65;
-        }
+    // Pull item-specific values natively, avoiding hardcoded date clamps that lock values across days
+    const getOverrideScoreAndWeather = () => {
+        let projectedScore = cardMetrics.score ?? item?.score ?? item?.rating ?? 5;
+        let windMph = cardMetrics.windMph ?? item?.windMph ?? item?.wind ?? 10;
+        let gustMph = cardMetrics.gustMph ?? item?.gustMph ?? item?.gust ?? 15;
+        let tempLow = cardMetrics.tempLow ?? item?.tempLow ?? item?.tempMin ?? 50;
+        let tempHigh = cardMetrics.tempHigh ?? item?.tempHigh ?? item?.tempMax ?? 75;
 
         return { score: projectedScore, windMph, gustMph, tempLow, tempHigh };
     };
 
-    const overrideMetrics = getOverrideScoreAndWeather(hoveredMinute);
+    const overrideMetrics = getOverrideScoreAndWeather();
 
     const getPreviousDayLowestTemp = () => {
-        if (extractedDate === "8/24/2026" || extractedDate === "08/24/2026") {
-            const prev = effectivePrevItem;
-            if (prev && Array.isArray(prev.overrideEvents) && prev.overrideEvents.length > 0) {
-                const eventTemps = prev.overrideEvents.filter(e => e.temp !== undefined).map(e => e.temp);
-                if (eventTemps.length > 0) return Math.min(...eventTemps);
-            }
-            return 48;
-        }
         const prev = effectivePrevItem;
         if (prev) {
             if (Array.isArray(prev.tempRange) && prev.tempRange.length > 0) return Math.min(...prev.tempRange);
