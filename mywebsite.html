@@ -2039,6 +2039,7 @@ function getInterpolatedValuesAt(item, minute, mode = "temp", prevItem = null, n
 
 // 2. Optimized Layer Factory using shared interpolation helper
 // Changed default forcedMinute parameter to null
+// 2. Optimized Layer Factory using shared interpolation helper
 function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, nextItem = null, forcedMinute = null) {
     if (!canvas) return null;
     const rect = canvas.getBoundingClientRect();
@@ -2051,11 +2052,9 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
 
     let hoveredMinute;
     
-    // Check if forcedMinute is explicitly provided as a number
     if (forcedMinute !== null && forcedMinute !== undefined) {
         hoveredMinute = Math.max(0, Math.min(1439, parseInt(forcedMinute, 10) || 0));
     } else if (clientX !== null && clientX !== undefined) {
-        // Safe check for mouse hover interaction
         const x = clientX - rect.left;
         if (x < padLeft || x > width - padRight) {
             if (clientX === 0) hoveredMinute = 0;
@@ -2065,15 +2064,14 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
             hoveredMinute = Math.round(ratio * 1439);
         }
     } else {
-        hoveredMinute = 0; // Fallback minute when neither is provided
+        hoveredMinute = 0;
     }
 
     const h = Math.floor(hoveredMinute / 60);
     const m = Math.round(hoveredMinute % 60);
     const timeStr = `${h % 12 || 12}:${m < 10 ? '0' : ''}${m}${h >= 12 ? 'PM' : 'AM'}`;
 
-    const sampledData = getInterpolatedValuesAt(item, hoveredMinute, mode, prevItem, nextItem);
-
+    // Dynamic Leaflet GridLayer extending per-tile coordinates
     const RadarGridLayerClass = L.GridLayer.extend({
         createTile: function(coords) {
             const tile = document.createElement('canvas');
@@ -2081,22 +2079,55 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
             tile.width = size.x;
             tile.height = size.y;
             const ctx = tile.getContext('2d');
-            ctx.fillStyle = sampledData.color;
-            ctx.fillRect(0, 0, tile.width, tile.height);
-            ctx.strokeStyle = 'rgba(255, 255, 255, 0.05)';
-            ctx.strokeRect(0, 0, tile.width, tile.height);
+
+            // Calculate geographic coordinates for spatial variation per tile
+            const tileNW = this._tileCoordsToNWLatLng(coords);
+            
+            // Sample interpolated values using spatial coords (if supported) or time offset
+            const tileSampledData = getInterpolatedValuesAt(
+                item, 
+                hoveredMinute, 
+                mode, 
+                prevItem, 
+                nextItem, 
+                tileNW.lat, 
+                tileNW.lng
+            );
+
+            // Render dynamic color per tile location
+            ctx.fillStyle = tileSampledData.color || '#3388ff';
+            ctx.fillRect(0, 0, size.x, size.y);
+
+            // Tile grid border
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.08)';
+            ctx.strokeRect(0, 0, size.x, size.y);
+
             return tile;
+        },
+
+        // Conversion helper from tile grid coords to geographic Lat/Lng
+        _tileCoordsToNWLatLng: function(coords) {
+            const map = this._map;
+            const tileSize = this.getTileSize();
+            const nwPoint = coords.scaleBy(tileSize);
+            return map ? map.unproject(nwPoint, coords.z) : { lat: 0, lng: 0 };
         }
     });
 
-    const activeGridLayer = new RadarGridLayerClass();
+    const activeGridLayer = new RadarGridLayerClass({
+        tileSize: 256,
+        updateWhenIdle: false
+    });
+
+    const rootSampledData = getInterpolatedValuesAt(item, hoveredMinute, mode, prevItem, nextItem);
+
     activeGridLayer._meta = {
-        value: sampledData.value,
-        label: sampledData.label,
+        value: rootSampledData.value,
+        label: rootSampledData.label,
         minute: hoveredMinute,
         timeStr: timeStr,
-        dateStr: sampledData.dateStr,
-        color: sampledData.color,
+        dateStr: rootSampledData.dateStr,
+        color: rootSampledData.color,
         mode: mode
     };
 
@@ -2105,10 +2136,8 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
 
 // 3. Forecast Card Selection & Time-Slider Sync Handler
 function updateForecastUI(selectedItem, currentMinute, mode, mapInstance, currentLayerRef) {
-    // A. Sample interpolated data for selected day and minute
     const sampled = getInterpolatedValuesAt(selectedItem, currentMinute, mode);
     
-    // B. Update DOM elements (Time Slider, Date Display, Value Labels)
     const timeSlider = document.getElementById('timeSlider');
     if (timeSlider) timeSlider.value = currentMinute;
     
@@ -2121,28 +2150,34 @@ function updateForecastUI(selectedItem, currentMinute, mode, mapInstance, curren
         valueLabel.style.color = sampled.color;
     }
 
-    // C. Re-render Radar Grid Layer with dynamically calculated colors
-    if (mapInstance && currentLayerRef) {
-        if (mapInstance.hasLayer(currentLayerRef)) {
+    if (mapInstance) {
+        // Remove existing layer safely
+        if (currentLayerRef && mapInstance.hasLayer(currentLayerRef)) {
             mapInstance.removeLayer(currentLayerRef);
         }
+
+        // Generate and mount new layer
         const newLayer = createRadarGridLayer(
             document.getElementById('radarCanvas'), 
-            null, // Pass null for clientX when forcing minute
+            null, 
             selectedItem, 
             mode, 
             null, 
             null, 
             currentMinute
         );
+
         if (newLayer) {
             newLayer.addTo(mapInstance);
+            // Force Leaflet canvas cache invalidation
+            if (typeof newLayer.redraw === 'function') {
+                newLayer.redraw();
+            }
             return newLayer;
         }
     }
     return currentLayerRef;
 }
-/**
  * 2. Spatial & Temporal Plot Graph Sampler
  */
 function getValueFromPlotGraph(params) {
