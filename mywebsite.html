@@ -1243,7 +1243,7 @@ async function buildForecast() {
             const varianceAmplitude = exactDaysOut * 1.5 * (1 - confidenceFactor); 
             const swingFactor = Math.sin(exactDaysOut * 1.2);
 
-            const baseDos93 = 93;
+            const baseDos93 = 0;
             projectedScore = Math.max(5, Math.round(baseDos93 + latOffset + lonOffset + (swingFactor * varianceAmplitude)));
             
             streamChance = Math.min(Math.round((projectedScore / 90) * 100), 95);
