@@ -3355,7 +3355,44 @@ function ensureGoogleMapsApiLoaded(callback) {
     document.head.appendChild(script);
 }
 function getSelectedDayCardDate(canvas, activeX, item, mode, prevItem, nextItem) {
-    // 1. Check active DOM cards first (handles UI-driven date selection directly from active cards/tabs)
+    // 1. Check explicit item properties first (Ensures data passed from the active graph/timeline takes precedence)
+    if (item) {
+        const isTodayLabel = (item.day && ['today', 'now'].includes(item.day.toLowerCase().trim())) || item.dayIndex === 0;
+        
+        let baseDate = new Date();
+        if (canvas && canvas.dataset && canvas.dataset.baseDate) {
+            const parsedDatasetDate = new Date(canvas.dataset.baseDate);
+            if (!isNaN(parsedDatasetDate)) baseDate = parsedDatasetDate;
+        }
+        const formatter = new Intl.DateTimeFormat('en-US', { timeZone: 'America/Chicago', year: 'numeric', month: 'numeric', day: 'numeric', hour12: false });
+        
+        const getDefaultTodayStr = () => {
+            const defaultParts = formatter.formatToParts(baseDate);
+            let defM = '8', defD = '28', defY = '2026';
+            defaultParts.forEach(p => {
+                if (p.type === 'month') defM = p.value;
+                if (p.type === 'day') defD = p.value;
+                if (p.type === 'year') defY = p.value;
+            });
+            return `${defM}/${defD}/${defY}`;
+        };
+
+        if (isTodayLabel) {
+            return { dateStr: getDefaultTodayStr() };
+        }
+
+        if (typeof item.dateStr === 'string' && item.dateStr.trim() !== '') {
+            return { dateStr: item.dateStr };
+        }
+        if (typeof item.date === 'string' && item.date.trim() !== '') {
+            return { dateStr: item.date };
+        }
+        if (item.formattedDate) {
+            return { dateStr: item.formattedDate };
+        }
+    }
+
+    // 2. Check active DOM cards (UI-driven date selection)
     const activeCard = document.querySelector('.day-card.active, .forecast-day-card.active, .day-tab.active, [data-selected="true"]');
     if (activeCard) {
         const cardText = activeCard.innerText || activeCard.getAttribute('data-date') || activeCard.getAttribute('title');
@@ -3367,7 +3404,7 @@ function getSelectedDayCardDate(canvas, activeX, item, mode, prevItem, nextItem)
         }
     }
 
-    // 2. Check modal header title or graph DOM elements
+    // 3. Check modal header title or graph DOM elements
     const graphHeaderSelectors = [
         '#graphModalTitle', '.modal-title', '.graph-header', '.chart-title',
         '.graph-modal-date', '[id*="graph"] h2', '[id*="graph"] h3', '[class*="graph"] h3'
@@ -3406,25 +3443,6 @@ function getSelectedDayCardDate(canvas, activeX, item, mode, prevItem, nextItem)
         });
         return `${defM}/${defD}/${defY}`;
     };
-
-    // 3. Check explicit item properties (Strictly ignore if item explicitly marks itself as a future/different offset day unless requested)
-    if (item) {
-        const isTodayLabel = (item.day && ['today', 'now'].includes(item.day.toLowerCase().trim())) || item.dayIndex === 0;
-        
-        if (isTodayLabel) {
-            return { dateStr: getDefaultTodayStr() };
-        }
-
-        if (typeof item.dateStr === 'string' && item.dateStr.trim() !== '') {
-            return { dateStr: item.dateStr };
-        }
-        if (typeof item.date === 'string' && item.date.trim() !== '') {
-            return { dateStr: item.date };
-        }
-        if (item.formattedDate) {
-            return { dateStr: item.formattedDate };
-        }
-    }
     
     // If forecast index or offset is provided on the item object (e.g. item.dayIndex)
     if (item && typeof item.dayIndex === 'number') {
@@ -3478,7 +3496,6 @@ function getSelectedDayCardDate(canvas, activeX, item, mode, prevItem, nextItem)
     // Default safe fallback matching baseDate parts (Today)
     return { dateStr: getDefaultTodayStr() };
 }
-
 // **Time Slider Controller Integration**
 const timeSlider = document.getElementById('timeSlider'); 
 
