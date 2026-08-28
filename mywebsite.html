@@ -2266,6 +2266,12 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
                         window._radarState?.selectedDate || 
                         item?.dateStr || item?.date || item?.rawDate || 
                         getTargetTzDateStr(targetTimezone);
+
+    // STRICT RESOLUTION: Active Card Date > Radar State > Item Date > Today Fallback
+    let extractedDate = activeCardDate || 
+                        window._radarState?.selectedDate || 
+                        item?.dateStr || item?.date || item?.rawDate || 
+                        getTargetTzDateStr(targetTimezone);
     // --- FIX: PRIORITIZE ACTIVE DAY CARD DATE OVER PASSED ITEM / TODAY ---
     // --- FIXED: PRIORITIZE ACTIVE DAY CARD DATE OVER PASSED ITEM / TODAY ---
 
