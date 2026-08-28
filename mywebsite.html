@@ -2686,16 +2686,30 @@ function getSelectedDayCardDate(canvas, activeX, item, mode, prevItem, nextItem)
 
     return { dateStr: `${defM}/${defD}/${defY}` };
 }
-function createRadarGridLayer(canvas, item, mode, prevItem = null, nextItem = null, forcedMinute = null) {
+function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, nextItem = null, forcedMinute = 0) {
     if (!canvas) return null;
+    const rect = canvas.getBoundingClientRect();
     const width = canvas.width;
+
+    const scaleFactor = Math.min(width / 650, 1.5);
+    const padLeft = Math.round(45 * scaleFactor);
+    const padRight = Math.round(20 * scaleFactor);
+    const padTop = Math.round(30 * scaleFactor);
+    const padBottom = Math.round(35 * scaleFactor);
+    const graphWidth = width - padLeft - padRight;
 
     let hoveredMinute;
     if (forcedMinute !== null && forcedMinute !== undefined) {
         hoveredMinute = Math.max(0, Math.min(1439, parseInt(forcedMinute, 10) || 0));
     } else {
-        const now = new Date();
-        hoveredMinute = (now.getHours() * 60) + now.getMinutes();
+        const x = clientX - rect.left;
+        if (x < padLeft || x > width - padRight) {
+            if (clientX === 0) hoveredMinute = 0;
+            else return null;
+        } else {
+            const ratio = Math.max(0, Math.min(1, (x - padLeft) / graphWidth));
+            hoveredMinute = Math.round(ratio * 1439);
+        }
     }
 
     let extractedDate = item?.dateStr || item?.date || new Date().toISOString().split('T')[0];
