@@ -1681,7 +1681,161 @@ async function buildForecast() {
 
     renderForecast(dosForecast);
 }
+function openForecastGraphModal(item, fullForecast = [], itemIndex = -1) {
+    let modal = document.getElementById("forecastGraphModal");
+    if (!modal) {
+        modal = document.createElement("div");
+        modal.id = "forecastGraphModal";
+        modal.style.cssText = "position:fixed;top:0;left:0;width:100vw;height:100vh;background:rgba(0,0,0,0.85);z-index:9999;display:flex;align-items:center;justify-content:center;padding:10px;";
+        modal.innerHTML = `
+            <div style="background:#1e1e24;border-radius:12px;padding:16px;width:100%;max-width:750px;color:#fff;position:relative;box-shadow:0 8px 32px rgba(0,0,0,0.5);">
+                <button id="closeGraphModalBtn" style="position:absolute;top:12px;right:12px;background:none;border:none;color:#fff;font-size:24px;cursor:pointer;padding:5px;">✕</button>
+                <div style="display:flex;gap:10px;align-items:center;margin-bottom:12px;flex-wrap:wrap;padding-right:30px;">
+                    <h3 id="graphModalTitle" style="margin:0;font-size:clamp(14px, 4vw, 18px);">Forecast Graph</h3>
+                    <select id="graphTypeSelect" style="background:#2b2b36;color:#fff;border:1px solid #444;padding:6px 10px;border-radius:6px;cursor:pointer;font-size:13px;">
+                        <option value="temp">Temperature</option>
+                        <option value="feelsLike">Feels Like Temp</option>
+                        <option value="wind">Wind & Gusts</option>
+                        <option value="dos">DOS Score</option>
+                        <option value="pressure">Pressure</option>
+                        <option value="humidity">Humidity</option>
+                        <option value="uv">UV Index</option>
+                        <option value="precip">Precipitation Chance</option>
+                    </select>
+                    <button class="traffic-btn" onclick="openTrafficMapModal()">🚦 Traffic Road Map</button>
+                    <button id="weatherMapModalBtn" class="weather-map-btn" style="background:#38bdf8;color:#0f172a;border:none;padding:6px 12px;border-radius:6px;font-weight:600;font-size:13px;cursor:pointer;display:inline-flex;align-items:center;gap:6px;">
+                        📡 Weather Radar Map
+                    </button>
+                </div>
 
+                <div style="width:100%;aspect-ratio:2/1;min-height:220px;max-height:350px;">
+                    <canvas id="forecastGraphCanvas" style="width:100%;height:100%;background:#121216;border-radius:8px;cursor:crosshair;touch-action:none;display:block;"></canvas>
+                </div>
+            </div>
+        `;
+        document.body.appendChild(modal);
+        
+        const canvas = document.getElementById("forecastGraphCanvas");
+        document.getElementById("closeGraphModalBtn").addEventListener("click", () => {
+            modal.style.display = "none";
+            modal.dragX = null;
+        });
+
+        document.getElementById("graphTypeSelect").addEventListener("change", (e) => {
+            if (modal.currentItem && canvas) {
+                drawForecastCanvasGraph(modal.currentItem, e.target.value, canvas, modal.dragX, modal.prevItem, modal.nextItem);
+            }
+        });
+        
+        // Attach click handler for Weather Map Modal Button
+        document.getElementById("weatherMapModalBtn")?.addEventListener("click", () => {
+    const currentMode = document.getElementById("graphTypeSelect")?.value || "temp";
+    
+    // 1. Identify active selected day card/tab element from UI
+    const dayElements = document.querySelectorAll('.day-tab, .forecast-day-card, .day-card'); 
+    let selectedDayIndex = 0;
+    
+    dayElements.forEach((el, index) => {
+        if (
+            el.classList.contains('active') || 
+            el.classList.contains('selected') || 
+            el.getAttribute('aria-selected') === 'true' ||
+            el.dataset.selected === 'true'
+        ) {
+            selectedDayIndex = index;
+        }
+    });
+
+    // 2. Safely resolve root dataset from active state or window context
+    const rootData = window._radarState?.currentItem || window.currentWeatherData || {};
+
+    // 3. Helper to extract forecast array across standard schema variations
+    const extractDaysArray = (data) => {
+        if (!data) return [];
+        if (Array.isArray(data)) return data;
+        return data.daily || data.forecast || data.days || data.weekly || data.list || data.data || data.timeline || [];
+    };
+
+    let daysArray = extractDaysArray(rootData);
+    if (daysArray.length === 0 && rootData && typeof rootData === 'object') {
+        for (const key of Object.keys(rootData)) {
+            if (rootData[key] && typeof rootData[key] === 'object') {
+                const nested = extractDaysArray(rootData[key]);
+                if (nested.length > 0) {
+                    daysArray = nested;
+                    break;
+                }
+            }
+        }
+    }
+
+    // 4. Extract target selected day card object
+    const selectedDayCard = daysArray[selectedDayIndex] || daysArray[0] || rootData;
+
+    // Preserve parent metadata (lat, lon, timezone) on selected card object
+    if (selectedDayCard !== rootData && typeof rootData === 'object') {
+        selectedDayCard.lat = selectedDayCard.lat ?? rootData.lat ?? rootData.latitude;
+        selectedDayCard.lon = selectedDayCard.lon ?? rootData.lon ?? rootData.longitude;
+        selectedDayCard.timezone = selectedDayCard.timezone ?? rootData.timezone ?? rootData.tz;
+        selectedDayCard.days = daysArray; // Preserve full collection reference
+    }
+
+    // 5. Open radar modal targeting the isolated selected day card
+    openWeatherMapModal(selectedDayCard, currentMode, selectedDayIndex);
+});
+        
+        const updateScrubber = (clientX) => {
+            const rect = canvas.getBoundingClientRect();
+            const x = (clientX - rect.left) * (canvas.width / rect.width);
+            modal.dragX = x;
+            const currentMode = document.getElementById("graphTypeSelect").value || "temp";
+            drawForecastCanvasGraph(modal.currentItem, currentMode, canvas, modal.dragX, modal.prevItem, modal.nextItem);
+        };
+        const clearScrubber = () => {
+            modal.dragX = null;
+            const currentMode = document.getElementById("graphTypeSelect").value || "temp";
+            drawForecastCanvasGraph(modal.currentItem, currentMode, canvas, null, modal.prevItem, modal.nextItem);
+        };
+        
+        canvas.addEventListener("mousemove", (e) => updateScrubber(e.clientX));
+        canvas.addEventListener("mouseleave", clearScrubber);
+        canvas.addEventListener("touchstart", (e) => {
+            if (e.touches.length > 0) { e.preventDefault(); updateScrubber(e.touches[0].clientX); }
+        }, { passive: false });
+        canvas.addEventListener("touchmove", (e) => {
+            if (e.touches.length > 0) { e.preventDefault(); updateScrubber(e.touches[0].clientX); }
+        }, { passive: false });
+        canvas.addEventListener("touchend", clearScrubber);
+        canvas.addEventListener("touchcancel", clearScrubber);
+    }
+    
+    modal.currentItem = item;
+    modal.prevItem = (fullForecast && itemIndex > 0) ? fullForecast[itemIndex - 1] : null;
+    modal.nextItem = (fullForecast && itemIndex >= 0 && itemIndex < fullForecast.length - 1) ? fullForecast[itemIndex + 1] : null;
+    modal.dragX = null;
+    modal.style.display = "flex";
+    
+    const currentMode = document.getElementById("graphTypeSelect").value || "temp";
+    const modalCanvas = document.getElementById("forecastGraphCanvas");
+    updateTrafficButtonState();
+    setTimeout(() => {
+        const rect = modalCanvas.getBoundingClientRect();
+        modalCanvas.width = rect.width * (window.devicePixelRatio || 1);
+        modalCanvas.height = rect.height * (window.devicePixelRatio || 1);
+        drawForecastCanvasGraph(item, currentMode, modalCanvas, null, modal.prevItem, modal.nextItem);
+    }, 50);
+}
+// Global radar state initialization
+window._radarState = window._radarState || {
+  map: null,
+  radarTileLayer: null,
+  currentMode: 'temp',
+  windSubMode: 'speed',
+  dataset: [],
+  selectedDayIndex: 0,
+  currentItem: null,
+  activeDateText: ''
+};
 function renderForecast(dosForecast) {
     const container = document.getElementById("forecastContainer");
     container.innerHTML = "";
