@@ -2284,7 +2284,7 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
         }
     }
 
-    // --- ACTIVE DAY CARD DATE RESOLUTION ---
+    // --- ACTIVE DAY CARD DATE & METRICS RESOLUTION ---
     let extractedDate = null;
     let cardMetrics = {};
 
@@ -2348,6 +2348,19 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
             precipChance: safeNum(activeCard.dataset.precip ?? activeCard.dataset.precipChance) ?? extractNum(['.precip', '.rain'], /precip[:\s]+([0-9.]+)/i),
             condition: activeCard.dataset.condition || activeCard.getAttribute('data-weather') || ''
         };
+    }
+
+    // --- OVERRIDE METRICS FROM calculateForecastDayMetrics METHOD ---
+    if (typeof calculateForecastDayMetrics === 'function') {
+        const calculatedOverrides = calculateForecastDayMetrics(canvas, clientX, item, mode, prevItem, nextItem, forcedMinute);
+        if (calculatedOverrides && typeof calculatedOverrides === 'object') {
+            for (const [key, val] of Object.entries(calculatedOverrides)) {
+                if (val !== undefined && val !== null) {
+                    const parsed = safeNum(val);
+                    cardMetrics[key] = parsed !== null ? parsed : val;
+                }
+            }
+        }
     }
 
     extractedDate = extractedDate || 
@@ -2987,7 +3000,6 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
 
     return activeGridLayer;
 }
-
 function calculateForecastDayMetrics(forecastYear, forecastMonth, dateNum, targetZoneOrPoint, gridPeriods, confidenceFactor, exactDaysOut, dos, i) {
     let tempHigh, tempLow, projectedScore, streamChance, windMph, gustMph, weatherSummary;
 
