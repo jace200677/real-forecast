@@ -2145,11 +2145,17 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
         return isNaN(n) ? null : n;
     };
 
-    // Normalize date strings for accurate comparison across formats
+    // Normalize date strings for accurate comparison across formats (e.g., 08/29/2026 vs 8/29/2026)
     const normalizeDateStr = (str) => {
         if (!str) return '';
-        const match = str.match(/\d{1,2}\/\d{1,2}\/\d{2,4}/) || str.match(/\d{4}-\d{2}-\d{2}/);
-        return match ? match[0] : str.trim();
+        const match = str.match(/\b\d{1,2}\/\d{1,2}\/\d{2,4}\b/) || str.match(/\b\d{4}-\d{2}-\d{2}\b/);
+        if (!match) return str.trim();
+        const dStr = match[0];
+        if (dStr.includes('/')) {
+            const [m, d, y] = dStr.split('/');
+            return `${parseInt(m, 10)}/${parseInt(d, 10)}/${y.length === 2 ? '20' + y : y}`;
+        }
+        return dStr;
     };
 
     const activeTargetMap = (typeof window !== "undefined" && window._radarState && window._radarState.map) ? window._radarState.map : (typeof map !== "undefined" ? map : null);
@@ -2212,19 +2218,26 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
             hoveredMinute = now.getHours() * 60 + now.getMinutes();
         }
     }
-    // --- FIXED: ENSURE ACTIVE CARD DATE STRICTLY OVERRIDES ALL OTHER SOURCES ---
+
+    // --- ENHANCED ACTIVE DAY CARD DATE RESOLUTION ---
     let cardMetrics = {};
     let activeCardDate = null;
-    const activeCard = document.querySelector('.day-card.active, .forecast-day-card.active, .day-tab.active, .swiper-slide-active, [data-selected="true"], [aria-selected="true"], .selected-day, .history-card.active');
-    
+    const activeCard = document.querySelector('.day-card.active, .forecast-day-card.active, .day-tab.active, .swiper-slide-active, [data-selected="true"], [aria-selected="true"], .selected-day, .history-card.active, .day.active, .forecast-card.active');
+
     if (activeCard) {
-        // 1. Check dataset attributes first
+        // 1. Check explicit dataset properties on active container
         activeCardDate = activeCard.dataset.date || activeCard.dataset.dateStr || activeCard.dataset.rawDate || activeCard.getAttribute('data-date');
 
-        // 2. Define cardText in outer block scope so extractNum can safely reference it
-        const cardText = activeCard.innerText || activeCard.textContent || '';
+        // 2. Check inner date elements (e.g., .date, .day-date, .card-date)
+        if (!activeCardDate) {
+            const dateSubEl = activeCard.querySelector('.date, .day-date, .card-date, .forecast-date, [data-date]');
+            if (dateSubEl) {
+                activeCardDate = dateSubEl.dataset.date || dateSubEl.innerText || dateSubEl.textContent || '';
+            }
+        }
 
-        // 3. Fallback: Extract from text using word boundaries to prevent partial matches
+        // 3. Fallback to scanning card text for formatted date strings
+        const cardText = activeCard.innerText || activeCard.textContent || '';
         if (!activeCardDate && cardText) {
             const dateMatch = cardText.match(/\b(\d{1,2}\/\d{1,2}\/\d{2,4})\b|\b(\d{4}-\d{2}-\d{2})\b/);
             if (dateMatch) {
@@ -2261,22 +2274,7 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
         };
     }
 
-    // STRICT RESOLUTION: Active Card Date > Radar State > Item Date > Today Fallback
-    let extractedDate = activeCardDate || 
-                        window._radarState?.selectedDate || 
-                        item?.dateStr || item?.date || item?.rawDate || 
-                        getTargetTzDateStr(targetTimezone);
-
-    // STRICT RESOLUTION: Active Card Date > Radar State > Item Date > Today Fallback
-    let extractedDate = activeCardDate || 
-                        window._radarState?.selectedDate || 
-                        item?.dateStr || item?.date || item?.rawDate || 
-                        getTargetTzDateStr(targetTimezone);
-    // --- FIX: PRIORITIZE ACTIVE DAY CARD DATE OVER PASSED ITEM / TODAY ---
-    // --- FIXED: PRIORITIZE ACTIVE DAY CARD DATE OVER PASSED ITEM / TODAY ---
-
-
-    // Resolve date order: Active Card > Passed Item Date > Radar State > Fallback Today
+    // Prioritize active card date over passed item / radar state / system today
     let extractedDate = activeCardDate || 
                         item?.dateStr || item?.date || item?.rawDate || 
                         window._radarState?.selectedDate || 
