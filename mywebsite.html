@@ -2687,8 +2687,8 @@ function getSelectedDayCardDate(canvas, activeX, item, mode, prevItem, nextItem)
     return { dateStr: `${defM}/${defD}/${defY}` };
 }
 /**
- * Creates or updates the radar grid layer by extracting interpolated graph values dynamically,
- * distinguishing between wind speed and wind gust modes, and applying NWS-style spatial map tile rendering.
+ * Creates or updates the radar grid layer with precise CDT time parsing,
+ * direct graph value mapping, and smooth radial color lerping.
  */
 function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, nextItem = null, forcedMinute = 0) {
     if (!canvas) return null;
@@ -2706,8 +2706,19 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
     } else {
         const x = clientX - rect.left;
         if (x < padLeft || x > width - padRight) {
-            if (clientX === 0) hoveredMinute = 0;
-            else return null;
+            if (clientX === 0) {
+                const now = new Date();
+                const cdtOptions = { timeZone: 'America/Chicago', hour: 'numeric', minute: 'numeric', hour12: false };
+                const cdtParts = new Intl.DateTimeFormat('en-US', cdtOptions).formatToParts(now);
+                let cdtHour = 0, cdtMinute = 0;
+                cdtParts.forEach(p => {
+                    if (p.type === 'hour') cdtHour = parseInt(p.value, 10);
+                    if (p.type === 'minute') cdtMinute = parseInt(p.value, 10);
+                });
+                hoveredMinute = (cdtHour * 60) + cdtMinute;
+            } else {
+                return null;
+            }
         } else {
             const ratio = Math.max(0, Math.min(1, (x - padLeft) / graphWidth));
             hoveredMinute = Math.round(ratio * 1439);
@@ -2759,12 +2770,6 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
     
     const lat = currentGlobalPoint && currentGlobalPoint.lat ? parseFloat(currentGlobalPoint.lat) : 47.80;
     const lon = currentGlobalPoint && currentGlobalPoint.lon ? parseFloat(currentGlobalPoint.lon) : -92.37;
-    const locationName = currentGlobalPoint && currentGlobalPoint.name ? currentGlobalPoint.name.toLowerCase() : "tower";
-
-    const isTower = locationName.includes("tower") || (Math.abs(lat - 47.80) < 0.1 && Math.abs(lon - (-92.37)) < 0.1);
-    const isVirginia = locationName.includes("virginia") || (Math.abs(lat - 47.52) < 0.1 && Math.abs(lon - (-92.53)) < 0.1);
-    const isEmbarrass = locationName.includes("embarrass") || (Math.abs(lat - 47.66) < 0.1 && Math.abs(lon - (-92.30)) < 0.1);
-    const isBabbitt = locationName.includes("babbitt") || (Math.abs(lat - 47.71) < 0.1 && Math.abs(lon - (-91.95)) < 0.1);
 
     const parseTargetDateParts = (dateStr) => {
         const d = new Date(dateStr);
@@ -2785,13 +2790,7 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
     const forecastMonth = targetDateParts.month;
     const dateNum = targetDateParts.dateNum;
 
-    const now = new Date();
-    const targetMidday = new Date(forecastYear, forecastMonth - 1, dateNum, 12, 0, 0);
-    const hoursDifference = (targetMidday - now) / (1000 * 60 * 60);
-    const exactDaysOut = Math.max(0, hoursDifference / 24);
-    const confidenceFactor = Math.min(1.0, Math.max(0.4, 1.0 - (exactDaysOut * 0.085)));
-
-    const getOverrideScoreAndWeather = (m) => {
+    const getOverrideScoreAndWeather = () => {
         let projectedScore = item?.score ?? 5;
         let windMph = item?.windMph ?? 31;
         let gustMph = item?.gustMph ?? 56;
@@ -2809,7 +2808,7 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
         return { score: projectedScore, windMph, gustMph, tempLow, tempHigh };
     };
 
-    const overrideMetrics = getOverrideScoreAndWeather(hoveredMinute);
+    const overrideMetrics = getOverrideScoreAndWeather();
 
     const getPreviousDayLowestTemp = () => {
         const prev = effectivePrevItem;
@@ -3067,39 +3066,52 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
 
             const targetMap = this._map || activeTargetMap;
             const currentZoom = (targetMap && typeof targetMap.getZoom === 'function') ? targetMap.getZoom() : baseZoom;
-            let centerLat = lat;
-            let centerLng = lon;
-
-            if (targetMap && typeof targetMap.unproject === 'function') {
+            
+            if (targetMap && typeof targetMap.unproject === 'function' && typeof targetMap.project === 'function') {
                 try {
                     const fixedCoords = coords.clone ? coords.clone() : { x: coords.x, y: coords.y, z: currentZoom, scaleBy: c => coords.scaleBy(c) };
                     fixedCoords.z = currentZoom;
-                    
+
                     const nwPoint = fixedCoords.scaleBy(size);
-                    const sePoint = nwPoint.add(size);
-                    const nwLatLng = targetMap.unproject(nwPoint, currentZoom);
-                    const seLatLng = targetMap.unproject(sePoint, currentZoom);
-                    centerLat = (nwLatLng.lat + seLatLng.lat) / 2;
-                    centerLng = (nwLatLng.lng + seLatLng.lng) / 2;
-                } catch (err) {}
+                    const steps = 6; // High-resolution sampling grid for continuous color lerping
+                    const stepX = size.x / steps;
+                    const stepY = size.y / steps;
+
+                    ctx.clearRect(0, 0, size.x, size.y);
+
+                    for (let gx = 0; gx < steps; gx++) {
+                        for (let gy = 0; gy < steps; gy++) {
+                            const px = nwPoint.x + (gx + 0.5) * stepX;
+                            const py = nwPoint.y + (gy + 0.5) * stepY;
+                            const sampleLatLng = targetMap.unproject(L.point(px, py), currentZoom);
+
+                            const sampledVal = getNwsSpatiallyInterpolatedValue(baseResolvedValue, effectiveSubMode, sampleLatLng.lat, sampleLatLng.lng, currentZoom);
+                            const sampledColor = getDynamicColor(sampledVal, effectiveSubMode);
+
+                            const cellX = gx * stepX;
+                            const cellY = gy * stepY;
+                            const radGrad = ctx.createRadialGradient(
+                                cellX + stepX / 2, cellY + stepY / 2, 2,
+                                cellX + stepX / 2, cellY + stepY / 2, Math.max(stepX, stepY) * 0.9
+                            );
+                            radGrad.addColorStop(0, sampledColor);
+                            radGrad.addColorStop(1, 'transparent');
+
+                            ctx.fillStyle = radGrad;
+                            ctx.fillRect(cellX - 2, cellY - 2, stepX + 4, stepY + 4);
+                        }
+                    }
+                } catch (err) {
+                    const centerVal = getNwsSpatiallyInterpolatedValue(baseResolvedValue, effectiveSubMode, lat, lon, currentZoom);
+                    ctx.fillStyle = getDynamicColor(centerVal, effectiveSubMode);
+                    ctx.fillRect(0, 0, tile.width, tile.height);
+                }
+            } else {
+                const centerVal = getNwsSpatiallyInterpolatedValue(baseResolvedValue, effectiveSubMode, lat, lon, currentZoom);
+                ctx.fillStyle = getDynamicColor(centerVal, effectiveSubMode);
+                ctx.fillRect(0, 0, tile.width, tile.height);
             }
 
-            const centerVal = getNwsSpatiallyInterpolatedValue(baseResolvedValue, effectiveSubMode, centerLat, centerLng, currentZoom);
-            const centerColor = getDynamicColor(centerVal, effectiveSubMode);
-
-            const cornerVal = getNwsSpatiallyInterpolatedValue(baseResolvedValue, effectiveSubMode, centerLat + 0.035, centerLng + 0.035, currentZoom);
-            const cornerColor = getDynamicColor(cornerVal, effectiveSubMode);
-
-            const gradient = ctx.createRadialGradient(
-                tile.width / 2, tile.height / 2, 5,
-                tile.width / 2, tile.height / 2, Math.max(tile.width, tile.height) * 0.7
-            );
-            gradient.addColorStop(0, centerColor);
-            gradient.addColorStop(1, cornerColor);
-
-            ctx.fillStyle = gradient;
-            ctx.fillRect(0, 0, tile.width, tile.height);
-            
             return tile;
         }
     });
