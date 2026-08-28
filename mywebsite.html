@@ -2725,7 +2725,6 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
             extractedDate = dateMatch[0];
         }
 
-        // Helper to extract numbers safely from text content if dataset is missing
         const extractNum = (selectors, textRegex) => {
             for (const sel of selectors) {
                 const el = activeCard.querySelector(sel);
