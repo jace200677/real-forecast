@@ -2715,34 +2715,54 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
     }
 
     let extractedDate = item?.dateStr || item?.date || new Date().toISOString().split('T')[0];
-    let cardMetrics = {};
+   let cardMetrics = {};
+    const activeCard = document.querySelector('.day-card.active, .forecast-day-card.active, .day-tab.active, .swiper-slide-active, [data-selected="true"], [aria-selected="true"], .selected-day');
     
-    const activeCard = document.querySelector('.day-card.active, .forecast-day-card.active, .day-tab.active, [data-selected="true"]');
     if (activeCard) {
-        const cardText = activeCard.innerText || activeCard.getAttribute('data-date') || activeCard.getAttribute('title') || '';
+        const cardText = activeCard.innerText || activeCard.textContent || '';
         const dateMatch = cardText.match(/([A-Za-z]{3}\s*\(\d{1,2}\/\d{1,2}\/\d{4}\))|(\d{1,2}\/\d{1,2}\/\d{2,4})|([A-Za-z]{3}\s+\d{1,2})|(\d{4}-\d{2}-\d{2})/);
         if (dateMatch && dateMatch[0]) {
             extractedDate = dateMatch[0];
         }
 
+        // Helper to extract numbers safely from text content if dataset is missing
+        const extractNum = (selectors, textRegex) => {
+            for (const sel of selectors) {
+                const el = activeCard.querySelector(sel);
+                if (el && el.innerText) {
+                    const match = el.innerText.match(/[-+]?[0-9]*\.?[0-9]+/);
+                    if (match) return parseFloat(match[0]);
+                }
+            }
+            if (textRegex) {
+                const match = cardText.match(textRegex);
+                if (match && match[1]) return parseFloat(match[1]);
+            }
+            return null;
+        };
+
         cardMetrics = {
-            score: activeCard.dataset.score !== undefined ? parseFloat(activeCard.dataset.score) : null,
+            score: activeCard.dataset.score !== undefined ? parseFloat(activeCard.dataset.score) : extractNum(['.score', '.rating'], /score[:\s]+([0-9.]+)/i),
             tempHigh: activeCard.dataset.high !== undefined ? parseFloat(activeCard.dataset.high) : 
                       (activeCard.dataset.tempHigh !== undefined ? parseFloat(activeCard.dataset.tempHigh) : 
-                      (activeCard.dataset.max !== undefined ? parseFloat(activeCard.dataset.max) : null)),
+                      (activeCard.dataset.max !== undefined ? parseFloat(activeCard.dataset.max) : 
+                      extractNum(['.high', '.temp-high', '.max-temp'], /high[:\s]+([-0-9.]+)/i))),
             tempLow: activeCard.dataset.low !== undefined ? parseFloat(activeCard.dataset.low) : 
                      (activeCard.dataset.tempLow !== undefined ? parseFloat(activeCard.dataset.tempLow) : 
-                     (activeCard.dataset.min !== undefined ? parseFloat(activeCard.dataset.min) : null)),
+                     (activeCard.dataset.min !== undefined ? parseFloat(activeCard.dataset.min) : 
+                     extractNum(['.low', '.temp-low', '.min-temp'], /low[:\s]+([-0-9.]+)/i))),
             windMph: activeCard.dataset.wind !== undefined ? parseFloat(activeCard.dataset.wind) : 
-                     (activeCard.dataset.windMph !== undefined ? parseFloat(activeCard.dataset.windMph) : null),
+                     (activeCard.dataset.windMph !== undefined ? parseFloat(activeCard.dataset.windMph) : 
+                     extractNum(['.wind', '.wind-speed'], /wind[:\s]+([0-9.]+)/i)),
             gustMph: activeCard.dataset.gust !== undefined ? parseFloat(activeCard.dataset.gust) : 
-                     (activeCard.dataset.gustMph !== undefined ? parseFloat(activeCard.dataset.gustMph) : null),
-            humidity: activeCard.dataset.humidity !== undefined ? parseFloat(activeCard.dataset.humidity) : null,
-            pressure: activeCard.dataset.pressure !== undefined ? parseFloat(activeCard.dataset.pressure) : null,
+                     (activeCard.dataset.gustMph !== undefined ? parseFloat(activeCard.dataset.gustMph) : 
+                     extractNum(['.gust', '.wind-gust'], /gust[:\s]+([0-9.]+)/i)),
+            humidity: activeCard.dataset.humidity !== undefined ? parseFloat(activeCard.dataset.humidity) : extractNum(['.humidity', '.hum'], /humidity[:\s]+([0-9.]+)/i),
+            pressure: activeCard.dataset.pressure !== undefined ? parseFloat(activeCard.dataset.pressure) : extractNum(['.pressure'], /pressure[:\s]+([0-9.]+)/i),
             uvIndex: activeCard.dataset.uv !== undefined ? parseFloat(activeCard.dataset.uv) : 
-                     (activeCard.dataset.uvIndex !== undefined ? parseFloat(activeCard.dataset.uvIndex) : null),
+                     (activeCard.dataset.uvIndex !== undefined ? parseFloat(activeCard.dataset.uvIndex) : extractNum(['.uv'], /uv[:\s]+([0-9.]+)/i)),
             precipChance: activeCard.dataset.precip !== undefined ? parseFloat(activeCard.dataset.precip) : 
-                          (activeCard.dataset.precipChance !== undefined ? parseFloat(activeCard.dataset.precipChance) : null),
+                          (activeCard.dataset.precipChance !== undefined ? parseFloat(activeCard.dataset.precipChance) : extractNum(['.precip', '.rain'], /precip[:\s]+([0-9.]+)/i)),
             condition: activeCard.dataset.condition || activeCard.getAttribute('data-weather') || ''
         };
     }
