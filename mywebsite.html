@@ -2212,56 +2212,63 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
             hoveredMinute = now.getHours() * 60 + now.getMinutes();
         }
     }
+    // --- FIXED: ENSURE ACTIVE CARD DATE STRICTLY OVERRIDES ALL OTHER SOURCES ---
+    let cardMetrics = {};
+    let activeCardDate = null;
+    const activeCard = document.querySelector('.day-card.active, .forecast-day-card.active, .day-tab.active, .swiper-slide-active, [data-selected="true"], [aria-selected="true"], .selected-day, .history-card.active');
+    
+    if (activeCard) {
+        // 1. Check dataset attributes first
+        activeCardDate = activeCard.dataset.date || activeCard.dataset.dateStr || activeCard.dataset.rawDate || activeCard.getAttribute('data-date');
 
-    // --- FIX: PRIORITIZE ACTIVE DAY CARD DATE OVER PASSED ITEM / TODAY ---
-    // --- FIXED: PRIORITIZE ACTIVE DAY CARD DATE OVER PASSED ITEM / TODAY ---
-let cardMetrics = {};
-let activeCardDate = null;
-const activeCard = document.querySelector('.day-card.active, .forecast-day-card.active, .day-tab.active, .swiper-slide-active, [data-selected="true"], [aria-selected="true"], .selected-day, .history-card.active');
+        // 2. Define cardText in outer block scope so extractNum can safely reference it
+        const cardText = activeCard.innerText || activeCard.textContent || '';
 
-if (activeCard) {
-    // 1. First check explicit data attributes on the active element
-    activeCardDate = activeCard.dataset.date || activeCard.dataset.dateStr || activeCard.dataset.rawDate || activeCard.getAttribute('data-date');
-
-    // 2. Define cardText in outer block scope so extractNum can safely reference it
-    const cardText = activeCard.innerText || activeCard.textContent || '';
-
-    // 3. Fallback: Parse card text content if dataset attribute is missing
-    if (!activeCardDate && cardText) {
-        const dateMatch = cardText.match(/\b(\d{1,2}\/\d{1,2}\/\d{2,4})\b|\b(\d{4}-\d{2}-\d{2})\b/);
-        if (dateMatch) {
-            activeCardDate = dateMatch[0];
-        }
-    }
-
-    const extractNum = (selectors, textRegex) => {
-        for (const sel of selectors) {
-            const el = activeCard.querySelector(sel);
-            if (el && el.innerText) {
-                const match = el.innerText.match(/[-+]?[0-9]*\.?[0-9]+/);
-                if (match) return safeNum(match[0]);
+        // 3. Fallback: Extract from text using word boundaries to prevent partial matches
+        if (!activeCardDate && cardText) {
+            const dateMatch = cardText.match(/\b(\d{1,2}\/\d{1,2}\/\d{2,4})\b|\b(\d{4}-\d{2}-\d{2})\b/);
+            if (dateMatch) {
+                activeCardDate = dateMatch[0];
             }
         }
-        if (textRegex && cardText) {
-            const match = cardText.match(textRegex);
-            if (match && match[1]) return safeNum(match[1]);
-        }
-        return null;
-    };
 
-    cardMetrics = {
-        score: safeNum(activeCard.dataset.score ?? activeCard.dataset.dos) ?? extractNum(['.score', '.rating', '.dos-score'], /score[:\s]+([0-9.]+)/i),
-        tempHigh: safeNum(activeCard.dataset.high ?? activeCard.dataset.tempHigh ?? activeCard.dataset.max) ?? extractNum(['.high', '.temp-high', '.max-temp'], /high[:\s]+([-0-9.]+)/i),
-        tempLow: safeNum(activeCard.dataset.low ?? activeCard.dataset.tempLow ?? activeCard.dataset.min) ?? extractNum(['.low', '.temp-low', '.min-temp'], /low[:\s]+([-0-9.]+)/i),
-        windMph: safeNum(activeCard.dataset.wind ?? activeCard.dataset.windMph) ?? extractNum(['.wind', '.wind-speed'], /wind[:\s]+([0-9.]+)/i),
-        gustMph: safeNum(activeCard.dataset.gust ?? activeCard.dataset.gustMph) ?? extractNum(['.gust', '.wind-gust'], /gust[:\s]+([0-9.]+)/i),
-        humidity: safeNum(activeCard.dataset.humidity) ?? extractNum(['.humidity', '.hum'], /humidity[:\s]+([0-9.]+)/i),
-        pressure: safeNum(activeCard.dataset.pressure) ?? extractNum(['.pressure'], /pressure[:\s]+([0-9.]+)/i),
-        uvIndex: safeNum(activeCard.dataset.uv ?? activeCard.dataset.uvIndex) ?? extractNum(['.uv'], /uv[:\s]+([0-9.]+)/i),
-        precipChance: safeNum(activeCard.dataset.precip ?? activeCard.dataset.precipChance) ?? extractNum(['.precip', '.rain'], /precip[:\s]+([0-9.]+)/i),
-        condition: activeCard.dataset.condition || activeCard.getAttribute('data-weather') || ''
-    };
-}
+        const extractNum = (selectors, textRegex) => {
+            for (const sel of selectors) {
+                const el = activeCard.querySelector(sel);
+                if (el && el.innerText) {
+                    const match = el.innerText.match(/[-+]?[0-9]*\.?[0-9]+/);
+                    if (match) return safeNum(match[0]);
+                }
+            }
+            if (textRegex && cardText) {
+                const match = cardText.match(textRegex);
+                if (match && match[1]) return safeNum(match[1]);
+            }
+            return null;
+        };
+
+        cardMetrics = {
+            score: safeNum(activeCard.dataset.score ?? activeCard.dataset.dos) ?? extractNum(['.score', '.rating', '.dos-score'], /score[:\s]+([0-9.]+)/i),
+            tempHigh: safeNum(activeCard.dataset.high ?? activeCard.dataset.tempHigh ?? activeCard.dataset.max) ?? extractNum(['.high', '.temp-high', '.max-temp'], /high[:\s]+([-0-9.]+)/i),
+            tempLow: safeNum(activeCard.dataset.low ?? activeCard.dataset.tempLow ?? activeCard.dataset.min) ?? extractNum(['.low', '.temp-low', '.min-temp'], /low[:\s]+([-0-9.]+)/i),
+            windMph: safeNum(activeCard.dataset.wind ?? activeCard.dataset.windMph) ?? extractNum(['.wind', '.wind-speed'], /wind[:\s]+([0-9.]+)/i),
+            gustMph: safeNum(activeCard.dataset.gust ?? activeCard.dataset.gustMph) ?? extractNum(['.gust', '.wind-gust'], /gust[:\s]+([0-9.]+)/i),
+            humidity: safeNum(activeCard.dataset.humidity) ?? extractNum(['.humidity', '.hum'], /humidity[:\s]+([0-9.]+)/i),
+            pressure: safeNum(activeCard.dataset.pressure) ?? extractNum(['.pressure'], /pressure[:\s]+([0-9.]+)/i),
+            uvIndex: safeNum(activeCard.dataset.uv ?? activeCard.dataset.uvIndex) ?? extractNum(['.uv'], /uv[:\s]+([0-9.]+)/i),
+            precipChance: safeNum(activeCard.dataset.precip ?? activeCard.dataset.precipChance) ?? extractNum(['.precip', '.rain'], /precip[:\s]+([0-9.]+)/i),
+            condition: activeCard.dataset.condition || activeCard.getAttribute('data-weather') || ''
+        };
+    }
+
+    // STRICT RESOLUTION: Active Card Date > Radar State > Item Date > Today Fallback
+    let extractedDate = activeCardDate || 
+                        window._radarState?.selectedDate || 
+                        item?.dateStr || item?.date || item?.rawDate || 
+                        getTargetTzDateStr(targetTimezone);
+    // --- FIX: PRIORITIZE ACTIVE DAY CARD DATE OVER PASSED ITEM / TODAY ---
+    // --- FIXED: PRIORITIZE ACTIVE DAY CARD DATE OVER PASSED ITEM / TODAY ---
+
 
     // Resolve date order: Active Card > Passed Item Date > Radar State > Fallback Today
     let extractedDate = activeCardDate || 
