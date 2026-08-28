@@ -2225,12 +2225,12 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
 
     const activeTargetMap = (typeof window !== "undefined" && window._radarState && window._radarState.map) ? window._radarState.map : (typeof map !== "undefined" ? map : null);
     
-    // Resolve location defaults
+    // Resolve location defaults with unified lon/lng fallback
     const mapCenter = activeTargetMap && typeof activeTargetMap.getCenter === 'function' ? activeTargetMap.getCenter() : null;
     const currentGlobalPoint = (typeof targetZoneOrPoint !== 'undefined' && targetZoneOrPoint) ? targetZoneOrPoint : (window._targetZoneOrPoint || null);
     
-    const centerLat = mapCenter ? mapCenter.lat : (currentGlobalPoint && currentGlobalPoint.lat ? parseFloat(currentGlobalPoint.lat) : 45.5635);
-    const centerLon = mapCenter ? mapCenter.lng : (currentGlobalPoint && currentGlobalPoint.lon ? parseFloat(currentGlobalPoint.lon) : -94.3131);
+    const centerLat = mapCenter ? mapCenter.lat : (currentGlobalPoint && (currentGlobalPoint.lat !== undefined) ? parseFloat(currentGlobalPoint.lat) : 45.5635);
+    const centerLon = mapCenter ? mapCenter.lng : (currentGlobalPoint && (currentGlobalPoint.lon !== undefined || currentGlobalPoint.lng !== undefined) ? parseFloat(currentGlobalPoint.lon ?? currentGlobalPoint.lng) : -94.3131);
 
     // Resolve target timezone hierarchy
     const targetTimezone = item?.timezone || item?.tz || 
@@ -2350,7 +2350,6 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
         };
     }
 
-    // --- OVERRIDE METRICS FROM calculateForecastDayMetrics METHOD ---
     if (typeof calculateForecastDayMetrics === 'function') {
         const calculatedOverrides = calculateForecastDayMetrics(canvas, clientX, item, mode, prevItem, nextItem, forcedMinute);
         if (calculatedOverrides && typeof calculatedOverrides === 'object') {
@@ -2565,7 +2564,6 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
         return Math.round(smoothStep(resolvedPrecip, (resolvedPrecip + nextPrecip) / 2, (m - 900) / 539));
     };
 
-    // --- ROBUST GRAPH/CHART DATA PARSER ---
     const getValFromHourlyArray = (arr, minute, key = null) => {
         if (!Array.isArray(arr) || arr.length === 0) return null;
         const normMin = Math.max(0, Math.min(1439, minute));
@@ -2715,7 +2713,6 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
         }
     }
 
-    // --- SPATIAL LOCATION ENGINE ---
     const pseudoNoise2D = (x, y) => {
         const n = Math.sin(x * 12.9898 + y * 78.233) * 43758.5453123;
         return n - Math.floor(n);
@@ -2892,23 +2889,26 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
             tile.height = size.y;
             const ctx = tile.getContext('2d');
 
-            const tilePoint = coords.scaleBy(size);
             const mapObj = this._map;
+            const stepSize = 32;
 
-            let tileLat = centerLat;
-            let tileLon = centerLon;
+            for (let px = 0; px < tile.width; px += stepSize) {
+                for (let py = 0; py < tile.height; py += stepSize) {
+                    const subPoint = coords.scaleBy(size).add(L.point(px, py));
+                    let tileLat = centerLat;
+                    let tileLon = centerLon;
 
-            if (mapObj && typeof mapObj.unproject === 'function') {
-                const nwLatLng = mapObj.unproject(tilePoint, coords.z);
-                tileLat = nwLatLng.lat;
-                tileLon = nwLatLng.lng;
+                    if (mapObj && typeof mapObj.unproject === 'function') {
+                        const latLng = mapObj.unproject(subPoint, coords.z);
+                        tileLat = latLng.lat;
+                        tileLon = latLng.lng;
+                    }
+
+                    const localValue = getLocalValueAtCoordinates(tileLat, tileLon, baseResolvedValue, effectiveSubMode);
+                    ctx.fillStyle = getDynamicColor(localValue, effectiveSubMode);
+                    ctx.fillRect(px, py, stepSize, stepSize);
+                }
             }
-
-            const localValue = getLocalValueAtCoordinates(tileLat, tileLon, baseResolvedValue, effectiveSubMode);
-            const tileColor = getDynamicColor(localValue, effectiveSubMode);
-
-            ctx.fillStyle = tileColor;
-            ctx.fillRect(0, 0, tile.width, tile.height);
             
             return tile;
         }
@@ -2972,11 +2972,11 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
         };
 
         if (mapObj._radarInteractHandler) {
-            mapObj.off('click tap mousemove', mapObj._radarInteractHandler);
+            mapObj.off('click tap', mapObj._radarInteractHandler);
         }
 
         mapObj._radarInteractHandler = (e) => updateTooltipPosition(e);
-        mapObj.on('click tap mousemove', mapObj._radarInteractHandler);
+        mapObj.on('click tap', mapObj._radarInteractHandler);
     };
 
     if (activeTargetMap) {
@@ -2989,11 +2989,6 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
             });
         }
         if (!activeTargetMap.hasLayer(window.satelliteLayer)) {
-            activeTargetMap.eachLayer(layer => {
-                if (layer instanceof L.TileLayer && layer !== window.satelliteLayer) {
-                    activeTargetMap.removeLayer(layer);
-                }
-            });
             window.satelliteLayer.addTo(activeTargetMap);
         }
     }
