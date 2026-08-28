@@ -1375,15 +1375,15 @@ async function buildForecast() {
             const varianceAmplitude = exactDaysOut * 1.5 * (1 - confidenceFactor); 
             const swingFactor = Math.sin(exactDaysOut * 1.2);
 
-            const baseDos93 = 123;
+            const baseDos93 = 15;
             projectedScore = Math.max(5, Math.round(baseDos93 + latOffset + lonOffset + (swingFactor * varianceAmplitude)));
             
             streamChance = Math.min(Math.round((projectedScore / 90) * 100), 95);
 
-            const baseLow = 74 - latOffset + lonOffset;
-            const baseHigh = 105 - latOffset + (lonOffset * 1.5);
-            const baseWind = 55 + latOffset;
-            const baseGust = 95 + (latOffset * 1.5);
+            const baseLow = 40 - latOffset + lonOffset;
+            const baseHigh = 88 - latOffset + (lonOffset * 1.5);
+            const baseWind = 15 + latOffset;
+            const baseGust = 35 + (latOffset * 1.5);
 
             tempLow = Math.round(baseLow + (swingFactor * varianceAmplitude));
             tempHigh = Math.round(baseHigh + (swingFactor * varianceAmplitude * 1.3));
