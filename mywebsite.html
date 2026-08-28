@@ -2699,7 +2699,7 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
     const graphWidth = width - padLeft - padRight;
 
     let hoveredMinute;
-    if (forcedMinute !== null && forcedMinute !== undefined && forcedMinute !== 0) {
+    if (forcedMinute !== null && forcedMinute !== undefined) {
         hoveredMinute = Math.max(0, Math.min(1439, parseInt(forcedMinute, 10) || 0));
     } else {
         const x = clientX - rect.left;
@@ -2919,6 +2919,7 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
         return Math.round(smoothStep(resolvedPrecip, (resolvedPrecip + nextPrecip) / 2, (m - 900) / 539));
     };
 
+    // --- OVERRIDE EVENTS INTEGRATION ---
     const hasEvents = Array.isArray(item?.overrideEvents) && item.overrideEvents.length > 0;
     const sortedEvents = hasEvents ? [...item.overrideEvents].sort((a, b) => a.minute - b.minute) : [];
 
@@ -2926,11 +2927,8 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
         if (!hasEvents) return fallbackFn(m);
         const exact = sortedEvents.find(e => e.minute === m && e[key] !== undefined);
         if (exact) return exact[key];
-
-        const prevEvents = sortedEvents.filter(e => e.minute <= m && e[key] !== undefined);
-        const nextEvents = sortedEvents.filter(e => e.minute >= m && e[key] !== undefined);
-        const prevEvent = prevEvents.length > 0 ? prevEvents[prevEvents.length - 1] : null;
-        const nextEvent = nextEvents.length > 0 ? nextEvents[0] : null;
+        const prevEvent = [...sortedEvents].reverse().find(e => e.minute <= m && e[key] !== undefined);
+        const nextEvent = sortedEvents.find(e => e.minute >= m && e[key] !== undefined);
 
         if (prevEvent && nextEvent) {
             if (prevEvent.minute === nextEvent.minute) return prevEvent[key];
@@ -2963,6 +2961,7 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
     const getInterpolatedHumidity = (m) => getInterpolatedVal(m, 'humidity', getDiurnalHumidity);
     const getInterpolatedUv = (m) => getInterpolatedVal(m, 'uv', getDiurnalUv);
     const getInterpolatedPrecip = (m) => getInterpolatedVal(m, 'precip', getDiurnalPrecip);
+    // -----------------------------------
 
     let baseResolvedValue = null;
     let label = "";
