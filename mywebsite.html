@@ -2225,7 +2225,7 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
 
     const activeTargetMap = (typeof window !== "undefined" && window._radarState && window._radarState.map) ? window._radarState.map : (typeof map !== "undefined" ? map : null);
     
-    // Resolve location (Updated to Saint Joseph, Minnesota defaults)
+    // Resolve location defaults
     const mapCenter = activeTargetMap && typeof activeTargetMap.getCenter === 'function' ? activeTargetMap.getCenter() : null;
     const currentGlobalPoint = (typeof targetZoneOrPoint !== 'undefined' && targetZoneOrPoint) ? targetZoneOrPoint : (window._targetZoneOrPoint || null);
     
@@ -2358,8 +2358,10 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
     const globalDataSources = [
         typeof forecastData !== "undefined" ? forecastData : null,
         window._radarState?.dataset,
+        window._radarState?.chartData,
         window.currentWeatherData?.daily,
         window.currentWeatherData?.forecast,
+        window.chartData,
         window.historyData,
         window._historyData
     ].filter(Boolean);
@@ -2550,6 +2552,7 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
         return Math.round(smoothStep(resolvedPrecip, (resolvedPrecip + nextPrecip) / 2, (m - 900) / 539));
     };
 
+    // --- ROBUST GRAPH/CHART DATA PARSER ---
     const getValFromHourlyArray = (arr, minute, key = null) => {
         if (!Array.isArray(arr) || arr.length === 0) return null;
         const normMin = Math.max(0, Math.min(1439, minute));
@@ -2564,13 +2567,21 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
             if (typeof entry === 'number') return entry;
             if (typeof entry === 'object') {
                 if (key && entry[key] !== undefined) return safeNum(entry[key]);
-                if (entry.v !== undefined) return safeNum(entry.v);
-                if (entry.val !== undefined) return safeNum(entry.val);
-                if (entry.value !== undefined) return safeNum(entry.value);
-                if (entry.temp !== undefined) return safeNum(entry.temp);
-                if (entry.speed !== undefined) return safeNum(entry.speed);
-                if (entry.gust !== undefined) return safeNum(entry.gust);
-                if (entry.dos !== undefined) return safeNum(entry.dos);
+                // Fallback checks across common chart/graph keys
+                const candidates = [
+                    entry.v, entry.val, entry.value, entry.y,
+                    entry.temp, entry.temperature, entry.t,
+                    entry.speed, entry.wind, entry.gust,
+                    entry.dos, entry.score, entry.rating,
+                    entry.pressure, entry.press, entry.p,
+                    entry.humidity, entry.hum, entry.h,
+                    entry.uv, entry.uvIndex, entry.u,
+                    entry.precip, entry.precipChance, entry.rain, entry.pr
+                ];
+                for (const c of candidates) {
+                    const n = safeNum(c);
+                    if (n !== null) return n;
+                }
             }
             return safeNum(entry);
         };
@@ -2588,8 +2599,22 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
     const getInterpolatedVal = (m, primaryKeys, fallbackFn, hourlyArrayKeys = []) => {
         const keys = Array.isArray(primaryKeys) ? primaryKeys : [primaryKeys];
 
-        for (const arrKey of hourlyArrayKeys) {
-            let arr = item?.[arrKey] || (window._radarState && window._radarState[arrKey]) || (window.currentWeatherData && window.currentWeatherData[arrKey]);
+        // Combine item arrays, global state, and direct window global chart variables
+        const fullArraySources = [
+            ...hourlyArrayKeys.map(k => item?.[k]),
+            ...hourlyArrayKeys.map(k => window._radarState?.[k]),
+            ...hourlyArrayKeys.map(k => window.currentWeatherData?.[k]),
+            ...hourlyArrayKeys.map(k => window[k]),
+            item?.hourly,
+            item?.chartData,
+            item?.hourlyData,
+            window._radarState?.hourly,
+            window._radarState?.chartData,
+            window.chartData,
+            window.hourlyData
+        ].filter(Boolean);
+
+        for (let arr of fullArraySources) {
             if (typeof arr === 'string') {
                 try { arr = JSON.parse(arr); } catch (e) {}
             }
@@ -2606,15 +2631,15 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
         return fallbackFn(m);
     };
 
-    const getInterpolatedTemp = (m) => Math.round(getInterpolatedVal(m, ['temp', 'temperature', 't'], getDiurnalTemp, ['hourlyTemps', 'temps', 'hourly', 'hourlyData', 'chartData', 'tempRange']));
-    const getInterpolatedFeelsLike = (m) => Math.round(getInterpolatedVal(m, ['feelsLike', 'feels_like', 'fl'], getDiurnalFeelsLike, ['hourlyFeelsLike', 'feelsLike', 'hourly']));
-    const getInterpolatedWind = (m) => Math.round(getInterpolatedVal(m, ['wind', 'windSpeed', 'speed', 'w'], getDiurnalWind, ['hourlyWind', 'winds', 'hourly']));
-    const getInterpolatedGust = (m) => Math.round(getInterpolatedVal(m, ['gust', 'windGust', 'g'], getDiurnalGust, ['hourlyGust', 'gusts', 'hourly']));
-    const getInterpolatedDos = (m) => Math.round(getInterpolatedVal(m, ['dos', 'score', 'rating'], getDiurnalDos, ['hourlyDos', 'scores', 'dosList', 'hourly']));
-    const getInterpolatedPressure = (m) => +getInterpolatedVal(m, ['pressure', 'press', 'p'], getDiurnalPressure, ['hourlyPressure', 'pressures', 'hourly']).toFixed(2);
-    const getInterpolatedHumidity = (m) => Math.round(getInterpolatedVal(m, ['humidity', 'hum', 'h'], getDiurnalHumidity, ['hourlyHumidity', 'humidities', 'hourly']));
-    const getInterpolatedUv = (m) => +getInterpolatedVal(m, ['uv', 'uvIndex', 'u'], getDiurnalUv, ['hourlyUv', 'uvList', 'hourly']).toFixed(1);
-    const getInterpolatedPrecip = (m) => Math.round(getInterpolatedVal(m, ['precip', 'precipChance', 'rain', 'pr'], getDiurnalPrecip, ['hourlyPrecip', 'precips', 'hourly']));
+    const getInterpolatedTemp = (m) => Math.round(getInterpolatedVal(m, ['temp', 'temperature', 't', 'y', 'value', 'v'], getDiurnalTemp, ['hourlyTemps', 'temps', 'hourly', 'hourlyData', 'chartData', 'tempRange', 'chart', 'timeline', 'series', 'points', 'hours']));
+    const getInterpolatedFeelsLike = (m) => Math.round(getInterpolatedVal(m, ['feelsLike', 'feels_like', 'fl', 'temp', 'y'], getDiurnalFeelsLike, ['hourlyFeelsLike', 'feelsLike', 'hourly', 'chartData', 'timeline', 'series']));
+    const getInterpolatedWind = (m) => Math.round(getInterpolatedVal(m, ['wind', 'windSpeed', 'speed', 'w', 'y', 'value', 'v'], getDiurnalWind, ['hourlyWind', 'winds', 'hourly', 'chartData', 'timeline', 'series', 'points']));
+    const getInterpolatedGust = (m) => Math.round(getInterpolatedVal(m, ['gust', 'windGust', 'g', 'y', 'value', 'v'], getDiurnalGust, ['hourlyGust', 'gusts', 'hourly', 'chartData', 'timeline', 'series', 'points']));
+    const getInterpolatedDos = (m) => Math.round(getInterpolatedVal(m, ['dos', 'score', 'rating', 'y', 'value', 'v'], getDiurnalDos, ['hourlyDos', 'scores', 'dosList', 'hourly', 'chartData', 'timeline', 'series', 'points']));
+    const getInterpolatedPressure = (m) => +getInterpolatedVal(m, ['pressure', 'press', 'p', 'y', 'value', 'v'], getDiurnalPressure, ['hourlyPressure', 'pressures', 'hourly', 'chartData', 'timeline', 'series', 'points']).toFixed(2);
+    const getInterpolatedHumidity = (m) => Math.round(getInterpolatedVal(m, ['humidity', 'hum', 'h', 'y', 'value', 'v'], getDiurnalHumidity, ['hourlyHumidity', 'humidities', 'hourly', 'chartData', 'timeline', 'series', 'points']));
+    const getInterpolatedUv = (m) => +getInterpolatedVal(m, ['uv', 'uvIndex', 'u', 'y', 'value', 'v'], getDiurnalUv, ['hourlyUv', 'uvList', 'hourly', 'chartData', 'timeline', 'series', 'points']).toFixed(1);
+    const getInterpolatedPrecip = (m) => Math.round(getInterpolatedVal(m, ['precip', 'precipChance', 'rain', 'pr', 'y', 'value', 'v'], getDiurnalPrecip, ['hourlyPrecip', 'precips', 'hourly', 'chartData', 'timeline', 'series', 'points']));
 
     let baseResolvedValue = null;
     let label = "";
@@ -2680,7 +2705,6 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
     }
 
     // --- SPATIAL LOCATION ENGINE ---
-    // Deterministic 2D Noise for continuous spatial gradient simulation
     const pseudoNoise2D = (x, y) => {
         const n = Math.sin(x * 12.9898 + y * 78.233) * 43758.5453123;
         return n - Math.floor(n);
@@ -2704,28 +2728,22 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
         return nx0 + (nx1 - nx0) * sy;
     };
 
-    // Computes localized weather value based on lat, lon, distance, and terrain variance
     const getLocalValueAtCoordinates = (lat, lon, baseVal, modeType) => {
         const latOffset = lat - centerLat;
         const lonOffset = lon - centerLon;
         const distFromCenter = Math.sqrt(latOffset * latOffset + lonOffset * lonOffset);
 
-        // Spatial scale factors
         const spatialScale = 3.5;
         const rawNoise = getSmoothNoise2D(lat * spatialScale, lon * spatialScale);
-        const noiseFactor = (rawNoise - 0.5) * 2; // -1.0 to +1.0
-
-        // Macro latitude gradient factor (colder north, lower pressure/wind variations)
+        const noiseFactor = (rawNoise - 0.5) * 2;
         const latGradient = -latOffset * 0.45;
 
         let localVal = baseVal;
 
         if (['temp', 'temperature', 'feelslike', 'feels_like'].includes(modeType)) {
-            // Temperature drops ~0.5°F per 0.1 degree north, modified by continuous spatial noise
             localVal = baseVal + latGradient * 3.0 + noiseFactor * 4.5 - (distFromCenter * 1.2);
             return Math.round(localVal);
         } else if (['wind', 'gust'].includes(modeType)) {
-            // Wind speed varies based on terrain roughness/noise up to ±25%
             localVal = baseVal * (1.0 + noiseFactor * 0.25) + (distFromCenter * 2.0);
             return Math.max(0, Math.round(localVal));
         } else if (modeType === 'dos') {
@@ -2855,7 +2873,6 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
         return 'rgba(56, 189, 248, 0.35)';
     };
 
-    // Construct Tile Layer rendering location-specific variations across tiles
     const RadarGridLayerClass = L.GridLayer.extend({
         createTile: function(coords) {
             const tile = document.createElement('canvas');
@@ -2864,7 +2881,6 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
             tile.height = size.y;
             const ctx = tile.getContext('2d');
 
-            // Convert tile top-left pixel coordinates into Lat/Lon for spatial calculation
             const tilePoint = coords.scaleBy(size);
             const mapObj = this._map;
 
@@ -2877,7 +2893,6 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
                 tileLon = nwLatLng.lng;
             }
 
-            // Calculate precise localized value for tile location
             const localValue = getLocalValueAtCoordinates(tileLat, tileLon, baseResolvedValue, effectiveSubMode);
             const tileColor = getDynamicColor(localValue, effectiveSubMode);
 
@@ -2919,7 +2934,6 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
         }
 
         const updateTooltipPosition = (e) => {
-            // Dynamic position lookup: compute exact local values at mouse lat/lng
             const localVal = layerData.getLocalValue(e.latlng.lat, e.latlng.lng, layerData.value, layerData.mode);
 
             let localLabel = `${localVal}`;
