@@ -3149,6 +3149,41 @@ if (timeSlider) {
 if (windSubModeSelect) {
     windSubModeSelect.addEventListener('change', triggerLayerRefresh);
 }
+// **Time Slider and Wind Sub-Mode Controller Integration**
+const timeSlider = document.getElementById('timeSlider'); 
+const windSubModeSelect = document.getElementById('windSubModeSelect');
+
+const triggerLayerRefresh = () => {
+    if (typeof activeCanvas !== 'undefined' && typeof activeItem !== 'undefined' && typeof currentMode !== 'undefined') {
+        const currentMinute = timeSlider ? parseInt(timeSlider.value, 10) || 0 : 0;
+        const updatedLayer = createRadarGridLayer(
+            activeCanvas, 
+            0, 
+            activeItem, 
+            currentMode, 
+            null, 
+            null, 
+            currentMinute
+        );
+
+        if (updatedLayer && typeof activeTargetMap !== 'undefined' && activeTargetMap) {
+            if (window.currentRadarGridLayer && activeTargetMap.hasLayer(window.currentRadarGridLayer)) {
+                activeTargetMap.removeLayer(window.currentRadarGridLayer);
+            }
+
+            updatedLayer.addTo(activeTargetMap);
+            window.currentRadarGridLayer = updatedLayer;
+        }
+    }
+};
+
+if (timeSlider) {
+    timeSlider.addEventListener('input', triggerLayerRefresh);
+}
+
+if (windSubModeSelect) {
+    windSubModeSelect.addEventListener('change', triggerLayerRefresh);
+}
 // **Time Slider Controller Integration**
 const timeSlider = document.getElementById('timeSlider'); 
 
