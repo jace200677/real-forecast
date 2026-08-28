@@ -2350,9 +2350,66 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
         };
     }
 
+    extractedDate = extractedDate || 
+                    item?.dateStr || item?.date || item?.rawDate || 
+                    window._radarState?.selectedDate || 
+                    getTargetTzDateStr(targetTimezone);
+
+    // --- OVERRIDE METRICS RESOLUTION VIA calculateForecastDayMetrics ---
     if (typeof calculateForecastDayMetrics === 'function') {
-        const calculatedOverrides = calculateForecastDayMetrics(canvas, clientX, item, mode, prevItem, nextItem, forcedMinute);
+        let forecastYear = 2026;
+        let forecastMonth = 8;
+        let dateNum = 28;
+
+        if (extractedDate) {
+            const dateParts = extractedDate.match(/(\d{4})-(\d{1,2})-(\d{1,2})/) || extractedDate.match(/(\d{1,2})\/(\d{1,2})\/(\d{2,4})/);
+            if (dateParts) {
+                if (extractedDate.includes('-')) {
+                    forecastYear = parseInt(dateParts[1], 10);
+                    forecastMonth = parseInt(dateParts[2], 10);
+                    dateNum = parseInt(dateParts[3], 10);
+                } else {
+                    forecastMonth = parseInt(dateParts[1], 10);
+                    dateNum = parseInt(dateParts[2], 10);
+                    let y = parseInt(dateParts[3], 10);
+                    forecastYear = y < 100 ? 2000 + y : y;
+                }
+            } else {
+                const parsedD = new Date(extractedDate);
+                if (!isNaN(parsedD.getTime())) {
+                    forecastYear = parsedD.getFullYear();
+                    forecastMonth = parsedD.getMonth() + 1;
+                    dateNum = parsedD.getDate();
+                }
+            }
+        }
+
+        const targetObj = currentGlobalPoint || { lat: centerLat, lon: centerLon };
+        const gridPeriods = item?.gridPeriods || item?.periods || window._radarState?.gridPeriods || null;
+        const confidenceFactor = item?.confidenceFactor ?? item?.confidence ?? window._radarState?.confidenceFactor ?? 0.8;
+        const exactDaysOut = item?.exactDaysOut ?? item?.daysOut ?? 0;
+        const dosScore = cardMetrics.score ?? item?.score ?? item?.dos ?? 5;
+        const dayIdx = item?.i ?? item?.index ?? 0;
+
+        const calculatedOverrides = calculateForecastDayMetrics(
+            forecastYear,
+            forecastMonth,
+            dateNum,
+            targetObj,
+            gridPeriods,
+            confidenceFactor,
+            exactDaysOut,
+            dosScore,
+            dayIdx
+        );
+
         if (calculatedOverrides && typeof calculatedOverrides === 'object') {
+            if (calculatedOverrides.projectedScore !== undefined) {
+                calculatedOverrides.score = calculatedOverrides.projectedScore;
+            }
+            if (calculatedOverrides.weatherSummary !== undefined) {
+                calculatedOverrides.condition = calculatedOverrides.weatherSummary;
+            }
             for (const [key, val] of Object.entries(calculatedOverrides)) {
                 if (val !== undefined && val !== null) {
                     const parsed = safeNum(val);
@@ -2361,11 +2418,6 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
             }
         }
     }
-
-    extractedDate = extractedDate || 
-                    item?.dateStr || item?.date || item?.rawDate || 
-                    window._radarState?.selectedDate || 
-                    getTargetTzDateStr(targetTimezone);
 
     const globalDataSources = [
         typeof forecastData !== "undefined" ? forecastData : null,
