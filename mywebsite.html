@@ -2038,17 +2038,51 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
         } 
         if (currentMode === 'dos') {
             if (val >= 100) return 'rgba(168, 85, 247, 0.60)';
-            if (val >= 70)  return 'rgba(234, 88, 12, 0.45)';
-            if (val >= 40)  return 'rgba(234, 179, 8, 0.35)';
-            return 'rgba(59, 130, 246, 0.25)';
+            if (val >= 70)  return 'rgba(234, 88, 12, 0.55)';
+            if (val >= 40)  return 'rgba(161, 98, 7, 0.45)';
+            if (val >= 20)  return 'rgba(101, 163, 13, 0.35)';
+            return 'rgba(34, 197, 94, 0.25)';
         }
-        if (val >= 90) return 'rgba(239, 68, 68, 0.50)';
-        if (val >= 60) return 'rgba(249, 115, 22, 0.45)';
-        if (val >= 30) return 'rgba(234, 179, 8, 0.35)';
-        return 'rgba(34, 197, 94, 0.25)';
+        if (currentMode === 'temp' || currentMode === 'feelsLike') {
+            if (val >= 90) return 'rgba(239, 68, 68, 0.55)';
+            if (val >= 75) return 'rgba(249, 115, 22, 0.45)';
+            if (val >= 60) return 'rgba(74, 222, 128, 0.40)';
+            if (val >= 45) return 'rgba(45, 212, 191, 0.35)';
+            return 'rgba(15, 118, 110, 0.30)';
+        }
+        return 'rgba(56, 189, 248, 0.25)';
     };
 
-  
+    const calculatedColor = getDynamicColor(resolvedValue, mode);
+    const RadarGridLayerClass = L.GridLayer.extend({
+        createTile: function(coords) {
+            const tile = document.createElement('canvas');
+            const size = this.getTileSize();
+            tile.width = size.x;
+            tile.height = size.y;
+            const ctx = tile.getContext('2d');
+            ctx.fillStyle = calculatedColor;
+            ctx.fillRect(0, 0, tile.width, tile.height);
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.05)';
+            ctx.strokeRect(0, 0, tile.width, tile.height);
+            return tile;
+        }
+    });
+
+    const activeGridLayer = new RadarGridLayerClass();
+    activeGridLayer._meta = {
+        value: resolvedValue,
+        label: label,
+        minute: hoveredMinute,
+        timeStr: timeStr,
+        dateStr: extractedDate,
+        color: calculatedColor,
+        mode: mode
+    };
+
+    return activeGridLayer;
+}
+
 /**
  * 2. Spatial & Temporal Plot Graph Sampler
  */
