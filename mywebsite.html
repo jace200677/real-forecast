@@ -2312,7 +2312,7 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
         };
     }
 
-    // Built-in 8/23/2026 - 9/5/2026 forecast preset with hourly override events
+    // Built-in forecast preset with hourly override events
     const buildForecastData = [
         {
             dateStr: "8/23/2026", score: 75, tempHigh: 82, tempLow: 60, windMph: 8, gustMph: 14, humidity: 55, pressure: 29.95, uvIndex: 7, precipChance: 10,
@@ -2416,7 +2416,7 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
         }
     ];
 
-    // Universal dataset search to sync item object with graph values from anywhere
+    // Universal dataset search
     const globalDataSources = [
         typeof forecastData !== "undefined" ? forecastData : null,
         window._radarState?.dataset,
@@ -2624,7 +2624,7 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
         return Math.round(smoothStep(resolvedPrecip, (resolvedPrecip + nextPrecip) / 2, (m - 900) / 539));
     };
 
-    // Consolidated extraction and validation of custom override events
+    // Custom override events handling
     const rawEvents = Array.isArray(item?.overrideEvents) ? item.overrideEvents : 
                       (Array.isArray(item?.events) ? item.events : []);
 
@@ -2654,7 +2654,7 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
 
     const hasEvents = sortedEvents.length > 0;
 
-    // Extract exact values from 24-hour or sub-daily chart arrays from anywhere
+    // Extract exact values from hourly arrays
     const getValFromHourlyArray = (arr, minute, key = null) => {
         if (!Array.isArray(arr) || arr.length === 0) return null;
         const normMin = Math.max(0, Math.min(1439, minute));
@@ -2690,7 +2690,7 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
         return smoothStep(val0, val1, t);
     };
 
-    // Full Interpolation Engine: overrideEvents -> hourly arrays -> diurnal fallbacks
+    // Full Interpolation Engine
     const getInterpolatedVal = (m, primaryKeys, fallbackFn, hourlyArrayKeys = []) => {
         const keys = Array.isArray(primaryKeys) ? primaryKeys : [primaryKeys];
 
@@ -2823,10 +2823,25 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
         }
     }
 
-    const getNwsSpatiallyInterpolatedValue = (val, currentMode, centerLat, centerLon, centerZoom) => {
-        if (!centerLat && !centerLon) return val;
+    /**
+     * Spatially interpolates a base value across latitude and longitude fields.
+     * Incorporates trigonometric micro-variations and scale-awareness.
+     */
+    const getNwsSpatiallyInterpolatedValue = (val, currentMode, targetLat, targetLon, centerZoom) => {
+        if (val === null || val === undefined) return val;
+        
+        // Compute delta off original target center
+        const dLat = targetLat - lat;
+        const dLon = targetLon - lon;
+        
         const zoomFactor = Math.max(0.2, 1.2 - (centerZoom * 0.08));
-        let regionalGrad = (Math.sin(centerLat * 0.35) * Math.cos(centerLon * 0.35) * 4.5 + Math.sin(centerLat * 0.12) * 2.5) * zoomFactor;
+        
+        // Multi-axis geographical gradient factors across Lat and Lon
+        const latGradient = Math.sin(targetLat * 0.35) * 3.2;
+        const lonGradient = Math.cos(targetLon * 0.35) * 2.8;
+        const diagonalGradient = Math.sin((targetLat + targetLon) * 0.15) * 1.5;
+
+        let regionalGrad = (latGradient + lonGradient + diagonalGradient + (dLat * 4.0) + (dLon * 3.0)) * zoomFactor;
 
         const mType = (currentMode || "").toLowerCase();
         if (mType === 'pressure') regionalGrad *= 0.02;
@@ -2965,30 +2980,49 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
             
             let centerTileLat = lat;
             let centerTileLng = lon;
+            let northLat = lat + 0.035;
+            let southLat = lat - 0.035;
+            let eastLng = lon + 0.035;
+            let westLng = lon - 0.035;
 
             if (targetMap && typeof targetMap.unproject === 'function') {
                 try {
-                    const tilePoint = L.point(coords.x * size.x, coords.y * size.y);
-                    const centerPoint = L.point(tilePoint.x + size.x / 2, tilePoint.y + size.y / 2);
+                    const nwPoint = L.point(coords.x * size.x, coords.y * size.y);
+                    const sePoint = L.point((coords.x + 1) * size.x, (coords.y + 1) * size.y);
+                    const centerPoint = L.point(nwPoint.x + size.x / 2, nwPoint.y + size.y / 2);
+
+                    const nwLatLng = targetMap.unproject(nwPoint, coords.z);
+                    const seLatLng = targetMap.unproject(sePoint, coords.z);
                     const centerLatLng = targetMap.unproject(centerPoint, coords.z);
                     
                     centerTileLat = centerLatLng.lat;
                     centerTileLng = centerLatLng.lng;
+
+                    northLat = nwLatLng.lat;
+                    southLat = seLatLng.lat;
+                    westLng = nwLatLng.lng;
+                    eastLng = seLatLng.lng;
                 } catch (err) {}
             }
 
+            // Latitude and Longitude spatial values calculated across tile bounds
             const centerVal = getNwsSpatiallyInterpolatedValue(baseResolvedValue, effectiveSubMode, centerTileLat, centerTileLng, currentZoom);
+            const nwVal = getNwsSpatiallyInterpolatedValue(baseResolvedValue, effectiveSubMode, northLat, westLng, currentZoom);
+            const seVal = getNwsSpatiallyInterpolatedValue(baseResolvedValue, effectiveSubMode, southLat, eastLng, currentZoom);
+
             const centerColor = getDynamicColor(centerVal, effectiveSubMode);
+            const nwColor = getDynamicColor(nwVal, effectiveSubMode);
+            const seColor = getDynamicColor(seVal, effectiveSubMode);
 
-            const cornerVal = getNwsSpatiallyInterpolatedValue(baseResolvedValue, effectiveSubMode, centerTileLat + 0.035, centerTileLng + 0.035, currentZoom);
-            const cornerColor = getDynamicColor(cornerVal, effectiveSubMode);
-
+            // Bilinear radial gradient across latitude and longitude spatial limits
             const gradient = ctx.createRadialGradient(
-                tile.width / 2, tile.height / 2, 5,
-                tile.width / 2, tile.height / 2, Math.max(tile.width, tile.height) * 0.7
+                tile.width / 2, tile.height / 2, 2,
+                tile.width / 2, tile.height / 2, Math.max(tile.width, tile.height) * 0.75
             );
+            
             gradient.addColorStop(0, centerColor);
-            gradient.addColorStop(1, cornerColor);
+            gradient.addColorStop(0.5, nwColor);
+            gradient.addColorStop(1, seColor);
 
             ctx.fillStyle = gradient;
             ctx.fillRect(0, 0, tile.width, tile.height);
