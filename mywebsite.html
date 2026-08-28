@@ -2143,7 +2143,7 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
         return isNaN(n) ? null : n;
     };
 
-    // Date normalization
+    // Date normalization (M/D/YYYY or YYYY-MM-DD)
     const normalizeDateStr = (str) => {
         if (!str) return '';
         const match = str.match(/\b\d{1,2}\/\d{1,2}\/\d{2,4}\b/) || str.match(/\b\d{4}-\d{2}-\d{2}\b/);
@@ -2156,18 +2156,13 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
         return dStr;
     };
 
-    const activeTargetMap = (typeof window !== "undefined" && window._radarState && window._radarState.map) ? window._radarState.map : (typeof map !== "undefined" ? map : null);
+    const activeTargetMap = (typeof window !== "undefined" && window._radarState && window._radarState.map) 
+        ? window._radarState.map 
+        : (typeof map !== "undefined" ? map : null);
     
-    // Resolve location
-    const mapCenter = activeTargetMap && typeof activeTargetMap.getCenter === 'function' ? activeTargetMap.getCenter() : null;
-    const currentGlobalPoint = (typeof targetZoneOrPoint !== 'undefined' && targetZoneOrPoint) ? targetZoneOrPoint : (window._targetZoneOrPoint || null);
-    
-    const centerLat = mapCenter ? mapCenter.lat : (currentGlobalPoint && currentGlobalPoint.lat ? parseFloat(currentGlobalPoint.lat) : 47.80);
-    const centerLon = mapCenter ? mapCenter.lng : (currentGlobalPoint && currentGlobalPoint.lon ? parseFloat(currentGlobalPoint.lon) : -92.37);
-
     // Resolve target timezone hierarchy
     const targetTimezone = item?.timezone || item?.tz || 
-                           currentGlobalPoint?.timezone || currentGlobalPoint?.tz || 
+                           window._targetZoneOrPoint?.timezone || window._targetZoneOrPoint?.tz || 
                            window._radarState?.timezone || 
                            (typeof Intl !== 'undefined' && Intl.DateTimeFormat ? Intl.DateTimeFormat().resolvedOptions().timeZone : 'UTC');
 
@@ -2186,12 +2181,24 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
 
     const getTargetTzDateStr = (timeZoneStr) => {
         try {
-            return new Intl.DateTimeFormat('en-CA', { timeZone: timeZoneStr }).format(new Date());
+            const d = new Date();
+            const parts = new Intl.DateTimeFormat('en-US', {
+                timeZone: timeZoneStr,
+                year: 'numeric',
+                month: 'numeric',
+                day: 'numeric'
+            }).formatToParts(d);
+            const m = parts.find(p => p.type === 'month').value;
+            const day = parts.find(p => p.type === 'day').value;
+            const y = parts.find(p => p.type === 'year').value;
+            return `${m}/${day}/${y}`;
         } catch (e) {
-            return new Date().toISOString().split('T')[0];
+            const now = new Date();
+            return `${now.getMonth() + 1}/${now.getDate()}/${now.getFullYear()}`;
         }
     };
 
+    // Calculate hover / active timeline minute (0 - 1439)
     let hoveredMinute = null;
     if (forcedMinute !== null && forcedMinute !== undefined) {
         const parsedMinute = safeNum(forcedMinute) ?? 0;
@@ -2217,18 +2224,14 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
         }
     }
 
-    // --- ACTIVE DAY CARD DATE RESOLUTION ---
+    // --- ACTIVE DAY CARD & DATE RESOLUTION ---
     let extractedDate = null;
     let cardMetrics = {};
 
     if (typeof getSelectedDayCardDate === 'function') {
         const dateResult = getSelectedDayCardDate(canvas, clientX, item, mode, prevItem, nextItem, forcedMinute);
         if (dateResult) {
-            if (typeof dateResult === 'string') {
-                extractedDate = dateResult;
-            } else if (typeof dateResult === 'object') {
-                extractedDate = dateResult.dateStr || dateResult.date || dateResult.formattedDate || dateResult.rawDate;
-            }
+            extractedDate = typeof dateResult === 'string' ? dateResult : (dateResult.dateStr || dateResult.date || dateResult.formattedDate);
         }
     }
 
@@ -2278,32 +2281,15 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
             humidity: safeNum(activeCard.dataset.humidity) ?? extractNum(['.humidity', '.hum'], /humidity[:\s]+([0-9.]+)/i),
             pressure: safeNum(activeCard.dataset.pressure) ?? extractNum(['.pressure'], /pressure[:\s]+([0-9.]+)/i),
             uvIndex: safeNum(activeCard.dataset.uv ?? activeCard.dataset.uvIndex) ?? extractNum(['.uv'], /uv[:\s]+([0-9.]+)/i),
-            precipChance: safeNum(activeCard.dataset.precip ?? activeCard.dataset.precipChance) ?? extractNum(['.precip', '.rain'], /precip[:\s]+([0-9.]+)/i),
-            condition: activeCard.dataset.condition || activeCard.getAttribute('data-weather') || ''
+            precipChance: safeNum(activeCard.dataset.precip ?? activeCard.dataset.precipChance) ?? extractNum(['.precip', '.rain'], /precip[:\s]+([0-9.]+)/i)
         };
     }
 
+    // Default to current target timezone date if no active card is explicitly selected
     extractedDate = extractedDate || 
                     item?.dateStr || item?.date || item?.rawDate || 
                     window._radarState?.selectedDate || 
                     getTargetTzDateStr(targetTimezone);
-
-    const buildForecastData = [
-        { dateStr: "8/23/2026", score: 75, tempHigh: 82, tempLow: 60, windMph: 8, gustMph: 14, humidity: 55, pressure: 29.95, uvIndex: 7, precipChance: 10 },
-        { dateStr: "8/24/2026", score: 68, tempHigh: 78, tempLow: 58, windMph: 12, gustMph: 22, humidity: 65, pressure: 29.88, uvIndex: 5, precipChance: 40 },
-        { dateStr: "8/25/2026", score: 82, tempHigh: 80, tempLow: 56, windMph: 7, gustMph: 12, humidity: 50, pressure: 30.02, uvIndex: 8, precipChance: 0 },
-        { dateStr: "8/26/2026", score: 80, tempHigh: 84, tempLow: 62, windMph: 9, gustMph: 15, humidity: 52, pressure: 29.98, uvIndex: 8, precipChance: 5 },
-        { dateStr: "8/27/2026", score: 72, tempHigh: 81, tempLow: 64, windMph: 11, gustMph: 19, humidity: 68, pressure: 29.91, uvIndex: 6, precipChance: 30 },
-        { dateStr: "8/28/2026", score: 85, tempHigh: 79, tempLow: 55, windMph: 31, gustMph: 56, humidity: 48, pressure: 30.08, uvIndex: 8, precipChance: 0 },
-        { dateStr: "8/29/2026", score: 88, tempHigh: 77, tempLow: 54, windMph: 7, gustMph: 13, humidity: 45, pressure: 30.12, uvIndex: 8, precipChance: 0 },
-        { dateStr: "8/30/2026", score: 84, tempHigh: 80, tempLow: 57, windMph: 17, gustMph: 46, humidity: 50, pressure: 30.05, uvIndex: 7, precipChance: 10 },
-        { dateStr: "8/31/2026", score: 79, tempHigh: 83, tempLow: 61, windMph: 34, gustMph: 60, humidity: 58, pressure: 29.97, uvIndex: 7, precipChance: 20 },
-        { dateStr: "9/1/2026", score: 76, tempHigh: 78, tempLow: 59, windMph: 36, gustMph: 55, humidity: 62, pressure: 29.93, uvIndex: 6, precipChance: 35 },
-        { dateStr: "9/2/2026", score: 81, tempHigh: 76, tempLow: 53, windMph: 33, gustMph: 63, humidity: 49, pressure: 30.06, uvIndex: 7, precipChance: 5 },
-        { dateStr: "9/3/2026", score: 83, tempHigh: 77, tempLow: 52, windMph: 19, gustMph: 28, humidity: 47, pressure: 30.10, uvIndex: 7, precipChance: 0 },
-        { dateStr: "9/4/2026", score: 80, tempHigh: 81, tempLow: 56, windMph: 9, gustMph: 15, humidity: 53, pressure: 30.01, uvIndex: 7, precipChance: 10 },
-        { dateStr: "9/5/2026", score: 77, tempHigh: 82, tempLow: 60, windMph: 10, gustMph: 17, humidity: 59, pressure: 29.94, uvIndex: 6, precipChance: 25 }
-    ];
 
     const globalDataSources = [
         typeof forecastData !== "undefined" ? forecastData : null,
@@ -2311,8 +2297,7 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
         window.currentWeatherData?.daily,
         window.currentWeatherData?.forecast,
         window.historyData,
-        window._historyData,
-        buildForecastData
+        window._historyData
     ].filter(Boolean);
 
     const normTarget = normalizeDateStr(extractedDate);
@@ -2364,141 +2349,35 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
     const effectivePrevItem = resolvePreviousItem();
     const effectiveNextItem = resolveNextItem();
 
-    const getScoreAndWeather = () => {
-        let projectedScore = cardMetrics.score ?? item?.score ?? item?.dos ?? item?.rating ?? 5;
-        let windMph = cardMetrics.windMph ?? item?.windMph ?? item?.wind ?? 10;
-        let gustMph = cardMetrics.gustMph ?? item?.gustMph ?? item?.gust ?? 15;
-        let tempLow = cardMetrics.tempLow ?? item?.tempLow ?? item?.lowTemp ?? item?.tempMin ?? 50;
-        let tempHigh = cardMetrics.tempHigh ?? item?.tempHigh ?? item?.highTemp ?? item?.tempMax ?? 75;
-
-        return { score: projectedScore, windMph, gustMph, tempLow, tempHigh };
+    const baseMetrics = {
+        score: cardMetrics.score ?? item?.score ?? item?.dos ?? 5,
+        windMph: cardMetrics.windMph ?? item?.windMph ?? item?.wind ?? 10,
+        gustMph: cardMetrics.gustMph ?? item?.gustMph ?? item?.gust ?? 15,
+        tempLow: cardMetrics.tempLow ?? item?.tempLow ?? item?.lowTemp ?? item?.tempMin ?? 50,
+        tempHigh: cardMetrics.tempHigh ?? item?.tempHigh ?? item?.highTemp ?? item?.tempMax ?? 75
     };
 
-    const baseMetrics = getScoreAndWeather();
-
-    const getPreviousDayLowestTemp = () => {
-        const prev = effectivePrevItem;
-        if (prev) {
-            if (Array.isArray(prev.tempRange) && prev.tempRange.length > 0) return Math.min(...prev.tempRange);
-            if (Array.isArray(prev.temps) && prev.temps.length > 0) return Math.min(...prev.temps);
-            if (prev.tempLowMin !== undefined) return prev.tempLowMin;
-            if (prev.tempMin !== undefined) return prev.tempMin;
-            if (prev.tempLow !== undefined) return prev.tempLow;
-            if (prev.lowTemp !== undefined) return prev.lowTemp;
-        }
-        return item?.yesterdayTempLow ?? item?.yesterdayLow ?? baseMetrics.tempLow;
-    };
-
-    const getNextDayLowestTemp = () => {
-        const next = effectiveNextItem;
-        if (next) {
-            if (Array.isArray(next.tempRange) && next.tempRange.length > 0) return Math.min(...next.tempRange);
-            if (Array.isArray(next.temps) && next.temps.length > 0) return Math.min(...next.temps);
-            if (next.tempLowMin !== undefined) return next.tempLowMin;
-            if (next.tempMin !== undefined) return next.tempMin;
-            if (next.tempLow !== undefined) return next.tempLow;
-            if (next.lowTemp !== undefined) return next.lowTemp;
-        }
-        return item?.tomorrowTempLow ?? item?.tomorrowLow ?? baseMetrics.tempLow;
-    };
-
-    const morningLow = getPreviousDayLowestTemp();
+    const morningLow = effectivePrevItem?.tempLow ?? item?.yesterdayTempLow ?? baseMetrics.tempLow;
     const todayLow = baseMetrics.tempLow;
     const todayHigh = baseMetrics.tempHigh;
-    const tomorrowLow = getNextDayLowestTemp();
-
-    const prevHigh = (effectivePrevItem && (effectivePrevItem.tempHigh !== undefined || effectivePrevItem.highTemp !== undefined)) 
-        ? (effectivePrevItem.tempHigh ?? effectivePrevItem.highTemp) : (item?.yesterdayTempHigh !== undefined ? item.yesterdayTempHigh : todayHigh);
+    const tomorrowLow = effectiveNextItem?.tempLow ?? item?.tomorrowTempLow ?? baseMetrics.tempLow;
+    const prevHigh = effectivePrevItem?.tempHigh ?? item?.yesterdayTempHigh ?? todayHigh;
 
     let midnightStartTemp = Math.round((prevHigh + morningLow) / 2);
     let midnightEndTemp = Math.round((todayHigh + tomorrowLow) / 2);
-
     const isWinterInversion = item?.isWinterInversion || (todayHigh < morningLow);
 
     const getDiurnalTemp = (m) => {
         if (isWinterInversion) {
             const tStart = Math.round((prevHigh + todayHigh) / 2);
             if (m <= 360) return Math.round(smoothStep(tStart, todayHigh, m / 360));
-            else if (m <= 900) return Math.round(smoothStep(todayHigh, todayLow, (m - 360) / 540));
-            else return Math.round(smoothStep(todayLow, midnightEndTemp, (m - 900) / 539));
+            if (m <= 900) return Math.round(smoothStep(todayHigh, todayLow, (m - 360) / 540));
+            return Math.round(smoothStep(todayLow, midnightEndTemp, (m - 900) / 539));
         } else {
             if (m <= 360) return Math.round(smoothStep(midnightStartTemp, morningLow, m / 360));
-            else if (m <= 900) return Math.round(smoothStep(morningLow, todayHigh, (m - 360) / 540));
-            else return Math.round(smoothStep(todayHigh, midnightEndTemp, (m - 900) / 539));
+            if (m <= 900) return Math.round(smoothStep(morningLow, todayHigh, (m - 360) / 540));
+            return Math.round(smoothStep(todayHigh, midnightEndTemp, (m - 900) / 539));
         }
-    };
-
-    const peakMin = 15 * 60;
-    const getDiurnalFeelsLike = (m) => getDiurnalTemp(m) + (item?.feelsLikeOffset || 0);
-
-    const baseItemWind = baseMetrics.windMph;
-    const prevWind = effectivePrevItem?.windMph ?? effectivePrevItem?.wind ?? baseItemWind;
-    const nextWind = effectiveNextItem?.windMph ?? effectiveNextItem?.wind ?? baseItemWind;
-    const getDiurnalWind = (m) => {
-        const baseWind = (m <= 360) ? smoothStep((prevWind + baseItemWind) / 2, baseItemWind, m / 360) :
-                         (m <= 900) ? baseItemWind :
-                         smoothStep(baseItemWind, (baseItemWind + nextWind) / 2, (m - 900) / 539);
-        const windRad = ((m - peakMin) / 1440) * Math.PI * 2;
-        return Math.round(baseWind * (0.6 + 0.4 * ((Math.cos(windRad) + 1) / 2)));
-    };
-
-    const baseItemGust = baseMetrics.gustMph;
-    const prevGust = effectivePrevItem?.gustMph ?? effectivePrevItem?.gust ?? baseItemGust;
-    const nextGust = effectiveNextItem?.gustMph ?? effectiveNextItem?.gust ?? baseItemGust;
-    const getDiurnalGust = (m) => {
-        const baseGust = (m <= 360) ? smoothStep((prevGust + baseItemGust) / 2, baseItemGust, m / 360) :
-                         (m <= 900) ? baseItemGust :
-                         smoothStep(baseItemGust, (baseItemGust + nextGust) / 2, (m - 900) / 539);
-        const windRad = ((m - peakMin) / 1440) * Math.PI * 2;
-        return Math.round(baseGust * (0.65 + 0.35 * ((Math.cos(windRad) + 1) / 2)));
-    };
-
-    const prevDos = effectivePrevItem?.score ?? effectivePrevItem?.dos ?? baseMetrics.score;
-    const nextDos = effectiveNextItem?.score ?? effectiveNextItem?.dos ?? baseMetrics.score;
-    const getDiurnalDos = (m) => {
-        const baseScore = (m <= 360) ? smoothStep((prevDos + baseMetrics.score) / 2, baseMetrics.score, m / 360) :
-                          (m <= 900) ? baseMetrics.score :
-                          smoothStep(baseMetrics.score, (baseMetrics.score + nextDos) / 2, (m - 900) / 539);
-        const dosTempRad = ((m - peakMin) / 1440) * Math.PI * 2;
-        return Math.round(baseScore * (0.5 + 0.5 * ((Math.cos(dosTempRad) + 1) / 2)));
-    };
-
-    const resolvedPressure = cardMetrics.pressure ?? item?.pressure ?? 29.92;
-    const prevPressure = effectivePrevItem?.pressure ?? resolvedPressure;
-    const nextPressure = effectiveNextItem?.pressure ?? resolvedPressure;
-    const getDiurnalPressure = (m) => {
-        const baseP = (m <= 360) ? smoothStep((prevPressure + resolvedPressure) / 2, resolvedPressure, m / 360) :
-                      (m <= 900) ? resolvedPressure :
-                      smoothStep(resolvedPressure, (resolvedPressure + nextPressure) / 2, (m - 900) / 539);
-        const rad = (m / 1440) * Math.PI * 4;
-        return +(baseP + 0.05 * Math.sin(rad)).toFixed(2);
-    };
-
-    const resolvedHumidity = cardMetrics.humidity ?? item?.humidity ?? 50;
-    const prevHumidity = effectivePrevItem?.humidity ?? resolvedHumidity;
-    const nextHumidity = effectiveNextItem?.humidity ?? resolvedHumidity;
-    const getDiurnalHumidity = (m) => {
-        const baseHum = (m <= 360) ? smoothStep((prevHumidity + resolvedHumidity) / 2, resolvedHumidity, m / 360) :
-                        (m <= 900) ? resolvedHumidity :
-                        smoothStep(resolvedHumidity, (resolvedHumidity + nextHumidity) / 2, (m - 900) / 539);
-        const rad = ((m - peakMin) / 1440) * Math.PI * 2;
-        return Math.max(0, Math.min(100, Math.round(baseHum - 20 * Math.cos(rad))));
-    };
-
-    const getDiurnalUv = (m) => {
-        const maxUv = cardMetrics.uvIndex ?? item?.uvIndex ?? 0;
-        if (m < 360 || m > 1200) return 0;
-        const rad = ((m - 360) / 840) * Math.PI;
-        return +(maxUv * Math.sin(rad)).toFixed(1);
-    };
-
-    const resolvedPrecip = cardMetrics.precipChance ?? item?.precipChance ?? 0;
-    const prevPrecip = effectivePrevItem?.precipChance ?? resolvedPrecip;
-    const nextPrecip = effectiveNextItem?.precipChance ?? resolvedPrecip;
-    const getDiurnalPrecip = (m) => {
-        if (m <= 360) return Math.round(smoothStep((prevPrecip + resolvedPrecip) / 2, resolvedPrecip, m / 360));
-        if (m <= 900) return resolvedPrecip;
-        return Math.round(smoothStep(resolvedPrecip, (resolvedPrecip + nextPrecip) / 2, (m - 900) / 539));
     };
 
     const getValFromHourlyArray = (arr, minute, key = null) => {
@@ -2519,9 +2398,6 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
                 if (entry.val !== undefined) return safeNum(entry.val);
                 if (entry.value !== undefined) return safeNum(entry.value);
                 if (entry.temp !== undefined) return safeNum(entry.temp);
-                if (entry.speed !== undefined) return safeNum(entry.speed);
-                if (entry.gust !== undefined) return safeNum(entry.gust);
-                if (entry.dos !== undefined) return safeNum(entry.dos);
             }
             return safeNum(entry);
         };
@@ -2547,37 +2423,30 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
             if (Array.isArray(arr) && arr.length > 0) {
                 for (const k of keys) {
                     const chartVal = getValFromHourlyArray(arr, m, k);
-                    if (chartVal !== null) {
-                        return chartVal;
-                    }
+                    if (chartVal !== null) return chartVal;
                 }
             }
         }
-
         return fallbackFn(m);
     };
 
-    const getInterpolatedTemp = (m) => Math.round(getInterpolatedVal(m, ['temp', 'temperature', 't'], getDiurnalTemp, ['hourlyTemps', 'temps', 'hourly', 'hourlyData', 'chartData', 'tempRange']));
-    const getInterpolatedFeelsLike = (m) => Math.round(getInterpolatedVal(m, ['feelsLike', 'feels_like', 'fl'], getDiurnalFeelsLike, ['hourlyFeelsLike', 'feelsLike', 'hourly']));
-    const getInterpolatedWind = (m) => Math.round(getInterpolatedVal(m, ['wind', 'windSpeed', 'speed', 'w'], getDiurnalWind, ['hourlyWind', 'winds', 'hourly']));
-    const getInterpolatedGust = (m) => Math.round(getInterpolatedVal(m, ['gust', 'windGust', 'g'], getDiurnalGust, ['hourlyGust', 'gusts', 'hourly']));
-    const getInterpolatedDos = (m) => Math.round(getInterpolatedVal(m, ['dos', 'score', 'rating'], getDiurnalDos, ['hourlyDos', 'scores', 'dosList', 'hourly']));
-    const getInterpolatedPressure = (m) => +getInterpolatedVal(m, ['pressure', 'press', 'p'], getDiurnalPressure, ['hourlyPressure', 'pressures', 'hourly']).toFixed(2);
-    const getInterpolatedHumidity = (m) => Math.round(getInterpolatedVal(m, ['humidity', 'hum', 'h'], getDiurnalHumidity, ['hourlyHumidity', 'humidities', 'hourly']));
-    const getInterpolatedUv = (m) => +getInterpolatedVal(m, ['uv', 'uvIndex', 'u'], getDiurnalUv, ['hourlyUv', 'uvList', 'hourly']).toFixed(1);
-    const getInterpolatedPrecip = (m) => Math.round(getInterpolatedVal(m, ['precip', 'precipChance', 'rain', 'pr'], getDiurnalPrecip, ['hourlyPrecip', 'precips', 'hourly']));
+    // Interpolation bindings
+    const getInterpolatedTemp = (m) => Math.round(getInterpolatedVal(m, ['temp', 'temperature', 't'], getDiurnalTemp, ['hourlyTemps', 'temps', 'hourly', 'hourlyData', 'chartData']));
+    const getInterpolatedFeelsLike = (m) => Math.round(getInterpolatedVal(m, ['feelsLike', 'fl'], (min) => getDiurnalTemp(min) + (item?.feelsLikeOffset || 0), ['hourlyFeelsLike', 'feelsLike']));
+    const getInterpolatedWind = (m) => Math.round(getInterpolatedVal(m, ['wind', 'speed', 'w'], () => baseMetrics.windMph, ['hourlyWind', 'winds']));
+    const getInterpolatedGust = (m) => Math.round(getInterpolatedVal(m, ['gust', 'g'], () => baseMetrics.gustMph, ['hourlyGust', 'gusts']));
+    const getInterpolatedDos = (m) => Math.round(getInterpolatedVal(m, ['dos', 'score'], () => baseMetrics.score, ['hourlyDos', 'scores']));
+    const getInterpolatedPressure = (m) => +getInterpolatedVal(m, ['pressure', 'p'], () => cardMetrics.pressure ?? item?.pressure ?? 29.92, ['hourlyPressure']).toFixed(2);
+    const getInterpolatedHumidity = (m) => Math.round(getInterpolatedVal(m, ['humidity', 'h'], () => cardMetrics.humidity ?? item?.humidity ?? 50, ['hourlyHumidity']));
+    const getInterpolatedUv = (m) => +getInterpolatedVal(m, ['uv', 'uvIndex'], () => cardMetrics.uvIndex ?? item?.uvIndex ?? 0, ['hourlyUv']).toFixed(1);
+    const getInterpolatedPrecip = (m) => Math.round(getInterpolatedVal(m, ['precip', 'rain'], () => cardMetrics.precipChance ?? item?.precipChance ?? 0, ['hourlyPrecip']));
 
     let baseResolvedValue = null;
     let label = "";
 
     const normalizedMode = (mode || "").toLowerCase();
-    const windOptionContainer = document.getElementById('windOptionContainer');
     const windSubModeSelect = document.getElementById('windSubModeSelect');
-    const isWindMode = ['wind', 'windspeed', 'wind_speed', 'gust', 'windgust', 'wind_gust'].includes(normalizedMode);
-
-    if (windOptionContainer) {
-        windOptionContainer.style.display = isWindMode ? 'block' : 'none';
-    }
+    const isWindMode = ['wind', 'windspeed', 'gust', 'windgust'].includes(normalizedMode);
 
     let effectiveSubMode = normalizedMode;
     if (isWindMode && windSubModeSelect) {
@@ -2626,76 +2495,13 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
                 break;
             default:
                 baseResolvedValue = getInterpolatedTemp(hoveredMinute);
-                label = `${baseResolvedValue}`;
+                label = `${baseResolvedValue}°F`;
         }
     }
 
-    // --- SPATIAL LOCATION ENGINE ---
-    // Deterministic 2D Noise for continuous spatial gradient simulation
-    const pseudoNoise2D = (x, y) => {
-        const n = Math.sin(x * 12.9898 + y * 78.233) * 43758.5453123;
-        return n - Math.floor(n);
-    };
-
-    const getSmoothNoise2D = (x, y) => {
-        const i = Math.floor(x);
-        const j = Math.floor(y);
-        const fx = x - i;
-        const fy = y - j;
-        const sx = fx * fx * (3 - 2 * fx);
-        const sy = fy * fy * (3 - 2 * fy);
-
-        const n00 = pseudoNoise2D(i, j);
-        const n10 = pseudoNoise2D(i + 1, j);
-        const n01 = pseudoNoise2D(i, j + 1);
-        const n11 = pseudoNoise2D(i + 1, j + 1);
-
-        const nx0 = n00 + (n10 - n00) * sx;
-        const nx1 = n01 + (n11 - n01) * sx;
-        return nx0 + (nx1 - nx0) * sy;
-    };
-
-    // Computes localized weather value based on lat, lon, distance, and terrain variance
+    // --- EXACT VALUE COORDINATE MAPPER ---
+    // Returns exact graph interpolation value regardless of lat/lon coordinates
     const getLocalValueAtCoordinates = (lat, lon, baseVal, modeType) => {
-        const latOffset = lat - centerLat;
-        const lonOffset = lon - centerLon;
-        const distFromCenter = Math.sqrt(latOffset * latOffset + lonOffset * lonOffset);
-
-        // Spatial scale factors
-        const spatialScale = 3.5;
-        const rawNoise = getSmoothNoise2D(lat * spatialScale, lon * spatialScale);
-        const noiseFactor = (rawNoise - 0.5) * 2; // -1.0 to +1.0
-
-        // Macro latitude gradient factor (colder north, lower pressure/wind variations)
-        const latGradient = -latOffset * 0.45;
-
-        let localVal = baseVal;
-
-        if (['temp', 'temperature', 'feelslike', 'feels_like'].includes(modeType)) {
-            // Temperature drops ~0.5°F per 0.1 degree north, modified by continuous spatial noise
-            localVal = baseVal + latGradient * 3.0 + noiseFactor * 4.5 - (distFromCenter * 1.2);
-            return Math.round(localVal);
-        } else if (['wind', 'gust'].includes(modeType)) {
-            // Wind speed varies based on terrain roughness/noise up to ±25%
-            localVal = baseVal * (1.0 + noiseFactor * 0.25) + (distFromCenter * 2.0);
-            return Math.max(0, Math.round(localVal));
-        } else if (modeType === 'dos') {
-            localVal = baseVal + noiseFactor * 8.0 - (distFromCenter * 2.0);
-            return Math.max(0, Math.min(100, Math.round(localVal)));
-        } else if (modeType === 'precip') {
-            localVal = baseVal + noiseFactor * 18.0;
-            return Math.max(0, Math.min(100, Math.round(localVal)));
-        } else if (modeType === 'humidity') {
-            localVal = baseVal - latGradient * 2.0 + noiseFactor * 12.0;
-            return Math.max(0, Math.min(100, Math.round(localVal)));
-        } else if (modeType === 'pressure') {
-            localVal = baseVal + (noiseFactor * 0.08) + (latOffset * 0.015);
-            return +localVal.toFixed(2);
-        } else if (modeType === 'uv') {
-            localVal = baseVal - (latOffset * 0.2) + (noiseFactor * 0.5);
-            return Math.max(0, +localVal.toFixed(1));
-        }
-
         return baseVal;
     };
 
@@ -2718,95 +2524,30 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
 
     const getDynamicColor = (val, currentMode) => {
         const mType = (currentMode || "").toLowerCase();
-
-        const interpolateStops = (value, stops, defaultVal = 0) => {
-            const v = typeof value === 'number' ? value : defaultVal;
-            if (v <= stops[0].threshold) return stops[0].color;
-            if (v >= stops[stops.length - 1].threshold) return stops[stops.length - 1].color;
+        const interpolateStops = (value, stops) => {
+            if (value <= stops[0].threshold) return stops[0].color;
+            if (value >= stops[stops.length - 1].threshold) return stops[stops.length - 1].color;
             for (let i = 0; i < stops.length - 1; i++) {
-                if (v >= stops[i].threshold && v <= stops[i + 1].threshold) {
-                    const factor = (v - stops[i].threshold) / (stops[i + 1].threshold - stops[i].threshold);
+                if (value >= stops[i].threshold && value <= stops[i + 1].threshold) {
+                    const factor = (value - stops[i].threshold) / (stops[i + 1].threshold - stops[i].threshold);
                     return interpolateColor(stops[i].color, stops[i + 1].color, factor);
                 }
             }
             return stops[0].color;
         };
 
-        if (mType.includes('wind') || mType.includes('gust')) {
-            return interpolateStops(val, [
-                { threshold: 0,  color: 'rgba(115, 130, 205, 0.50)' },
-                { threshold: 10, color: 'rgba(65, 195, 185, 0.55)' },
-                { threshold: 20, color: 'rgba(55, 170, 95, 0.60)' },
-                { threshold: 30, color: 'rgba(195, 205, 55, 0.65)' },
-                { threshold: 45, color: 'rgba(235, 155, 45, 0.70)' },
-                { threshold: 60, color: 'rgba(200, 45, 55, 0.75)' }
-            ], 0);
-        } 
-
-        if (mType === 'dos') {
-            return interpolateStops(val, [
-                { threshold: 0,   color: 'rgba(168, 85, 247, 0.75)' },
-                { threshold: 30,  color: 'rgba(234, 88, 12, 0.65)' },
-                { threshold: 60,  color: 'rgba(161, 98, 7, 0.55)' },
-                { threshold: 80,  color: 'rgba(101, 163, 13, 0.45)' },
-                { threshold: 100, color: 'rgba(34, 197, 94, 0.35)' }
-            ], 50);
-        }
-
         if (['temp', 'temperature', 'feelslike', 'feels_like'].includes(mType)) {
             return interpolateStops(val, [
                 { threshold: -10, color: 'rgba(125, 110, 210, 0.75)' },
-                { threshold: 15,  color: 'rgba(105, 155, 220, 0.70)' },
                 { threshold: 32,  color: 'rgba(85, 190, 205, 0.65)' },
-                { threshold: 55,  color: 'rgba(65, 165, 115, 0.60)' },
                 { threshold: 75,  color: 'rgba(105, 195, 75, 0.62)' },
-                { threshold: 90,  color: 'rgba(235, 185, 45, 0.68)' },
                 { threshold: 105, color: 'rgba(205, 45, 45, 0.75)' }
-            ], 60);
+            ]);
         }
-
-        if (['precip', 'rain', 'chance'].includes(mType)) {
-            return interpolateStops(val, [
-                { threshold: 0,   color: 'rgba(148, 163, 184, 0.10)' },
-                { threshold: 25,  color: 'rgba(56, 189, 248, 0.40)' },
-                { threshold: 50,  color: 'rgba(37, 99, 235, 0.60)' },
-                { threshold: 75,  color: 'rgba(124, 58, 237, 0.70)' },
-                { threshold: 100, color: 'rgba(219, 39, 119, 0.80)' }
-            ], 0);
-        }
-
-        if (mType === 'uv') {
-            return interpolateStops(val, [
-                { threshold: 0,  color: 'rgba(34, 197, 94, 0.25)' },
-                { threshold: 3,  color: 'rgba(234, 179, 8, 0.45)' },
-                { threshold: 6,  color: 'rgba(249, 115, 22, 0.60)' },
-                { threshold: 8,  color: 'rgba(239, 68, 68, 0.70)' },
-                { threshold: 11, color: 'rgba(168, 85, 247, 0.80)' }
-            ], 0);
-        }
-
-        if (['humidity', 'hum'].includes(mType)) {
-            return interpolateStops(val, [
-                { threshold: 10,  color: 'rgba(245, 158, 11, 0.35)' },
-                { threshold: 40,  color: 'rgba(20, 184, 166, 0.45)' },
-                { threshold: 70,  color: 'rgba(59, 130, 246, 0.60)' },
-                { threshold: 100, color: 'rgba(67, 56, 202, 0.75)' }
-            ], 50);
-        }
-
-        if (mType === 'pressure') {
-            return interpolateStops(val, [
-                { threshold: 28.5, color: 'rgba(225, 29, 72, 0.75)' },
-                { threshold: 29.5, color: 'rgba(147, 51, 234, 0.60)' },
-                { threshold: 29.9, color: 'rgba(14, 165, 233, 0.50)' },
-                { threshold: 30.5, color: 'rgba(234, 179, 8, 0.60)' }
-            ], 29.92);
-        }
-
         return 'rgba(56, 189, 248, 0.35)';
     };
 
-    // Construct Tile Layer rendering location-specific variations across tiles
+    // Render tile canvas layer using exact value match
     const RadarGridLayerClass = L.GridLayer.extend({
         createTile: function(coords) {
             const tile = document.createElement('canvas');
@@ -2815,26 +2556,9 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
             tile.height = size.y;
             const ctx = tile.getContext('2d');
 
-            // Convert tile top-left pixel coordinates into Lat/Lon for spatial calculation
-            const tilePoint = coords.scaleBy(size);
-            const mapObj = this._map;
-
-            let tileLat = centerLat;
-            let tileLon = centerLon;
-
-            if (mapObj && typeof mapObj.unproject === 'function') {
-                const nwLatLng = mapObj.unproject(tilePoint, coords.z);
-                tileLat = nwLatLng.lat;
-                tileLon = nwLatLng.lng;
-            }
-
-            // Calculate precise localized value for tile location
-            const localValue = getLocalValueAtCoordinates(tileLat, tileLon, baseResolvedValue, effectiveSubMode);
-            const tileColor = getDynamicColor(localValue, effectiveSubMode);
-
+            const tileColor = getDynamicColor(baseResolvedValue, effectiveSubMode);
             ctx.fillStyle = tileColor;
             ctx.fillRect(0, 0, tile.width, tile.height);
-            
             return tile;
         }
     });
@@ -2870,18 +2594,11 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
         }
 
         const updateTooltipPosition = (e) => {
-            // Dynamic position lookup: compute exact local values at mouse lat/lng
             const localVal = layerData.getLocalValue(e.latlng.lat, e.latlng.lng, layerData.value, layerData.mode);
-
             let localLabel = `${localVal}`;
             if (['temp', 'temperature'].includes(layerData.mode)) localLabel = `${localVal}°F`;
             else if (['feelslike', 'feels_like'].includes(layerData.mode)) localLabel = `Feels Like ${localVal}°F`;
             else if (['wind', 'gust'].includes(layerData.mode)) localLabel = `${layerData.mode.toUpperCase()}: ${localVal} mph`;
-            else if (layerData.mode === 'dos') localLabel = `DOS: ${localVal}`;
-            else if (layerData.mode === 'precip') localLabel = `Chance: ${localVal}%`;
-            else if (layerData.mode === 'humidity') localLabel = `Humidity: ${localVal}%`;
-            else if (layerData.mode === 'pressure') localLabel = `${localVal} inHg`;
-            else if (layerData.mode === 'uv') localLabel = `UV Index: ${localVal}`;
 
             const tooltipContent = `
                 <div style="font-family: sans-serif; font-size: 12px; padding: 3px 6px; text-align: center;">
@@ -2907,21 +2624,6 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
 
     if (activeTargetMap) {
         attachMapInteractionHandlers(activeTargetMap, activeGridLayer._meta);
-
-        if (!window.satelliteLayer) {
-            window.satelliteLayer = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
-                attribution: 'Tiles &copy; Esri &mdash; Source: Esri, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-EGP',
-                maxZoom: 19
-            });
-        }
-        if (!activeTargetMap.hasLayer(window.satelliteLayer)) {
-            activeTargetMap.eachLayer(layer => {
-                if (layer instanceof L.TileLayer && layer !== window.satelliteLayer) {
-                    activeTargetMap.removeLayer(layer);
-                }
-            });
-            window.satelliteLayer.addTo(activeTargetMap);
-        }
     }
 
     return activeGridLayer;
