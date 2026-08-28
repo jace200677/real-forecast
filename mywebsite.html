@@ -2027,33 +2027,37 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
             label = `${resolvedValue}`;
     }
 
-    const getDynamicColor = (val, currentMode) => {
+    const getDynamicColor = (val, currentMode, lat = 0, lon = 0) => {
+        // Spatial variation offset derived from coordinates so different regions have unique color gradients/intensities
+        const spatialMod = Math.sin(lat * 0.1) * Math.cos(lon * 0.1) * 4;
+        
         if (currentMode === 'wind') {
-            const speed = typeof val === 'object' ? (val.speed || 0) : val;
-            if (speed >= 50) return 'rgba(168, 85, 247, 0.55)';
-            if (speed >= 35) return 'rgba(239, 68, 68, 0.50)';
-            if (speed >= 25) return 'rgba(249, 115, 22, 0.45)';
-            if (speed >= 12) return 'rgba(234, 179, 8, 0.35)';
-            return 'rgba(34, 197, 94, 0.25)';
+            const speed = (typeof val === 'object' ? (val.speed || 0) : val) + spatialMod;
+            if (speed >= 50) return 'rgba(168, 85, 247, 0.65)';
+            if (speed >= 35) return 'rgba(239, 68, 68, 0.58)';
+            if (speed >= 25) return 'rgba(249, 115, 22, 0.50)';
+            if (speed >= 12) return 'rgba(234, 179, 8, 0.40)';
+            return 'rgba(34, 197, 94, 0.30)';
         } 
         if (currentMode === 'dos') {
-            if (val >= 100) return 'rgba(168, 85, 247, 0.60)';
-            if (val >= 70)  return 'rgba(234, 88, 12, 0.55)';
-            if (val >= 40)  return 'rgba(161, 98, 7, 0.45)';
-            if (val >= 20)  return 'rgba(101, 163, 13, 0.35)';
-            return 'rgba(34, 197, 94, 0.25)';
+            const scoreVal = (typeof val === 'number' ? val : 50) + spatialMod * 2;
+            if (scoreVal >= 100) return 'rgba(168, 85, 247, 0.70)';
+            if (scoreVal >= 70)  return 'rgba(234, 88, 12, 0.60)';
+            if (scoreVal >= 40)  return 'rgba(161, 98, 7, 0.50)';
+            if (scoreVal >= 20)  return 'rgba(101, 163, 13, 0.40)';
+            return 'rgba(34, 197, 94, 0.30)';
         }
         if (currentMode === 'temp' || currentMode === 'feelsLike') {
-            if (val >= 90) return 'rgba(239, 68, 68, 0.55)';
-            if (val >= 75) return 'rgba(249, 115, 22, 0.45)';
-            if (val >= 60) return 'rgba(74, 222, 128, 0.40)';
-            if (val >= 45) return 'rgba(45, 212, 191, 0.35)';
-            return 'rgba(15, 118, 110, 0.30)';
+            const tempVal = (typeof val === 'number' ? val : 60) + spatialMod * 1.5;
+            if (tempVal >= 90) return 'rgba(239, 68, 68, 0.65)';
+            if (tempVal >= 75) return 'rgba(249, 115, 22, 0.52)';
+            if (tempVal >= 60) return 'rgba(74, 222, 128, 0.45)';
+            if (tempVal >= 45) return 'rgba(45, 212, 191, 0.40)';
+            return 'rgba(15, 118, 110, 0.35)';
         }
-        return 'rgba(56, 189, 248, 0.25)';
+        return 'rgba(56, 189, 248, 0.30)';
     };
 
-    const calculatedColor = getDynamicColor(resolvedValue, mode);
     const RadarGridLayerClass = L.GridLayer.extend({
         createTile: function(coords) {
             const tile = document.createElement('canvas');
@@ -2061,7 +2065,18 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
             tile.width = size.x;
             tile.height = size.y;
             const ctx = tile.getContext('2d');
-            ctx.fillStyle = calculatedColor;
+
+            // Convert tile coordinates (x, y, z) to geographic latitude/longitude to make colors geographically distinct
+            const nwPoint = coords.scaleBy(size);
+            const sePoint = nwPoint.add(size);
+            const nwLatLng = this._map.unproject(nwPoint, coords.z);
+            const seLatLng = this._map.unproject(sePoint, coords.z);
+            const centerLat = (nwLatLng.lat + seLatLng.lat) / 2;
+            const centerLng = (nwLatLng.lng + seLatLng.lng) / 2;
+
+            const tileColor = getDynamicColor(resolvedValue, mode, centerLat, centerLng);
+
+            ctx.fillStyle = tileColor;
             ctx.fillRect(0, 0, tile.width, tile.height);
             ctx.strokeStyle = 'rgba(255, 255, 255, 0.05)';
             ctx.strokeRect(0, 0, tile.width, tile.height);
@@ -2076,13 +2091,12 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
         minute: hoveredMinute,
         timeStr: timeStr,
         dateStr: extractedDate,
-        color: calculatedColor,
+        color: getDynamicColor(resolvedValue, mode, 0, 0),
         mode: mode
     };
 
     return activeGridLayer;
 }
-
 /**
  * 2. Spatial & Temporal Plot Graph Sampler
  */
@@ -2678,10 +2692,10 @@ function initTimezoneSyncedRadarModal(mapModalElement, forecastItem, defaultMode
       attributionControl: false
     }).setView([lat, lon], 7);
 
-    // Standard Leaflet Map Tile Layer (OpenStreetMap)
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    // Default to Satellite Leaflet Map Style (Esri World Imagery)
+    L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
       maxZoom: 19,
-      attribution: '&copy; OpenStreetMap contributors'
+      attribution: 'Tiles &copy; Esri &mdash; Source: Esri, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-EGP, and the GIS User Community'
     }).addTo(window._radarState.map);
   } else {
     window._radarState.map.invalidateSize();
@@ -2728,49 +2742,6 @@ function initTimezoneSyncedRadarModal(mapModalElement, forecastItem, defaultMode
     const currentMin = forcedMin !== null ? forcedMin : (newSlider ? parseInt(newSlider.value, 10) : 0);
     renderRadarLayerAtMinute(currentMin);
   };
-
-  function renderRadarLayerAtMinute(minute) {
-    const activeMap = window._radarState.map;
-    const activeCanvas = window._radarState.canvas;
-    const activeItem = window._radarState.currentItem;
-    const activeMode = window._radarState.currentMode;
-
-    if (!activeMap) return;
-
-    // Remove old Leaflet grid layer to avoid overlapping rendering artifacts
-    if (window._radarState.radarTileLayer) {
-      activeMap.removeLayer(window._radarState.radarTileLayer);
-      window._radarState.radarTileLayer = null;
-    }
-
-    // Generate fresh grid layer instance using the selected minute
-    if (typeof createRadarGridLayer === 'function' && activeCanvas) {
-      const updatedLayer = createRadarGridLayer(
-        activeCanvas,
-        0,
-        activeItem,
-        activeMode,
-        null,
-        null,
-        minute
-      );
-
-      if (updatedLayer) {
-        updatedLayer.addTo(activeMap);
-        window._radarState.radarTileLayer = updatedLayer;
-      }
-    }
-
-    // Format time string (e.g. 12:30 PM)
-    const h = Math.floor(minute / 60);
-    const m = Math.round(minute % 60);
-    const timeStr = `${h % 12 || 12}:${m < 10 ? '0' : ''}${m} ${h >= 12 ? 'PM' : 'AM'}`;
-    const tzAbbr = getTimezoneAbbreviation();
-
-    if (timeDisplayLabel) {
-      timeDisplayLabel.textContent = `${timeStr} ${tzAbbr}`.trim();
-    }
-  }
 }
 /**
  * Coordinate Resolution Helper inside Tile Renderers / Grid Layers
