@@ -973,7 +973,7 @@ async function buildForecast() {
         let tempHigh = 72 + (i * 2);
         let windMph = 8 + (i * 2);
         let gustMph = windMph + 12;
-
+        
         if (gridPeriods && gridPeriods.length > 0) {
             const dayPeriods = gridPeriods.filter(p => {
                 const pDate = new Date(p.startTime).getDate();
@@ -994,7 +994,9 @@ async function buildForecast() {
                 gustMph = windMph + Math.round(windMph * 0.4) + 5;
             }
         }
-
+        const stateName = targetZoneOrPoint ? (targetZoneOrPoint.state || targetZoneOrPoint.stateName || locationName || "").toLowerCase() : "";
+        const isNdUsa = targetZoneOrPoint ? (stateName.includes("nd") || stateName.includes("north dakota") || (lat >= 45.92 && lat <= 49.0 && lon >= -104.05 && lon <= -96.55)) : false;
+        const isMnUsa = targetZoneOrPoint ? (stateName.includes("mn") || stateName.includes("minnesota") || (lat >= 43.5 && lat <= 49.38 && lon >= -97.24 && lon <= -89.49)) : true;
         if (forecastYear === 2026 && forecastMonth === 8 && dateNum === 23) {
             const lat = targetZoneOrPoint ? parseFloat(targetZoneOrPoint.lat) : 45.0;
             const lon = targetZoneOrPoint ? parseFloat(targetZoneOrPoint.lon) : -93.0;
@@ -1234,7 +1236,7 @@ async function buildForecast() {
             else if (conditionSwing < -1.5) weatherSummary = "Cloudy & Breezy";
             else weatherSummary = "Cloudy, T-Storms & Windy";
 
-        } else if (forecastYear === 2026 && forecastMonth === 8 && dateNum === 28) {
+        } else if (forecastYear === 2026 && forecastMonth === 8 && dateNum === 28 && isMnUsa || isNdUsa) {
             const lat = targetZoneOrPoint ? parseFloat(targetZoneOrPoint.lat) : 45.0;
             const lon = targetZoneOrPoint ? parseFloat(targetZoneOrPoint.lon) : -93.0;
 
