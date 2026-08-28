@@ -2926,7 +2926,7 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
         if (!hasEvents) return fallbackFn(m);
         const exact = sortedEvents.find(e => e.minute === m && e[key] !== undefined);
         if (exact) return exact[key];
-        
+
         const prevEvents = sortedEvents.filter(e => e.minute <= m && e[key] !== undefined);
         const nextEvents = sortedEvents.filter(e => e.minute >= m && e[key] !== undefined);
         const prevEvent = prevEvents.length > 0 ? prevEvents[prevEvents.length - 1] : null;
