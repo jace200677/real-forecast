@@ -2689,7 +2689,7 @@ function getSelectedDayCardDate(canvas, activeX, item, mode, prevItem, nextItem)
 
 /**
  * Creates or updates the radar grid layer by extracting interpolated graph values dynamically,
- * ensuring wind speed and wind gust are uniquely decoupled, cleanly interpolated, and styled with accurate color ramps.
+ * distinguishing between wind speed and wind gust modes, and applying NWS-style spatial map tile rendering.
  */
 function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, nextItem = null, forcedMinute = 0) {
     if (!canvas) return null;
@@ -2876,6 +2876,7 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
     let baseResolvedValue = null;
     let label = "";
 
+    // Safely evaluate mode strings supporting both standard short names and explicit wind sub-types
     const normalizedMode = (mode || "").toLowerCase();
 
     switch (normalizedMode) {
@@ -2892,15 +2893,17 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
         case "wind":
         case "windspeed":
         case "wind_speed": {
-            baseResolvedValue = getInterpolatedVal(hoveredMinute, 'wind', getDiurnalWind);
-            label = `Wind: ${baseResolvedValue} mph`;
+            const w = getInterpolatedVal(hoveredMinute, 'wind', getDiurnalWind);
+            baseResolvedValue = w; // Explicitly isolatable wind speed scalar value
+            label = `Wind: ${w} mph`;
             break;
         }
         case "gust":
         case "windgust":
         case "wind_gust": {
-            baseResolvedValue = getInterpolatedVal(hoveredMinute, 'gust', getDiurnalGust);
-            label = `Gust: ${baseResolvedValue} mph`;
+            const g = getInterpolatedVal(hoveredMinute, 'gust', getDiurnalGust);
+            baseResolvedValue = g; // Explicitly isolatable wind gust scalar value
+            label = `Gust: ${g} mph`;
             break;
         }
         case "dos":
@@ -3093,35 +3096,6 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
     return activeGridLayer;
 }
 
-// **Time Slider Controller Integration**
-const timeSlider = document.getElementById('timeSlider'); 
-
-if (timeSlider) {
-    timeSlider.addEventListener('input', (event) => {
-        const selectedMinute = parseInt(event.target.value, 10);
-        
-        if (typeof activeCanvas !== 'undefined' && typeof activeItem !== 'undefined' && typeof currentMode !== 'undefined') {
-            const updatedLayer = createRadarGridLayer(
-                activeCanvas, 
-                0, 
-                activeItem, 
-                currentMode, 
-                null, 
-                null, 
-                selectedMinute
-            );
-
-            if (updatedLayer && typeof activeTargetMap !== 'undefined' && activeTargetMap) {
-                if (window.currentRadarGridLayer && activeTargetMap.hasLayer(window.currentRadarGridLayer)) {
-                    activeTargetMap.removeLayer(window.currentRadarGridLayer);
-                }
-
-                updatedLayer.addTo(activeTargetMap);
-                window.currentRadarGridLayer = updatedLayer;
-            }
-        }
-    });
-}
 // **Time Slider Controller Integration**
 const timeSlider = document.getElementById('timeSlider'); 
 
