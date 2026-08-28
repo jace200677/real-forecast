@@ -2686,10 +2686,6 @@ function getSelectedDayCardDate(canvas, activeX, item, mode, prevItem, nextItem)
 
     return { dateStr: `${defM}/${defD}/${defY}` };
 }
-/**
- * Creates or updates the radar grid layer with precise CDT time parsing,
- * direct graph value mapping, and smooth radial color lerping.
- */
 function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, nextItem = null, forcedMinute = 0) {
     if (!canvas) return null;
     const rect = canvas.getBoundingClientRect();
@@ -2698,7 +2694,10 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
     const scaleFactor = Math.min(width / 650, 1.5);
     const padLeft = Math.round(45 * scaleFactor);
     const padRight = Math.round(20 * scaleFactor);
+    const padTop = Math.round(30 * scaleFactor);
+    const padBottom = Math.round(35 * scaleFactor);
     const graphWidth = width - padLeft - padRight;
+    const graphHeight = canvas.height - padTop - padBottom;
 
     let hoveredMinute;
     if (forcedMinute !== null && forcedMinute !== undefined) {
@@ -2706,19 +2705,8 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
     } else {
         const x = clientX - rect.left;
         if (x < padLeft || x > width - padRight) {
-            if (clientX === 0) {
-                const now = new Date();
-                const cdtOptions = { timeZone: 'America/Chicago', hour: 'numeric', minute: 'numeric', hour12: false };
-                const cdtParts = new Intl.DateTimeFormat('en-US', cdtOptions).formatToParts(now);
-                let cdtHour = 0, cdtMinute = 0;
-                cdtParts.forEach(p => {
-                    if (p.type === 'hour') cdtHour = parseInt(p.value, 10);
-                    if (p.type === 'minute') cdtMinute = parseInt(p.value, 10);
-                });
-                hoveredMinute = (cdtHour * 60) + cdtMinute;
-            } else {
-                return null;
-            }
+            if (clientX === 0) hoveredMinute = 0;
+            else return null;
         } else {
             const ratio = Math.max(0, Math.min(1, (x - padLeft) / graphWidth));
             hoveredMinute = Math.round(ratio * 1439);
@@ -2790,7 +2778,7 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
     const forecastMonth = targetDateParts.month;
     const dateNum = targetDateParts.dateNum;
 
-    const getOverrideScoreAndWeather = () => {
+    const getOverrideScoreAndWeather = (m) => {
         let projectedScore = item?.score ?? 5;
         let windMph = item?.windMph ?? 31;
         let gustMph = item?.gustMph ?? 56;
@@ -2808,28 +2796,62 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
         return { score: projectedScore, windMph, gustMph, tempLow, tempHigh };
     };
 
-    const overrideMetrics = getOverrideScoreAndWeather();
+    const overrideMetrics = getOverrideScoreAndWeather(hoveredMinute);
 
     const getPreviousDayLowestTemp = () => {
+        if (extractedDate === "8/24/2026" || extractedDate === "08/24/2026") {
+            const prev = effectivePrevItem;
+            if (prev && Array.isArray(prev.overrideEvents) && prev.overrideEvents.length > 0) {
+                const eventTemps = prev.overrideEvents.filter(e => e.temp !== undefined).map(e => e.temp);
+                if (eventTemps.length > 0) return Math.min(...eventTemps);
+            }
+            return 48;
+        }
         const prev = effectivePrevItem;
-        if (prev && prev.tempLow !== undefined) return prev.tempLow;
-        return overrideMetrics.tempLow;
+        if (prev) {
+            if (Array.isArray(prev.tempRange) && prev.tempRange.length > 0) return Math.min(...prev.tempRange);
+            if (Array.isArray(prev.temps) && prev.temps.length > 0) return Math.min(...prev.temps);
+            if (prev.tempLowMin !== undefined) return prev.tempLowMin;
+            if (prev.tempMin !== undefined) return prev.tempMin;
+            if (prev.tempLow !== undefined) return prev.tempLow;
+        }
+        return item?.yesterdayTempLow ?? item?.yesterdayLow ?? overrideMetrics.tempLow;
     };
 
     const getNextDayLowestTemp = () => {
         const next = effectiveNextItem;
-        if (next && next.tempLow !== undefined) return next.tempLow;
-        return overrideMetrics.tempLow;
+        if (next) {
+            if (Array.isArray(next.tempRange) && next.tempRange.length > 0) return Math.min(...next.tempRange);
+            if (Array.isArray(next.temps) && next.temps.length > 0) return Math.min(...next.temps);
+            if (next.tempLowMin !== undefined) return next.tempLowMin;
+            if (next.tempMin !== undefined) return next.tempMin;
+            if (next.tempLow !== undefined) return next.tempLow;
+        }
+        return item?.tomorrowTempLow ?? item?.tomorrowLow ?? overrideMetrics.tempLow;
     };
 
     const morningLow = getPreviousDayLowestTemp();
     const todayLow = overrideMetrics.tempLow;
     const todayHigh = overrideMetrics.tempHigh;
     const tomorrowLow = getNextDayLowestTemp();
-    const prevHigh = (effectivePrevItem && effectivePrevItem.tempHigh !== undefined) ? effectivePrevItem.tempHigh : todayHigh;
+
+    const prevHigh = (effectivePrevItem && effectivePrevItem.tempHigh !== undefined) 
+        ? effectivePrevItem.tempHigh : (item?.yesterdayTempHigh !== undefined ? item.yesterdayTempHigh : todayHigh);
 
     let midnightStartTemp = Math.round((prevHigh + morningLow) / 2);
+    if (effectivePrevItem && Array.isArray(effectivePrevItem.overrideEvents) && effectivePrevItem.overrideEvents.length > 0) {
+        const prevEvents = [...effectivePrevItem.overrideEvents].sort((a, b) => a.minute - b.minute);
+        const lastEv = [...prevEvents].reverse().find(e => e.temp !== undefined);
+        if (lastEv) midnightStartTemp = lastEv.temp;
+    }
+
     let midnightEndTemp = Math.round((todayHigh + tomorrowLow) / 2);
+    if (effectiveNextItem && Array.isArray(effectiveNextItem.overrideEvents) && effectiveNextItem.overrideEvents.length > 0) {
+        const nextEvents = [...effectiveNextItem.overrideEvents].sort((a, b) => a.minute - b.minute);
+        const firstEv = nextEvents.find(e => e.temp !== undefined);
+        if (firstEv) midnightEndTemp = firstEv.temp;
+    }
+
     const isWinterInversion = item?.isWinterInversion || (todayHigh < morningLow);
 
     const getDiurnalTemp = (m) => {
@@ -2880,6 +2902,41 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
         return Math.round(baseScore * (0.5 + 0.5 * ((Math.cos(dosTempRad) + 1) / 2)));
     };
 
+    const prevPressure = effectivePrevItem?.pressure ?? (item?.pressure || 29.92);
+    const nextPressure = effectiveNextItem?.pressure ?? (item?.pressure || 29.92);
+    const getDiurnalPressure = (m) => {
+        const baseP = (m <= 360) ? smoothStep((prevPressure + (item?.pressure || 29.92)) / 2, item?.pressure || 29.92, m / 360) :
+                      (m <= 900) ? (item?.pressure || 29.92) :
+                      smoothStep(item?.pressure || 29.92, ((item?.pressure || 29.92) + nextPressure) / 2, (m - 900) / 539);
+        const rad = (m / 1440) * Math.PI * 4;
+        return +(baseP + 0.05 * Math.sin(rad)).toFixed(2);
+    };
+
+    const prevHumidity = effectivePrevItem?.humidity ?? (item?.humidity || 50);
+    const nextHumidity = effectiveNextItem?.humidity ?? (item?.humidity || 50);
+    const getDiurnalHumidity = (m) => {
+        const baseHum = (m <= 360) ? smoothStep((prevHumidity + (item?.humidity || 50)) / 2, item?.humidity || 50, m / 360) :
+                        (m <= 900) ? (item?.humidity || 50) :
+                        smoothStep(item?.humidity || 50, ((item?.humidity || 50) + nextHumidity) / 2, (m - 900) / 539);
+        const rad = ((m - peakMin) / 1440) * Math.PI * 2;
+        return Math.max(0, Math.min(100, Math.round(baseHum - 20 * Math.cos(rad))));
+    };
+
+    const getDiurnalUv = (m) => {
+        const maxUv = item?.uvIndex || 0;
+        if (m < 360 || m > 1200) return 0;
+        const rad = ((m - 360) / 840) * Math.PI;
+        return +(maxUv * Math.sin(rad)).toFixed(1);
+    };
+
+    const prevPrecip = effectivePrevItem?.precipChance ?? (item?.precipChance || 0);
+    const nextPrecip = effectiveNextItem?.precipChance ?? (item?.precipChance || 0);
+    const getDiurnalPrecip = (m) => {
+        if (m <= 360) return Math.round(smoothStep((prevPrecip + (item?.precipChance || 0)) / 2, item?.precipChance || 0, m / 360));
+        if (m <= 900) return item?.precipChance || 0;
+        return Math.round(smoothStep(item?.precipChance || 0, ((item?.precipChance || 0) + nextPrecip) / 2, (m - 900) / 539));
+    };
+
     const hasEvents = Array.isArray(item?.overrideEvents) && item.overrideEvents.length > 0;
     const sortedEvents = hasEvents ? [...item.overrideEvents].sort((a, b) => a.minute - b.minute) : [];
 
@@ -2912,6 +2969,16 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
         return fallbackFn(m);
     };
 
+    const getInterpolatedTemp = (m) => getInterpolatedVal(m, 'temp', getDiurnalTemp);
+    const getInterpolatedFeelsLike = (m) => getInterpolatedVal(m, 'feelsLike', getDiurnalFeelsLike);
+    const getInterpolatedWind = (m) => getInterpolatedVal(m, 'wind', getDiurnalWind);
+    const getInterpolatedGust = (m) => getInterpolatedVal(m, 'gust', getDiurnalGust);
+    const getInterpolatedDos = (m) => getInterpolatedVal(m, 'dos', getDiurnalDos);
+    const getInterpolatedPressure = (m) => getInterpolatedVal(m, 'pressure', getDiurnalPressure);
+    const getInterpolatedHumidity = (m) => getInterpolatedVal(m, 'humidity', getDiurnalHumidity);
+    const getInterpolatedUv = (m) => getInterpolatedVal(m, 'uv', getDiurnalUv);
+    const getInterpolatedPrecip = (m) => getInterpolatedVal(m, 'precip', getDiurnalPrecip);
+
     let baseResolvedValue = null;
     let label = "";
 
@@ -2931,11 +2998,11 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
 
     if (isWindMode) {
         if (effectiveSubMode === 'gust') {
-            const g = getInterpolatedVal(hoveredMinute, 'gust', getDiurnalGust);
+            const g = getInterpolatedGust(hoveredMinute);
             baseResolvedValue = g;
             label = `Gust: ${g} mph`;
         } else {
-            const w = getInterpolatedVal(hoveredMinute, 'wind', getDiurnalWind);
+            const w = getInterpolatedWind(hoveredMinute);
             baseResolvedValue = w;
             label = `Wind: ${w} mph`;
         }
@@ -2943,20 +3010,36 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
         switch (effectiveSubMode) {
             case "temp":
             case "temperature":
-                baseResolvedValue = getInterpolatedVal(hoveredMinute, 'temp', getDiurnalTemp);
+                baseResolvedValue = getInterpolatedTemp(hoveredMinute);
                 label = `${baseResolvedValue}°F`;
                 break;
             case "feelslike":
             case "feels_like":
-                baseResolvedValue = getInterpolatedVal(hoveredMinute, 'feelsLike', getDiurnalFeelsLike);
+                baseResolvedValue = getInterpolatedFeelsLike(hoveredMinute);
                 label = `Feels Like ${baseResolvedValue}°F`;
                 break;
             case "dos":
-                baseResolvedValue = getInterpolatedVal(hoveredMinute, 'dos', getDiurnalDos);
+                baseResolvedValue = getInterpolatedDos(hoveredMinute);
                 label = `DOS: ${baseResolvedValue}`;
                 break;
+            case "pressure":
+                baseResolvedValue = getInterpolatedPressure(hoveredMinute);
+                label = `${baseResolvedValue.toFixed(2)} inHg`;
+                break;
+            case "humidity":
+                baseResolvedValue = getInterpolatedHumidity(hoveredMinute);
+                label = `${baseResolvedValue}%`;
+                break;
+            case "uv":
+                baseResolvedValue = getInterpolatedUv(hoveredMinute);
+                label = `UV Index: ${baseResolvedValue}`;
+                break;
+            case "precip":
+                baseResolvedValue = getInterpolatedPrecip(hoveredMinute);
+                label = `Chance: ${baseResolvedValue}%`;
+                break;
             default:
-                baseResolvedValue = getDiurnalTemp(hoveredMinute);
+                baseResolvedValue = getInterpolatedTemp(hoveredMinute);
                 label = `${baseResolvedValue}`;
         }
     }
@@ -3066,52 +3149,39 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
 
             const targetMap = this._map || activeTargetMap;
             const currentZoom = (targetMap && typeof targetMap.getZoom === 'function') ? targetMap.getZoom() : baseZoom;
-            
-            if (targetMap && typeof targetMap.unproject === 'function' && typeof targetMap.project === 'function') {
+            let centerLat = lat;
+            let centerLng = lon;
+
+            if (targetMap && typeof targetMap.unproject === 'function') {
                 try {
                     const fixedCoords = coords.clone ? coords.clone() : { x: coords.x, y: coords.y, z: currentZoom, scaleBy: c => coords.scaleBy(c) };
                     fixedCoords.z = currentZoom;
-
+                    
                     const nwPoint = fixedCoords.scaleBy(size);
-                    const steps = 6; // High-resolution sampling grid for continuous color lerping
-                    const stepX = size.x / steps;
-                    const stepY = size.y / steps;
-
-                    ctx.clearRect(0, 0, size.x, size.y);
-
-                    for (let gx = 0; gx < steps; gx++) {
-                        for (let gy = 0; gy < steps; gy++) {
-                            const px = nwPoint.x + (gx + 0.5) * stepX;
-                            const py = nwPoint.y + (gy + 0.5) * stepY;
-                            const sampleLatLng = targetMap.unproject(L.point(px, py), currentZoom);
-
-                            const sampledVal = getNwsSpatiallyInterpolatedValue(baseResolvedValue, effectiveSubMode, sampleLatLng.lat, sampleLatLng.lng, currentZoom);
-                            const sampledColor = getDynamicColor(sampledVal, effectiveSubMode);
-
-                            const cellX = gx * stepX;
-                            const cellY = gy * stepY;
-                            const radGrad = ctx.createRadialGradient(
-                                cellX + stepX / 2, cellY + stepY / 2, 2,
-                                cellX + stepX / 2, cellY + stepY / 2, Math.max(stepX, stepY) * 0.9
-                            );
-                            radGrad.addColorStop(0, sampledColor);
-                            radGrad.addColorStop(1, 'transparent');
-
-                            ctx.fillStyle = radGrad;
-                            ctx.fillRect(cellX - 2, cellY - 2, stepX + 4, stepY + 4);
-                        }
-                    }
-                } catch (err) {
-                    const centerVal = getNwsSpatiallyInterpolatedValue(baseResolvedValue, effectiveSubMode, lat, lon, currentZoom);
-                    ctx.fillStyle = getDynamicColor(centerVal, effectiveSubMode);
-                    ctx.fillRect(0, 0, tile.width, tile.height);
-                }
-            } else {
-                const centerVal = getNwsSpatiallyInterpolatedValue(baseResolvedValue, effectiveSubMode, lat, lon, currentZoom);
-                ctx.fillStyle = getDynamicColor(centerVal, effectiveSubMode);
-                ctx.fillRect(0, 0, tile.width, tile.height);
+                    const sePoint = nwPoint.add(size);
+                    const nwLatLng = targetMap.unproject(nwPoint, currentZoom);
+                    const seLatLng = targetMap.unproject(sePoint, currentZoom);
+                    centerLat = (nwLatLng.lat + seLatLng.lat) / 2;
+                    centerLng = (nwLatLng.lng + seLatLng.lng) / 2;
+                } catch (err) {}
             }
 
+            const centerVal = getNwsSpatiallyInterpolatedValue(baseResolvedValue, effectiveSubMode, centerLat, centerLng, currentZoom);
+            const centerColor = getDynamicColor(centerVal, effectiveSubMode);
+
+            const cornerVal = getNwsSpatiallyInterpolatedValue(baseResolvedValue, effectiveSubMode, centerLat + 0.035, centerLng + 0.035, currentZoom);
+            const cornerColor = getDynamicColor(cornerVal, effectiveSubMode);
+
+            const gradient = ctx.createRadialGradient(
+                tile.width / 2, tile.height / 2, 5,
+                tile.width / 2, tile.height / 2, Math.max(tile.width, tile.height) * 0.7
+            );
+            gradient.addColorStop(0, centerColor);
+            gradient.addColorStop(1, cornerColor);
+
+            ctx.fillStyle = gradient;
+            ctx.fillRect(0, 0, tile.width, tile.height);
+            
             return tile;
         }
     });
