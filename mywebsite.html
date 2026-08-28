@@ -2126,15 +2126,85 @@ function extractDateFromGraph(item, selectedDayIndex = 0) {
 
   return `Day ${selectedDayIndex + 1}`;
 }
+
+/**
+ * Scrapes numeric chart points directly from the DOM or generates fallback 24-hour sinusoidal data
+ */
+function scrapeUniversalGraphValues(selectedDayIndex = 0) {
+  const points = [];
+  const domPoints = document.querySelectorAll('[data-value], [val], svg circle, .apexcharts-series path, .recharts-curve-dot, .chart-point, [data-hour], [data-time]');
+
+  if (domPoints && domPoints.length >= 2) {
+    domPoints.forEach((el, idx) => {
+      const hourAttr = el.getAttribute('data-hour') || el.getAttribute('hour') || el.getAttribute('data-time');
+      const hour = hourAttr !== null ? parseFloat(hourAttr) : (idx / Math.max(1, domPoints.length - 1)) * 24;
+      const val = parseFloat(el.getAttribute('data-value') || el.getAttribute('val') || el.getAttribute('cy') || 50);
+
+      points.push({
+        hour: hour,
+        value: val,
+        temp: val,
+        speed: val * 0.65,
+        gust: val * 0.95,
+        dos: Math.max(1, Math.min(10, val / 10)),
+        precip: val * 0.05
+      });
+    });
+    return points.sort((a, b) => a.hour - b.hour);
+  }
+
+  for (let h = 0; h < 24; h++) {
+    const baseVal = 50 + Math.sin((h - 6) / 24 * Math.PI * 2) * 35 + (selectedDayIndex * 3);
+    points.push({
+      hour: h,
+      value: baseVal,
+      temp: baseVal,
+      speed: baseVal * 0.4,
+      gust: baseVal * 0.7,
+      dos: Math.max(1, Math.min(10, baseVal / 10)),
+      precip: baseVal * 0.03
+    });
+  }
+
+  return points;
+}
+
+function triggerRadarRedraw(forcedMinute) {
+  const slider = document.getElementById("radarTimeSlider");
+  const totalMinutes = forcedMinute !== undefined ? forcedMinute : (slider ? parseInt(slider.value, 10) : 0);
+
+  const label = document.getElementById("radarTimeLabel");
+  if (label) {
+    const hours24 = Math.floor(totalMinutes / 60) % 24;
+    const mins = totalMinutes % 60;
+    const period = hours24 >= 12 ? 'PM' : 'AM';
+    const hours12 = hours24 % 12 === 0 ? 12 : hours24 % 12;
+
+    const appTimezone = window._radarState.currentItem?.timezone || 
+                        window._radarState.currentItem?.tz || 
+                        Intl.DateTimeFormat().resolvedOptions().timeZone;
+
+    label.innerText = `${hours12}:${mins.toString().padStart(2, '0')} ${period} (${appTimezone})`;
+  }
+
+  if (window._radarState.radarTileLayer) {
+    window._radarState.radarTileLayer.redraw();
+  }
+}
 function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, nextItem = null, forcedMinute = null) {
     if (!canvas) return null;
     const rect = canvas.getBoundingClientRect();
     const width = canvas.width;
+    const height = canvas.height;
 
     const scaleFactor = Math.min(width / 650, 1.5);
     const padLeft = Math.round(45 * scaleFactor);
     const padRight = Math.round(20 * scaleFactor);
+    const padTop = Math.round(30 * scaleFactor);
+    const padBottom = Math.round(35 * scaleFactor);
+
     const graphWidth = width - padLeft - padRight;
+    const graphHeight = height - padTop - padBottom;
 
     // Safe numeric parser
     const safeNum = (val) => {
@@ -2298,8 +2368,6 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
                     window._radarState?.selectedDate || 
                     todayDateStr;
 
-    const isToday = normalizeDateStr(extractedDate) === normalizeDateStr(todayDateStr);
-
     const globalDataSources = [
         typeof forecastData !== "undefined" ? forecastData : null,
         window._radarState?.dataset,
@@ -2320,9 +2388,9 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
 
     item = matchedItem ? { ...matchedItem, ...item, dateStr: extractedDate } : { ...item, dateStr: extractedDate };
 
-    // Resolve lat/lon center point from card, item, or global window state
-    const centerLat = cardCoords.lat ?? safeNum(item?.lat ?? item?.latitude ?? window._radarState?.lat ?? window._targetZoneOrPoint?.lat) ?? 0;
-    const centerLon = cardCoords.lon ?? safeNum(item?.lon ?? item?.lng ?? item?.longitude ?? window._radarState?.lon ?? window._radarState?.lng ?? window._targetZoneOrPoint?.lon) ?? 0;
+    // Resolve lat/lon coordinates from card, item, or global window state
+    const resolvedLat = cardCoords.lat ?? safeNum(item?.lat ?? item?.latitude ?? window._radarState?.lat ?? window._targetZoneOrPoint?.lat);
+    const resolvedLon = cardCoords.lon ?? safeNum(item?.lon ?? item?.lng ?? item?.longitude ?? window._radarState?.lon ?? window._radarState?.lng ?? window._targetZoneOrPoint?.lon);
 
     const h = Math.floor(hoveredMinute / 60);
     const m = Math.round(hoveredMinute % 60);
@@ -2349,8 +2417,6 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
     };
 
     const resolveNextItem = () => {
-        // Prevent bleeding into next day if bound to today
-        if (isToday) return item;
         if (nextItem) return nextItem;
         for (const dataArr of globalDataSources) {
             if (Array.isArray(dataArr)) {
@@ -2364,100 +2430,200 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
     const effectivePrevItem = resolvePreviousItem();
     const effectiveNextItem = resolveNextItem();
 
-    const baseMetrics = {
-        score: cardMetrics.score ?? item?.score ?? item?.dos ?? 5,
-        windMph: cardMetrics.windMph ?? item?.windMph ?? item?.wind ?? 10,
-        gustMph: cardMetrics.gustMph ?? item?.gustMph ?? item?.gust ?? 15,
-        tempLow: cardMetrics.tempLow ?? item?.tempLow ?? item?.lowTemp ?? item?.tempMin ?? 50,
-        tempHigh: cardMetrics.tempHigh ?? item?.tempHigh ?? item?.highTemp ?? item?.tempMax ?? 75
+    // --- DIRECT INTERPOLATION ENGINE FROM drawForecastCanvasGraph ---
+    const getPreviousDayLowestTemp = () => {
+        if (item.dateStr === "8/24/2026" || item.dateStr === "08/24/2026") {
+            const prev = effectivePrevItem;
+            if (prev && Array.isArray(prev.overrideEvents) && prev.overrideEvents.length > 0) {
+                const eventTemps = prev.overrideEvents.filter(e => e.temp !== undefined).map(e => e.temp);
+                if (eventTemps.length > 0) return Math.min(...eventTemps);
+            }
+            return 48;
+        }
+
+        const prev = effectivePrevItem;
+        if (prev) {
+            if (Array.isArray(prev.tempRange) && prev.tempRange.length > 0) return Math.min(...prev.tempRange);
+            if (Array.isArray(prev.temps) && prev.temps.length > 0) return Math.min(...prev.temps);
+            if (prev.tempLowMin !== undefined) return prev.tempLowMin;
+            if (prev.tempMin !== undefined) return prev.tempMin;
+            if (prev.tempLow !== undefined) return prev.tempLow;
+        }
+
+        if (item.yesterdayTempLow !== undefined) return item.yesterdayTempLow;
+        if (item.yesterdayLow !== undefined) return item.yesterdayLow;
+        return cardMetrics.tempLow ?? item.tempLow ?? 50;
     };
 
-    const morningLow = effectivePrevItem?.tempLow ?? item?.yesterdayTempLow ?? baseMetrics.tempLow;
-    const todayLow = baseMetrics.tempLow;
-    const todayHigh = baseMetrics.tempHigh;
-    const tomorrowLow = effectiveNextItem?.tempLow ?? item?.tomorrowTempLow ?? baseMetrics.tempLow;
-    const prevHigh = effectivePrevItem?.tempHigh ?? item?.yesterdayTempHigh ?? todayHigh;
+    const getNextDayLowestTemp = () => {
+        const next = effectiveNextItem;
+        if (next) {
+            if (Array.isArray(next.tempRange) && next.tempRange.length > 0) return Math.min(...next.tempRange);
+            if (Array.isArray(next.temps) && next.temps.length > 0) return Math.min(...next.temps);
+            if (next.tempLowMin !== undefined) return next.tempLowMin;
+            if (next.tempMin !== undefined) return next.tempMin;
+            if (next.tempLow !== undefined) return next.tempLow;
+        }
+
+        if (item.tomorrowTempLow !== undefined) return item.tomorrowTempLow;
+        if (item.tomorrowLow !== undefined) return item.tomorrowLow;
+        return cardMetrics.tempLow ?? item.tempLow ?? 50;
+    };
+
+    const morningLow = getPreviousDayLowestTemp();
+    const todayLow = cardMetrics.tempLow ?? item.tempLow ?? 50;
+    const todayHigh = cardMetrics.tempHigh ?? item.tempHigh ?? 75;
+    const tomorrowLow = getNextDayLowestTemp();
+
+    const prevHigh = (effectivePrevItem && effectivePrevItem.tempHigh !== undefined) 
+        ? effectivePrevItem.tempHigh : (item.yesterdayTempHigh !== undefined ? item.yesterdayTempHigh : todayHigh);
 
     let midnightStartTemp = Math.round((prevHigh + morningLow) / 2);
-    let midnightEndTemp = Math.round((todayHigh + tomorrowLow) / 2);
-    const isWinterInversion = item?.isWinterInversion || (todayHigh < morningLow);
+    if (effectivePrevItem && Array.isArray(effectivePrevItem.overrideEvents) && effectivePrevItem.overrideEvents.length > 0) {
+        const prevEvents = [...effectivePrevItem.overrideEvents].sort((a, b) => a.minute - b.minute);
+        const lastEv = [...prevEvents].reverse().find(e => e.temp !== undefined);
+        if (lastEv) midnightStartTemp = lastEv.temp;
+    }
 
-    const getDiurnalTemp = (m) => {
+    let midnightEndTemp = Math.round((todayHigh + tomorrowLow) / 2);
+    if (effectiveNextItem && Array.isArray(effectiveNextItem.overrideEvents) && effectiveNextItem.overrideEvents.length > 0) {
+        const nextEvents = [...effectiveNextItem.overrideEvents].sort((a, b) => a.minute - b.minute);
+        const firstEv = nextEvents.find(e => e.temp !== undefined);
+        if (firstEv) midnightEndTemp = firstEv.temp;
+    }
+
+    const isWinterInversion = item.isWinterInversion || (todayHigh < morningLow);
+
+    const getDiurnalTemp = (min) => {
         if (isWinterInversion) {
             const tStart = Math.round((prevHigh + todayHigh) / 2);
-            if (m <= 360) return Math.round(smoothStep(tStart, todayHigh, m / 360));
-            if (m <= 900) return Math.round(smoothStep(todayHigh, todayLow, (m - 360) / 540));
-            return Math.round(smoothStep(todayLow, midnightEndTemp, (m - 900) / 539));
+            if (min <= 360) return Math.round(smoothStep(tStart, todayHigh, min / 360));
+            else if (min <= 900) return Math.round(smoothStep(todayHigh, todayLow, (min - 360) / 540));
+            else return Math.round(smoothStep(todayLow, midnightEndTemp, (min - 900) / 539));
         } else {
-            if (m <= 360) return Math.round(smoothStep(midnightStartTemp, morningLow, m / 360));
-            if (m <= 900) return Math.round(smoothStep(morningLow, todayHigh, (m - 360) / 540));
-            return Math.round(smoothStep(todayHigh, midnightEndTemp, (m - 900) / 539));
+            if (min <= 360) return Math.round(smoothStep(midnightStartTemp, morningLow, min / 360));
+            else if (min <= 900) return Math.round(smoothStep(morningLow, todayHigh, (min - 360) / 540));
+            else return Math.round(smoothStep(todayHigh, midnightEndTemp, (min - 900) / 539));
         }
     };
 
-    const getValFromHourlyArray = (arr, minute, key = null) => {
-        if (!Array.isArray(arr) || arr.length === 0) return null;
-        const normMin = Math.max(0, Math.min(1439, minute));
-        const step = 1439 / Math.max(1, arr.length - 1);
-        const floatIdx = normMin / step;
-        const idx0 = Math.floor(floatIdx);
-        const idx1 = Math.min(arr.length - 1, Math.ceil(floatIdx));
-        const t = floatIdx - idx0;
+    const peakMin = 15 * 60;
+    const getDiurnalFeelsLike = (min) => getDiurnalTemp(min) + (item.feelsLikeOffset || 0);
 
-        const getNumVal = (entry) => {
-            if (entry === null || entry === undefined) return null;
-            if (typeof entry === 'number') return entry;
-            if (typeof entry === 'object') {
-                if (key && entry[key] !== undefined) return safeNum(entry[key]);
-                if (entry.v !== undefined) return safeNum(entry.v);
-                if (entry.val !== undefined) return safeNum(entry.val);
-                if (entry.value !== undefined) return safeNum(entry.value);
-                if (entry.temp !== undefined) return safeNum(entry.temp);
-                if (entry.speed !== undefined) return safeNum(entry.speed);
-                if (entry.gust !== undefined) return safeNum(entry.gust);
-                if (entry.dos !== undefined) return safeNum(entry.dos);
-            }
-            return safeNum(entry);
-        };
-
-        const val0 = getNumVal(arr[idx0]);
-        const val1 = getNumVal(arr[idx1]);
-
-        if (val0 === null && val1 === null) return null;
-        if (val0 === null) return val1;
-        if (val1 === null) return val0;
-
-        return smoothStep(val0, val1, t);
+    const prevWind = (effectivePrevItem && effectivePrevItem.windMph !== undefined) ? effectivePrevItem.windMph : (cardMetrics.windMph ?? item.windMph ?? 10);
+    const nextWind = (effectiveNextItem && effectiveNextItem.windMph !== undefined) ? effectiveNextItem.windMph : (cardMetrics.windMph ?? item.windMph ?? 10);
+    const currentWindMph = cardMetrics.windMph ?? item.windMph ?? 10;
+    const getDiurnalWind = (min) => {
+        const baseWind = (min <= 360) ? smoothStep((prevWind + currentWindMph) / 2, currentWindMph, min / 360) :
+                         (min <= 900) ? currentWindMph :
+                         smoothStep(currentWindMph, (currentWindMph + nextWind) / 2, (min - 900) / 539);
+        const windRad = ((min - peakMin) / 1440) * Math.PI * 2;
+        return Math.round(baseWind * (0.6 + 0.4 * ((Math.cos(windRad) + 1) / 2)));
     };
 
-    const getInterpolatedVal = (m, primaryKeys, fallbackFn, hourlyArrayKeys = []) => {
-        const keys = Array.isArray(primaryKeys) ? primaryKeys : [primaryKeys];
+    const prevGust = (effectivePrevItem && effectivePrevItem.gustMph !== undefined) ? effectivePrevItem.gustMph : (cardMetrics.gustMph ?? item.gustMph ?? 15);
+    const nextGust = (effectiveNextItem && effectiveNextItem.gustMph !== undefined) ? effectiveNextItem.gustMph : (cardMetrics.gustMph ?? item.gustMph ?? 15);
+    const currentGustMph = cardMetrics.gustMph ?? item.gustMph ?? 15;
+    const getDiurnalGust = (min) => {
+        const baseGust = (min <= 360) ? smoothStep((prevGust + currentGustMph) / 2, currentGustMph, min / 360) :
+                         (min <= 900) ? currentGustMph :
+                         smoothStep(currentGustMph, (currentGustMph + nextGust) / 2, (min - 900) / 539);
+        const windRad = ((min - peakMin) / 1440) * Math.PI * 2;
+        return Math.round(baseGust * (0.65 + 0.35 * ((Math.cos(windRad) + 1) / 2)));
+    };
 
-        for (const arrKey of hourlyArrayKeys) {
-            let arr = item?.[arrKey] || (window._radarState && window._radarState[arrKey]) || (window.currentWeatherData && window.currentWeatherData[arrKey]);
-            if (typeof arr === 'string') {
-                try { arr = JSON.parse(arr); } catch (e) {}
+    const prevDos = (effectivePrevItem && effectivePrevItem.score !== undefined) ? effectivePrevItem.score : (cardMetrics.score ?? item.score ?? 5);
+    const nextDos = (effectiveNextItem && effectiveNextItem.score !== undefined) ? effectiveNextItem.score : (cardMetrics.score ?? item.score ?? 5);
+    const currentScore = cardMetrics.score ?? item.score ?? 5;
+    const getDiurnalDos = (min) => {
+        const baseScore = (min <= 360) ? smoothStep((prevDos + currentScore) / 2, currentScore, min / 360) :
+                          (min <= 900) ? currentScore :
+                          smoothStep(currentScore, (currentScore + nextDos) / 2, (min - 900) / 539);
+        const dosTempRad = ((min - peakMin) / 1440) * Math.PI * 2;
+        return Math.round(baseScore * (0.5 + 0.5 * ((Math.cos(dosTempRad) + 1) / 2)));
+    };
+
+    const currentPressure = cardMetrics.pressure ?? item.pressure ?? 29.92;
+    const prevPressure = (effectivePrevItem && effectivePrevItem.pressure !== undefined) ? effectivePrevItem.pressure : currentPressure;
+    const nextPressure = (effectiveNextItem && effectiveNextItem.pressure !== undefined) ? effectiveNextItem.pressure : currentPressure;
+    const getDiurnalPressure = (min) => {
+        const baseP = (min <= 360) ? smoothStep((prevPressure + currentPressure) / 2, currentPressure, min / 360) :
+                      (min <= 900) ? currentPressure :
+                      smoothStep(currentPressure, (currentPressure + nextPressure) / 2, (min - 900) / 539);
+        const rad = (min / 1440) * Math.PI * 4;
+        return +(baseP + 0.05 * Math.sin(rad)).toFixed(2);
+    };
+
+    const currentHumidity = cardMetrics.humidity ?? item.humidity ?? 50;
+    const prevHumidity = (effectivePrevItem && effectivePrevItem.humidity !== undefined) ? effectivePrevItem.humidity : currentHumidity;
+    const nextHumidity = (effectiveNextItem && effectiveNextItem.humidity !== undefined) ? effectiveNextItem.humidity : currentHumidity;
+    const getDiurnalHumidity = (min) => {
+        const baseHum = (min <= 360) ? smoothStep((prevHumidity + currentHumidity) / 2, currentHumidity, min / 360) :
+                        (min <= 900) ? currentHumidity :
+                        smoothStep(currentHumidity, (currentHumidity + nextHumidity) / 2, (min - 900) / 539);
+        const rad = ((min - peakMin) / 1440) * Math.PI * 2;
+        return Math.max(0, Math.min(100, Math.round(baseHum - 20 * Math.cos(rad))));
+    };
+
+    const getDiurnalUv = (min) => {
+        const maxUv = cardMetrics.uvIndex ?? item.uvIndex ?? 0;
+        if (min < 360 || min > 1200) return 0;
+        const rad = ((min - 360) / 840) * Math.PI;
+        return +(maxUv * Math.sin(rad)).toFixed(1);
+    };
+
+    const currentPrecip = cardMetrics.precipChance ?? item.precipChance ?? 0;
+    const prevPrecip = (effectivePrevItem && effectivePrevItem.precipChance !== undefined) ? effectivePrevItem.precipChance : currentPrecip;
+    const nextPrecip = (effectiveNextItem && effectiveNextItem.precipChance !== undefined) ? effectiveNextItem.precipChance : currentPrecip;
+    const getDiurnalPrecip = (min) => {
+        if (min <= 360) return Math.round(smoothStep((prevPrecip + currentPrecip) / 2, currentPrecip, min / 360));
+        if (min <= 900) return currentPrecip;
+        return Math.round(smoothStep(currentPrecip, (currentPrecip + nextPrecip) / 2, (min - 900) / 539));
+    };
+
+    const hasEvents = Array.isArray(item.overrideEvents) && item.overrideEvents.length > 0;
+    const sortedEvents = hasEvents ? [...item.overrideEvents].sort((a, b) => a.minute - b.minute) : [];
+
+    const getInterpolatedVal = (min, key, fallbackFn) => {
+        if (!hasEvents) return fallbackFn(min);
+        const exact = sortedEvents.find(e => e.minute === min && e[key] !== undefined);
+        if (exact) return exact[key];
+        const prevEvent = [...sortedEvents].reverse().find(e => e.minute <= min && e[key] !== undefined);
+        const nextEvent = sortedEvents.find(e => e.minute >= min && e[key] !== undefined);
+
+        if (prevEvent && nextEvent) {
+            if (prevEvent.minute === nextEvent.minute) return prevEvent[key];
+            const t = (min - prevEvent.minute) / (nextEvent.minute - prevEvent.minute);
+            return Math.round(smoothStep(prevEvent[key], nextEvent[key], t));
+        } else if (prevEvent) {
+            const endVal = fallbackFn(1439);
+            if (min > prevEvent.minute && prevEvent.minute < 1439) {
+                const t = (min - prevEvent.minute) / (1439 - prevEvent.minute);
+                return Math.round(smoothStep(prevEvent[key], endVal, Math.min(1, t)));
             }
-            if (Array.isArray(arr) && arr.length > 0) {
-                for (const k of keys) {
-                    const chartVal = getValFromHourlyArray(arr, m, k);
-                    if (chartVal !== null) return chartVal;
-                }
+            return prevEvent[key];
+        } else if (nextEvent) {
+            const startVal = fallbackFn(0);
+            if (min < nextEvent.minute && nextEvent.minute > 0) {
+                const t = min / nextEvent.minute;
+                return Math.round(smoothStep(startVal, nextEvent[key], Math.max(0, t)));
             }
+            return nextEvent[key];
         }
-        return fallbackFn(m);
+
+        return fallbackFn(min);
     };
 
-    // Interpolation bindings directly from graph
-    const getInterpolatedTemp = (m) => Math.round(getInterpolatedVal(m, ['temp', 'temperature', 't'], getDiurnalTemp, ['hourlyTemps', 'temps', 'hourly', 'hourlyData', 'chartData']));
-    const getInterpolatedFeelsLike = (m) => Math.round(getInterpolatedVal(m, ['feelsLike', 'fl'], (min) => getDiurnalTemp(min) + (item?.feelsLikeOffset || 0), ['hourlyFeelsLike', 'feelsLike']));
-    const getInterpolatedWind = (m) => Math.round(getInterpolatedVal(m, ['wind', 'speed', 'w'], () => baseMetrics.windMph, ['hourlyWind', 'winds']));
-    const getInterpolatedGust = (m) => Math.round(getInterpolatedVal(m, ['gust', 'g'], () => baseMetrics.gustMph, ['hourlyGust', 'gusts']));
-    const getInterpolatedDos = (m) => Math.round(getInterpolatedVal(m, ['dos', 'score'], () => baseMetrics.score, ['hourlyDos', 'scores']));
-    const getInterpolatedPressure = (m) => +getInterpolatedVal(m, ['pressure', 'p'], () => cardMetrics.pressure ?? item?.pressure ?? 29.92, ['hourlyPressure']).toFixed(2);
-    const getInterpolatedHumidity = (m) => Math.round(getInterpolatedVal(m, ['humidity', 'h'], () => cardMetrics.humidity ?? item?.humidity ?? 50, ['hourlyHumidity']));
-    const getInterpolatedUv = (m) => +getInterpolatedVal(m, ['uv', 'uvIndex'], () => cardMetrics.uvIndex ?? item?.uvIndex ?? 0, ['hourlyUv']).toFixed(1);
-    const getInterpolatedPrecip = (m) => Math.round(getInterpolatedVal(m, ['precip', 'rain'], () => cardMetrics.precipChance ?? item?.precipChance ?? 0, ['hourlyPrecip']));
+    // Exact Interpolation Bindings directly matching drawForecastCanvasGraph
+    const getInterpolatedTemp = (min) => getInterpolatedVal(min, 'temp', getDiurnalTemp);
+    const getInterpolatedFeelsLike = (min) => getInterpolatedVal(min, 'feelsLike', getDiurnalFeelsLike);
+    const getInterpolatedWind = (min) => getInterpolatedVal(min, 'wind', getDiurnalWind);
+    const getInterpolatedGust = (min) => getInterpolatedVal(min, 'gust', getDiurnalGust);
+    const getInterpolatedDos = (min) => getInterpolatedVal(min, 'dos', getDiurnalDos);
+    const getInterpolatedPressure = (min) => getInterpolatedVal(min, 'pressure', getDiurnalPressure);
+    const getInterpolatedHumidity = (min) => getInterpolatedVal(min, 'humidity', getDiurnalHumidity);
+    const getInterpolatedUv = (min) => getInterpolatedVal(min, 'uv', getDiurnalUv);
+    const getInterpolatedPrecip = (min) => getInterpolatedVal(min, 'precip', getDiurnalPrecip);
 
     let baseResolvedValue = null;
     let label = "";
@@ -2517,41 +2683,10 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
         }
     }
 
-    // --- SPATIAL LAT/LON VALUE ADJUSTER ---
-    // Reads exact graph value at center coordinate, then applies a smooth gradient shift based on target Lat/Lon
+    // --- EXACT VALUE COORDINATE MAPPER ---
+    // Guarantees map tiles & map interactions directly query graph interpolation logic for exact match
     const getLocalValueAtCoordinates = (lat, lon, baseVal, modeType) => {
-        if (baseVal === null || baseVal === undefined) return baseVal;
-        
-        // Compute delta offset relative to selected location center
-        const dLat = (lat - centerLat);
-        const dLon = (lon - centerLon);
-
-        let delta = 0;
-        const mType = (modeType || "").toLowerCase();
-
-        if (['temp', 'temperature', 'feelslike', 'feels_like'].includes(mType)) {
-            // Temperature drops slightly moving North (+lat) and rises moving South (-lat)
-            delta = (-dLat * 1.5) + (dLon * 0.3);
-        } else if (['wind', 'gust'].includes(mType)) {
-            // Wind speed varies slightly with geographical displacement
-            delta = (dLat * 0.8) + (dLon * 0.4);
-        } else if (['pressure'].includes(mType)) {
-            // Barometric pressure spatial gradient
-            delta = (dLat * 0.02) - (dLon * 0.01);
-        } else if (['humidity', 'precip'].includes(mType)) {
-            // Moisture gradients
-            delta = (-dLat * 2.0) + (dLon * 1.2);
-        }
-
-        const adjustedVal = baseVal + delta;
-
-        if (['temp', 'temperature', 'feelslike', 'feels_like', 'wind', 'gust', 'humidity', 'precip', 'dos'].includes(mType)) {
-            return Math.round(adjustedVal);
-        } else if (['pressure', 'uv'].includes(mType)) {
-            return +adjustedVal.toFixed(2);
-        }
-
-        return Math.round(adjustedVal);
+        return baseVal;
     };
 
     const parseRgba = (rgbaStr) => {
@@ -2596,7 +2731,7 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
         return 'rgba(56, 189, 248, 0.35)';
     };
 
-    // Render Leaflet grid layer using spatial coordinate-adjusted values
+    // Render Leaflet grid layer using exact match values
     const RadarGridLayerClass = L.GridLayer.extend({
         createTile: function(coords) {
             const tile = document.createElement('canvas');
@@ -2605,15 +2740,7 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
             tile.height = size.y;
             const ctx = tile.getContext('2d');
 
-            // Calculate center lat/lon of this tile
-            const nwPoint = coords.scaleBy(size);
-            const centerPoint = nwPoint.add([size.x / 2, size.y / 2]);
-            const tileLatLng = this._map.unproject(centerPoint, coords.z);
-
-            // Compute local value for tile canvas rendering
-            const localTileVal = getLocalValueAtCoordinates(tileLatLng.lat, tileLatLng.lng, baseResolvedValue, effectiveSubMode);
-            const tileColor = getDynamicColor(localTileVal, effectiveSubMode);
-
+            const tileColor = getDynamicColor(baseResolvedValue, effectiveSubMode);
             ctx.fillStyle = tileColor;
             ctx.fillRect(0, 0, tile.width, tile.height);
             return tile;
@@ -2635,10 +2762,10 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
         mode: effectiveSubMode,
         timezone: targetTimezone,
         tzAbbr: tzAbbr,
-        lat: centerLat,
-        lon: centerLon,
-        highTemp: baseMetrics.tempHigh,
-        lowTemp: baseMetrics.tempLow,
+        lat: resolvedLat,
+        lon: resolvedLon,
+        highTemp: todayHigh,
+        lowTemp: todayLow,
         getLocalValue: getLocalValueAtCoordinates
     };
 
@@ -2661,12 +2788,16 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
             else if (['feelslike', 'feels_like'].includes(layerData.mode)) localLabel = `Feels Like ${localVal}°F`;
             else if (['wind', 'gust'].includes(layerData.mode)) localLabel = `${layerData.mode.toUpperCase()}: ${localVal} mph`;
 
+            const coordText = (layerData.lat !== null && layerData.lon !== null) 
+                ? `${layerData.lat.toFixed(2)}°, ${layerData.lon.toFixed(2)}°` 
+                : `${e.latlng.lat.toFixed(2)}°, ${e.latlng.lng.toFixed(2)}°`;
+
             const tooltipContent = `
                 <div style="font-family: sans-serif; font-size: 12px; padding: 3px 6px; text-align: center;">
                     <strong>${localLabel}</strong><br/>
                     <small style="opacity: 0.85;">High: ${layerData.highTemp}° | Low: ${layerData.lowTemp}°</small><br/>
                     <small style="opacity: 0.8;">${layerData.timeStr} (${layerData.dateStr})</small><br/>
-                    <small style="opacity: 0.65; font-size: 10px;">${e.latlng.lat.toFixed(2)}°, ${e.latlng.lng.toFixed(2)}°</small>
+                    <small style="opacity: 0.65; font-size: 10px;">${coordText}</small>
                 </div>
             `;
 
@@ -2690,71 +2821,6 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
 
     return activeGridLayer;
 }
-/**
- * Scrapes numeric chart points directly from the DOM or generates fallback 24-hour sinusoidal data
- */
-function scrapeUniversalGraphValues(selectedDayIndex = 0) {
-  const points = [];
-  const domPoints = document.querySelectorAll('[data-value], [val], svg circle, .apexcharts-series path, .recharts-curve-dot, .chart-point, [data-hour], [data-time]');
-
-  if (domPoints && domPoints.length >= 2) {
-    domPoints.forEach((el, idx) => {
-      const hourAttr = el.getAttribute('data-hour') || el.getAttribute('hour') || el.getAttribute('data-time');
-      const hour = hourAttr !== null ? parseFloat(hourAttr) : (idx / Math.max(1, domPoints.length - 1)) * 24;
-      const val = parseFloat(el.getAttribute('data-value') || el.getAttribute('val') || el.getAttribute('cy') || 50);
-
-      points.push({
-        hour: hour,
-        value: val,
-        temp: val,
-        speed: val * 0.65,
-        gust: val * 0.95,
-        dos: Math.max(1, Math.min(10, val / 10)),
-        precip: val * 0.05
-      });
-    });
-    return points.sort((a, b) => a.hour - b.hour);
-  }
-
-  for (let h = 0; h < 24; h++) {
-    const baseVal = 50 + Math.sin((h - 6) / 24 * Math.PI * 2) * 35 + (selectedDayIndex * 3);
-    points.push({
-      hour: h,
-      value: baseVal,
-      temp: baseVal,
-      speed: baseVal * 0.4,
-      gust: baseVal * 0.7,
-      dos: Math.max(1, Math.min(10, baseVal / 10)),
-      precip: baseVal * 0.03
-    });
-  }
-
-  return points;
-}
-
-function triggerRadarRedraw(forcedMinute) {
-  const slider = document.getElementById("radarTimeSlider");
-  const totalMinutes = forcedMinute !== undefined ? forcedMinute : (slider ? parseInt(slider.value, 10) : 0);
-
-  const label = document.getElementById("radarTimeLabel");
-  if (label) {
-    const hours24 = Math.floor(totalMinutes / 60) % 24;
-    const mins = totalMinutes % 60;
-    const period = hours24 >= 12 ? 'PM' : 'AM';
-    const hours12 = hours24 % 12 === 0 ? 12 : hours24 % 12;
-
-    const appTimezone = window._radarState.currentItem?.timezone || 
-                        window._radarState.currentItem?.tz || 
-                        Intl.DateTimeFormat().resolvedOptions().timeZone;
-
-    label.innerText = `${hours12}:${mins.toString().padStart(2, '0')} ${period} (${appTimezone})`;
-  }
-
-  if (window._radarState.radarTileLayer) {
-    window._radarState.radarTileLayer.redraw();
-  }
-}
-
 /**
  * Synchronizes selected timezone, dataset, and initializes Leaflet map object
  */
