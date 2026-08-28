@@ -2471,6 +2471,146 @@ document.getElementById("weatherMapModalBtn")?.addEventListener("click", () => {
 
   openWeatherMapModal(selectedDayCard, currentMode, selectedDayIndex);
 });
+function getValueFromPlotGraph(params) {
+    const { lat, lon, totalMinutes, item, mode, gridBounds, spatialGridData } = params;
+
+    const validMinute = Math.max(0, Math.min(1439, parseInt(totalMinutes, 10) || 0));
+
+    let spatialMultiplier = 1.0;
+    if (gridBounds && spatialGridData && gridBounds.width && gridBounds.height) {
+        const { north, south, east, west, width, height } = gridBounds;
+        const xNorm = (lon - west) / (east - west);
+        const yNorm = (north - lat) / (north - south);
+
+        if (xNorm >= 0 && xNorm <= 1 && yNorm >= 0 && yNorm <= 1) {
+            const col = Math.min(width - 1, Math.floor(xNorm * width));
+            const row = Math.min(height - 1, Math.floor(yNorm * height));
+            const gridIndex = row * width + col;
+
+            if (spatialGridData[gridIndex] !== undefined) {
+                spatialMultiplier = spatialGridData[gridIndex];
+            }
+        }
+    }
+
+    const dummyCanvas = document.createElement('canvas');
+    dummyCanvas.width = 650;
+    dummyCanvas.height = 400;
+
+    const layer = createRadarGridLayer(
+        dummyCanvas,
+        0,
+        item,
+        mode,
+        params.prevItem || null,
+        params.nextItem || null,
+        validMinute
+    );
+
+    if (!layer || !layer._meta) {
+        return { value: null, label: 'N/A', lat, lon, minute: validMinute };
+    }
+
+    let finalValue = layer._meta.value;
+    if (typeof finalValue === 'number') {
+        finalValue = Math.round(finalValue * spatialMultiplier);
+    } else if (typeof finalValue === 'object' && finalValue !== null) {
+        finalValue = {
+            speed: Math.round((finalValue.speed || 0) * spatialMultiplier),
+            gust: Math.round((finalValue.gust || 0) * spatialMultiplier)
+        };
+    }
+
+    return {
+        lat: lat,
+        lon: lon,
+        minute: validMinute,
+        timeStr: layer._meta.timeStr,
+        dateStr: layer._meta.dateStr,
+        mode: mode,
+        value: finalValue,
+        color: layer._meta.color,
+        formattedLabel: layer._meta.label
+    };
+}
+
+// 3. Global Application Controller & State
+window.RadarState = {
+    map: null,
+    canvas: document.createElement('canvas'),
+    currentLayer: null,
+    currentItem: {
+        dateStr: "2026-08-27",
+        tempLow: 58,
+        tempHigh: 84,
+        windMph: 12,
+        gustMph: 22,
+        score: 65,
+        feelsLikeOffset: 2
+    },
+    currentMode: 'temp',
+    currentMinute: 720,
+    selectedPoint: { lat: 47.6858, lon: -92.7723 }
+};
+
+window.RadarState.canvas.width = 650;
+window.RadarState.canvas.height = 400;
+
+window.updateActiveRadarLayer = (overrides = {}) => {
+    const s = window.RadarState;
+
+    if (overrides.item !== undefined) s.currentItem = overrides.item;
+    if (overrides.mode !== undefined) s.currentMode = overrides.mode;
+    if (overrides.minute !== undefined) s.currentMinute = overrides.minute;
+
+    if (!s.map || !s.currentItem) return;
+
+    if (s.currentLayer) {
+        s.map.removeLayer(s.currentLayer);
+    }
+
+    const newLayer = createRadarGridLayer(
+        s.canvas, 
+        0, 
+        s.currentItem, 
+        s.currentMode, 
+        overrides.prevItem || null, 
+        overrides.nextItem || null, 
+        s.currentMinute
+    );
+
+    if (newLayer) {
+        newLayer.addTo(s.map);
+        s.currentLayer = newLayer;
+    }
+
+    // Refresh display values on sampling dashboard
+    updateDashboard();
+};
+
+function updateDashboard() {
+    const s = window.RadarState;
+    if (!s.selectedPoint) return;
+
+    const sampledData = getValueFromPlotGraph({
+        lat: s.selectedPoint.lat,
+        lon: s.selectedPoint.lon,
+        totalMinutes: s.currentMinute,
+        item: s.currentItem,
+        mode: s.currentMode
+    });
+
+    document.getElementById('timeDisplay').innerText = sampledData.timeStr;
+    document.getElementById('dispCoords').innerText = `${sampledData.lat.toFixed(3)}, ${sampledData.lon.toFixed(3)}`;
+    document.getElementById('dispTime').innerText = sampledData.timeStr;
+    document.getElementById('dispLabel').innerText = sampledData.formattedLabel;
+
+    if (typeof sampledData.value === 'object') {
+        document.getElementById('dispValue').innerText = `Speed: ${sampledData.value.speed} / Gust: ${sampledData.value.gust}`;
+    } else {
+        document.getElementById('dispValue').innerText = sampledData.value;
+    }
+}
 // 2. Optimized Layer Factory using shared interpolation helper
 function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, nextItem = null, forcedMinute = null) {
     if (!canvas) return null;
