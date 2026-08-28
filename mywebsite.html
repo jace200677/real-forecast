@@ -2028,7 +2028,6 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
     }
 
     const getDynamicColor = (val, currentMode, lat = 0, lon = 0) => {
-        // Spatial variation offset derived from coordinates so different regions have unique color gradients/intensities
         const spatialMod = Math.sin(lat * 0.1) * Math.cos(lon * 0.1) * 4;
         
         if (currentMode === 'wind') {
@@ -2058,6 +2057,8 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
         return 'rgba(56, 189, 248, 0.30)';
     };
 
+    const activeTargetMap = (typeof window !== "undefined" && window._radarState && window._radarState.map) ? window._radarState.map : (typeof map !== "undefined" ? map : null);
+
     const RadarGridLayerClass = L.GridLayer.extend({
         createTile: function(coords) {
             const tile = document.createElement('canvas');
@@ -2066,13 +2067,22 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
             tile.height = size.y;
             const ctx = tile.getContext('2d');
 
-            // Convert tile coordinates (x, y, z) to geographic latitude/longitude to make colors geographically distinct
-            const nwPoint = coords.scaleBy(size);
-            const sePoint = nwPoint.add(size);
-            const nwLatLng = this._map.unproject(nwPoint, coords.z);
-            const seLatLng = this._map.unproject(sePoint, coords.z);
-            const centerLat = (nwLatLng.lat + seLatLng.lat) / 2;
-            const centerLng = (nwLatLng.lng + seLatLng.lng) / 2;
+            const targetMap = this._map || activeTargetMap;
+            let centerLat = 0;
+            let centerLng = 0;
+
+            if (targetMap && typeof targetMap.unproject === 'function') {
+                try {
+                    const nwPoint = coords.scaleBy(size);
+                    const sePoint = nwPoint.add(size);
+                    const nwLatLng = targetMap.unproject(nwPoint, coords.z);
+                    const seLatLng = targetMap.unproject(sePoint, coords.z);
+                    centerLat = (nwLatLng.lat + seLatLng.lat) / 2;
+                    centerLng = (nwLatLng.lng + seLatLng.lng) / 2;
+                } catch (err) {
+                    // Fallback coordinates if unproject is temporarily unavailable
+                }
+            }
 
             const tileColor = getDynamicColor(resolvedValue, mode, centerLat, centerLng);
 
@@ -2094,6 +2104,23 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
         color: getDynamicColor(resolvedValue, mode, 0, 0),
         mode: mode
     };
+
+    if (activeTargetMap) {
+        if (!window.satelliteLayer) {
+            window.satelliteLayer = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+                attribution: 'Tiles &copy; Esri &mdash; Source: Esri, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-EGP, and the GIS User Community',
+                maxZoom: 19
+            });
+        }
+        if (!activeTargetMap.hasLayer(window.satelliteLayer)) {
+            activeTargetMap.eachLayer(layer => {
+                if (layer instanceof L.TileLayer && layer !== window.satelliteLayer) {
+                    activeTargetMap.removeLayer(layer);
+                }
+            });
+            window.satelliteLayer.addTo(activeTargetMap);
+        }
+    }
 
     return activeGridLayer;
 }
