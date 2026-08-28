@@ -1250,8 +1250,8 @@ async function buildForecast() {
 
             const baseLow = 37 - latOffset + lonOffset;
             const baseHigh = 65 - latOffset + (lonOffset * 1.5);
-            const baseWind = 0 + latOffset;
-            const baseGust = 3 + (latOffset * 1.5);
+            const baseWind = 31 + latOffset;
+            const baseGust = 56 + (latOffset * 1.5);
 
             tempLow = Math.round(baseLow + (swingFactor * varianceAmplitude));
             tempHigh = Math.round(baseHigh + (swingFactor * varianceAmplitude * 1.3));
