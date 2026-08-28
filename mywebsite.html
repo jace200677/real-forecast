@@ -2714,8 +2714,8 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
 
     let extractedDate = item?.dateStr || item?.date || new Date().toISOString().split('T')[0];
     let cardMetrics = {};
-    
     const activeCard = document.querySelector('.day-card.active, .forecast-day-card.active, .day-tab.active, [data-selected="true"]');
+    
     if (activeCard) {
         const cardText = activeCard.innerText || activeCard.getAttribute('data-date') || activeCard.getAttribute('title') || '';
         const dateMatch = cardText.match(/([A-Za-z]{3}\s*\(\d{1,2}\/\d{1,2}\/\d{4}\))|(\d{1,2}\/\d{1,2}\/\d{2,4})|([A-Za-z]{3}\s+\d{1,2})|(\d{4}-\d{2}-\d{2})/);
@@ -2723,16 +2723,25 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
             extractedDate = dateMatch[0];
         }
 
+        // Expanded parser to capture dataset variants seamlessly from any card anywhere
         cardMetrics = {
             score: activeCard.dataset.score !== undefined ? parseFloat(activeCard.dataset.score) : null,
-            tempHigh: activeCard.dataset.high !== undefined ? parseFloat(activeCard.dataset.high) : (activeCard.dataset.tempHigh !== undefined ? parseFloat(activeCard.dataset.tempHigh) : null),
-            tempLow: activeCard.dataset.low !== undefined ? parseFloat(activeCard.dataset.low) : (activeCard.dataset.tempLow !== undefined ? parseFloat(activeCard.dataset.tempLow) : null),
-            windMph: activeCard.dataset.wind !== undefined ? parseFloat(activeCard.dataset.wind) : (activeCard.dataset.windMph !== undefined ? parseFloat(activeCard.dataset.windMph) : null),
-            gustMph: activeCard.dataset.gust !== undefined ? parseFloat(activeCard.dataset.gust) : (activeCard.dataset.gustMph !== undefined ? parseFloat(activeCard.dataset.gustMph) : null),
+            tempHigh: activeCard.dataset.high !== undefined ? parseFloat(activeCard.dataset.high) : 
+                      (activeCard.dataset.tempHigh !== undefined ? parseFloat(activeCard.dataset.tempHigh) : 
+                      (activeCard.dataset.max !== undefined ? parseFloat(activeCard.dataset.max) : null)),
+            tempLow: activeCard.dataset.low !== undefined ? parseFloat(activeCard.dataset.low) : 
+                     (activeCard.dataset.tempLow !== undefined ? parseFloat(activeCard.dataset.tempLow) : 
+                     (activeCard.dataset.min !== undefined ? parseFloat(activeCard.dataset.min) : null)),
+            windMph: activeCard.dataset.wind !== undefined ? parseFloat(activeCard.dataset.wind) : 
+                     (activeCard.dataset.windMph !== undefined ? parseFloat(activeCard.dataset.windMph) : null),
+            gustMph: activeCard.dataset.gust !== undefined ? parseFloat(activeCard.dataset.gust) : 
+                     (activeCard.dataset.gustMph !== undefined ? parseFloat(activeCard.dataset.gustMph) : null),
             humidity: activeCard.dataset.humidity !== undefined ? parseFloat(activeCard.dataset.humidity) : null,
             pressure: activeCard.dataset.pressure !== undefined ? parseFloat(activeCard.dataset.pressure) : null,
-            uvIndex: activeCard.dataset.uv !== undefined ? parseFloat(activeCard.dataset.uv) : (activeCard.dataset.uvIndex !== undefined ? parseFloat(activeCard.dataset.uvIndex) : null),
-            precipChance: activeCard.dataset.precip !== undefined ? parseFloat(activeCard.dataset.precip) : (activeCard.dataset.precipChance !== undefined ? parseFloat(activeCard.dataset.precipChance) : null),
+            uvIndex: activeCard.dataset.uv !== undefined ? parseFloat(activeCard.dataset.uv) : 
+                     (activeCard.dataset.uvIndex !== undefined ? parseFloat(activeCard.dataset.uvIndex) : null),
+            precipChance: activeCard.dataset.precip !== undefined ? parseFloat(activeCard.dataset.precip) : 
+                          (activeCard.dataset.precipChance !== undefined ? parseFloat(activeCard.dataset.precipChance) : null),
             condition: activeCard.dataset.condition || activeCard.getAttribute('data-weather') || ''
         };
     }
