@@ -2437,12 +2437,7 @@ function initTimezoneSyncedRadarModal(mapModalElement, forecastItem, defaultMode
   window._radarState.canvas = document.querySelector('canvas') || mapContainer.querySelector('canvas');
 
   // 2. Extract Date dynamically (falls back to forecastItem values or current date)
-  const extractedDate = forecastItem?.dateStr || 
-                        forecastItem?.date || 
-                        forecastItem?.day || 
-                        forecastItem?.dt_txt || 
-                        (forecastItem?.dt ? new Date(forecastItem.dt * 1000).toLocaleDateString() : null) || 
-                        new Date().toLocaleDateString();
+  const extractedDate = getSelectedDayCardDate(window._radarState.canvas, 0, forecastItem, defaultMode, null, null, 0).dateStr;
 
   const dateDisplay = document.getElementById('radarDateDisplay');
   if (dateDisplay) {
@@ -2612,7 +2607,6 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
         }
     }
 
-    // Retrieve date dynamically via getSelectedDayCardDate
     const dayMeta = getSelectedDayCardDate(canvas, clientX, item, mode, prevItem, nextItem, forcedMinute);
     const extractedDate = dayMeta.dateStr;
 
@@ -2856,15 +2850,6 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
     });
 
     const activeGridLayer = new RadarGridLayerClass();
-    
-    // Explicitly expose properties at root level alongside _meta for seamless access
-    activeGridLayer.dateStr = extractedDate;
-    activeGridLayer.timeStr = timeStr;
-    activeGridLayer.minute = hoveredMinute;
-    activeGridLayer.value = resolvedValue;
-    activeGridLayer.label = label;
-    activeGridLayer.mode = mode;
-
     activeGridLayer._meta = {
         value: resolvedValue,
         label: label,
