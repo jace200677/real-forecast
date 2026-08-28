@@ -2037,444 +2037,7 @@ function getInterpolatedValuesAt(item, minute, mode = "temp", prevItem = null, n
     };
 }
 
-// 2. Optimized Layer Factory using shared interpolation helper
-// Changed default forcedMinute parameter to null
-// 2. Optimized Layer Factory using shared interpolation helper
-function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, nextItem = null, forcedMinute = null) {
-    if (!canvas) return null;
-    const rect = canvas.getBoundingClientRect();
-    const width = canvas.width;
 
-    const scaleFactor = Math.min(width / 650, 1.5);
-    const padLeft = Math.round(45 * scaleFactor);
-    const padRight = Math.round(20 * scaleFactor);
-    const graphWidth = width - padLeft - padRight;
-
-    let hoveredMinute;
-    
-    if (forcedMinute !== null && forcedMinute !== undefined) {
-        hoveredMinute = Math.max(0, Math.min(1439, parseInt(forcedMinute, 10) || 0));
-    } else if (clientX !== null && clientX !== undefined) {
-        const x = clientX - rect.left;
-        if (x < padLeft || x > width - padRight) {
-            if (clientX === 0) hoveredMinute = 0;
-            else return null;
-        } else {
-            const ratio = Math.max(0, Math.min(1, (x - padLeft) / graphWidth));
-            hoveredMinute = Math.round(ratio * 1439);
-        }
-    } else {
-        hoveredMinute = 0;
-    }
-
-    const h = Math.floor(hoveredMinute / 60);
-    const m = Math.round(hoveredMinute % 60);
-    const timeStr = `${h % 12 || 12}:${m < 10 ? '0' : ''}${m}${h >= 12 ? 'PM' : 'AM'}`;
-
-    // Dynamic Leaflet GridLayer extending per-tile coordinates
-    const RadarGridLayerClass = L.GridLayer.extend({
-        createTile: function(coords) {
-            const tile = document.createElement('canvas');
-            const size = this.getTileSize();
-            tile.width = size.x;
-            tile.height = size.y;
-            const ctx = tile.getContext('2d');
-
-            // Calculate geographic coordinates for spatial variation per tile
-            const tileNW = this._tileCoordsToNWLatLng(coords);
-            
-            // Sample interpolated values using spatial coords (if supported) or time offset
-            const tileSampledData = getInterpolatedValuesAt(
-                item, 
-                hoveredMinute, 
-                mode, 
-                prevItem, 
-                nextItem, 
-                tileNW.lat, 
-                tileNW.lng
-            );
-
-            // Render dynamic color per tile location
-            ctx.fillStyle = tileSampledData.color || '#3388ff';
-            ctx.fillRect(0, 0, size.x, size.y);
-
-            // Tile grid border
-            ctx.strokeStyle = 'rgba(255, 255, 255, 0.08)';
-            ctx.strokeRect(0, 0, size.x, size.y);
-
-            return tile;
-        },
-
-        // Conversion helper from tile grid coords to geographic Lat/Lng
-        _tileCoordsToNWLatLng: function(coords) {
-            const map = this._map;
-            const tileSize = this.getTileSize();
-            const nwPoint = coords.scaleBy(tileSize);
-            return map ? map.unproject(nwPoint, coords.z) : { lat: 0, lng: 0 };
-        }
-    });
-
-    const activeGridLayer = new RadarGridLayerClass({
-        tileSize: 256,
-        updateWhenIdle: false
-    });
-
-    const rootSampledData = getInterpolatedValuesAt(item, hoveredMinute, mode, prevItem, nextItem);
-
-    activeGridLayer._meta = {
-        value: rootSampledData.value,
-        label: rootSampledData.label,
-        minute: hoveredMinute,
-        timeStr: timeStr,
-        dateStr: rootSampledData.dateStr,
-        color: rootSampledData.color,
-        mode: mode
-    };
-
-    return activeGridLayer;
-}
-
-// 3. Forecast Card Selection & Time-Slider Sync Handler
-function updateForecastUI(selectedItem, currentMinute, mode, mapInstance, currentLayerRef) {
-    const sampled = getInterpolatedValuesAt(selectedItem, currentMinute, mode);
-    
-    const timeSlider = document.getElementById('timeSlider');
-    if (timeSlider) timeSlider.value = currentMinute;
-    
-    const dateDisplay = document.getElementById('selectedDateLabel');
-    if (dateDisplay) dateDisplay.textContent = sampled.dateStr;
-
-    const valueLabel = document.getElementById('currentValueLabel');
-    if (valueLabel) {
-        valueLabel.textContent = sampled.label;
-        valueLabel.style.color = sampled.color;
-    }
-
-    if (mapInstance) {
-        // Remove existing layer safely
-        if (currentLayerRef && mapInstance.hasLayer(currentLayerRef)) {
-            mapInstance.removeLayer(currentLayerRef);
-        }
-
-        // Generate and mount new layer
-        const newLayer = createRadarGridLayer(
-            document.getElementById('radarCanvas'), 
-            null, 
-            selectedItem, 
-            mode, 
-            null, 
-            null, 
-            currentMinute
-        );
-
-        if (newLayer) {
-            newLayer.addTo(mapInstance);
-            // Force Leaflet canvas cache invalidation
-            if (typeof newLayer.redraw === 'function') {
-                newLayer.redraw();
-            }
-            return newLayer;
-        }
-    }
-    return currentLayerRef;
-}
- * 2. Spatial & Temporal Plot Graph Sampler
- */
-function getValueFromPlotGraph(params) {
-    const { lat, lon, totalMinutes, item, mode, gridBounds, spatialGridData } = params;
-
-    const validMinute = Math.max(0, Math.min(1439, parseInt(totalMinutes, 10) || 0));
-
-    let spatialMultiplier = 1.0;
-    if (gridBounds && spatialGridData && gridBounds.width && gridBounds.height) {
-        const { north, south, east, west, width, height } = gridBounds;
-        const xNorm = (lon - west) / (east - west);
-        const yNorm = (north - lat) / (north - south);
-
-        if (xNorm >= 0 && xNorm <= 1 && yNorm >= 0 && yNorm <= 1) {
-            const col = Math.min(width - 1, Math.floor(xNorm * width));
-            const row = Math.min(height - 1, Math.floor(yNorm * height));
-            const gridIndex = row * width + col;
-
-            if (spatialGridData[gridIndex] !== undefined) {
-                spatialMultiplier = spatialGridData[gridIndex];
-            }
-        }
-    }
-
-    const dummyCanvas = document.createElement('canvas');
-    dummyCanvas.width = 650;
-    dummyCanvas.height = 400;
-
-    const layer = createRadarGridLayer(
-        dummyCanvas,
-        0,
-        item,
-        mode,
-        params.prevItem || null,
-        params.nextItem || null,
-        validMinute
-    );
-
-    if (!layer || !layer._meta) {
-        return { value: null, label: 'N/A', lat, lon, minute: validMinute };
-    }
-
-    let finalValue = layer._meta.value;
-    if (typeof finalValue === 'number') {
-        finalValue = Math.round(finalValue * spatialMultiplier);
-    } else if (typeof finalValue === 'object' && finalValue !== null) {
-        finalValue = {
-            speed: Math.round((finalValue.speed || 0) * spatialMultiplier),
-            gust: Math.round((finalValue.gust || 0) * spatialMultiplier)
-        };
-    }
-
-    return {
-        lat: lat,
-        lon: lon,
-        minute: validMinute,
-        timeStr: layer._meta.timeStr,
-        dateStr: layer._meta.dateStr,
-        mode: mode,
-        value: finalValue,
-        color: layer._meta.color,
-        formattedLabel: layer._meta.label
-    };
-}
-
-// 3. Global Application Controller & State
-window.RadarState = {
-    map: null,
-    canvas: document.createElement('canvas'),
-    currentLayer: null,
-    currentItem: {
-        dateStr: "2026-08-27",
-        tempLow: 58,
-        tempHigh: 84,
-        windMph: 12,
-        gustMph: 22,
-        score: 65,
-        feelsLikeOffset: 2
-    },
-    currentMode: 'temp',
-    currentMinute: 720,
-    selectedPoint: { lat: 47.6858, lon: -92.7723 }
-};
-
-window.RadarState.canvas.width = 650;
-window.RadarState.canvas.height = 400;
-
-window.updateActiveRadarLayer = (overrides = {}) => {
-    const s = window.RadarState;
-
-    if (overrides.item !== undefined) s.currentItem = overrides.item;
-    if (overrides.mode !== undefined) s.currentMode = overrides.mode;
-    if (overrides.minute !== undefined) s.currentMinute = overrides.minute;
-
-    if (!s.map || !s.currentItem) return;
-
-    if (s.currentLayer) {
-        s.map.removeLayer(s.currentLayer);
-    }
-
-    const newLayer = createRadarGridLayer(
-        s.canvas, 
-        0, 
-        s.currentItem, 
-        s.currentMode, 
-        overrides.prevItem || null, 
-        overrides.nextItem || null, 
-        s.currentMinute
-    );
-
-    if (newLayer) {
-        newLayer.addTo(s.map);
-        s.currentLayer = newLayer;
-    }
-
-    // Refresh display values on sampling dashboard
-    updateDashboard();
-};
-
-function updateDashboard() {
-    const s = window.RadarState;
-    if (!s.selectedPoint) return;
-
-    const sampledData = getValueFromPlotGraph({
-        lat: s.selectedPoint.lat,
-        lon: s.selectedPoint.lon,
-        totalMinutes: s.currentMinute,
-        item: s.currentItem,
-        mode: s.currentMode
-    });
-
-    document.getElementById('timeDisplay').innerText = sampledData.timeStr;
-    document.getElementById('dispCoords').innerText = `${sampledData.lat.toFixed(3)}, ${sampledData.lon.toFixed(3)}`;
-    document.getElementById('dispTime').innerText = sampledData.timeStr;
-    document.getElementById('dispLabel').innerText = sampledData.formattedLabel;
-
-    if (typeof sampledData.value === 'object') {
-        document.getElementById('dispValue').innerText = `Speed: ${sampledData.value.speed} / Gust: ${sampledData.value.gust}`;
-    } else {
-        document.getElementById('dispValue').innerText = sampledData.value;
-    }
-}
-function openForecastGraphModal(item, fullForecast = [], itemIndex = -1) {
-    let modal = document.getElementById("forecastGraphModal");
-    if (!modal) {
-        modal = document.createElement("div");
-        modal.id = "forecastGraphModal";
-        modal.style.cssText = "position:fixed;top:0;left:0;width:100vw;height:100vh;background:rgba(0,0,0,0.85);z-index:9999;display:flex;align-items:center;justify-content:center;padding:10px;";
-        modal.innerHTML = `
-            <div style="background:#1e1e24;border-radius:12px;padding:16px;width:100%;max-width:750px;color:#fff;position:relative;box-shadow:0 8px 32px rgba(0,0,0,0.5);">
-                <button id="closeGraphModalBtn" style="position:absolute;top:12px;right:12px;background:none;border:none;color:#fff;font-size:24px;cursor:pointer;padding:5px;">✕</button>
-                <div style="display:flex;gap:10px;align-items:center;margin-bottom:12px;flex-wrap:wrap;padding-right:30px;">
-                    <h3 id="graphModalTitle" style="margin:0;font-size:clamp(14px, 4vw, 18px);">Forecast Graph</h3>
-                    <select id="graphTypeSelect" style="background:#2b2b36;color:#fff;border:1px solid #444;padding:6px 10px;border-radius:6px;cursor:pointer;font-size:13px;">
-                        <option value="temp">Temperature</option>
-                        <option value="feelsLike">Feels Like Temp</option>
-                        <option value="wind">Wind & Gusts</option>
-                        <option value="dos">DOS Score</option>
-                        <option value="pressure">Pressure</option>
-                        <option value="humidity">Humidity</option>
-                        <option value="uv">UV Index</option>
-                        <option value="precip">Precipitation Chance</option>
-                    </select>
-                    <button class="traffic-btn" onclick="openTrafficMapModal()">🚦 Traffic Road Map</button>
-                    <button id="weatherMapModalBtn" class="weather-map-btn" style="background:#38bdf8;color:#0f172a;border:none;padding:6px 12px;border-radius:6px;font-weight:600;font-size:13px;cursor:pointer;display:inline-flex;align-items:center;gap:6px;">
-                        📡 Weather Radar Map
-                    </button>
-                </div>
-
-                <div style="width:100%;aspect-ratio:2/1;min-height:220px;max-height:350px;">
-                    <canvas id="forecastGraphCanvas" style="width:100%;height:100%;background:#121216;border-radius:8px;cursor:crosshair;touch-action:none;display:block;"></canvas>
-                </div>
-            </div>
-        `;
-        document.body.appendChild(modal);
-        
-        const canvas = document.getElementById("forecastGraphCanvas");
-        document.getElementById("closeGraphModalBtn").addEventListener("click", () => {
-            modal.style.display = "none";
-            modal.dragX = null;
-        });
-
-        document.getElementById("graphTypeSelect").addEventListener("change", (e) => {
-            if (modal.currentItem && canvas) {
-                drawForecastCanvasGraph(modal.currentItem, e.target.value, canvas, modal.dragX, modal.prevItem, modal.nextItem);
-            }
-        });
-        
-        // Attach click handler for Weather Map Modal Button
-        document.getElementById("weatherMapModalBtn")?.addEventListener("click", () => {
-    const currentMode = document.getElementById("graphTypeSelect")?.value || "temp";
-    
-    // 1. Identify active selected day card/tab element from UI
-    const dayElements = document.querySelectorAll('.day-tab, .forecast-day-card, .day-card'); 
-    let selectedDayIndex = 0;
-    
-    dayElements.forEach((el, index) => {
-        if (
-            el.classList.contains('active') || 
-            el.classList.contains('selected') || 
-            el.getAttribute('aria-selected') === 'true' ||
-            el.dataset.selected === 'true'
-        ) {
-            selectedDayIndex = index;
-        }
-    });
-
-    // 2. Safely resolve root dataset from active state or window context
-    const rootData = window._radarState?.currentItem || window.currentWeatherData || {};
-
-    // 3. Helper to extract forecast array across standard schema variations
-    const extractDaysArray = (data) => {
-        if (!data) return [];
-        if (Array.isArray(data)) return data;
-        return data.daily || data.forecast || data.days || data.weekly || data.list || data.data || data.timeline || [];
-    };
-
-    let daysArray = extractDaysArray(rootData);
-    if (daysArray.length === 0 && rootData && typeof rootData === 'object') {
-        for (const key of Object.keys(rootData)) {
-            if (rootData[key] && typeof rootData[key] === 'object') {
-                const nested = extractDaysArray(rootData[key]);
-                if (nested.length > 0) {
-                    daysArray = nested;
-                    break;
-                }
-            }
-        }
-    }
-
-    // 4. Extract target selected day card object
-    const selectedDayCard = daysArray[selectedDayIndex] || daysArray[0] || rootData;
-
-    // Preserve parent metadata (lat, lon, timezone) on selected card object
-    if (selectedDayCard !== rootData && typeof rootData === 'object') {
-        selectedDayCard.lat = selectedDayCard.lat ?? rootData.lat ?? rootData.latitude;
-        selectedDayCard.lon = selectedDayCard.lon ?? rootData.lon ?? rootData.longitude;
-        selectedDayCard.timezone = selectedDayCard.timezone ?? rootData.timezone ?? rootData.tz;
-        selectedDayCard.days = daysArray; // Preserve full collection reference
-    }
-
-    // 5. Open radar modal targeting the isolated selected day card
-    openWeatherMapModal(selectedDayCard, currentMode, selectedDayIndex);
-});
-        
-        const updateScrubber = (clientX) => {
-            const rect = canvas.getBoundingClientRect();
-            const x = (clientX - rect.left) * (canvas.width / rect.width);
-            modal.dragX = x;
-            const currentMode = document.getElementById("graphTypeSelect").value || "temp";
-            drawForecastCanvasGraph(modal.currentItem, currentMode, canvas, modal.dragX, modal.prevItem, modal.nextItem);
-        };
-        const clearScrubber = () => {
-            modal.dragX = null;
-            const currentMode = document.getElementById("graphTypeSelect").value || "temp";
-            drawForecastCanvasGraph(modal.currentItem, currentMode, canvas, null, modal.prevItem, modal.nextItem);
-        };
-        
-        canvas.addEventListener("mousemove", (e) => updateScrubber(e.clientX));
-        canvas.addEventListener("mouseleave", clearScrubber);
-        canvas.addEventListener("touchstart", (e) => {
-            if (e.touches.length > 0) { e.preventDefault(); updateScrubber(e.touches[0].clientX); }
-        }, { passive: false });
-        canvas.addEventListener("touchmove", (e) => {
-            if (e.touches.length > 0) { e.preventDefault(); updateScrubber(e.touches[0].clientX); }
-        }, { passive: false });
-        canvas.addEventListener("touchend", clearScrubber);
-        canvas.addEventListener("touchcancel", clearScrubber);
-    }
-    
-    modal.currentItem = item;
-    modal.prevItem = (fullForecast && itemIndex > 0) ? fullForecast[itemIndex - 1] : null;
-    modal.nextItem = (fullForecast && itemIndex >= 0 && itemIndex < fullForecast.length - 1) ? fullForecast[itemIndex + 1] : null;
-    modal.dragX = null;
-    modal.style.display = "flex";
-    
-    const currentMode = document.getElementById("graphTypeSelect").value || "temp";
-    const modalCanvas = document.getElementById("forecastGraphCanvas");
-    updateTrafficButtonState();
-    setTimeout(() => {
-        const rect = modalCanvas.getBoundingClientRect();
-        modalCanvas.width = rect.width * (window.devicePixelRatio || 1);
-        modalCanvas.height = rect.height * (window.devicePixelRatio || 1);
-        drawForecastCanvasGraph(item, currentMode, modalCanvas, null, modal.prevItem, modal.nextItem);
-    }, 50);
-}
-// Global radar state initialization
-window._radarState = window._radarState || {
-  map: null,
-  radarTileLayer: null,
-  currentMode: 'temp',
-  windSubMode: 'speed',
-  dataset: [],
-  selectedDayIndex: 0,
-  currentItem: null,
-  activeDateText: ''
-};
 
 /**
  * Extracts and formats date context from graph modal titles, active cards, or dataset items
@@ -2754,38 +2317,188 @@ document.getElementById("weatherMapModalBtn")?.addEventListener("click", () => {
 
   openWeatherMapModal(selectedDayCard, currentMode, selectedDayIndex);
 });
+// 2. Optimized Layer Factory using shared interpolation helper
+function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, nextItem = null, forcedMinute = null) {
+    if (!canvas) return null;
+    const rect = canvas.getBoundingClientRect();
+    const width = canvas.width;
+
+    const scaleFactor = Math.min(width / 650, 1.5);
+    const padLeft = Math.round(45 * scaleFactor);
+    const padRight = Math.round(20 * scaleFactor);
+    const graphWidth = width - padLeft - padRight;
+
+    let hoveredMinute;
+    
+    if (forcedMinute !== null && forcedMinute !== undefined) {
+        hoveredMinute = Math.max(0, Math.min(1439, parseInt(forcedMinute, 10) || 0));
+    } else if (clientX !== null && clientX !== undefined) {
+        const x = clientX - rect.left;
+        if (x < padLeft || x > width - padRight) {
+            if (clientX === 0) hoveredMinute = 0;
+            else return null;
+        } else {
+            const ratio = Math.max(0, Math.min(1, (x - padLeft) / graphWidth));
+            hoveredMinute = Math.round(ratio * 1439);
+        }
+    } else {
+        hoveredMinute = 0;
+    }
+
+    const h = Math.floor(hoveredMinute / 60);
+    const m = Math.round(hoveredMinute % 60);
+    const timeStr = `${h % 12 || 12}:${m < 10 ? '0' : ''}${m}${h >= 12 ? 'PM' : 'AM'}`;
+
+    // Dynamic Leaflet GridLayer extending per-tile coordinates
+    const RadarGridLayerClass = L.GridLayer.extend({
+        createTile: function(coords) {
+            const tile = document.createElement('canvas');
+            const size = this.getTileSize();
+            tile.width = size.x;
+            tile.height = size.y;
+            const ctx = tile.getContext('2d');
+
+            // Calculate geographic coordinates for spatial variation per tile
+            const tileNW = this._tileCoordsToNWLatLng(coords);
+            
+            // Sample interpolated values using spatial coords (if supported) or time offset
+            const tileSampledData = getInterpolatedValuesAt(
+                item, 
+                hoveredMinute, 
+                mode, 
+                prevItem, 
+                nextItem, 
+                tileNW.lat, 
+                tileNW.lng
+            );
+
+            // Render dynamic color per tile location
+            ctx.fillStyle = tileSampledData.color || '#3388ff';
+            ctx.fillRect(0, 0, size.x, size.y);
+
+            // Tile grid border
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.08)';
+            ctx.strokeRect(0, 0, size.x, size.y);
+
+            return tile;
+        },
+
+        // Conversion helper from tile grid coords to geographic Lat/Lng
+        _tileCoordsToNWLatLng: function(coords) {
+            const map = this._map;
+            const tileSize = this.getTileSize();
+            const nwPoint = coords.scaleBy(tileSize);
+            return map ? map.unproject(nwPoint, coords.z) : { lat: 0, lng: 0 };
+        }
+    });
+
+    const activeGridLayer = new RadarGridLayerClass({
+        tileSize: 256,
+        updateWhenIdle: false
+    });
+
+    const rootSampledData = getInterpolatedValuesAt(item, hoveredMinute, mode, prevItem, nextItem);
+
+    activeGridLayer._meta = {
+        value: rootSampledData.value,
+        label: rootSampledData.label,
+        minute: hoveredMinute,
+        timeStr: timeStr,
+        dateStr: rootSampledData.dateStr,
+        color: rootSampledData.color,
+        mode: mode
+    };
+
+    return activeGridLayer;
+}
+
+// 3. Forecast Card Selection & Time-Slider Sync Handler
+function updateForecastUI(selectedItem, currentMinute, mode, mapInstance, currentLayerRef) {
+    const sampled = getInterpolatedValuesAt(selectedItem, currentMinute, mode);
+    
+    const timeSlider = document.getElementById('timeSlider');
+    if (timeSlider) timeSlider.value = currentMinute;
+    
+    const dateDisplay = document.getElementById('selectedDateLabel');
+    if (dateDisplay) dateDisplay.textContent = sampled.dateStr;
+
+    const valueLabel = document.getElementById('currentValueLabel');
+    if (valueLabel) {
+        valueLabel.textContent = sampled.label;
+        valueLabel.style.color = sampled.color;
+    }
+
+    if (mapInstance) {
+        // Remove existing layer safely
+        if (currentLayerRef && mapInstance.hasLayer(currentLayerRef)) {
+            mapInstance.removeLayer(currentLayerRef);
+        }
+
+        // Generate and mount new layer
+        const newLayer = createRadarGridLayer(
+            document.getElementById('radarCanvas'), 
+            null, 
+            selectedItem, 
+            mode, 
+            null, 
+            null, 
+            currentMinute
+        );
+
+        if (newLayer) {
+            newLayer.addTo(mapInstance);
+            // Force Leaflet canvas cache invalidation
+            if (typeof newLayer.redraw === 'function') {
+                newLayer.redraw();
+            }
+            return newLayer;
+        }
+    }
+    return currentLayerRef;
+}
+
 function initTimezoneSyncedRadarModal(mapModalElement, forecastItem, defaultMode = 'temp', dayIndex = 0) {
-  // 1. Setup or reuse Leaflet Map inside '#leafletMap'
   let mapContainer = document.getElementById('leafletMap');
   if (!mapContainer) return;
 
-  // Initialize radar state object if not yet defined
   window._radarState = window._radarState || {};
 
+  // 1. Setup Leaflet Map defaulting to Satellite without options
   if (!window._radarState.map) {
-    // Default coordinates (falls back to Tower, MN area or lat/lon provided in item)
-    const lat = forecastItem?.lat ?? forecastItem?.latitude ?? 47.8105;
-    const lon = forecastItem?.lon ?? forecastItem?.longitude ?? -92.2785;
+    const coords = resolveRadarCoordinates(forecastItem);
+
+    // Esri World Imagery (Satellite) base layer
+    const satelliteLayer = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+      maxZoom: 19,
+      attribution: 'Tiles &copy; Esri &mdash; Source: Esri, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-EGP, and the GIS User Community'
+    });
+
+    // Label overlay for Satellite view
+    const labelsOverlay = L.tileLayer('https://{s}.basemaps.cartocdn.com/light_only_labels/{z}/{x}/{y}{r}.png', {
+      maxZoom: 19,
+      attribution: '&copy; CARTO'
+    });
+
+    // Group satellite imagery and text labels into a single default layer
+    const defaultSatelliteView = L.layerGroup([satelliteLayer, labelsOverlay]);
 
     window._radarState.map = L.map('leafletMap', {
       zoomControl: true,
-      attributionControl: false
-    }).setView([lat, lon], 7);
+      attributionControl: false,
+      layers: [defaultSatelliteView] // Satellite view locked as default base layer
+    }).setView([coords.lat, coords.lon], 7);
 
-    // Standard Leaflet Map Tile Layer (OpenStreetMap)
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      maxZoom: 19,
-      attribution: '&copy; OpenStreetMap contributors'
-    }).addTo(window._radarState.map);
   } else {
     window._radarState.map.invalidateSize();
+    const coords = resolveRadarCoordinates(forecastItem);
+    window._radarState.map.panTo([coords.lat, coords.lon]);
   }
 
   window._radarState.currentItem = forecastItem;
   window._radarState.currentMode = defaultMode;
   window._radarState.canvas = document.querySelector('canvas') || mapContainer.querySelector('canvas');
 
-  // 2. Extract Date dynamically (falls back to forecastItem values or current date)
+  // 2. Extract Date dynamically
   const extractedDate = forecastItem?.dateStr || 
                         forecastItem?.date || 
                         forecastItem?.day || 
@@ -2798,26 +2511,28 @@ function initTimezoneSyncedRadarModal(mapModalElement, forecastItem, defaultMode
     dateDisplay.textContent = extractedDate;
   }
 
-  // 3. Connect Slider & Render Initial Minute State
+  // 3. Connect Slider & Throttled Time Updates
   const timelineSlider = document.getElementById("radarTimeSlider") || document.querySelector('input[type="range"]');
   const timeDisplayLabel = document.getElementById("radarTimeLabel") || document.getElementById('timeDisplayLabel');
 
-  const initialMinute = timelineSlider ? parseInt(timelineSlider.value, 10) || 0 : 0;
-  renderRadarLayerAtMinute(initialMinute);
-
   let newSlider = timelineSlider;
   if (timelineSlider) {
-    // Clone node to strip old listeners and prevent duplicate firing
     newSlider = timelineSlider.cloneNode(true);
     timelineSlider.parentNode.replaceChild(newSlider, timelineSlider);
 
+    let animationFrameId = null;
     newSlider.addEventListener('input', (e) => {
       const sliderMinute = parseInt(e.target.value, 10);
-      renderRadarLayerAtMinute(sliderMinute);
+      if (animationFrameId) cancelAnimationFrame(animationFrameId);
+      animationFrameId = requestAnimationFrame(() => {
+        renderRadarLayerAtMinute(sliderMinute);
+      });
     });
   }
 
-  // Global helper function for timeline drawing triggers
+  const initialMinute = newSlider ? parseInt(newSlider.value, 10) || 0 : 0;
+  renderRadarLayerAtMinute(initialMinute);
+
   window.triggerRadarRedraw = function(forcedMin = null) {
     const currentMin = forcedMin !== null ? forcedMin : (newSlider ? parseInt(newSlider.value, 10) : 0);
     renderRadarLayerAtMinute(currentMin);
@@ -2831,17 +2546,15 @@ function initTimezoneSyncedRadarModal(mapModalElement, forecastItem, defaultMode
 
     if (!activeMap) return;
 
-    // Remove old Leaflet grid layer to avoid overlapping rendering artifacts
     if (window._radarState.radarTileLayer) {
       activeMap.removeLayer(window._radarState.radarTileLayer);
       window._radarState.radarTileLayer = null;
     }
 
-    // Generate fresh grid layer instance using the selected minute
     if (typeof createRadarGridLayer === 'function' && activeCanvas) {
       const updatedLayer = createRadarGridLayer(
         activeCanvas,
-        0,
+        null,
         activeItem,
         activeMode,
         null,
@@ -2851,92 +2564,22 @@ function initTimezoneSyncedRadarModal(mapModalElement, forecastItem, defaultMode
 
       if (updatedLayer) {
         updatedLayer.addTo(activeMap);
+        if (typeof updatedLayer.redraw === 'function') {
+          updatedLayer.redraw();
+        }
         window._radarState.radarTileLayer = updatedLayer;
       }
     }
 
-    // Format time string (e.g. 12:30 PM)
     const h = Math.floor(minute / 60);
     const m = Math.round(minute % 60);
     const timeStr = `${h % 12 || 12}:${m < 10 ? '0' : ''}${m} ${h >= 12 ? 'PM' : 'AM'}`;
-    const tzAbbr = getTimezoneAbbreviation();
+    const tzAbbr = typeof getTimezoneAbbreviation === 'function' ? getTimezoneAbbreviation() : '';
 
     if (timeDisplayLabel) {
       timeDisplayLabel.textContent = `${timeStr} ${tzAbbr}`.trim();
     }
   }
-}
-/**
- * Coordinate Resolution Helper inside Tile Renderers / Grid Layers
- */
-function resolveRadarCoordinates(currentItem, dataset = []) {
-  const center = window._radarState && window._radarState.map ? window._radarState.map.getCenter() : null;
-
-  const targetLat = 
-    (currentItem ? currentItem.lat : null) ?? 
-    (dataset[0] ? dataset[0].lat : null) ?? 
-    (window._radarState ? window._radarState.lat : null) ?? 
-    (center ? center.lat : null) ?? 
-    45.3827;
-
-  const targetLon = 
-    (currentItem ? (currentItem.lon ?? currentItem.longitude) : null) ?? 
-    (dataset[0] ? (dataset[0].lon ?? dataset[0].longitude) : null) ?? 
-    (window._radarState ? window._radarState.lon : null) ?? 
-    (center ? center.lng : null) ?? 
-    -93.8761;
-
-  return { lat: targetLat, lon: targetLon };
-}
-/**
- * Dynamically loads Leaflet.js assets if not present
- */
-function ensureLeafletLoaded(callback) {
-  if (window.L) { callback(); return; }
-  const link = document.createElement("link");
-  link.rel = "stylesheet"; 
-  link.href = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.css";
-  document.head.appendChild(link);
-  
-  const script = document.createElement("script");
-  script.src = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.js";
-  script.onload = callback;
-  document.head.appendChild(script);
-}
-let activeMapItem = null;
-
-// Global Google Map, Traffic Layer, and transit references for Post-8/25/2026 handling
-let postAugMapInstance = null;
-let postAugTrafficLayer = null;
-
-function ensureGoogleMapsApiLoaded(callback) {
-    if (typeof google !== 'undefined' && typeof google.maps !== 'undefined') {
-        if (typeof callback === 'function') callback();
-        return;
-    }
-
-    if (document.getElementById("dynamicGoogleMapsApiScript")) {
-        const checkInterval = setInterval(() => {
-            if (typeof google !== 'undefined' && typeof google.maps !== 'undefined') {
-                clearInterval(checkInterval);
-                if (typeof callback === 'function') callback();
-            }
-        }, 100);
-        return;
-    }
-
-    const script = document.createElement("script");
-    script.id = "dynamicGoogleMapsApiScript";
-    script.src = "https://maps.googleapis.com/maps/api/js?key=AIzaSyDiM11iTvMj2DBgmXdOUMBBWGHiOaylLHg&libraries=places";
-    script.async = true;
-    script.defer = true;
-    script.onload = () => {
-        if (typeof callback === "function") callback();
-    };
-    script.onerror = () => {
-        console.error("Failed to load Google Maps JavaScript API dynamically.");
-    };
-    document.head.appendChild(script);
 }
 
 function updateTrafficOnTimeSliderAndDayCard(totalMinutes, selectedDateStr = null, mapInstance = null) {
