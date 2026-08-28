@@ -2158,7 +2158,7 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
 
     const activeTargetMap = (typeof window !== "undefined" && window._radarState && window._radarState.map) ? window._radarState.map : (typeof map !== "undefined" ? map : null);
     
-    // Resolve location (prioritize map center -> current global point -> defaults)
+    // Resolve location
     const mapCenter = activeTargetMap && typeof activeTargetMap.getCenter === 'function' ? activeTargetMap.getCenter() : null;
     const currentGlobalPoint = (typeof targetZoneOrPoint !== 'undefined' && targetZoneOrPoint) ? targetZoneOrPoint : (window._targetZoneOrPoint || null);
     
@@ -2217,11 +2217,10 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
         }
     }
 
-    // --- ENHANCED ACTIVE DAY CARD DATE RESOLUTION VIA getSelectedDayCardDate ---
+    // --- ENHANCED ACTIVE DAY CARD DATE RESOLUTION ---
     let extractedDate = null;
     let cardMetrics = {};
 
-    // 1. Prioritize resolution via getSelectedDayCardDate helper if available
     if (typeof getSelectedDayCardDate === 'function') {
         const dateResult = getSelectedDayCardDate(canvas, clientX, item, mode, prevItem, nextItem, forcedMinute);
         if (dateResult) {
@@ -2233,7 +2232,6 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
         }
     }
 
-    // 2. Active DOM Card Scrape Fallback
     const activeCard = document.querySelector('.day-card.active, .forecast-day-card.active, .day-tab.active, .swiper-slide-active, [data-selected="true"], [aria-selected="true"], .selected-day, .history-card.active, .day.active, .forecast-card.active');
 
     if (activeCard) {
@@ -2285,7 +2283,6 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
         };
     }
 
-    // 3. Ultimate Fallback Hierarchy
     extractedDate = extractedDate || 
                     item?.dateStr || item?.date || item?.rawDate || 
                     window._radarState?.selectedDate || 
@@ -2318,7 +2315,6 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
         buildForecastData
     ].filter(Boolean);
 
-    // Dynamic resolution of the active forecast data item matching target date
     const normTarget = normalizeDateStr(extractedDate);
     let matchedItem = null;
     for (const dataArr of globalDataSources) {
@@ -2328,7 +2324,6 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
         }
     }
 
-    // Replace properties cleanly without retaining stale item references
     item = matchedItem ? { ...matchedItem, ...item, dateStr: extractedDate } : { ...item, dateStr: extractedDate };
 
     const h = Math.floor(hoveredMinute / 60);
@@ -2637,34 +2632,6 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
         }
     }
 
-    const getNwsSpatiallyInterpolatedValue = (val, currentMode, targetLat, targetLon, centerZoom) => {
-        if (val === null || val === undefined) return val;
-        
-        const dLat = targetLat - lat;
-        const dLon = targetLon - lon;
-        
-        const zoomFactor = Math.max(0.2, 1.2 - (centerZoom * 0.08));
-        
-        const latGradient = Math.sin(targetLat * 0.35) * 3.2;
-        const lonGradient = Math.cos(targetLon * 0.35) * 2.8;
-        const diagonalGradient = Math.sin((targetLat + targetLon) * 0.15) * 1.5;
-
-        let regionalGrad = (latGradient + lonGradient + diagonalGradient + (dLat * 4.0) + (dLon * 3.0)) * zoomFactor;
-
-        const mType = (currentMode || "").toLowerCase();
-        if (mType === 'pressure') regionalGrad *= 0.02;
-        if (mType === 'uv') regionalGrad *= 0.25;
-
-        if (typeof val === 'number') {
-            const adjusted = val + regionalGrad;
-            if (['wind', 'gust', 'uv', 'precip', 'humidity'].some(k => mType.includes(k))) {
-                return Math.max(0, Math.round(adjusted * 10) / 10);
-            }
-            return Math.round(adjusted * 10) / 10;
-        }
-        return val;
-    };
-
     const parseRgba = (rgbaStr) => {
         const match = rgbaStr.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)(?:,\s*([0-9.]+))?\)/);
         if (!match) return [56, 189, 248, 0.3];
@@ -2772,8 +2739,7 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
         return 'rgba(56, 189, 248, 0.35)';
     };
 
-    const baseZoom = (activeTargetMap && typeof activeTargetMap.getZoom === 'function') ? activeTargetMap.getZoom() : 10;
-
+    // Construct Tile Layer guaranteeing exact graph interpolation binding
     const RadarGridLayerClass = L.GridLayer.extend({
         createTile: function(coords) {
             const tile = document.createElement('canvas');
@@ -2782,54 +2748,11 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
             tile.height = size.y;
             const ctx = tile.getContext('2d');
 
-            const targetMap = this._map || activeTargetMap;
-            const currentZoom = (targetMap && typeof targetMap.getZoom === 'function') ? targetMap.getZoom() : baseZoom;
-            
-            let centerTileLat = lat;
-            let centerTileLng = lon;
-            let northLat = lat + 0.035;
-            let southLat = lat - 0.035;
-            let eastLng = lon + 0.035;
-            let westLng = lon - 0.035;
+            // Force exact match to graph chart interpolation across all rendered tiles
+            const exactGraphValue = baseResolvedValue;
+            const exactColor = getDynamicColor(exactGraphValue, effectiveSubMode);
 
-            if (targetMap && typeof targetMap.unproject === 'function') {
-                try {
-                    const nwPoint = L.point(coords.x * size.x, coords.y * size.y);
-                    const sePoint = L.point((coords.x + 1) * size.x, (coords.y + 1) * size.y);
-                    const centerPoint = L.point(nwPoint.x + size.x / 2, nwPoint.y + size.y / 2);
-
-                    const nwLatLng = targetMap.unproject(nwPoint, coords.z);
-                    const seLatLng = targetMap.unproject(sePoint, coords.z);
-                    const centerLatLng = targetMap.unproject(centerPoint, coords.z);
-                    
-                    centerTileLat = centerLatLng.lat;
-                    centerTileLng = centerLatLng.lng;
-
-                    northLat = nwLatLng.lat;
-                    southLat = seLatLng.lat;
-                    westLng = nwLatLng.lng;
-                    eastLng = seLatLng.lng;
-                } catch (err) {}
-            }
-
-            const centerVal = getNwsSpatiallyInterpolatedValue(baseResolvedValue, effectiveSubMode, centerTileLat, centerTileLng, currentZoom);
-            const nwVal = getNwsSpatiallyInterpolatedValue(baseResolvedValue, effectiveSubMode, northLat, westLng, currentZoom);
-            const seVal = getNwsSpatiallyInterpolatedValue(baseResolvedValue, effectiveSubMode, southLat, eastLng, currentZoom);
-
-            const centerColor = getDynamicColor(centerVal, effectiveSubMode);
-            const nwColor = getDynamicColor(nwVal, effectiveSubMode);
-            const seColor = getDynamicColor(seVal, effectiveSubMode);
-
-            const gradient = ctx.createRadialGradient(
-                tile.width / 2, tile.height / 2, 2,
-                tile.width / 2, tile.height / 2, Math.max(tile.width, tile.height) * 0.75
-            );
-            
-            gradient.addColorStop(0, centerColor);
-            gradient.addColorStop(0.5, nwColor);
-            gradient.addColorStop(1, seColor);
-
-            ctx.fillStyle = gradient;
+            ctx.fillStyle = exactColor;
             ctx.fillRect(0, 0, tile.width, tile.height);
             
             return tile;
@@ -2866,17 +2789,8 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
         }
 
         const updateTooltipPosition = (e) => {
-            const currentZoom = mapObj.getZoom();
-            const clickedLat = e.latlng.lat;
-            const clickedLng = e.latlng.lng;
-            
-            const localVal = getNwsSpatiallyInterpolatedValue(
-                layerData.value, 
-                layerData.mode, 
-                clickedLat, 
-                clickedLng, 
-                currentZoom
-            );
+            // Force exact match to chart graph value for tooltips anywhere on map
+            const localVal = layerData.value;
 
             let localLabel = `${localVal}`;
             if (['temp', 'temperature'].includes(layerData.mode)) localLabel = `${localVal}°F`;
