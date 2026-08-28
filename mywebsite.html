@@ -2897,19 +2897,19 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
         }
     }
 
-    // Explicit handling for wind mode sub-types to properly extract interpolated values for wind speed or wind gust layers
+    // Branch logic explicitly handling wind mode to pull wind speed or wind gust interpolated values
     if (isWindMode) {
         const subSelection = windSubModeSelect ? windSubModeSelect.value : effectiveSubMode;
         if (subSelection === 'gust' || subSelection === 'windgust' || subSelection === 'wind_gust') {
             effectiveSubMode = 'gust';
-            const interpolatedGust = getInterpolatedVal(hoveredMinute, 'gust', getDiurnalGust);
-            baseResolvedValue = interpolatedGust;
-            label = `Gust: ${interpolatedGust} mph`;
+            const g = getInterpolatedVal(hoveredMinute, 'gust', getDiurnalGust);
+            baseResolvedValue = g;
+            label = `Gust: ${g} mph`;
         } else {
             effectiveSubMode = 'wind';
-            const interpolatedWind = getInterpolatedVal(hoveredMinute, 'wind', getDiurnalWind);
-            baseResolvedValue = interpolatedWind;
-            label = `Wind: ${interpolatedWind} mph`;
+            const w = getInterpolatedVal(hoveredMinute, 'wind', getDiurnalWind);
+            baseResolvedValue = w;
+            label = `Wind: ${w} mph`;
         }
     } else {
         switch (effectiveSubMode) {
@@ -3114,77 +3114,6 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
     return activeGridLayer;
 }
 
-// **Time Slider and Wind Sub-Mode Controller Integration**
-const timeSlider = document.getElementById('timeSlider'); 
-const windSubModeSelect = document.getElementById('windSubModeSelect');
-
-const triggerLayerRefresh = () => {
-    if (typeof activeCanvas !== 'undefined' && typeof activeItem !== 'undefined' && typeof currentMode !== 'undefined') {
-        const currentMinute = timeSlider ? parseInt(timeSlider.value, 10) || 0 : 0;
-        const updatedLayer = createRadarGridLayer(
-            activeCanvas, 
-            0, 
-            activeItem, 
-            currentMode, 
-            null, 
-            null, 
-            currentMinute
-        );
-
-        if (updatedLayer && typeof activeTargetMap !== 'undefined' && activeTargetMap) {
-            if (window.currentRadarGridLayer && activeTargetMap.hasLayer(window.currentRadarGridLayer)) {
-                activeTargetMap.removeLayer(window.currentRadarGridLayer);
-            }
-
-            updatedLayer.addTo(activeTargetMap);
-            window.currentRadarGridLayer = updatedLayer;
-        }
-    }
-};
-
-if (timeSlider) {
-    timeSlider.addEventListener('input', triggerLayerRefresh);
-}
-
-if (windSubModeSelect) {
-    windSubModeSelect.addEventListener('change', triggerLayerRefresh);
-}
-
-// **Time Slider and Wind Sub-Mode Controller Integration**
-const timeSlider = document.getElementById('timeSlider'); 
-const windSubModeSelect = document.getElementById('windSubModeSelect');
-
-const triggerLayerRefresh = () => {
-    if (typeof activeCanvas !== 'undefined' && typeof activeItem !== 'undefined' && typeof currentMode !== 'undefined') {
-        const currentMinute = timeSlider ? parseInt(timeSlider.value, 10) || 0 : 0;
-        const updatedLayer = createRadarGridLayer(
-            activeCanvas, 
-            0, 
-            activeItem, 
-            currentMode, 
-            null, 
-            null, 
-            currentMinute
-        );
-
-        if (updatedLayer && typeof activeTargetMap !== 'undefined' && activeTargetMap) {
-            if (window.currentRadarGridLayer && activeTargetMap.hasLayer(window.currentRadarGridLayer)) {
-                activeTargetMap.removeLayer(window.currentRadarGridLayer);
-            }
-
-            updatedLayer.addTo(activeTargetMap);
-            window.currentRadarGridLayer = updatedLayer;
-        }
-    }
-};
-
-if (timeSlider) {
-    timeSlider.addEventListener('input', triggerLayerRefresh);
-}
-
-if (windSubModeSelect) {
-    windSubModeSelect.addEventListener('change', triggerLayerRefresh);
-}
 // **Time Slider Controller Integration**
 const timeSlider = document.getElementById('timeSlider'); 
 
