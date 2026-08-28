@@ -2686,7 +2686,7 @@ function getSelectedDayCardDate(canvas, activeX, item, mode, prevItem, nextItem)
 
     return { dateStr: `${defM}/${defD}/${defY}` };
 }
-function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, nextItem = null, forcedMinute = 0) {
+function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, nextItem = null, forcedMinute = null) {
     if (!canvas) return null;
     const rect = canvas.getBoundingClientRect();
     const width = canvas.width;
@@ -2698,24 +2698,47 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
     const padBottom = Math.round(35 * scaleFactor);
     const graphWidth = width - padLeft - padRight;
 
-    let hoveredMinute;
+    // Safe numeric parser to prevent NaN propagation
+    const safeNum = (val) => {
+        if (val === null || val === undefined || val === '') return null;
+        const n = parseFloat(val);
+        return isNaN(n) ? null : n;
+    };
+
+    // Normalize date strings for accurate comparison across formats
+    const normalizeDateStr = (str) => {
+        if (!str) return '';
+        const match = str.match(/\d{1,2}\/\d{1,2}\/\d{2,4}/) || str.match(/\d{4}-\d{2}-\d{2}/);
+        return match ? match[0] : str.trim();
+    };
+
+    // Resolve minute position from forced value, client X interaction, slider DOM, or state
+    let hoveredMinute = null;
     if (forcedMinute !== null && forcedMinute !== undefined) {
-        const parsedMinute = parseFloat(forcedMinute);
-        const normalizedMinute = parsedMinute <= 1 ? parsedMinute * 1439 : parsedMinute;
+        const parsedMinute = safeNum(forcedMinute) ?? 0;
+        const normalizedMinute = (parsedMinute <= 1 && parsedMinute > 0) ? parsedMinute * 1439 : parsedMinute;
         hoveredMinute = Math.max(0, Math.min(1439, Math.round(normalizedMinute)));
-    } else {
+    } else if (clientX !== null && clientX !== undefined && clientX > 0) {
         const x = clientX - rect.left;
-        if (x < padLeft || x > width - padRight) {
-            if (clientX === 0) hoveredMinute = 0;
-            else return null;
+        const ratio = Math.max(0, Math.min(1, (x - padLeft) / (graphWidth || 1)));
+        hoveredMinute = Math.round(ratio * 1439);
+    }
+
+    if (hoveredMinute === null) {
+        const sliderEl = document.querySelector('input[type="range"].timeline-slider, #radarTimeline, #timelineSlider, .timeline-slider, input[type="range"]');
+        if (sliderEl && sliderEl.value !== undefined) {
+            const val = safeNum(sliderEl.value) ?? 0;
+            const max = safeNum(sliderEl.max) || 1439;
+            hoveredMinute = Math.round((val / max) * 1439);
+        } else if (window._radarState && window._radarState.minute !== undefined) {
+            hoveredMinute = window._radarState.minute;
         } else {
-            const ratio = Math.max(0, Math.min(1, (x - padLeft) / graphWidth));
-            hoveredMinute = Math.round(ratio * 1439);
+            hoveredMinute = 0;
         }
     }
 
     let extractedDate = item?.dateStr || item?.date || new Date().toISOString().split('T')[0];
-   let cardMetrics = {};
+    let cardMetrics = {};
     const activeCard = document.querySelector('.day-card.active, .forecast-day-card.active, .day-tab.active, .swiper-slide-active, [data-selected="true"], [aria-selected="true"], .selected-day');
     
     if (activeCard) {
@@ -2730,40 +2753,37 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
                 const el = activeCard.querySelector(sel);
                 if (el && el.innerText) {
                     const match = el.innerText.match(/[-+]?[0-9]*\.?[0-9]+/);
-                    if (match) return parseFloat(match[0]);
+                    if (match) return safeNum(match[0]);
                 }
             }
             if (textRegex) {
                 const match = cardText.match(textRegex);
-                if (match && match[1]) return parseFloat(match[1]);
+                if (match && match[1]) return safeNum(match[1]);
             }
             return null;
         };
 
         cardMetrics = {
-            score: activeCard.dataset.score !== undefined ? parseFloat(activeCard.dataset.score) : extractNum(['.score', '.rating'], /score[:\s]+([0-9.]+)/i),
-            tempHigh: activeCard.dataset.high !== undefined ? parseFloat(activeCard.dataset.high) : 
-                      (activeCard.dataset.tempHigh !== undefined ? parseFloat(activeCard.dataset.tempHigh) : 
-                      (activeCard.dataset.max !== undefined ? parseFloat(activeCard.dataset.max) : 
-                      extractNum(['.high', '.temp-high', '.max-temp'], /high[:\s]+([-0-9.]+)/i))),
-            tempLow: activeCard.dataset.low !== undefined ? parseFloat(activeCard.dataset.low) : 
-                     (activeCard.dataset.tempLow !== undefined ? parseFloat(activeCard.dataset.tempLow) : 
-                     (activeCard.dataset.min !== undefined ? parseFloat(activeCard.dataset.min) : 
-                     extractNum(['.low', '.temp-low', '.min-temp'], /low[:\s]+([-0-9.]+)/i))),
-            windMph: activeCard.dataset.wind !== undefined ? parseFloat(activeCard.dataset.wind) : 
-                     (activeCard.dataset.windMph !== undefined ? parseFloat(activeCard.dataset.windMph) : 
-                     extractNum(['.wind', '.wind-speed'], /wind[:\s]+([0-9.]+)/i)),
-            gustMph: activeCard.dataset.gust !== undefined ? parseFloat(activeCard.dataset.gust) : 
-                     (activeCard.dataset.gustMph !== undefined ? parseFloat(activeCard.dataset.gustMph) : 
-                     extractNum(['.gust', '.wind-gust'], /gust[:\s]+([0-9.]+)/i)),
-            humidity: activeCard.dataset.humidity !== undefined ? parseFloat(activeCard.dataset.humidity) : extractNum(['.humidity', '.hum'], /humidity[:\s]+([0-9.]+)/i),
-            pressure: activeCard.dataset.pressure !== undefined ? parseFloat(activeCard.dataset.pressure) : extractNum(['.pressure'], /pressure[:\s]+([0-9.]+)/i),
-            uvIndex: activeCard.dataset.uv !== undefined ? parseFloat(activeCard.dataset.uv) : 
-                     (activeCard.dataset.uvIndex !== undefined ? parseFloat(activeCard.dataset.uvIndex) : extractNum(['.uv'], /uv[:\s]+([0-9.]+)/i)),
-            precipChance: activeCard.dataset.precip !== undefined ? parseFloat(activeCard.dataset.precip) : 
-                          (activeCard.dataset.precipChance !== undefined ? parseFloat(activeCard.dataset.precipChance) : extractNum(['.precip', '.rain'], /precip[:\s]+([0-9.]+)/i)),
+            score: safeNum(activeCard.dataset.score) ?? extractNum(['.score', '.rating'], /score[:\s]+([0-9.]+)/i),
+            tempHigh: safeNum(activeCard.dataset.high ?? activeCard.dataset.tempHigh ?? activeCard.dataset.max) ?? extractNum(['.high', '.temp-high', '.max-temp'], /high[:\s]+([-0-9.]+)/i),
+            tempLow: safeNum(activeCard.dataset.low ?? activeCard.dataset.tempLow ?? activeCard.dataset.min) ?? extractNum(['.low', '.temp-low', '.min-temp'], /low[:\s]+([-0-9.]+)/i),
+            windMph: safeNum(activeCard.dataset.wind ?? activeCard.dataset.windMph) ?? extractNum(['.wind', '.wind-speed'], /wind[:\s]+([0-9.]+)/i),
+            gustMph: safeNum(activeCard.dataset.gust ?? activeCard.dataset.gustMph) ?? extractNum(['.gust', '.wind-gust'], /gust[:\s]+([0-9.]+)/i),
+            humidity: safeNum(activeCard.dataset.humidity) ?? extractNum(['.humidity', '.hum'], /humidity[:\s]+([0-9.]+)/i),
+            pressure: safeNum(activeCard.dataset.pressure) ?? extractNum(['.pressure'], /pressure[:\s]+([0-9.]+)/i),
+            uvIndex: safeNum(activeCard.dataset.uv ?? activeCard.dataset.uvIndex) ?? extractNum(['.uv'], /uv[:\s]+([0-9.]+)/i),
+            precipChance: safeNum(activeCard.dataset.precip ?? activeCard.dataset.precipChance) ?? extractNum(['.precip', '.rain'], /precip[:\s]+([0-9.]+)/i),
             condition: activeCard.dataset.condition || activeCard.getAttribute('data-weather') || ''
         };
+    }
+
+    // Sync item object with forecastData matching active card date
+    if (typeof forecastData !== "undefined" && Array.isArray(forecastData)) {
+        const normTarget = normalizeDateStr(extractedDate);
+        const matched = forecastData.find(d => normalizeDateStr(d.dateStr || d.date) === normTarget);
+        if (matched) {
+            item = { ...matched, ...item };
+        }
     }
 
     const h = Math.floor(hoveredMinute / 60);
@@ -2778,7 +2798,8 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
     const resolvePreviousItem = () => {
         if (prevItem) return prevItem;
         if (typeof forecastData !== "undefined" && Array.isArray(forecastData)) {
-            const idx = forecastData.findIndex(d => (d.dateStr || d.date) === extractedDate);
+            const normTarget = normalizeDateStr(extractedDate);
+            const idx = forecastData.findIndex(d => normalizeDateStr(d.dateStr || d.date) === normTarget);
             if (idx > 0) return forecastData[idx - 1];
         }
         return item?.yesterdayItem || item?.prevDay || null;
@@ -2787,7 +2808,8 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
     const resolveNextItem = () => {
         if (nextItem) return nextItem;
         if (typeof forecastData !== "undefined" && Array.isArray(forecastData)) {
-            const idx = forecastData.findIndex(d => (d.dateStr || d.date) === extractedDate);
+            const normTarget = normalizeDateStr(extractedDate);
+            const idx = forecastData.findIndex(d => normalizeDateStr(d.dateStr || d.date) === normTarget);
             if (idx >= 0 && idx < forecastData.length - 1) return forecastData[idx + 1];
         }
         return item?.tomorrowItem || item?.nextDay || null;
