@@ -994,9 +994,6 @@ async function buildForecast() {
                 gustMph = windMph + Math.round(windMph * 0.4) + 5;
             }
         }
-        const stateName = targetZoneOrPoint ? (targetZoneOrPoint.state || targetZoneOrPoint.stateName || locationName || "").toLowerCase() : "";
-        const isNdUsa = targetZoneOrPoint ? (stateName.includes("nd") || stateName.includes("north dakota") || (lat >= 45.92 && lat <= 49.0 && lon >= -104.05 && lon <= -96.55)) : false;
-        const isMnUsa = targetZoneOrPoint ? (stateName.includes("mn") || stateName.includes("minnesota") || (lat >= 43.5 && lat <= 49.38 && lon >= -97.24 && lon <= -89.49)) : true;
         if (forecastYear === 2026 && forecastMonth === 8 && dateNum === 23) {
             const lat = targetZoneOrPoint ? parseFloat(targetZoneOrPoint.lat) : 45.0;
             const lon = targetZoneOrPoint ? parseFloat(targetZoneOrPoint.lon) : -93.0;
