@@ -3410,10 +3410,12 @@ function getSelectedDayCardDate(canvas, activeX, item, mode, prevItem, nextItem)
         }
     }
 
-    // 4. Check modal header title or graph DOM elements
+    // 4. Check modal header title or graph DOM elements (Including dynamic map tile elements)
     const graphHeaderSelectors = [
         '#graphModalTitle', '.modal-title', '.graph-header', '.chart-title',
-        '.graph-modal-date', '[id*="graph"] h2', '[id*="graph"] h3', '[class*="graph"] h3'
+        '.graph-modal-date', '.map-tile-date', '.radar-timestamp',
+        '[id*="graph"] h2', '[id*="graph"] h3', '[class*="graph"] h3',
+        '[class*="map"] [class*="title"]', '[id*="map"] [class*="date"]'
     ];
     for (const selector of graphHeaderSelectors) {
         const el = document.querySelector(selector);
@@ -3477,35 +3479,6 @@ function getSelectedDayCardDate(canvas, activeX, item, mode, prevItem, nextItem)
 
     // Default safe fallback matching baseDate parts (Today)
     return { dateStr: getDefaultTodayStr() };
-}
-// **Time Slider Controller Integration**
-const timeSlider = document.getElementById('timeSlider'); 
-
-if (timeSlider) {
-    timeSlider.addEventListener('input', (event) => {
-        const selectedMinute = parseInt(event.target.value, 10);
-        
-        if (typeof activeCanvas !== 'undefined' && typeof activeItem !== 'undefined' && typeof currentMode !== 'undefined') {
-            const updatedLayer = createRadarGridLayer(
-                activeCanvas, 
-                0, 
-                activeItem, 
-                currentMode, 
-                null, 
-                null, 
-                selectedMinute
-            );
-
-            if (updatedLayer && typeof activeTargetMap !== 'undefined' && activeTargetMap) {
-                if (window.currentRadarGridLayer && activeTargetMap.hasLayer(window.currentRadarGridLayer)) {
-                    activeTargetMap.removeLayer(window.currentRadarGridLayer);
-                }
-
-                updatedLayer.addTo(activeTargetMap);
-                window.currentRadarGridLayer = updatedLayer;
-            }
-        }
-    });
 }
 function updateTrafficOnTimeSliderAndDayCard(totalMinutes, selectedDateStr = null, mapInstance = null) {
     // 1. Time Normalization & Formatting
