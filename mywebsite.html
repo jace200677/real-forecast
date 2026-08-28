@@ -2687,6 +2687,9 @@ function getSelectedDayCardDate(canvas, activeX, item, mode, prevItem, nextItem)
     return { dateStr: `${defM}/${defD}/${defY}` };
 }
 
+/**
+ * Creates or updates the radar grid layer for a given canvas, item, mode, and time.
+ */
 function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, nextItem = null, forcedMinute = 0) {
     if (!canvas) return null;
     const rect = canvas.getBoundingClientRect();
@@ -2779,66 +2782,15 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
     const targetZoneOrPoint = (typeof window !== "undefined" && window._radarState && window._radarState.targetZoneOrPoint) ? window._radarState.targetZoneOrPoint : null;
     const lat = targetZoneOrPoint ? parseFloat(targetZoneOrPoint.lat) : 45.0;
     const lon = targetZoneOrPoint ? parseFloat(targetZoneOrPoint.lon) : -93.0;
-    const locationName = typeof targetZoneOrPoint !== 'undefined' && targetZoneOrPoint && targetZoneOrPoint.name ? targetZoneOrPoint.name.toLowerCase() : "";
     const confidenceFactor = (typeof window !== "undefined" && window._radarState && window._radarState.confidenceFactor !== undefined) ? window._radarState.confidenceFactor : 0.85;
     const exactDaysOut = (typeof window !== "undefined" && window._radarState && window._radarState.exactDaysOut !== undefined) ? window._radarState.exactDaysOut : 2;
 
-    // Evaluated overrides for high/low/wind/gust based on active date block logic
     let overrideTempLow = null;
     let overrideTempHigh = null;
     let overrideWindMph = null;
     let overrideGustMph = null;
 
-    if (forecastYear === 2026 && forecastMonth === 8 && dateNum === 23) {
-        const latOffset = (lat - 45.0) * 1.5;
-        const lonOffset = (lon + 93.0) * 0.8;
-        let liveHigh = null;
-        if (typeof gridPeriods !== "undefined" && gridPeriods && gridPeriods.length > 0) {
-            const dayPeriods = gridPeriods.filter(p => new Date(p.startTime).getDate() === dateNum);
-            if (dayPeriods.length > 0) liveHigh = Math.max(...dayPeriods.map(p => p.temperature));
-        }
-        const calculatedHigh = Math.round(75 - (latOffset * 1.2) + (lonOffset * 0.6));
-        const targetHighFloor = Math.max(75, calculatedHigh);
-        overrideTempHigh = liveHigh !== null ? Math.max(liveHigh, targetHighFloor) : targetHighFloor;
-        overrideTempLow = Math.min(Math.round(48 - (latOffset * 1.8) + (lonOffset * 0.5)), 48);
-    } else if (forecastYear === 2026 && forecastMonth === 8 && dateNum === 24) {
-        const latOffset = (lat - 45.0) * 2.5;
-        const lonOffset = (lon + 93.0) * 1.8;
-        const varianceAmplitude = exactDaysOut * 1.5 * (1 - confidenceFactor);
-        const swingFactor = Math.sin(exactDaysOut * 1.2);
-        overrideTempLow = Math.round((57 - latOffset + lonOffset) + (swingFactor * varianceAmplitude));
-        overrideTempHigh = Math.round((86 - latOffset + (lonOffset * 1.5)) + (swingFactor * varianceAmplitude * 1.3));
-        overrideWindMph = Math.max(5, Math.round((5 + latOffset) + (swingFactor * varianceAmplitude * 0.8)));
-        overrideGustMph = Math.max(overrideWindMph + 5, Math.round((13 + (latOffset * 1.5)) + (swingFactor * varianceAmplitude * 1.5)));
-    } else if (forecastYear === 2026 && forecastMonth === 8 && dateNum === 25) {
-        const latOffset = (lat - 45.0) * 2.5;
-        const lonOffset = (lon + 93.0) * 1.8;
-        const varianceAmplitude = exactDaysOut * 1.5 * (1 - confidenceFactor);
-        const swingFactor = Math.sin(exactDaysOut * 1.2);
-        overrideTempLow = Math.round((77 - latOffset + lonOffset) + (swingFactor * varianceAmplitude));
-        overrideTempHigh = Math.round((93 - latOffset + (lonOffset * 1.5)) + (swingFactor * varianceAmplitude * 1.3));
-        overrideWindMph = Math.max(5, Math.round((13 + latOffset) + (swingFactor * varianceAmplitude * 0.8)));
-        overrideGustMph = Math.max(overrideWindMph + 5, Math.round((32 + (latOffset * 1.5)) + (swingFactor * varianceAmplitude * 1.5)));
-    } else if (forecastYear === 2026 && forecastMonth === 8 && dateNum === 26) {
-        const latOffset = (lat - 45.0) * 2.5;
-        const lonOffset = (lon + 93.0) * 1.8;
-        const varianceAmplitude = exactDaysOut * 1.5 * (1 - confidenceFactor);
-        const swingFactor = Math.sin(exactDaysOut * 1.2);
-        overrideTempLow = Math.round((53 - latOffset + lonOffset) + (swingFactor * varianceAmplitude));
-        overrideTempHigh = Math.round((74 - latOffset + (lonOffset * 1.5)) + (swingFactor * varianceAmplitude * 1.3));
-        overrideWindMph = Math.max(0, Math.round((13 + latOffset) + (swingFactor * varianceAmplitude * 0.8)));
-        overrideGustMph = Math.max(overrideWindMph, Math.round((22 + (latOffset * 1.5)) + (swingFactor * varianceAmplitude * 1.5)));
-    } else if (forecastYear === 2026 && forecastMonth === 8 && dateNum === 27) {
-        const latOffset = (lat - 45.0) * 2.5;
-        const lonOffset = (lon + 93.0) * 1.8;
-        const latOffset1 = (lat - 45.0) * 0.5;
-        const varianceAmplitude = exactDaysOut * 1.5 * (1 - confidenceFactor);
-        const swingFactor = Math.sin(exactDaysOut * 1.2);
-        overrideTempLow = Math.round((52 - latOffset + lonOffset) + (swingFactor * varianceAmplitude));
-        overrideTempHigh = Math.round((74 - latOffset + (lonOffset * 1.5)) + (swingFactor * varianceAmplitude * 1.3));
-        overrideWindMph = Math.max(-3, Math.round((0 + latOffset1) + (swingFactor * varianceAmplitude * 0.8)));
-        overrideGustMph = Math.max(overrideWindMph - 3, Math.round((0 + (latOffset1 * 1.5)) + (swingFactor * varianceAmplitude * 1.5)));
-    } else if (forecastYear === 2026 && forecastMonth === 8 && dateNum === 28) {
+    if (forecastYear === 2026 && forecastMonth === 8 && dateNum === 28) {
         const latOffset = (lat - 45.0) * 2.5;
         const lonOffset = (lon + 93.0) * 1.8;
         const varianceAmplitude = exactDaysOut * 1.5 * (1 - confidenceFactor);
@@ -2847,84 +2799,6 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
         overrideTempHigh = Math.round((65 - latOffset + (lonOffset * 1.5)) + (swingFactor * varianceAmplitude * 1.3));
         overrideWindMph = Math.max(0, Math.round((31 + latOffset) + (swingFactor * varianceAmplitude * 0.8)));
         overrideGustMph = Math.max(overrideWindMph, Math.round((56 + (latOffset * 1.5)) + (swingFactor * varianceAmplitude * 1.5)));
-    } else if (forecastYear === 2026 && forecastMonth === 8 && dateNum === 29) {
-        const latOffset = (lat - 45.0) * 2.5;
-        const lonOffset = (lon + 93.0) * 1.8;
-        const latOffset1 = (lat - 45.0);
-        const varianceAmplitude = exactDaysOut * 1.5 * (1 - confidenceFactor);
-        const swingFactor = Math.sin(exactDaysOut * 1.2);
-        overrideTempLow = Math.round((56 - latOffset + lonOffset) + (swingFactor * varianceAmplitude));
-        overrideTempHigh = Math.round((78 - latOffset + (lonOffset * 1.5)) + (swingFactor * varianceAmplitude * 1.3));
-        overrideWindMph = Math.max(0, Math.round((7 + latOffset1) + (swingFactor * varianceAmplitude * 0.1)));
-        overrideGustMph = Math.max(overrideWindMph, Math.round((13 + (latOffset1 * 1.5)) + (swingFactor * varianceAmplitude * 0.5)));
-    } else if (forecastYear === 2026 && forecastMonth === 8 && dateNum === 30) {
-        const latOffset = (lat - 45.0) * 2.5;
-        const lonOffset = (lon + 93.0) * 1.8;
-        const varianceAmplitude = exactDaysOut * 1.5 * (1 - confidenceFactor);
-        const swingFactor = Math.sin(exactDaysOut * 1.2);
-        overrideTempLow = Math.round((58 - latOffset + lonOffset) + (swingFactor * varianceAmplitude));
-        overrideTempHigh = Math.round((80 - latOffset + (lonOffset * 1.5)) + (swingFactor * varianceAmplitude * 1.3));
-        overrideWindMph = Math.max(5, Math.round((17 + latOffset) + (swingFactor * varianceAmplitude * 0.8)));
-        overrideGustMph = Math.max(overrideWindMph + 5, Math.round((45 + (latOffset * 1.5)) + (swingFactor * varianceAmplitude * 1.5)));
-    } else if (forecastYear === 2026 && forecastMonth === 8 && dateNum === 31) {
-        const latOffset = (lat - 45.0) * 2.5;
-        const lonOffset = (lon + 93.0) * 1.8;
-        const varianceAmplitude = exactDaysOut * 1.5 * (1 - confidenceFactor);
-        const swingFactor = Math.sin(exactDaysOut * 1.2);
-        overrideTempLow = Math.round((40 - latOffset + lonOffset) + (swingFactor * varianceAmplitude));
-        overrideTempHigh = Math.round((88 - latOffset + (lonOffset * 1.5)) + (swingFactor * varianceAmplitude * 1.3));
-        overrideWindMph = Math.max(5, Math.round((34 + latOffset) + (swingFactor * varianceAmplitude * 0.8)));
-        overrideGustMph = Math.max(overrideWindMph + 5, Math.round((61 + (latOffset * 1.5)) + (swingFactor * varianceAmplitude * 1.5)));
-    } else if (forecastYear === 2026 && forecastMonth === 9 && dateNum === 1) {
-        const latOffset = (lat - 45.0) * 2.5;
-        const lonOffset = (lon + 93.0) * 1.8;
-        const latOffset1 = (lat - 47.0);
-        const varianceAmplitude = exactDaysOut * 1.5 * (1 - confidenceFactor);
-        const swingFactor = Math.sin(exactDaysOut * 1.2);
-        overrideTempLow = Math.round((45 - latOffset + lonOffset) + (swingFactor * varianceAmplitude));
-        overrideTempHigh = Math.round((85 - latOffset + (lonOffset * 1.5)) + (swingFactor * varianceAmplitude * 1.3));
-        overrideWindMph = Math.max(0, Math.round((40 + latOffset1) + (swingFactor * varianceAmplitude * 0.8)));
-        overrideGustMph = Math.max(overrideWindMph, Math.round((60 + latOffset1) + (swingFactor * varianceAmplitude * 1.5)));
-    } else if (forecastYear === 2026 && forecastMonth === 9 && dateNum === 2) {
-        const latOffset = (lat - 45.0) * 2.5;
-        const lonOffset = (lon + 93.0) * 1.8;
-        const latOffset1 = (lat - 47.0);
-        const varianceAmplitude = exactDaysOut * 1.5 * (1 - confidenceFactor);
-        const swingFactor = Math.sin(exactDaysOut * 1.2);
-        overrideTempLow = Math.round((62 - latOffset + lonOffset) + (swingFactor * varianceAmplitude));
-        overrideTempHigh = Math.round((84 - latOffset + (lonOffset * 1.5)) + (swingFactor * varianceAmplitude * 1.3));
-        overrideWindMph = Math.max(0, Math.round((36 + latOffset1) + (swingFactor * varianceAmplitude * 0.8)));
-        overrideGustMph = Math.max(overrideWindMph, Math.round((67 + latOffset1) + (swingFactor * varianceAmplitude * 1.5)));
-    } else if (forecastYear === 2026 && forecastMonth === 9 && dateNum === 3) {
-        const latOffset = (lat - 45.0) * 2.5;
-        const lonOffset = (lon + 93.0) * 1.8;
-        const latOffset1 = (lat - 47.0);
-        const varianceAmplitude = exactDaysOut * 1.5 * (1 - confidenceFactor);
-        const swingFactor = Math.sin(exactDaysOut * 1.2);
-        overrideTempLow = Math.round((62 - latOffset + lonOffset) + (swingFactor * varianceAmplitude));
-        overrideTempHigh = Math.round((84 - latOffset + (lonOffset * 1.5)) + (swingFactor * varianceAmplitude * 1.3));
-        overrideWindMph = Math.max(0, Math.round((18 + latOffset1) + (swingFactor * varianceAmplitude * 0.8)));
-        overrideGustMph = Math.max(overrideWindMph, Math.round((25 + latOffset1) + (swingFactor * varianceAmplitude * 1.5)));
-    } else if (forecastYear === 2026 && forecastMonth === 9 && dateNum === 4) {
-        const latOffset = (lat - 45.0) * 2.5;
-        const lonOffset = (lon + 93.0) * 1.8;
-        const latOffset1 = (lat - 47.0);
-        const varianceAmplitude = exactDaysOut * 1.5 * (1 - confidenceFactor);
-        const swingFactor = Math.sin(exactDaysOut * 1.2);
-        overrideTempLow = Math.round((37 - latOffset + lonOffset) + (swingFactor * varianceAmplitude));
-        overrideTempHigh = Math.round((72 - latOffset + (lonOffset * 1.5)) + (swingFactor * varianceAmplitude * 1.3));
-        overrideWindMph = Math.max(0, Math.round((10 + latOffset1) + (swingFactor * varianceAmplitude * 0.8)));
-        overrideGustMph = Math.max(overrideWindMph, Math.round((15 + latOffset1) + (swingFactor * varianceAmplitude * 1.5)));
-    } else if (forecastYear === 2026 && forecastMonth === 9 && dateNum === 5) {
-        const latOffset = (lat - 45.0) * 2.5;
-        const lonOffset = (lon + 93.0) * 1.8;
-        const latOffset1 = (lat - 47.0);
-        const varianceAmplitude = exactDaysOut * 1.5 * (1 - confidenceFactor);
-        const swingFactor = Math.sin(exactDaysOut * 1.2);
-        overrideTempLow = Math.round((71 - latOffset + lonOffset) + (swingFactor * varianceAmplitude));
-        overrideTempHigh = Math.round((89 - latOffset + (lonOffset * 1.5)) + (swingFactor * varianceAmplitude * 1.3));
-        overrideWindMph = Math.max(0, Math.round((0 + latOffset1) + (swingFactor * varianceAmplitude * 0.8)));
-        overrideGustMph = Math.max(overrideWindMph, Math.round((2 + latOffset1) + (swingFactor * varianceAmplitude * 1.5)));
     }
 
     const getPreviousDayLowestTemp = () => {
@@ -3071,11 +2945,8 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
             label = `${baseResolvedValue}`;
     }
 
-    // Advanced geospatial gradient distribution matching continuous weather radar overlays (e.g., MSN Weather)
     const getSpatiallyInterpolatedValue = (val, currentMode, lat, lon) => {
         if (lat === 0 && lon === 0) return val;
-        
-        // Multi-frequency sinusoidal field gradients to simulate regional microclimate variations across coordinates
         const regionalGrad = Math.sin(lat * 0.28) * Math.cos(lon * 0.28) * 6.0 + Math.sin(lat * 0.08) * 4.0;
         
         if (currentMode === 'wind' && typeof val === 'object') {
@@ -3109,13 +2980,13 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
         if (currentMode === 'wind') {
             const speed = (typeof val === 'object' ? (val.speed || 0) : val);
             const stops = [
-                { threshold: 0, color: 'rgba(115, 130, 205, 0.70)' },   // Deep purple/blue start
-                { threshold: 6, color: 'rgba(95, 175, 215, 0.65)' },    // Light icy blue
-                { threshold: 10, color: 'rgba(65, 195, 185, 0.60)' },   // Cyan-teal transition
-                { threshold: 20, color: 'rgba(55, 170, 95, 0.60)' },    // Forest green
-                { threshold: 35, color: 'rgba(195, 205, 55, 0.65)' },   // Yellow-green lime
-                { threshold: 45, color: 'rgba(235, 155, 45, 0.70)' },   // Warm amber/orange
-                { threshold: 70, color: 'rgba(200, 45, 55, 0.75)' }     // Deep red end
+                { threshold: 0, color: 'rgba(115, 130, 205, 0.70)' },
+                { threshold: 6, color: 'rgba(95, 175, 215, 0.65)' },
+                { threshold: 10, color: 'rgba(65, 195, 185, 0.60)' },
+                { threshold: 20, color: 'rgba(55, 170, 95, 0.60)' },
+                { threshold: 35, color: 'rgba(195, 205, 55, 0.65)' },
+                { threshold: 45, color: 'rgba(235, 155, 45, 0.70)' },
+                { threshold: 70, color: 'rgba(200, 45, 55, 0.75)' }
             ];
             if (speed <= stops[0].threshold) return stops[0].color;
             if (speed >= stops[stops.length - 1].threshold) return stops[stops.length - 1].color;
@@ -3147,13 +3018,13 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
         if (currentMode === 'temp' || currentMode === 'feelsLike') {
             const tempVal = (typeof val === 'number' ? val : 60);
             const stops = [
-                { threshold: -5, color: 'rgba(125, 110, 210, 0.75)' },  // Deep purple start (-5°F)
-                { threshold: 15, color: 'rgba(105, 155, 220, 0.70)' },  // Soft slate blue (15°F)
-                { threshold: 30, color: 'rgba(85, 190, 205, 0.65)' },   // Cyan-blue (30°F)
-                { threshold: 50, color: 'rgba(65, 165, 115, 0.60)' },   // Teal-green midpoint (50°F)
-                { threshold: 70, color: 'rgba(105, 195, 75, 0.62)' },   // Vibrant lime green (70°F)
-                { threshold: 85, color: 'rgba(235, 185, 45, 0.68)' },   // Warm yellow-orange (85°F)
-                { threshold: 100, color: 'rgba(205, 45, 45, 0.75)' }    // Intense red (100°F)
+                { threshold: -5, color: 'rgba(125, 110, 210, 0.75)' },
+                { threshold: 15, color: 'rgba(105, 155, 220, 0.70)' },
+                { threshold: 30, color: 'rgba(85, 190, 205, 0.65)' },
+                { threshold: 50, color: 'rgba(65, 165, 115, 0.60)' },
+                { threshold: 70, color: 'rgba(105, 195, 75, 0.62)' },
+                { threshold: 85, color: 'rgba(235, 185, 45, 0.68)' },
+                { threshold: 100, color: 'rgba(205, 45, 45, 0.75)' }
             ];
             if (tempVal <= stops[0].threshold) return stops[0].color;
             if (tempVal >= stops[stops.length - 1].threshold) return stops[stops.length - 1].color;
@@ -3170,7 +3041,6 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
     const activeTargetMap = (typeof window !== "undefined" && window._radarState && window._radarState.map) ? window._radarState.map : (typeof map !== "undefined" ? map : null);
     const baseZoom = (activeTargetMap && typeof activeTargetMap.getZoom === 'function') ? activeTargetMap.getZoom() : 10;
 
-    // High-resolution pixel-level radial gradient fills per tile mimicking professional weather layers (MSN/AccuWeather style)
     const RadarGridLayerClass = L.GridLayer.extend({
         createTile: function(coords) {
             const tile = document.createElement('canvas');
@@ -3194,15 +3064,12 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
                     const seLatLng = targetMap.unproject(sePoint, baseZoom);
                     centerLat = (nwLatLng.lat + seLatLng.lat) / 2;
                     centerLng = (nwLatLng.lng + seLatLng.lng) / 2;
-                } catch (err) {
-                    // Fallback coordinates if unproject is temporarily unavailable
-                }
+                } catch (err) {}
             }
 
             const centerVal = getSpatiallyInterpolatedValue(baseResolvedValue, mode, centerLat, centerLng);
             const centerColor = getDynamicColor(centerVal, mode);
 
-            // Create smooth sub-tile radial gradient blending to eliminate harsh geometric block boundaries
             const cornerVal = getSpatiallyInterpolatedValue(baseResolvedValue, mode, centerLat + 0.04, centerLng + 0.04);
             const cornerColor = getDynamicColor(cornerVal, mode);
 
@@ -3238,7 +3105,7 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
     if (activeTargetMap) {
         if (!window.satelliteLayer) {
             window.satelliteLayer = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
-                attribution: 'Tiles &copy; Esri &mdash; Source: Esri, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-EGP, and the GIS User Community',
+                attribution: 'Tiles &copy; Esri &mdash; Source: Esri, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-EGP',
                 maxZoom: 19
             });
         }
@@ -3253,6 +3120,40 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
     }
 
     return activeGridLayer;
+}
+
+// **Time Slider Controller Integration**
+const timeSlider = document.getElementById('timeSlider'); 
+
+if (timeSlider) {
+    timeSlider.addEventListener('input', (event) => {
+        const selectedMinute = parseInt(event.target.value, 10);
+        
+        // Ensure required global context references exist
+        if (typeof activeCanvas !== 'undefined' && typeof activeItem !== 'undefined' && typeof currentMode !== 'undefined') {
+            
+            const updatedLayer = createRadarGridLayer(
+                activeCanvas, 
+                0, // Bypass clientX parsing when forcedMinute is supplied
+                activeItem, 
+                currentMode, 
+                null, 
+                null, 
+                selectedMinute
+            );
+
+            if (updatedLayer && typeof activeTargetMap !== 'undefined' && activeTargetMap) {
+                // Clear previous layer instance
+                if (window.currentRadarGridLayer && activeTargetMap.hasLayer(window.currentRadarGridLayer)) {
+                    activeTargetMap.removeLayer(window.currentRadarGridLayer);
+                }
+
+                // Add the new layer and track reference
+                updatedLayer.addTo(activeTargetMap);
+                window.currentRadarGridLayer = updatedLayer;
+            }
+        }
+    });
 }
 function updateTrafficOnTimeSliderAndDayCard(totalMinutes, selectedDateStr = null, mapInstance = null) {
     // 1. Time Normalization & Formatting
