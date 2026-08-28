@@ -1893,61 +1893,6 @@ function getValueFromPlotGraph(params) {
         formattedLabel: layer._meta.label
     };
 }
-
-// 3. Global Application Controller & State
-window.RadarState = {
-    map: null,
-    canvas: document.createElement('canvas'),
-    currentLayer: null,
-    currentItem: {
-        dateStr: "2026-08-27",
-        tempLow: 58,
-        tempHigh: 84,
-        windMph: 12,
-        gustMph: 22,
-        score: 65,
-        feelsLikeOffset: 2
-    },
-    currentMode: 'temp',
-    currentMinute: 720,
-    selectedPoint: { lat: 47.6858, lon: -92.7723 }
-};
-
-window.RadarState.canvas.width = 650;
-window.RadarState.canvas.height = 400;
-
-window.updateActiveRadarLayer = (overrides = {}) => {
-    const s = window.RadarState;
-
-    if (overrides.item !== undefined) s.currentItem = overrides.item;
-    if (overrides.mode !== undefined) s.currentMode = overrides.mode;
-    if (overrides.minute !== undefined) s.currentMinute = overrides.minute;
-
-    if (!s.map || !s.currentItem) return;
-
-    if (s.currentLayer) {
-        s.map.removeLayer(s.currentLayer);
-    }
-
-    const newLayer = createRadarGridLayer(
-        s.canvas, 
-        0, 
-        s.currentItem, 
-        s.currentMode, 
-        overrides.prevItem || null, 
-        overrides.nextItem || null, 
-        s.currentMinute
-    );
-
-    if (newLayer) {
-        newLayer.addTo(s.map);
-        s.currentLayer = newLayer;
-    }
-
-    // Refresh display values on sampling dashboard
-    updateDashboard();
-};
-
 function updateDashboard() {
     const s = window.RadarState;
     if (!s.selectedPoint) return;
