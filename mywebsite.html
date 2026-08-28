@@ -2919,7 +2919,6 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
         return Math.round(smoothStep(resolvedPrecip, (resolvedPrecip + nextPrecip) / 2, (m - 900) / 539));
     };
 
-    // --- OVERRIDE EVENTS INTEGRATION ---
     const hasEvents = Array.isArray(item?.overrideEvents) && item.overrideEvents.length > 0;
     const sortedEvents = hasEvents ? [...item.overrideEvents].sort((a, b) => a.minute - b.minute) : [];
 
@@ -2961,7 +2960,6 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
     const getInterpolatedHumidity = (m) => getInterpolatedVal(m, 'humidity', getDiurnalHumidity);
     const getInterpolatedUv = (m) => getInterpolatedVal(m, 'uv', getDiurnalUv);
     const getInterpolatedPrecip = (m) => getInterpolatedVal(m, 'precip', getDiurnalPrecip);
-    // -----------------------------------
 
     let baseResolvedValue = null;
     let label = "";
