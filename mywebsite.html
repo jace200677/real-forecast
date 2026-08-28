@@ -2712,7 +2712,17 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
     }
 
     const dayMeta = getSelectedDayCardDate(canvas, clientX, item, mode, prevItem, nextItem, forcedMinute);
-    const extractedDate = dayMeta.dateStr;
+    let extractedDate = dayMeta.dateStr;
+
+    // Check DOM for an active day card/tab to extract a specific date if available
+    const activeCard = document.querySelector('.day-card.active, .forecast-day-card.active, .day-tab.active, [data-selected="true"]');
+    if (activeCard) {
+        const cardText = activeCard.innerText || activeCard.getAttribute('data-date') || activeCard.getAttribute('title') || '';
+        const dateMatch = cardText.match(/([A-Za-z]{3}\s*\(\d{1,2}\/\d{1,2}\/\d{4}\))|(\d{1,2}\/\d{1,2}\/\d{2,4})|([A-Za-z]{3}\s+\d{1,2})|(\d{4}-\d{2}-\d{2})/);
+        if (dateMatch && dateMatch[0]) {
+            extractedDate = dateMatch[0];
+        }
+    }
 
     const h = Math.floor(hoveredMinute / 60);
     const m = Math.round(hoveredMinute % 60);
@@ -2918,7 +2928,6 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
 
     const activeTargetMap = (typeof window !== "undefined" && window._radarState && window._radarState.map) ? window._radarState.map : (typeof map !== "undefined" ? map : null);
 
-    // Fixed reference zoom level (e.g. zoom 10) to compute coordinates once and prevent updates on zoom change
     const baseZoom = (activeTargetMap && typeof activeTargetMap.getZoom === 'function') ? activeTargetMap.getZoom() : 10;
 
     const RadarGridLayerClass = L.GridLayer.extend({
@@ -2935,7 +2944,6 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
 
             if (targetMap && typeof targetMap.unproject === 'function') {
                 try {
-                    // Force projection calculation using the locked baseZoom reference level to avoid tile updates on zoom change
                     const fixedCoords = coords.clone ? coords.clone() : { x: coords.x, y: coords.y, z: baseZoom, scaleBy: c => coords.scaleBy(c) };
                     fixedCoords.z = baseZoom;
                     
