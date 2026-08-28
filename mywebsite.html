@@ -2208,8 +2208,14 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
     };
 
     const activeTargetMap = (typeof window !== "undefined" && window._radarState && window._radarState.map) ? window._radarState.map : (typeof map !== "undefined" ? map : null);
+    
+    // Resolve location (prioritize map center -> current global point -> defaults)
+    const mapCenter = activeTargetMap && typeof activeTargetMap.getCenter === 'function' ? activeTargetMap.getCenter() : null;
     const currentGlobalPoint = (typeof targetZoneOrPoint !== 'undefined' && targetZoneOrPoint) ? targetZoneOrPoint : (window._targetZoneOrPoint || null);
     
+    const lat = mapCenter ? mapCenter.lat : (currentGlobalPoint && currentGlobalPoint.lat ? parseFloat(currentGlobalPoint.lat) : 47.80);
+    const lon = mapCenter ? mapCenter.lng : (currentGlobalPoint && currentGlobalPoint.lon ? parseFloat(currentGlobalPoint.lon) : -92.37);
+
     // Resolve target timezone hierarchy (item -> point -> state -> browser fallback)
     const targetTimezone = item?.timezone || item?.tz || 
                            currentGlobalPoint?.timezone || currentGlobalPoint?.tz || 
@@ -2293,7 +2299,7 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
         };
 
         cardMetrics = {
-            score: safeNum(activeCard.dataset.score) ?? extractNum(['.score', '.rating', '.dos-score'], /score[:\s]+([0-9.]+)/i),
+            score: safeNum(activeCard.dataset.score ?? activeCard.dataset.dos) ?? extractNum(['.score', '.rating', '.dos-score'], /score[:\s]+([0-9.]+)/i),
             tempHigh: safeNum(activeCard.dataset.high ?? activeCard.dataset.tempHigh ?? activeCard.dataset.max) ?? extractNum(['.high', '.temp-high', '.max-temp'], /high[:\s]+([-0-9.]+)/i),
             tempLow: safeNum(activeCard.dataset.low ?? activeCard.dataset.tempLow ?? activeCard.dataset.min) ?? extractNum(['.low', '.temp-low', '.min-temp'], /low[:\s]+([-0-9.]+)/i),
             windMph: safeNum(activeCard.dataset.wind ?? activeCard.dataset.windMph) ?? extractNum(['.wind', '.wind-speed'], /wind[:\s]+([0-9.]+)/i),
@@ -2364,9 +2370,6 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
 
     const effectivePrevItem = resolvePreviousItem();
     const effectiveNextItem = resolveNextItem();
-
-    const lat = currentGlobalPoint && currentGlobalPoint.lat ? parseFloat(currentGlobalPoint.lat) : 47.80;
-    const lon = currentGlobalPoint && currentGlobalPoint.lon ? parseFloat(currentGlobalPoint.lon) : -92.37;
 
     const getOverrideScoreAndWeather = () => {
         let projectedScore = cardMetrics.score ?? item?.score ?? item?.dos ?? item?.rating ?? 5;
@@ -2555,7 +2558,7 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
         return smoothStep(val0, val1, t);
     };
 
-    // Generalized interpolation looking at overrideEvents -> hourly arrays from anywhere -> fallback diurnal model
+    // Interpolation check looking at overrideEvents -> hourly arrays -> diurnal fallbacks
     const getInterpolatedVal = (m, key, fallbackFn, hourlyArrayKeys = []) => {
         if (hasEvents) {
             const exact = sortedEvents.find(e => e.minute === m && e[key] !== undefined);
@@ -2670,7 +2673,7 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
     }
 
     const getNwsSpatiallyInterpolatedValue = (val, currentMode, centerLat, centerLon, centerZoom) => {
-        if (centerLat === 0 && centerLon === 0) return val;
+        if (!centerLat && !centerLon) return val;
         const zoomFactor = Math.max(0.2, 1.2 - (centerZoom * 0.08));
         let regionalGrad = (Math.sin(centerLat * 0.35) * Math.cos(centerLon * 0.35) * 4.5 + Math.sin(centerLat * 0.12) * 2.5) * zoomFactor;
 
@@ -2808,27 +2811,25 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
 
             const targetMap = this._map || activeTargetMap;
             const currentZoom = (targetMap && typeof targetMap.getZoom === 'function') ? targetMap.getZoom() : baseZoom;
-            let centerLat = lat;
-            let centerLng = lon;
+            
+            let centerTileLat = lat;
+            let centerTileLng = lon;
 
             if (targetMap && typeof targetMap.unproject === 'function') {
                 try {
-                    const fixedCoords = coords.clone ? coords.clone() : { x: coords.x, y: coords.y, z: currentZoom, scaleBy: c => coords.scaleBy(c) };
-                    fixedCoords.z = currentZoom;
+                    const tilePoint = L.point(coords.x * size.x, coords.y * size.y);
+                    const centerPoint = L.point(tilePoint.x + size.x / 2, tilePoint.y + size.y / 2);
+                    const centerLatLng = targetMap.unproject(centerPoint, coords.z);
                     
-                    const nwPoint = fixedCoords.scaleBy(size);
-                    const sePoint = nwPoint.add(size);
-                    const nwLatLng = targetMap.unproject(nwPoint, currentZoom);
-                    const seLatLng = targetMap.unproject(sePoint, currentZoom);
-                    centerLat = (nwLatLng.lat + seLatLng.lat) / 2;
-                    centerLng = (nwLatLng.lng + seLatLng.lng) / 2;
+                    centerTileLat = centerLatLng.lat;
+                    centerTileLng = centerLatLng.lng;
                 } catch (err) {}
             }
 
-            const centerVal = getNwsSpatiallyInterpolatedValue(baseResolvedValue, effectiveSubMode, centerLat, centerLng, currentZoom);
+            const centerVal = getNwsSpatiallyInterpolatedValue(baseResolvedValue, effectiveSubMode, centerTileLat, centerTileLng, currentZoom);
             const centerColor = getDynamicColor(centerVal, effectiveSubMode);
 
-            const cornerVal = getNwsSpatiallyInterpolatedValue(baseResolvedValue, effectiveSubMode, centerLat + 0.035, centerLng + 0.035, currentZoom);
+            const cornerVal = getNwsSpatiallyInterpolatedValue(baseResolvedValue, effectiveSubMode, centerTileLat + 0.035, centerTileLng + 0.035, currentZoom);
             const cornerColor = getDynamicColor(cornerVal, effectiveSubMode);
 
             const gradient = ctx.createRadialGradient(
