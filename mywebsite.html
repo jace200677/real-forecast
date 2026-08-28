@@ -2355,31 +2355,13 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
                     window._radarState?.selectedDate || 
                     getTargetTzDateStr(targetTimezone);
 
-    const buildForecastData = [
-        { dateStr: "8/23/2026", score: 75, tempHigh: 82, tempLow: 60, windMph: 8, gustMph: 14, humidity: 55, pressure: 29.95, uvIndex: 7, precipChance: 10 },
-        { dateStr: "8/24/2026", score: 68, tempHigh: 78, tempLow: 58, windMph: 12, gustMph: 22, humidity: 65, pressure: 29.88, uvIndex: 5, precipChance: 40 },
-        { dateStr: "8/25/2026", score: 82, tempHigh: 80, tempLow: 56, windMph: 7, gustMph: 12, humidity: 50, pressure: 30.02, uvIndex: 8, precipChance: 0 },
-        { dateStr: "8/26/2026", score: 80, tempHigh: 84, tempLow: 62, windMph: 9, gustMph: 15, humidity: 52, pressure: 29.98, uvIndex: 8, precipChance: 5 },
-        { dateStr: "8/27/2026", score: 72, tempHigh: 81, tempLow: 64, windMph: 11, gustMph: 19, humidity: 68, pressure: 29.91, uvIndex: 6, precipChance: 30 },
-        { dateStr: "8/28/2026", score: 85, tempHigh: 79, tempLow: 55, windMph: 31, gustMph: 56, humidity: 48, pressure: 30.08, uvIndex: 8, precipChance: 0 },
-        { dateStr: "8/29/2026", score: 88, tempHigh: 77, tempLow: 54, windMph: 7, gustMph: 13, humidity: 45, pressure: 30.12, uvIndex: 8, precipChance: 0 },
-        { dateStr: "8/30/2026", score: 84, tempHigh: 80, tempLow: 57, windMph: 17, gustMph: 46, humidity: 50, pressure: 30.05, uvIndex: 7, precipChance: 10 },
-        { dateStr: "8/31/2026", score: 79, tempHigh: 83, tempLow: 61, windMph: 34, gustMph: 60, humidity: 58, pressure: 29.97, uvIndex: 7, precipChance: 20 },
-        { dateStr: "9/1/2026", score: 76, tempHigh: 78, tempLow: 59, windMph: 36, gustMph: 55, humidity: 62, pressure: 29.93, uvIndex: 6, precipChance: 35 },
-        { dateStr: "9/2/2026", score: 81, tempHigh: 76, tempLow: 53, windMph: 33, gustMph: 63, humidity: 49, pressure: 30.06, uvIndex: 7, precipChance: 5 },
-        { dateStr: "9/3/2026", score: 83, tempHigh: 77, tempLow: 52, windMph: 19, gustMph: 28, humidity: 47, pressure: 30.10, uvIndex: 7, precipChance: 0 },
-        { dateStr: "9/4/2026", score: 80, tempHigh: 81, tempLow: 56, windMph: 9, gustMph: 15, humidity: 53, pressure: 30.01, uvIndex: 7, precipChance: 10 },
-        { dateStr: "9/5/2026", score: 77, tempHigh: 82, tempLow: 60, windMph: 10, gustMph: 17, humidity: 59, pressure: 29.94, uvIndex: 6, precipChance: 25 }
-    ];
-
     const globalDataSources = [
         typeof forecastData !== "undefined" ? forecastData : null,
         window._radarState?.dataset,
         window.currentWeatherData?.daily,
         window.currentWeatherData?.forecast,
         window.historyData,
-        window._historyData,
-        buildForecastData
+        window._historyData
     ].filter(Boolean);
 
     const normTarget = normalizeDateStr(extractedDate);
