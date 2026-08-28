@@ -1827,6 +1827,217 @@ function renderForecast(dosForecast) {
 }
 
 
+// 1. Helper Function: Get interpolated values for ANY minute on ANY forecast item
+function getInterpolatedValuesAt(item, minute, mode = "temp", prevItem = null, nextItem = null) {
+    const m = Math.max(0, Math.min(1439, parseInt(minute, 10) || 0));
+    
+    const smoothStep = (v0, v1, t) => {
+        const factor = 0.5 * (1 - Math.cos(Math.max(0, Math.min(1, t)) * Math.PI));
+        return v0 + (v1 - v0) * factor;
+    };
+
+    const extractedDate = item?.dateStr || item?.date || item?.day || item?.dt_txt || 
+                          (item?.dt ? new Date(item.dt * 1000).toLocaleDateString() : null) || 
+                          new Date().toLocaleDateString();
+
+    const resolvePreviousItem = () => {
+        if (prevItem) return prevItem;
+        if (typeof forecastData !== "undefined" && Array.isArray(forecastData)) {
+            const idx = forecastData.findIndex(d => (d.dateStr || d.date) === extractedDate);
+            if (idx > 0) return forecastData[idx - 1];
+        }
+        return item?.yesterdayItem || item?.prevDay || null;
+    };
+
+    const resolveNextItem = () => {
+        if (nextItem) return nextItem;
+        if (typeof forecastData !== "undefined" && Array.isArray(forecastData)) {
+            const idx = forecastData.findIndex(d => (d.dateStr || d.date) === extractedDate);
+            if (idx >= 0 && idx < forecastData.length - 1) return forecastData[idx + 1];
+        }
+        return item?.tomorrowItem || item?.nextDay || null;
+    };
+
+    const effectivePrevItem = resolvePreviousItem();
+    const effectiveNextItem = resolveNextItem();
+
+    const getPrevLowest = () => {
+        const prev = effectivePrevItem;
+        if (prev) {
+            if (Array.isArray(prev.tempRange) && prev.tempRange.length > 0) return Math.min(...prev.tempRange);
+            if (Array.isArray(prev.temps) && prev.temps.length > 0) return Math.min(...prev.temps);
+            if (prev.tempLowMin !== undefined) return prev.tempLowMin;
+            if (prev.tempMin !== undefined) return prev.tempMin;
+            if (prev.tempLow !== undefined) return prev.tempLow;
+        }
+        return item?.tempLow ?? 50;
+    };
+
+    const getNextLowest = () => {
+        const next = effectiveNextItem;
+        if (next) {
+            if (Array.isArray(next.tempRange) && next.tempRange.length > 0) return Math.min(...next.tempRange);
+            if (Array.isArray(next.temps) && next.temps.length > 0) return Math.min(...next.temps);
+            if (next.tempLowMin !== undefined) return next.tempLowMin;
+            if (next.tempMin !== undefined) return next.tempMin;
+            if (next.tempLow !== undefined) return next.tempLow;
+        }
+        return item?.tempLow ?? 50;
+    };
+
+    const morningLow = getPrevLowest();
+    const todayLow = item?.tempLow ?? 50;
+    const todayHigh = item?.tempHigh ?? 75;
+    const tomorrowLow = getNextLowest();
+    const prevHigh = (effectivePrevItem && effectivePrevItem.tempHigh !== undefined) ? effectivePrevItem.tempHigh : todayHigh;
+
+    let midnightStartTemp = Math.round((prevHigh + morningLow) / 2);
+    let midnightEndTemp = Math.round((todayHigh + tomorrowLow) / 2);
+    const isWinterInversion = item?.isWinterInversion || (todayHigh < morningLow);
+
+    const getDiurnalTemp = (min) => {
+        if (isWinterInversion) {
+            const tStart = Math.round((prevHigh + todayHigh) / 2);
+            if (min <= 360) return Math.round(smoothStep(tStart, todayHigh, min / 360));
+            else if (min <= 900) return Math.round(smoothStep(todayHigh, todayLow, (min - 360) / 540));
+            else return Math.round(smoothStep(todayLow, midnightEndTemp, (min - 900) / 539));
+        } else {
+            if (min <= 360) return Math.round(smoothStep(midnightStartTemp, morningLow, min / 360));
+            else if (min <= 900) return Math.round(smoothStep(morningLow, todayHigh, (min - 360) / 540));
+            else return Math.round(smoothStep(todayHigh, midnightEndTemp, (min - 900) / 539));
+        }
+    };
+
+    const peakMin = 15 * 60;
+    const getDiurnalFeelsLike = (min) => getDiurnalTemp(min) + (item?.feelsLikeOffset || 0);
+
+    const prevWind = (effectivePrevItem && effectivePrevItem.windMph !== undefined) ? effectivePrevItem.windMph : (item?.windMph || 10);
+    const nextWind = (effectiveNextItem && effectiveNextItem.windMph !== undefined) ? effectiveNextItem.windMph : (item?.windMph || 10);
+    const getDiurnalWind = (min) => {
+        const curWind = item?.windMph || 10;
+        const baseWind = (min <= 360) ? smoothStep((prevWind + curWind) / 2, curWind, min / 360) :
+                         (min <= 900) ? curWind :
+                         smoothStep(curWind, (curWind + nextWind) / 2, (min - 900) / 539);
+        const windRad = ((min - peakMin) / 1440) * Math.PI * 2;
+        return Math.round(baseWind * (0.6 + 0.4 * ((Math.cos(windRad) + 1) / 2)));
+    };
+
+    const prevGust = (effectivePrevItem && effectivePrevItem.gustMph !== undefined) ? effectivePrevItem.gustMph : (item?.gustMph || 15);
+    const nextGust = (effectiveNextItem && effectiveNextItem.gustMph !== undefined) ? effectiveNextItem.gustMph : (item?.gustMph || 15);
+    const getDiurnalGust = (min) => {
+        const curGust = item?.gustMph || 15;
+        const baseGust = (min <= 360) ? smoothStep((prevGust + curGust) / 2, curGust, min / 360) :
+                         (min <= 900) ? curGust :
+                         smoothStep(curGust, (curGust + nextGust) / 2, (min - 900) / 539);
+        const windRad = ((min - peakMin) / 1440) * Math.PI * 2;
+        return Math.round(baseGust * (0.65 + 0.35 * ((Math.cos(windRad) + 1) / 2)));
+    };
+
+    const prevDos = (effectivePrevItem && effectivePrevItem.score !== undefined) ? effectivePrevItem.score : (item?.score || 50);
+    const nextDos = (effectiveNextItem && effectiveNextItem.score !== undefined) ? effectiveNextItem.score : (item?.score || 50);
+    const getDiurnalDos = (min) => {
+        const curScore = item?.score || 50;
+        const baseScore = (min <= 360) ? smoothStep((prevDos + curScore) / 2, curScore, min / 360) :
+                          (min <= 900) ? curScore :
+                          smoothStep(curScore, (curScore + nextDos) / 2, (min - 900) / 539);
+        const dosTempRad = ((min - peakMin) / 1440) * Math.PI * 2;
+        return Math.round(baseScore * (0.5 + 0.5 * ((Math.cos(dosTempRad) + 1) / 2)));
+    };
+
+    const hasEvents = Array.isArray(item?.overrideEvents) && item.overrideEvents.length > 0;
+    const sortedEvents = hasEvents ? [...item.overrideEvents].sort((a, b) => a.minute - b.minute) : [];
+
+    const getInterpolatedVal = (min, key, fallbackFn) => {
+        if (!hasEvents) return fallbackFn(min);
+        const exact = sortedEvents.find(e => e.minute === min && e[key] !== undefined);
+        if (exact) return exact[key];
+        const prevEvent = [...sortedEvents].reverse().find(e => e.minute <= min && e[key] !== undefined);
+        const nextEvent = sortedEvents.find(e => e.minute >= min && e[key] !== undefined);
+
+        if (prevEvent && nextEvent) {
+            if (prevEvent.minute === nextEvent.minute) return prevEvent[key];
+            const t = (min - prevEvent.minute) / (nextEvent.minute - prevEvent.minute);
+            return Math.round(smoothStep(prevEvent[key], nextEvent[key], t));
+        } else if (prevEvent) {
+            const endVal = fallbackFn(1439);
+            if (min > prevEvent.minute && prevEvent.minute < 1439) {
+                const t = (min - prevEvent.minute) / (1439 - prevEvent.minute);
+                return Math.round(smoothStep(prevEvent[key], endVal, Math.min(1, t)));
+            }
+            return prevEvent[key];
+        } else if (nextEvent) {
+            const startVal = fallbackFn(0);
+            if (min < nextEvent.minute && nextEvent.minute > 0) {
+                const t = min / nextEvent.minute;
+                return Math.round(smoothStep(startVal, nextEvent[key], Math.max(0, t)));
+            }
+            return nextEvent[key];
+        }
+        return fallbackFn(min);
+    };
+
+    let val = null;
+    let label = "";
+
+    switch (mode) {
+        case "temp":
+            val = getInterpolatedVal(m, 'temp', getDiurnalTemp);
+            label = `${val}°F`;
+            break;
+        case "feelsLike":
+            val = getInterpolatedVal(m, 'feelsLike', getDiurnalFeelsLike);
+            label = `Feels Like ${val}°F`;
+            break;
+        case "wind":
+            const w = getInterpolatedVal(m, 'wind', getDiurnalWind);
+            const g = getInterpolatedVal(m, 'gust', getDiurnalGust);
+            val = { speed: w, gust: g };
+            label = `W: ${w} | G: ${g} mph`;
+            break;
+        case "dos":
+            val = getInterpolatedVal(m, 'dos', getDiurnalDos);
+            label = `DOS: ${val}`;
+            break;
+        default:
+            val = getDiurnalTemp(m);
+            label = `${val}`;
+    }
+
+    const getDynamicColor = (v, currentMode) => {
+        if (currentMode === 'wind') {
+            const speed = typeof v === 'object' ? (v.speed || 0) : v;
+            if (speed >= 50) return 'rgba(168, 85, 247, 0.55)';
+            if (speed >= 35) return 'rgba(239, 68, 68, 0.50)';
+            if (speed >= 25) return 'rgba(249, 115, 22, 0.45)';
+            if (speed >= 12) return 'rgba(234, 179, 8, 0.35)';
+            return 'rgba(34, 197, 94, 0.25)';
+        } 
+        if (currentMode === 'dos') {
+            if (v >= 100) return 'rgba(168, 85, 247, 0.60)';
+            if (v >= 70)  return 'rgba(234, 88, 12, 0.55)';
+            if (v >= 40)  return 'rgba(161, 98, 7, 0.45)';
+            if (v >= 20)  return 'rgba(101, 163, 13, 0.35)';
+            return 'rgba(34, 197, 94, 0.25)';
+        }
+        if (currentMode === 'temp' || currentMode === 'feelsLike') {
+            if (v >= 90) return 'rgba(239, 68, 68, 0.55)';
+            if (v >= 75) return 'rgba(249, 115, 22, 0.45)';
+            if (v >= 60) return 'rgba(74, 222, 128, 0.40)';
+            if (v >= 45) return 'rgba(45, 212, 191, 0.35)';
+            return 'rgba(15, 118, 110, 0.30)';
+        }
+        return 'rgba(56, 189, 248, 0.25)';
+    };
+
+    return {
+        value: val,
+        label: label,
+        color: getDynamicColor(val, mode),
+        dateStr: extractedDate
+    };
+}
+
+// 2. Optimized Layer Factory using shared interpolation helper
 function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, nextItem = null, forcedMinute = 0) {
     if (!canvas) return null;
     const rect = canvas.getBoundingClientRect();
@@ -1851,209 +2062,12 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
         }
     }
 
-    const extractedDate = item?.dateStr || item?.date || item?.day || item?.dt_txt || 
-                          (item?.dt ? new Date(item.dt * 1000).toLocaleDateString() : null) || 
-                          new Date().toLocaleDateString();
-
     const h = Math.floor(hoveredMinute / 60);
     const m = Math.round(hoveredMinute % 60);
     const timeStr = `${h % 12 || 12}:${m < 10 ? '0' : ''}${m}${h >= 12 ? 'PM' : 'AM'}`;
 
-    const smoothStep = (v0, v1, t) => {
-        const factor = 0.5 * (1 - Math.cos(Math.max(0, Math.min(1, t)) * Math.PI));
-        return v0 + (v1 - v0) * factor;
-    };
+    const sampledData = getInterpolatedValuesAt(item, hoveredMinute, mode, prevItem, nextItem);
 
-    const resolvePreviousItem = () => {
-        if (prevItem) return prevItem;
-        if (typeof forecastData !== "undefined" && Array.isArray(forecastData)) {
-            const idx = forecastData.findIndex(d => (d.dateStr || d.date) === extractedDate);
-            if (idx > 0) return forecastData[idx - 1];
-        }
-        return item?.yesterdayItem || item?.prevDay || null;
-    };
-
-    const resolveNextItem = () => {
-        if (nextItem) return nextItem;
-        if (typeof forecastData !== "undefined" && Array.isArray(forecastData)) {
-            const idx = forecastData.findIndex(d => (d.dateStr || d.date) === extractedDate);
-            if (idx >= 0 && idx < forecastData.length - 1) return forecastData[idx + 1];
-        }
-        return item?.tomorrowItem || item?.nextDay || null;
-    };
-
-    const effectivePrevItem = resolvePreviousItem();
-    const effectiveNextItem = resolveNextItem();
-
-    const getPreviousDayLowestTemp = () => {
-        const prev = effectivePrevItem;
-        if (prev) {
-            if (Array.isArray(prev.tempRange) && prev.tempRange.length > 0) return Math.min(...prev.tempRange);
-            if (Array.isArray(prev.temps) && prev.temps.length > 0) return Math.min(...prev.temps);
-            if (prev.tempLowMin !== undefined) return prev.tempLowMin;
-            if (prev.tempMin !== undefined) return prev.tempMin;
-            if (prev.tempLow !== undefined) return prev.tempLow;
-        }
-        return item?.tempLow ?? 50;
-    };
-
-    const getNextDayLowestTemp = () => {
-        const next = effectiveNextItem;
-        if (next) {
-            if (Array.isArray(next.tempRange) && next.tempRange.length > 0) return Math.min(...next.tempRange);
-            if (Array.isArray(next.temps) && next.temps.length > 0) return Math.min(...next.temps);
-            if (next.tempLowMin !== undefined) return next.tempLowMin;
-            if (next.tempMin !== undefined) return next.tempMin;
-            if (next.tempLow !== undefined) return next.tempLow;
-        }
-        return item?.tempLow ?? 50;
-    };
-
-    const morningLow = getPreviousDayLowestTemp();
-    const todayLow = item?.tempLow ?? 50;
-    const todayHigh = item?.tempHigh ?? 75;
-    const tomorrowLow = getNextDayLowestTemp();
-    const prevHigh = (effectivePrevItem && effectivePrevItem.tempHigh !== undefined) ? effectivePrevItem.tempHigh : todayHigh;
-
-    let midnightStartTemp = Math.round((prevHigh + morningLow) / 2);
-    let midnightEndTemp = Math.round((todayHigh + tomorrowLow) / 2);
-    const isWinterInversion = item?.isWinterInversion || (todayHigh < morningLow);
-
-    const getDiurnalTemp = (m) => {
-        if (isWinterInversion) {
-            const tStart = Math.round((prevHigh + todayHigh) / 2);
-            if (m <= 360) return Math.round(smoothStep(tStart, todayHigh, m / 360));
-            else if (m <= 900) return Math.round(smoothStep(todayHigh, todayLow, (m - 360) / 540));
-            else return Math.round(smoothStep(todayLow, midnightEndTemp, (m - 900) / 539));
-        } else {
-            if (m <= 360) return Math.round(smoothStep(midnightStartTemp, morningLow, m / 360));
-            else if (m <= 900) return Math.round(smoothStep(morningLow, todayHigh, (m - 360) / 540));
-            else return Math.round(smoothStep(todayHigh, midnightEndTemp, (m - 900) / 539));
-        }
-    };
-
-    const peakMin = 15 * 60;
-    const getDiurnalFeelsLike = (m) => getDiurnalTemp(m) + (item?.feelsLikeOffset || 0);
-
-    const prevWind = (effectivePrevItem && effectivePrevItem.windMph !== undefined) ? effectivePrevItem.windMph : (item?.windMph || 10);
-    const nextWind = (effectiveNextItem && effectiveNextItem.windMph !== undefined) ? effectiveNextItem.windMph : (item?.windMph || 10);
-    const getDiurnalWind = (m) => {
-        const curWind = item?.windMph || 10;
-        const baseWind = (m <= 360) ? smoothStep((prevWind + curWind) / 2, curWind, m / 360) :
-                         (m <= 900) ? curWind :
-                         smoothStep(curWind, (curWind + nextWind) / 2, (m - 900) / 539);
-        const windRad = ((m - peakMin) / 1440) * Math.PI * 2;
-        return Math.round(baseWind * (0.6 + 0.4 * ((Math.cos(windRad) + 1) / 2)));
-    };
-
-    const prevGust = (effectivePrevItem && effectivePrevItem.gustMph !== undefined) ? effectivePrevItem.gustMph : (item?.gustMph || 15);
-    const nextGust = (effectiveNextItem && effectiveNextItem.gustMph !== undefined) ? effectiveNextItem.gustMph : (item?.gustMph || 15);
-    const getDiurnalGust = (m) => {
-        const curGust = item?.gustMph || 15;
-        const baseGust = (m <= 360) ? smoothStep((prevGust + curGust) / 2, curGust, m / 360) :
-                         (m <= 900) ? curGust :
-                         smoothStep(curGust, (curGust + nextGust) / 2, (m - 900) / 539);
-        const windRad = ((m - peakMin) / 1440) * Math.PI * 2;
-        return Math.round(baseGust * (0.65 + 0.35 * ((Math.cos(windRad) + 1) / 2)));
-    };
-
-    const prevDos = (effectivePrevItem && effectivePrevItem.score !== undefined) ? effectivePrevItem.score : (item?.score || 50);
-    const nextDos = (effectiveNextItem && effectiveNextItem.score !== undefined) ? effectiveNextItem.score : (item?.score || 50);
-    const getDiurnalDos = (m) => {
-        const curScore = item?.score || 50;
-        const baseScore = (m <= 360) ? smoothStep((prevDos + curScore) / 2, curScore, m / 360) :
-                          (m <= 900) ? curScore :
-                          smoothStep(curScore, (curScore + nextDos) / 2, (m - 900) / 539);
-        const dosTempRad = ((m - peakMin) / 1440) * Math.PI * 2;
-        return Math.round(baseScore * (0.5 + 0.5 * ((Math.cos(dosTempRad) + 1) / 2)));
-    };
-
-    const hasEvents = Array.isArray(item?.overrideEvents) && item.overrideEvents.length > 0;
-    const sortedEvents = hasEvents ? [...item.overrideEvents].sort((a, b) => a.minute - b.minute) : [];
-
-    const getInterpolatedVal = (m, key, fallbackFn) => {
-        if (!hasEvents) return fallbackFn(m);
-        const exact = sortedEvents.find(e => e.minute === m && e[key] !== undefined);
-        if (exact) return exact[key];
-        const prevEvent = [...sortedEvents].reverse().find(e => e.minute <= m && e[key] !== undefined);
-        const nextEvent = sortedEvents.find(e => e.minute >= m && e[key] !== undefined);
-
-        if (prevEvent && nextEvent) {
-            if (prevEvent.minute === nextEvent.minute) return prevEvent[key];
-            const t = (m - prevEvent.minute) / (nextEvent.minute - prevEvent.minute);
-            return Math.round(smoothStep(prevEvent[key], nextEvent[key], t));
-        } else if (prevEvent) {
-            const endVal = fallbackFn(1439);
-            if (m > prevEvent.minute && prevEvent.minute < 1439) {
-                const t = (m - prevEvent.minute) / (1439 - prevEvent.minute);
-                return Math.round(smoothStep(prevEvent[key], endVal, Math.min(1, t)));
-            }
-            return prevEvent[key];
-        } else if (nextEvent) {
-            const startVal = fallbackFn(0);
-            if (m < nextEvent.minute && nextEvent.minute > 0) {
-                const t = m / nextEvent.minute;
-                return Math.round(smoothStep(startVal, nextEvent[key], Math.max(0, t)));
-            }
-            return nextEvent[key];
-        }
-        return fallbackFn(m);
-    };
-
-    let resolvedValue = null;
-    let label = "";
-
-    switch (mode) {
-        case "temp":
-            resolvedValue = getInterpolatedVal(hoveredMinute, 'temp', getDiurnalTemp);
-            label = `${resolvedValue}°F`;
-            break;
-        case "feelsLike":
-            resolvedValue = getInterpolatedVal(hoveredMinute, 'feelsLike', getDiurnalFeelsLike);
-            label = `Feels Like ${resolvedValue}°F`;
-            break;
-        case "wind":
-            const w = getInterpolatedVal(hoveredMinute, 'wind', getDiurnalWind);
-            const g = getInterpolatedVal(hoveredMinute, 'gust', getDiurnalGust);
-            resolvedValue = { speed: w, gust: g };
-            label = `W: ${w} | G: ${g} mph`;
-            break;
-        case "dos":
-            resolvedValue = getInterpolatedVal(hoveredMinute, 'dos', getDiurnalDos);
-            label = `DOS: ${resolvedValue}`;
-            break;
-        default:
-            resolvedValue = getDiurnalTemp(hoveredMinute);
-            label = `${resolvedValue}`;
-    }
-
-    const getDynamicColor = (val, currentMode) => {
-        if (currentMode === 'wind') {
-            const speed = typeof val === 'object' ? (val.speed || 0) : val;
-            if (speed >= 50) return 'rgba(168, 85, 247, 0.55)';
-            if (speed >= 35) return 'rgba(239, 68, 68, 0.50)';
-            if (speed >= 25) return 'rgba(249, 115, 22, 0.45)';
-            if (speed >= 12) return 'rgba(234, 179, 8, 0.35)';
-            return 'rgba(34, 197, 94, 0.25)';
-        } 
-        if (currentMode === 'dos') {
-            if (val >= 100) return 'rgba(168, 85, 247, 0.60)';
-            if (val >= 70)  return 'rgba(234, 88, 12, 0.55)';
-            if (val >= 40)  return 'rgba(161, 98, 7, 0.45)';
-            if (val >= 20)  return 'rgba(101, 163, 13, 0.35)';
-            return 'rgba(34, 197, 94, 0.25)';
-        }
-        if (currentMode === 'temp' || currentMode === 'feelsLike') {
-            if (val >= 90) return 'rgba(239, 68, 68, 0.55)';
-            if (val >= 75) return 'rgba(249, 115, 22, 0.45)';
-            if (val >= 60) return 'rgba(74, 222, 128, 0.40)';
-            if (val >= 45) return 'rgba(45, 212, 191, 0.35)';
-            return 'rgba(15, 118, 110, 0.30)';
-        }
-        return 'rgba(56, 189, 248, 0.25)';
-    };
-
-    const calculatedColor = getDynamicColor(resolvedValue, mode);
     const RadarGridLayerClass = L.GridLayer.extend({
         createTile: function(coords) {
             const tile = document.createElement('canvas');
@@ -2061,7 +2075,7 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
             tile.width = size.x;
             tile.height = size.y;
             const ctx = tile.getContext('2d');
-            ctx.fillStyle = calculatedColor;
+            ctx.fillStyle = sampledData.color;
             ctx.fillRect(0, 0, tile.width, tile.height);
             ctx.strokeStyle = 'rgba(255, 255, 255, 0.05)';
             ctx.strokeRect(0, 0, tile.width, tile.height);
@@ -2071,18 +2085,57 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
 
     const activeGridLayer = new RadarGridLayerClass();
     activeGridLayer._meta = {
-        value: resolvedValue,
-        label: label,
+        value: sampledData.value,
+        label: sampledData.label,
         minute: hoveredMinute,
         timeStr: timeStr,
-        dateStr: extractedDate,
-        color: calculatedColor,
+        dateStr: sampledData.dateStr,
+        color: sampledData.color,
         mode: mode
     };
 
     return activeGridLayer;
 }
 
+// 3. Forecast Card Selection & Time-Slider Sync Handler
+function updateForecastUI(selectedItem, currentMinute, mode, mapInstance, currentLayerRef) {
+    // A. Sample interpolated data for selected day and minute
+    const sampled = getInterpolatedValuesAt(selectedItem, currentMinute, mode);
+    
+    // B. Update DOM elements (Time Slider, Date Display, Value Labels)
+    const timeSlider = document.getElementById('timeSlider');
+    if (timeSlider) timeSlider.value = currentMinute;
+    
+    const dateDisplay = document.getElementById('selectedDateLabel');
+    if (dateDisplay) dateDisplay.textContent = sampled.dateStr;
+
+    const valueLabel = document.getElementById('currentValueLabel');
+    if (valueLabel) {
+        valueLabel.textContent = sampled.label;
+        valueLabel.style.color = sampled.color;
+    }
+
+    // C. Re-render Radar Grid Layer with dynamically calculated colors
+    if (mapInstance && currentLayerRef) {
+        if (mapInstance.hasLayer(currentLayerRef)) {
+            mapInstance.removeLayer(currentLayerRef);
+        }
+        const newLayer = createRadarGridLayer(
+            document.getElementById('radarCanvas'), 
+            0, 
+            selectedItem, 
+            mode, 
+            null, 
+            null, 
+            currentMinute
+        );
+        if (newLayer) {
+            newLayer.addTo(mapInstance);
+            return newLayer;
+        }
+    }
+    return currentLayerRef;
+}
 /**
  * 2. Spatial & Temporal Plot Graph Sampler
  */
