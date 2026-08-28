@@ -1250,8 +1250,8 @@ async function buildForecast() {
 
             const baseLow = 37 - latOffset + lonOffset;
             const baseHigh = 65 - latOffset + (lonOffset * 1.5);
-            const baseWind = 0 + latOffset;
-            const baseGust = 2 + (latOffset * 1.5);
+            const baseWind = 31 + latOffset;
+            const baseGust = 56 + (latOffset * 1.5);
 
             tempLow = Math.round(baseLow + (swingFactor * varianceAmplitude));
             tempHigh = Math.round(baseHigh + (swingFactor * varianceAmplitude * 1.3));
@@ -1681,6 +1681,517 @@ async function buildForecast() {
 
     renderForecast(dosForecast);
 }
+
+function renderForecast(dosForecast) {
+    const container = document.getElementById("forecastContainer");
+    container.innerHTML = "";
+    dosForecast.forEach((item, index) => {
+        const card = document.createElement("div");
+        card.className = "day-card";
+        card.addEventListener("click", () => {
+            openForecastGraphModal(item, dosForecast, index);
+        });
+        const dynamicColor = getLerpColor(item.score);
+        const dayName = document.createElement("div");
+        dayName.className = "day-name";
+        dayName.innerText = item.day;
+        const dayDate = document.createElement("div");
+        dayDate.className = "day-date";
+        dayDate.innerText = item.dateStr;
+        const dosValue = document.createElement("div");
+        dosValue.className = "dos-value";
+        dosValue.innerText = item.score;
+        dosValue.style.color = dynamicColor;
+        const dosLabel = document.createElement("div");
+        dosLabel.className = "dos-label";
+        dosLabel.innerText = item.meta.label;
+        dosLabel.style.color = dynamicColor;
+        const weatherSummary = document.createElement("div");
+        weatherSummary.className = "weather-summary";
+        weatherSummary.innerText = item.weatherSummary;
+        const videoTag = document.createElement("div");
+        videoTag.className = "video-label";
+        videoTag.innerText = item.videoStatus;
+        
+        const barLabel = document.createElement("div");
+        barLabel.className = "bar-label";
+        barLabel.innerText = "DOS Score Bar";
+        const bar = document.createElement("div");
+        bar.className = "bar";
+        const dosRangeFill = document.createElement("div");
+        dosRangeFill.className = "range-bar-fill";
+        
+        const maxScale = 120;
+        const dosPercent = Math.min((item.score / maxScale) * 100, 100);
+        dosRangeFill.style.left = "0%";
+        dosRangeFill.style.width = Math.max(dosPercent, 2) + "%";
+        dosRangeFill.style.background = getDosGradientCss(item.score, maxScale);
+        bar.appendChild(dosRangeFill);
+        
+        const tempStatRow = document.createElement("div");
+        tempStatRow.className = "stat-row";
+        const highTempColor = getAppleTempColor(item.tempHigh);
+        tempStatRow.innerHTML = `<span>Temp Range</span><span class="stat-val" style="color:${highTempColor}">${item.tempLow}°F - ${item.tempHigh}°F</span>`;
+        const tempBar = document.createElement("div");
+        tempBar.className = "bar";
+        const tempRangeFill = document.createElement("div");
+        tempRangeFill.className = "range-bar-fill";
+        const fixedMinTemp = -10;
+        const fixedMaxTemp = 120;
+        const tempSpan = fixedMaxTemp - fixedMinTemp;
+        const tempLeftPercent = Math.max(0, ((item.tempLow - fixedMinTemp) / tempSpan) * 100);
+        const tempWidthPercent = Math.min(100 - tempLeftPercent, Math.max(3, ((item.tempHigh - item.tempLow) / tempSpan) * 100));
+        tempRangeFill.style.left = tempLeftPercent + "%";
+        tempRangeFill.style.width = tempWidthPercent + "%";
+        tempRangeFill.style.background = getTempRangeGradientCss(item.tempLow, item.tempHigh);
+        tempBar.appendChild(tempRangeFill);
+        
+        const windStatRow = document.createElement("div");
+        windStatRow.className = "stat-row";
+        const windColor = getAppleWindColor(item.windMph);
+        windStatRow.innerHTML = `<span>Wind Speed</span><span class="stat-val" style="color:${windColor}">${item.windMph} mph</span>`;
+        const windBar = document.createElement("div");
+        windBar.className = "bar";
+        const windRangeFill = document.createElement("div");
+        windRangeFill.className = "range-bar-fill";
+        
+        const fixedMaxWindScale = 60;
+        const windWidthPercent = Math.min(100, Math.max(3, (item.windMph / fixedMaxWindScale) * 100));
+        windRangeFill.style.left = "0%";
+        windRangeFill.style.width = windWidthPercent + "%";
+        windRangeFill.style.background = getWindGradientCss(item.windMph);
+        windBar.appendChild(windRangeFill);
+        
+        const gustStatRow = document.createElement("div");
+        gustStatRow.className = "stat-row";
+        const gustColor = getAppleWindColor(item.gustMph);
+        gustStatRow.innerHTML = `<span>Wind Gust</span><span class="stat-val" style="color:${gustColor}">${item.gustMph} mph</span>`;
+        const gustBar = document.createElement("div");
+        gustBar.className = "bar";
+        const gustRangeFill = document.createElement("div");
+        gustRangeFill.className = "range-bar-fill";
+        
+        const fixedMaxGustScale = 80;
+        const gustWidthPercent = Math.min(100, Math.max(3, (item.gustMph / fixedMaxGustScale) * 100));
+        gustRangeFill.style.left = "0%";
+        gustRangeFill.style.width = gustWidthPercent + "%";
+        gustRangeFill.style.background = getWindGradientCss(item.gustMph);
+        gustBar.appendChild(gustRangeFill);
+        
+        const streamContainer = document.createElement("div");
+        streamContainer.className = "stream-chance-container";
+        const streamTitle = document.createElement("div");
+        streamTitle.className = "stream-chance-title";
+        streamTitle.innerText = "Live Stream Chance";
+        const streamVal = document.createElement("div");
+        streamVal.className = "stream-chance-val";
+        streamVal.innerText = item.streamChance + "%";
+        const streamBar = document.createElement("div");
+        streamBar.className = "bar";
+        const streamRangeFill = document.createElement("div");
+        streamRangeFill.className = "range-bar-fill";
+        
+        streamRangeFill.style.left = "0%";
+        streamRangeFill.style.width = Math.max(item.streamChance, 2) + "%";
+        streamRangeFill.style.background = getStreamGradientCss(item.streamChance);
+        streamBar.appendChild(streamRangeFill);
+        streamContainer.appendChild(streamTitle);
+        streamContainer.appendChild(streamVal);
+        streamContainer.appendChild(streamBar);
+        
+        card.appendChild(dayName);
+        card.appendChild(dayDate);
+        card.appendChild(dosValue);
+        card.appendChild(dosLabel);
+        card.appendChild(weatherSummary);
+        card.appendChild(videoTag);
+        if (item.dinnerMenu) {
+            const dinnerTag = document.createElement("div");
+            dinnerTag.className = "dinner-label";
+            dinnerTag.innerText = "Dinner: " + item.dinnerMenu;
+            card.appendChild(dinnerTag);
+        }
+        
+        card.appendChild(barLabel);
+        card.appendChild(bar);
+        
+        card.appendChild(tempStatRow);
+        card.appendChild(tempBar);
+        card.appendChild(windStatRow);
+        card.appendChild(windBar);
+        card.appendChild(gustStatRow);
+        card.appendChild(gustBar);
+        card.appendChild(streamContainer);
+        container.appendChild(card);
+    });
+}
+
+
+function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, nextItem = null, forcedMinute = 0) {
+    if (!canvas) return null;
+    const rect = canvas.getBoundingClientRect();
+    const width = canvas.width;
+
+    const scaleFactor = Math.min(width / 650, 1.5);
+    const padLeft = Math.round(45 * scaleFactor);
+    const padRight = Math.round(20 * scaleFactor);
+    const graphWidth = width - padLeft - padRight;
+
+    let hoveredMinute;
+    if (forcedMinute !== null && forcedMinute !== undefined) {
+        hoveredMinute = Math.max(0, Math.min(1439, parseInt(forcedMinute, 10) || 0));
+    } else {
+        const x = clientX - rect.left;
+        if (x < padLeft || x > width - padRight) {
+            if (clientX === 0) hoveredMinute = 0;
+            else return null;
+        } else {
+            const ratio = Math.max(0, Math.min(1, (x - padLeft) / graphWidth));
+            hoveredMinute = Math.round(ratio * 1439);
+        }
+    }
+
+    const extractedDate = item?.dateStr || item?.date || item?.day || item?.dt_txt || 
+                          (item?.dt ? new Date(item.dt * 1000).toLocaleDateString() : null) || 
+                          new Date().toLocaleDateString();
+
+    const h = Math.floor(hoveredMinute / 60);
+    const m = Math.round(hoveredMinute % 60);
+    const timeStr = `${h % 12 || 12}:${m < 10 ? '0' : ''}${m}${h >= 12 ? 'PM' : 'AM'}`;
+
+    const smoothStep = (v0, v1, t) => {
+        const factor = 0.5 * (1 - Math.cos(Math.max(0, Math.min(1, t)) * Math.PI));
+        return v0 + (v1 - v0) * factor;
+    };
+
+    const resolvePreviousItem = () => {
+        if (prevItem) return prevItem;
+        if (typeof forecastData !== "undefined" && Array.isArray(forecastData)) {
+            const idx = forecastData.findIndex(d => (d.dateStr || d.date) === extractedDate);
+            if (idx > 0) return forecastData[idx - 1];
+        }
+        return item?.yesterdayItem || item?.prevDay || null;
+    };
+
+    const resolveNextItem = () => {
+        if (nextItem) return nextItem;
+        if (typeof forecastData !== "undefined" && Array.isArray(forecastData)) {
+            const idx = forecastData.findIndex(d => (d.dateStr || d.date) === extractedDate);
+            if (idx >= 0 && idx < forecastData.length - 1) return forecastData[idx + 1];
+        }
+        return item?.tomorrowItem || item?.nextDay || null;
+    };
+
+    const effectivePrevItem = resolvePreviousItem();
+    const effectiveNextItem = resolveNextItem();
+
+    const getPreviousDayLowestTemp = () => {
+        const prev = effectivePrevItem;
+        if (prev) {
+            if (Array.isArray(prev.tempRange) && prev.tempRange.length > 0) return Math.min(...prev.tempRange);
+            if (Array.isArray(prev.temps) && prev.temps.length > 0) return Math.min(...prev.temps);
+            if (prev.tempLowMin !== undefined) return prev.tempLowMin;
+            if (prev.tempMin !== undefined) return prev.tempMin;
+            if (prev.tempLow !== undefined) return prev.tempLow;
+        }
+        return item?.tempLow ?? 50;
+    };
+
+    const getNextDayLowestTemp = () => {
+        const next = effectiveNextItem;
+        if (next) {
+            if (Array.isArray(next.tempRange) && next.tempRange.length > 0) return Math.min(...next.tempRange);
+            if (Array.isArray(next.temps) && next.temps.length > 0) return Math.min(...next.temps);
+            if (next.tempLowMin !== undefined) return next.tempLowMin;
+            if (next.tempMin !== undefined) return next.tempMin;
+            if (next.tempLow !== undefined) return next.tempLow;
+        }
+        return item?.tempLow ?? 50;
+    };
+
+    const morningLow = getPreviousDayLowestTemp();
+    const todayLow = item?.tempLow ?? 50;
+    const todayHigh = item?.tempHigh ?? 75;
+    const tomorrowLow = getNextDayLowestTemp();
+    const prevHigh = (effectivePrevItem && effectivePrevItem.tempHigh !== undefined) ? effectivePrevItem.tempHigh : todayHigh;
+
+    let midnightStartTemp = Math.round((prevHigh + morningLow) / 2);
+    let midnightEndTemp = Math.round((todayHigh + tomorrowLow) / 2);
+    const isWinterInversion = item?.isWinterInversion || (todayHigh < morningLow);
+
+    const getDiurnalTemp = (m) => {
+        if (isWinterInversion) {
+            const tStart = Math.round((prevHigh + todayHigh) / 2);
+            if (m <= 360) return Math.round(smoothStep(tStart, todayHigh, m / 360));
+            else if (m <= 900) return Math.round(smoothStep(todayHigh, todayLow, (m - 360) / 540));
+            else return Math.round(smoothStep(todayLow, midnightEndTemp, (m - 900) / 539));
+        } else {
+            if (m <= 360) return Math.round(smoothStep(midnightStartTemp, morningLow, m / 360));
+            else if (m <= 900) return Math.round(smoothStep(morningLow, todayHigh, (m - 360) / 540));
+            else return Math.round(smoothStep(todayHigh, midnightEndTemp, (m - 900) / 539));
+        }
+    };
+
+    const peakMin = 15 * 60;
+    const getDiurnalFeelsLike = (m) => getDiurnalTemp(m) + (item?.feelsLikeOffset || 0);
+
+    const prevWind = (effectivePrevItem && effectivePrevItem.windMph !== undefined) ? effectivePrevItem.windMph : (item?.windMph || 10);
+    const nextWind = (effectiveNextItem && effectiveNextItem.windMph !== undefined) ? effectiveNextItem.windMph : (item?.windMph || 10);
+    const getDiurnalWind = (m) => {
+        const curWind = item?.windMph || 10;
+        const baseWind = (m <= 360) ? smoothStep((prevWind + curWind) / 2, curWind, m / 360) :
+                         (m <= 900) ? curWind :
+                         smoothStep(curWind, (curWind + nextWind) / 2, (m - 900) / 539);
+        const windRad = ((m - peakMin) / 1440) * Math.PI * 2;
+        return Math.round(baseWind * (0.6 + 0.4 * ((Math.cos(windRad) + 1) / 2)));
+    };
+
+    const prevGust = (effectivePrevItem && effectivePrevItem.gustMph !== undefined) ? effectivePrevItem.gustMph : (item?.gustMph || 15);
+    const nextGust = (effectiveNextItem && effectiveNextItem.gustMph !== undefined) ? effectiveNextItem.gustMph : (item?.gustMph || 15);
+    const getDiurnalGust = (m) => {
+        const curGust = item?.gustMph || 15;
+        const baseGust = (m <= 360) ? smoothStep((prevGust + curGust) / 2, curGust, m / 360) :
+                         (m <= 900) ? curGust :
+                         smoothStep(curGust, (curGust + nextGust) / 2, (m - 900) / 539);
+        const windRad = ((m - peakMin) / 1440) * Math.PI * 2;
+        return Math.round(baseGust * (0.65 + 0.35 * ((Math.cos(windRad) + 1) / 2)));
+    };
+
+    const prevDos = (effectivePrevItem && effectivePrevItem.score !== undefined) ? effectivePrevItem.score : (item?.score || 50);
+    const nextDos = (effectiveNextItem && effectiveNextItem.score !== undefined) ? effectiveNextItem.score : (item?.score || 50);
+    const getDiurnalDos = (m) => {
+        const curScore = item?.score || 50;
+        const baseScore = (m <= 360) ? smoothStep((prevDos + curScore) / 2, curScore, m / 360) :
+                          (m <= 900) ? curScore :
+                          smoothStep(curScore, (curScore + nextDos) / 2, (m - 900) / 539);
+        const dosTempRad = ((m - peakMin) / 1440) * Math.PI * 2;
+        return Math.round(baseScore * (0.5 + 0.5 * ((Math.cos(dosTempRad) + 1) / 2)));
+    };
+
+    const hasEvents = Array.isArray(item?.overrideEvents) && item.overrideEvents.length > 0;
+    const sortedEvents = hasEvents ? [...item.overrideEvents].sort((a, b) => a.minute - b.minute) : [];
+
+    const getInterpolatedVal = (m, key, fallbackFn) => {
+        if (!hasEvents) return fallbackFn(m);
+        const exact = sortedEvents.find(e => e.minute === m && e[key] !== undefined);
+        if (exact) return exact[key];
+        const prevEvent = [...sortedEvents].reverse().find(e => e.minute <= m && e[key] !== undefined);
+        const nextEvent = sortedEvents.find(e => e.minute >= m && e[key] !== undefined);
+
+        if (prevEvent && nextEvent) {
+            if (prevEvent.minute === nextEvent.minute) return prevEvent[key];
+            const t = (m - prevEvent.minute) / (nextEvent.minute - prevEvent.minute);
+            return Math.round(smoothStep(prevEvent[key], nextEvent[key], t));
+        } else if (prevEvent) {
+            const endVal = fallbackFn(1439);
+            if (m > prevEvent.minute && prevEvent.minute < 1439) {
+                const t = (m - prevEvent.minute) / (1439 - prevEvent.minute);
+                return Math.round(smoothStep(prevEvent[key], endVal, Math.min(1, t)));
+            }
+            return prevEvent[key];
+        } else if (nextEvent) {
+            const startVal = fallbackFn(0);
+            if (m < nextEvent.minute && nextEvent.minute > 0) {
+                const t = m / nextEvent.minute;
+                return Math.round(smoothStep(startVal, nextEvent[key], Math.max(0, t)));
+            }
+            return nextEvent[key];
+        }
+        return fallbackFn(m);
+    };
+
+    let resolvedValue = null;
+    let label = "";
+
+    switch (mode) {
+        case "temp":
+            resolvedValue = getInterpolatedVal(hoveredMinute, 'temp', getDiurnalTemp);
+            label = `${resolvedValue}°F`;
+            break;
+        case "feelsLike":
+            resolvedValue = getInterpolatedVal(hoveredMinute, 'feelsLike', getDiurnalFeelsLike);
+            label = `Feels Like ${resolvedValue}°F`;
+            break;
+        case "wind":
+            const w = getInterpolatedVal(hoveredMinute, 'wind', getDiurnalWind);
+            const g = getInterpolatedVal(hoveredMinute, 'gust', getDiurnalGust);
+            resolvedValue = { speed: w, gust: g };
+            label = `W: ${w} | G: ${g} mph`;
+            break;
+        case "dos":
+            resolvedValue = getInterpolatedVal(hoveredMinute, 'dos', getDiurnalDos);
+            label = `DOS: ${resolvedValue}`;
+            break;
+        default:
+            resolvedValue = getDiurnalTemp(hoveredMinute);
+            label = `${resolvedValue}`;
+    }
+
+    const getDynamicColor = (val, currentMode) => {
+        if (currentMode === 'wind') {
+            const speed = typeof val === 'object' ? (val.speed || 0) : val;
+            if (speed >= 50) return 'rgba(168, 85, 247, 0.55)';
+            if (speed >= 35) return 'rgba(239, 68, 68, 0.50)';
+            if (speed >= 25) return 'rgba(249, 115, 22, 0.45)';
+            if (speed >= 12) return 'rgba(234, 179, 8, 0.35)';
+            return 'rgba(34, 197, 94, 0.25)';
+        } 
+        if (currentMode === 'dos') {
+            if (val >= 100) return 'rgba(168, 85, 247, 0.60)';
+            if (val >= 70)  return 'rgba(234, 88, 12, 0.45)';
+            if (val >= 40)  return 'rgba(234, 179, 8, 0.35)';
+            return 'rgba(59, 130, 246, 0.25)';
+        }
+        if (val >= 90) return 'rgba(239, 68, 68, 0.50)';
+        if (val >= 60) return 'rgba(249, 115, 22, 0.45)';
+        if (val >= 30) return 'rgba(234, 179, 8, 0.35)';
+        return 'rgba(34, 197, 94, 0.25)';
+    };
+
+  
+/**
+ * 2. Spatial & Temporal Plot Graph Sampler
+ */
+function getValueFromPlotGraph(params) {
+    const { lat, lon, totalMinutes, item, mode, gridBounds, spatialGridData } = params;
+
+    const validMinute = Math.max(0, Math.min(1439, parseInt(totalMinutes, 10) || 0));
+
+    let spatialMultiplier = 1.0;
+    if (gridBounds && spatialGridData && gridBounds.width && gridBounds.height) {
+        const { north, south, east, west, width, height } = gridBounds;
+        const xNorm = (lon - west) / (east - west);
+        const yNorm = (north - lat) / (north - south);
+
+        if (xNorm >= 0 && xNorm <= 1 && yNorm >= 0 && yNorm <= 1) {
+            const col = Math.min(width - 1, Math.floor(xNorm * width));
+            const row = Math.min(height - 1, Math.floor(yNorm * height));
+            const gridIndex = row * width + col;
+
+            if (spatialGridData[gridIndex] !== undefined) {
+                spatialMultiplier = spatialGridData[gridIndex];
+            }
+        }
+    }
+
+    const dummyCanvas = document.createElement('canvas');
+    dummyCanvas.width = 650;
+    dummyCanvas.height = 400;
+
+    const layer = createRadarGridLayer(
+        dummyCanvas,
+        0,
+        item,
+        mode,
+        params.prevItem || null,
+        params.nextItem || null,
+        validMinute
+    );
+
+    if (!layer || !layer._meta) {
+        return { value: null, label: 'N/A', lat, lon, minute: validMinute };
+    }
+
+    let finalValue = layer._meta.value;
+    if (typeof finalValue === 'number') {
+        finalValue = Math.round(finalValue * spatialMultiplier);
+    } else if (typeof finalValue === 'object' && finalValue !== null) {
+        finalValue = {
+            speed: Math.round((finalValue.speed || 0) * spatialMultiplier),
+            gust: Math.round((finalValue.gust || 0) * spatialMultiplier)
+        };
+    }
+
+    return {
+        lat: lat,
+        lon: lon,
+        minute: validMinute,
+        timeStr: layer._meta.timeStr,
+        dateStr: layer._meta.dateStr,
+        mode: mode,
+        value: finalValue,
+        color: layer._meta.color,
+        formattedLabel: layer._meta.label
+    };
+}
+
+// 3. Global Application Controller & State
+window.RadarState = {
+    map: null,
+    canvas: document.createElement('canvas'),
+    currentLayer: null,
+    currentItem: {
+        dateStr: "2026-08-27",
+        tempLow: 58,
+        tempHigh: 84,
+        windMph: 12,
+        gustMph: 22,
+        score: 65,
+        feelsLikeOffset: 2
+    },
+    currentMode: 'temp',
+    currentMinute: 720,
+    selectedPoint: { lat: 47.6858, lon: -92.7723 }
+};
+
+window.RadarState.canvas.width = 650;
+window.RadarState.canvas.height = 400;
+
+window.updateActiveRadarLayer = (overrides = {}) => {
+    const s = window.RadarState;
+
+    if (overrides.item !== undefined) s.currentItem = overrides.item;
+    if (overrides.mode !== undefined) s.currentMode = overrides.mode;
+    if (overrides.minute !== undefined) s.currentMinute = overrides.minute;
+
+    if (!s.map || !s.currentItem) return;
+
+    if (s.currentLayer) {
+        s.map.removeLayer(s.currentLayer);
+    }
+
+    const newLayer = createRadarGridLayer(
+        s.canvas, 
+        0, 
+        s.currentItem, 
+        s.currentMode, 
+        overrides.prevItem || null, 
+        overrides.nextItem || null, 
+        s.currentMinute
+    );
+
+    if (newLayer) {
+        newLayer.addTo(s.map);
+        s.currentLayer = newLayer;
+    }
+
+    // Refresh display values on sampling dashboard
+    updateDashboard();
+};
+
+function updateDashboard() {
+    const s = window.RadarState;
+    if (!s.selectedPoint) return;
+
+    const sampledData = getValueFromPlotGraph({
+        lat: s.selectedPoint.lat,
+        lon: s.selectedPoint.lon,
+        totalMinutes: s.currentMinute,
+        item: s.currentItem,
+        mode: s.currentMode
+    });
+
+    document.getElementById('timeDisplay').innerText = sampledData.timeStr;
+    document.getElementById('dispCoords').innerText = `${sampledData.lat.toFixed(3)}, ${sampledData.lon.toFixed(3)}`;
+    document.getElementById('dispTime').innerText = sampledData.timeStr;
+    document.getElementById('dispLabel').innerText = sampledData.formattedLabel;
+
+    if (typeof sampledData.value === 'object') {
+        document.getElementById('dispValue').innerText = `Speed: ${sampledData.value.speed} / Gust: ${sampledData.value.gust}`;
+    } else {
+        document.getElementById('dispValue').innerText = sampledData.value;
+    }
+}
 function openForecastGraphModal(item, fullForecast = [], itemIndex = -1) {
     let modal = document.getElementById("forecastGraphModal");
     if (!modal) {
@@ -1836,362 +2347,6 @@ window._radarState = window._radarState || {
   currentItem: null,
   activeDateText: ''
 };
-function renderForecast(dosForecast) {
-    const container = document.getElementById("forecastContainer");
-    container.innerHTML = "";
-    dosForecast.forEach((item, index) => {
-        const card = document.createElement("div");
-        card.className = "day-card";
-        card.addEventListener("click", () => {
-            openForecastGraphModal(item, dosForecast, index);
-        });
-        const dynamicColor = getLerpColor(item.score);
-        const dayName = document.createElement("div");
-        dayName.className = "day-name";
-        dayName.innerText = item.day;
-        const dayDate = document.createElement("div");
-        dayDate.className = "day-date";
-        dayDate.innerText = item.dateStr;
-        const dosValue = document.createElement("div");
-        dosValue.className = "dos-value";
-        dosValue.innerText = item.score;
-        dosValue.style.color = dynamicColor;
-        const dosLabel = document.createElement("div");
-        dosLabel.className = "dos-label";
-        dosLabel.innerText = item.meta.label;
-        dosLabel.style.color = dynamicColor;
-        const weatherSummary = document.createElement("div");
-        weatherSummary.className = "weather-summary";
-        weatherSummary.innerText = item.weatherSummary;
-        const videoTag = document.createElement("div");
-        videoTag.className = "video-label";
-        videoTag.innerText = item.videoStatus;
-        
-        const barLabel = document.createElement("div");
-        barLabel.className = "bar-label";
-        barLabel.innerText = "DOS Score Bar";
-        const bar = document.createElement("div");
-        bar.className = "bar";
-        const dosRangeFill = document.createElement("div");
-        dosRangeFill.className = "range-bar-fill";
-        
-        const maxScale = 120;
-        const dosPercent = Math.min((item.score / maxScale) * 100, 100);
-        dosRangeFill.style.left = "0%";
-        dosRangeFill.style.width = Math.max(dosPercent, 2) + "%";
-        dosRangeFill.style.background = getDosGradientCss(item.score, maxScale);
-        bar.appendChild(dosRangeFill);
-        
-        const tempStatRow = document.createElement("div");
-        tempStatRow.className = "stat-row";
-        const highTempColor = getAppleTempColor(item.tempHigh);
-        tempStatRow.innerHTML = `<span>Temp Range</span><span class="stat-val" style="color:${highTempColor}">${item.tempLow}°F - ${item.tempHigh}°F</span>`;
-        const tempBar = document.createElement("div");
-        tempBar.className = "bar";
-        const tempRangeFill = document.createElement("div");
-        tempRangeFill.className = "range-bar-fill";
-        const fixedMinTemp = -10;
-        const fixedMaxTemp = 120;
-        const tempSpan = fixedMaxTemp - fixedMinTemp;
-        const tempLeftPercent = Math.max(0, ((item.tempLow - fixedMinTemp) / tempSpan) * 100);
-        const tempWidthPercent = Math.min(100 - tempLeftPercent, Math.max(3, ((item.tempHigh - item.tempLow) / tempSpan) * 100));
-        tempRangeFill.style.left = tempLeftPercent + "%";
-        tempRangeFill.style.width = tempWidthPercent + "%";
-        tempRangeFill.style.background = getTempRangeGradientCss(item.tempLow, item.tempHigh);
-        tempBar.appendChild(tempRangeFill);
-        
-        const windStatRow = document.createElement("div");
-        windStatRow.className = "stat-row";
-        const windColor = getAppleWindColor(item.windMph);
-        windStatRow.innerHTML = `<span>Wind Speed</span><span class="stat-val" style="color:${windColor}">${item.windMph} mph</span>`;
-        const windBar = document.createElement("div");
-        windBar.className = "bar";
-        const windRangeFill = document.createElement("div");
-        windRangeFill.className = "range-bar-fill";
-        
-        const fixedMaxWindScale = 60;
-        const windWidthPercent = Math.min(100, Math.max(3, (item.windMph / fixedMaxWindScale) * 100));
-        windRangeFill.style.left = "0%";
-        windRangeFill.style.width = windWidthPercent + "%";
-        windRangeFill.style.background = getWindGradientCss(item.windMph);
-        windBar.appendChild(windRangeFill);
-        
-        const gustStatRow = document.createElement("div");
-        gustStatRow.className = "stat-row";
-        const gustColor = getAppleWindColor(item.gustMph);
-        gustStatRow.innerHTML = `<span>Wind Gust</span><span class="stat-val" style="color:${gustColor}">${item.gustMph} mph</span>`;
-        const gustBar = document.createElement("div");
-        gustBar.className = "bar";
-        const gustRangeFill = document.createElement("div");
-        gustRangeFill.className = "range-bar-fill";
-        
-        const fixedMaxGustScale = 80;
-        const gustWidthPercent = Math.min(100, Math.max(3, (item.gustMph / fixedMaxGustScale) * 100));
-        gustRangeFill.style.left = "0%";
-        gustRangeFill.style.width = gustWidthPercent + "%";
-        gustRangeFill.style.background = getWindGradientCss(item.gustMph);
-        gustBar.appendChild(gustRangeFill);
-        
-        const streamContainer = document.createElement("div");
-        streamContainer.className = "stream-chance-container";
-        const streamTitle = document.createElement("div");
-        streamTitle.className = "stream-chance-title";
-        streamTitle.innerText = "Live Stream Chance";
-        const streamVal = document.createElement("div");
-        streamVal.className = "stream-chance-val";
-        streamVal.innerText = item.streamChance + "%";
-        const streamBar = document.createElement("div");
-        streamBar.className = "bar";
-        const streamRangeFill = document.createElement("div");
-        streamRangeFill.className = "range-bar-fill";
-        
-        streamRangeFill.style.left = "0%";
-        streamRangeFill.style.width = Math.max(item.streamChance, 2) + "%";
-        streamRangeFill.style.background = getStreamGradientCss(item.streamChance);
-        streamBar.appendChild(streamRangeFill);
-        streamContainer.appendChild(streamTitle);
-        streamContainer.appendChild(streamVal);
-        streamContainer.appendChild(streamBar);
-        
-        card.appendChild(dayName);
-        card.appendChild(dayDate);
-        card.appendChild(dosValue);
-        card.appendChild(dosLabel);
-        card.appendChild(weatherSummary);
-        card.appendChild(videoTag);
-        if (item.dinnerMenu) {
-            const dinnerTag = document.createElement("div");
-            dinnerTag.className = "dinner-label";
-            dinnerTag.innerText = "Dinner: " + item.dinnerMenu;
-            card.appendChild(dinnerTag);
-        }
-        
-        card.appendChild(barLabel);
-        card.appendChild(bar);
-        
-        card.appendChild(tempStatRow);
-        card.appendChild(tempBar);
-        card.appendChild(windStatRow);
-        card.appendChild(windBar);
-        card.appendChild(gustStatRow);
-        card.appendChild(gustBar);
-        card.appendChild(streamContainer);
-        container.appendChild(card);
-    });
-}
-
-
-// 1. Helper Function: Get interpolated values for ANY minute on ANY forecast item
-function getInterpolatedValuesAt(item, minute, mode = "temp", prevItem = null, nextItem = null) {
-    const m = Math.max(0, Math.min(1439, parseInt(minute, 10) || 0));
-    
-    const smoothStep = (v0, v1, t) => {
-        const factor = 0.5 * (1 - Math.cos(Math.max(0, Math.min(1, t)) * Math.PI));
-        return v0 + (v1 - v0) * factor;
-    };
-
-    const extractedDate = item?.dateStr || item?.date || item?.day || item?.dt_txt || 
-                          (item?.dt ? new Date(item.dt * 1000).toLocaleDateString() : null) || 
-                          new Date().toLocaleDateString();
-
-    const resolvePreviousItem = () => {
-        if (prevItem) return prevItem;
-        if (typeof forecastData !== "undefined" && Array.isArray(forecastData)) {
-            const idx = forecastData.findIndex(d => (d.dateStr || d.date) === extractedDate);
-            if (idx > 0) return forecastData[idx - 1];
-        }
-        return item?.yesterdayItem || item?.prevDay || null;
-    };
-
-    const resolveNextItem = () => {
-        if (nextItem) return nextItem;
-        if (typeof forecastData !== "undefined" && Array.isArray(forecastData)) {
-            const idx = forecastData.findIndex(d => (d.dateStr || d.date) === extractedDate);
-            if (idx >= 0 && idx < forecastData.length - 1) return forecastData[idx + 1];
-        }
-        return item?.tomorrowItem || item?.nextDay || null;
-    };
-
-    const effectivePrevItem = resolvePreviousItem();
-    const effectiveNextItem = resolveNextItem();
-
-    const getPrevLowest = () => {
-        const prev = effectivePrevItem;
-        if (prev) {
-            if (Array.isArray(prev.tempRange) && prev.tempRange.length > 0) return Math.min(...prev.tempRange);
-            if (Array.isArray(prev.temps) && prev.temps.length > 0) return Math.min(...prev.temps);
-            if (prev.tempLowMin !== undefined) return prev.tempLowMin;
-            if (prev.tempMin !== undefined) return prev.tempMin;
-            if (prev.tempLow !== undefined) return prev.tempLow;
-        }
-        return item?.tempLow ?? 50;
-    };
-
-    const getNextLowest = () => {
-        const next = effectiveNextItem;
-        if (next) {
-            if (Array.isArray(next.tempRange) && next.tempRange.length > 0) return Math.min(...next.tempRange);
-            if (Array.isArray(next.temps) && next.temps.length > 0) return Math.min(...next.temps);
-            if (next.tempLowMin !== undefined) return next.tempLowMin;
-            if (next.tempMin !== undefined) return next.tempMin;
-            if (next.tempLow !== undefined) return next.tempLow;
-        }
-        return item?.tempLow ?? 50;
-    };
-
-    const morningLow = getPrevLowest();
-    const todayLow = item?.tempLow ?? 50;
-    const todayHigh = item?.tempHigh ?? 75;
-    const tomorrowLow = getNextLowest();
-    const prevHigh = (effectivePrevItem && effectivePrevItem.tempHigh !== undefined) ? effectivePrevItem.tempHigh : todayHigh;
-
-    let midnightStartTemp = Math.round((prevHigh + morningLow) / 2);
-    let midnightEndTemp = Math.round((todayHigh + tomorrowLow) / 2);
-    const isWinterInversion = item?.isWinterInversion || (todayHigh < morningLow);
-
-    const getDiurnalTemp = (min) => {
-        if (isWinterInversion) {
-            const tStart = Math.round((prevHigh + todayHigh) / 2);
-            if (min <= 360) return Math.round(smoothStep(tStart, todayHigh, min / 360));
-            else if (min <= 900) return Math.round(smoothStep(todayHigh, todayLow, (min - 360) / 540));
-            else return Math.round(smoothStep(todayLow, midnightEndTemp, (min - 900) / 539));
-        } else {
-            if (min <= 360) return Math.round(smoothStep(midnightStartTemp, morningLow, min / 360));
-            else if (min <= 900) return Math.round(smoothStep(morningLow, todayHigh, (min - 360) / 540));
-            else return Math.round(smoothStep(todayHigh, midnightEndTemp, (min - 900) / 539));
-        }
-    };
-
-    const peakMin = 15 * 60;
-    const getDiurnalFeelsLike = (min) => getDiurnalTemp(min) + (item?.feelsLikeOffset || 0);
-
-    const prevWind = (effectivePrevItem && effectivePrevItem.windMph !== undefined) ? effectivePrevItem.windMph : (item?.windMph || 10);
-    const nextWind = (effectiveNextItem && effectiveNextItem.windMph !== undefined) ? effectiveNextItem.windMph : (item?.windMph || 10);
-    const getDiurnalWind = (min) => {
-        const curWind = item?.windMph || 10;
-        const baseWind = (min <= 360) ? smoothStep((prevWind + curWind) / 2, curWind, min / 360) :
-                         (min <= 900) ? curWind :
-                         smoothStep(curWind, (curWind + nextWind) / 2, (min - 900) / 539);
-        const windRad = ((min - peakMin) / 1440) * Math.PI * 2;
-        return Math.round(baseWind * (0.6 + 0.4 * ((Math.cos(windRad) + 1) / 2)));
-    };
-
-    const prevGust = (effectivePrevItem && effectivePrevItem.gustMph !== undefined) ? effectivePrevItem.gustMph : (item?.gustMph || 15);
-    const nextGust = (effectiveNextItem && effectiveNextItem.gustMph !== undefined) ? effectiveNextItem.gustMph : (item?.gustMph || 15);
-    const getDiurnalGust = (min) => {
-        const curGust = item?.gustMph || 15;
-        const baseGust = (min <= 360) ? smoothStep((prevGust + curGust) / 2, curGust, min / 360) :
-                         (min <= 900) ? curGust :
-                         smoothStep(curGust, (curGust + nextGust) / 2, (min - 900) / 539);
-        const windRad = ((min - peakMin) / 1440) * Math.PI * 2;
-        return Math.round(baseGust * (0.65 + 0.35 * ((Math.cos(windRad) + 1) / 2)));
-    };
-
-    const prevDos = (effectivePrevItem && effectivePrevItem.score !== undefined) ? effectivePrevItem.score : (item?.score || 50);
-    const nextDos = (effectiveNextItem && effectiveNextItem.score !== undefined) ? effectiveNextItem.score : (item?.score || 50);
-    const getDiurnalDos = (min) => {
-        const curScore = item?.score || 50;
-        const baseScore = (min <= 360) ? smoothStep((prevDos + curScore) / 2, curScore, min / 360) :
-                          (min <= 900) ? curScore :
-                          smoothStep(curScore, (curScore + nextDos) / 2, (min - 900) / 539);
-        const dosTempRad = ((min - peakMin) / 1440) * Math.PI * 2;
-        return Math.round(baseScore * (0.5 + 0.5 * ((Math.cos(dosTempRad) + 1) / 2)));
-    };
-
-    const hasEvents = Array.isArray(item?.overrideEvents) && item.overrideEvents.length > 0;
-    const sortedEvents = hasEvents ? [...item.overrideEvents].sort((a, b) => a.minute - b.minute) : [];
-
-    const getInterpolatedVal = (min, key, fallbackFn) => {
-        if (!hasEvents) return fallbackFn(min);
-        const exact = sortedEvents.find(e => e.minute === min && e[key] !== undefined);
-        if (exact) return exact[key];
-        const prevEvent = [...sortedEvents].reverse().find(e => e.minute <= min && e[key] !== undefined);
-        const nextEvent = sortedEvents.find(e => e.minute >= min && e[key] !== undefined);
-
-        if (prevEvent && nextEvent) {
-            if (prevEvent.minute === nextEvent.minute) return prevEvent[key];
-            const t = (min - prevEvent.minute) / (nextEvent.minute - prevEvent.minute);
-            return Math.round(smoothStep(prevEvent[key], nextEvent[key], t));
-        } else if (prevEvent) {
-            const endVal = fallbackFn(1439);
-            if (min > prevEvent.minute && prevEvent.minute < 1439) {
-                const t = (min - prevEvent.minute) / (1439 - prevEvent.minute);
-                return Math.round(smoothStep(prevEvent[key], endVal, Math.min(1, t)));
-            }
-            return prevEvent[key];
-        } else if (nextEvent) {
-            const startVal = fallbackFn(0);
-            if (min < nextEvent.minute && nextEvent.minute > 0) {
-                const t = min / nextEvent.minute;
-                return Math.round(smoothStep(startVal, nextEvent[key], Math.max(0, t)));
-            }
-            return nextEvent[key];
-        }
-        return fallbackFn(min);
-    };
-
-    let val = null;
-    let label = "";
-
-    switch (mode) {
-        case "temp":
-            val = getInterpolatedVal(m, 'temp', getDiurnalTemp);
-            label = `${val}°F`;
-            break;
-        case "feelsLike":
-            val = getInterpolatedVal(m, 'feelsLike', getDiurnalFeelsLike);
-            label = `Feels Like ${val}°F`;
-            break;
-        case "wind":
-            const w = getInterpolatedVal(m, 'wind', getDiurnalWind);
-            const g = getInterpolatedVal(m, 'gust', getDiurnalGust);
-            val = { speed: w, gust: g };
-            label = `W: ${w} | G: ${g} mph`;
-            break;
-        case "dos":
-            val = getInterpolatedVal(m, 'dos', getDiurnalDos);
-            label = `DOS: ${val}`;
-            break;
-        default:
-            val = getDiurnalTemp(m);
-            label = `${val}`;
-    }
-
-    const getDynamicColor = (v, currentMode) => {
-        if (currentMode === 'wind') {
-            const speed = typeof v === 'object' ? (v.speed || 0) : v;
-            if (speed >= 50) return 'rgba(168, 85, 247, 0.55)';
-            if (speed >= 35) return 'rgba(239, 68, 68, 0.50)';
-            if (speed >= 25) return 'rgba(249, 115, 22, 0.45)';
-            if (speed >= 12) return 'rgba(234, 179, 8, 0.35)';
-            return 'rgba(34, 197, 94, 0.25)';
-        } 
-        if (currentMode === 'dos') {
-            if (v >= 100) return 'rgba(168, 85, 247, 0.60)';
-            if (v >= 70)  return 'rgba(234, 88, 12, 0.55)';
-            if (v >= 40)  return 'rgba(161, 98, 7, 0.45)';
-            if (v >= 20)  return 'rgba(101, 163, 13, 0.35)';
-            return 'rgba(34, 197, 94, 0.25)';
-        }
-        if (currentMode === 'temp' || currentMode === 'feelsLike') {
-            if (v >= 90) return 'rgba(239, 68, 68, 0.55)';
-            if (v >= 75) return 'rgba(249, 115, 22, 0.45)';
-            if (v >= 60) return 'rgba(74, 222, 128, 0.40)';
-            if (v >= 45) return 'rgba(45, 212, 191, 0.35)';
-            return 'rgba(15, 118, 110, 0.30)';
-        }
-        return 'rgba(56, 189, 248, 0.25)';
-    };
-
-    return {
-        value: val,
-        label: label,
-        color: getDynamicColor(val, mode),
-        dateStr: extractedDate
-    };
-}
-
-
 
 /**
  * Extracts and formats date context from graph modal titles, active cards, or dataset items
@@ -2471,328 +2626,38 @@ document.getElementById("weatherMapModalBtn")?.addEventListener("click", () => {
 
   openWeatherMapModal(selectedDayCard, currentMode, selectedDayIndex);
 });
-function getValueFromPlotGraph(params) {
-    const { lat, lon, totalMinutes, item, mode, gridBounds, spatialGridData } = params;
-
-    const validMinute = Math.max(0, Math.min(1439, parseInt(totalMinutes, 10) || 0));
-
-    let spatialMultiplier = 1.0;
-    if (gridBounds && spatialGridData && gridBounds.width && gridBounds.height) {
-        const { north, south, east, west, width, height } = gridBounds;
-        const xNorm = (lon - west) / (east - west);
-        const yNorm = (north - lat) / (north - south);
-
-        if (xNorm >= 0 && xNorm <= 1 && yNorm >= 0 && yNorm <= 1) {
-            const col = Math.min(width - 1, Math.floor(xNorm * width));
-            const row = Math.min(height - 1, Math.floor(yNorm * height));
-            const gridIndex = row * width + col;
-
-            if (spatialGridData[gridIndex] !== undefined) {
-                spatialMultiplier = spatialGridData[gridIndex];
-            }
-        }
-    }
-
-    const dummyCanvas = document.createElement('canvas');
-    dummyCanvas.width = 650;
-    dummyCanvas.height = 400;
-
-    const layer = createRadarGridLayer(
-        dummyCanvas,
-        0,
-        item,
-        mode,
-        params.prevItem || null,
-        params.nextItem || null,
-        validMinute
-    );
-
-    if (!layer || !layer._meta) {
-        return { value: null, label: 'N/A', lat, lon, minute: validMinute };
-    }
-
-    let finalValue = layer._meta.value;
-    if (typeof finalValue === 'number') {
-        finalValue = Math.round(finalValue * spatialMultiplier);
-    } else if (typeof finalValue === 'object' && finalValue !== null) {
-        finalValue = {
-            speed: Math.round((finalValue.speed || 0) * spatialMultiplier),
-            gust: Math.round((finalValue.gust || 0) * spatialMultiplier)
-        };
-    }
-
-    return {
-        lat: lat,
-        lon: lon,
-        minute: validMinute,
-        timeStr: layer._meta.timeStr,
-        dateStr: layer._meta.dateStr,
-        mode: mode,
-        value: finalValue,
-        color: layer._meta.color,
-        formattedLabel: layer._meta.label
-    };
-}
-
-// 3. Global Application Controller & State
-window.RadarState = {
-    map: null,
-    canvas: document.createElement('canvas'),
-    currentLayer: null,
-    currentItem: {
-        dateStr: "2026-08-27",
-        tempLow: 58,
-        tempHigh: 84,
-        windMph: 12,
-        gustMph: 22,
-        score: 65,
-        feelsLikeOffset: 2
-    },
-    currentMode: 'temp',
-    currentMinute: 720,
-    selectedPoint: { lat: 47.6858, lon: -92.7723 }
-};
-
-window.RadarState.canvas.width = 650;
-window.RadarState.canvas.height = 400;
-
-window.updateActiveRadarLayer = (overrides = {}) => {
-    const s = window.RadarState;
-
-    if (overrides.item !== undefined) s.currentItem = overrides.item;
-    if (overrides.mode !== undefined) s.currentMode = overrides.mode;
-    if (overrides.minute !== undefined) s.currentMinute = overrides.minute;
-
-    if (!s.map || !s.currentItem) return;
-
-    if (s.currentLayer) {
-        s.map.removeLayer(s.currentLayer);
-    }
-
-    const newLayer = createRadarGridLayer(
-        s.canvas, 
-        0, 
-        s.currentItem, 
-        s.currentMode, 
-        overrides.prevItem || null, 
-        overrides.nextItem || null, 
-        s.currentMinute
-    );
-
-    if (newLayer) {
-        newLayer.addTo(s.map);
-        s.currentLayer = newLayer;
-    }
-
-    // Refresh display values on sampling dashboard
-    updateDashboard();
-};
-
-function updateDashboard() {
-    const s = window.RadarState;
-    if (!s.selectedPoint) return;
-
-    const sampledData = getValueFromPlotGraph({
-        lat: s.selectedPoint.lat,
-        lon: s.selectedPoint.lon,
-        totalMinutes: s.currentMinute,
-        item: s.currentItem,
-        mode: s.currentMode
-    });
-
-    document.getElementById('timeDisplay').innerText = sampledData.timeStr;
-    document.getElementById('dispCoords').innerText = `${sampledData.lat.toFixed(3)}, ${sampledData.lon.toFixed(3)}`;
-    document.getElementById('dispTime').innerText = sampledData.timeStr;
-    document.getElementById('dispLabel').innerText = sampledData.formattedLabel;
-
-    if (typeof sampledData.value === 'object') {
-        document.getElementById('dispValue').innerText = `Speed: ${sampledData.value.speed} / Gust: ${sampledData.value.gust}`;
-    } else {
-        document.getElementById('dispValue').innerText = sampledData.value;
-    }
-}
-// 2. Optimized Layer Factory using shared interpolation helper
-function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, nextItem = null, forcedMinute = null) {
-    if (!canvas) return null;
-    const rect = canvas.getBoundingClientRect();
-    const width = canvas.width;
-
-    const scaleFactor = Math.min(width / 650, 1.5);
-    const padLeft = Math.round(45 * scaleFactor);
-    const padRight = Math.round(20 * scaleFactor);
-    const graphWidth = width - padLeft - padRight;
-
-    let hoveredMinute;
-    
-    if (forcedMinute !== null && forcedMinute !== undefined) {
-        hoveredMinute = Math.max(0, Math.min(1439, parseInt(forcedMinute, 10) || 0));
-    } else if (clientX !== null && clientX !== undefined) {
-        const x = clientX - rect.left;
-        if (x < padLeft || x > width - padRight) {
-            if (clientX === 0) hoveredMinute = 0;
-            else return null;
-        } else {
-            const ratio = Math.max(0, Math.min(1, (x - padLeft) / graphWidth));
-            hoveredMinute = Math.round(ratio * 1439);
-        }
-    } else {
-        hoveredMinute = 0;
-    }
-
-    const h = Math.floor(hoveredMinute / 60);
-    const m = Math.round(hoveredMinute % 60);
-    const timeStr = `${h % 12 || 12}:${m < 10 ? '0' : ''}${m}${h >= 12 ? 'PM' : 'AM'}`;
-
-    // Dynamic Leaflet GridLayer extending per-tile coordinates
-    const RadarGridLayerClass = L.GridLayer.extend({
-        createTile: function(coords) {
-            const tile = document.createElement('canvas');
-            const size = this.getTileSize();
-            tile.width = size.x;
-            tile.height = size.y;
-            const ctx = tile.getContext('2d');
-
-            // Calculate geographic coordinates for spatial variation per tile
-            const tileNW = this._tileCoordsToNWLatLng(coords);
-            
-            // Sample interpolated values using spatial coords (if supported) or time offset
-            const tileSampledData = getInterpolatedValuesAt(
-                item, 
-                hoveredMinute, 
-                mode, 
-                prevItem, 
-                nextItem, 
-                tileNW.lat, 
-                tileNW.lng
-            );
-
-            // Render dynamic color per tile location
-            ctx.fillStyle = tileSampledData.color || '#3388ff';
-            ctx.fillRect(0, 0, size.x, size.y);
-
-            // Tile grid border
-            ctx.strokeStyle = 'rgba(255, 255, 255, 0.08)';
-            ctx.strokeRect(0, 0, size.x, size.y);
-
-            return tile;
-        },
-
-        // Conversion helper from tile grid coords to geographic Lat/Lng
-        _tileCoordsToNWLatLng: function(coords) {
-            const map = this._map;
-            const tileSize = this.getTileSize();
-            const nwPoint = coords.scaleBy(tileSize);
-            return map ? map.unproject(nwPoint, coords.z) : { lat: 0, lng: 0 };
-        }
-    });
-
-    const activeGridLayer = new RadarGridLayerClass({
-        tileSize: 256,
-        updateWhenIdle: false
-    });
-
-    const rootSampledData = getInterpolatedValuesAt(item, hoveredMinute, mode, prevItem, nextItem);
-
-    activeGridLayer._meta = {
-        value: rootSampledData.value,
-        label: rootSampledData.label,
-        minute: hoveredMinute,
-        timeStr: timeStr,
-        dateStr: rootSampledData.dateStr,
-        color: rootSampledData.color,
-        mode: mode
-    };
-
-    return activeGridLayer;
-}
-
-// 3. Forecast Card Selection & Time-Slider Sync Handler
-function updateForecastUI(selectedItem, currentMinute, mode, mapInstance, currentLayerRef) {
-    const sampled = getInterpolatedValuesAt(selectedItem, currentMinute, mode);
-    
-    const timeSlider = document.getElementById('timeSlider');
-    if (timeSlider) timeSlider.value = currentMinute;
-    
-    const dateDisplay = document.getElementById('selectedDateLabel');
-    if (dateDisplay) dateDisplay.textContent = sampled.dateStr;
-
-    const valueLabel = document.getElementById('currentValueLabel');
-    if (valueLabel) {
-        valueLabel.textContent = sampled.label;
-        valueLabel.style.color = sampled.color;
-    }
-
-    if (mapInstance) {
-        // Remove existing layer safely
-        if (currentLayerRef && mapInstance.hasLayer(currentLayerRef)) {
-            mapInstance.removeLayer(currentLayerRef);
-        }
-
-        // Generate and mount new layer
-        const newLayer = createRadarGridLayer(
-            document.getElementById('radarCanvas'), 
-            null, 
-            selectedItem, 
-            mode, 
-            null, 
-            null, 
-            currentMinute
-        );
-
-        if (newLayer) {
-            newLayer.addTo(mapInstance);
-            // Force Leaflet canvas cache invalidation
-            if (typeof newLayer.redraw === 'function') {
-                newLayer.redraw();
-            }
-            return newLayer;
-        }
-    }
-    return currentLayerRef;
-}
-
 function initTimezoneSyncedRadarModal(mapModalElement, forecastItem, defaultMode = 'temp', dayIndex = 0) {
+  // 1. Setup or reuse Leaflet Map inside '#leafletMap'
   let mapContainer = document.getElementById('leafletMap');
   if (!mapContainer) return;
 
+  // Initialize radar state object if not yet defined
   window._radarState = window._radarState || {};
 
-  // 1. Setup Leaflet Map defaulting to Satellite without options
   if (!window._radarState.map) {
-    const coords = resolveRadarCoordinates(forecastItem);
-
-    // Esri World Imagery (Satellite) base layer
-    const satelliteLayer = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
-      maxZoom: 19,
-      attribution: 'Tiles &copy; Esri &mdash; Source: Esri, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-EGP, and the GIS User Community'
-    });
-
-    // Label overlay for Satellite view
-    const labelsOverlay = L.tileLayer('https://{s}.basemaps.cartocdn.com/light_only_labels/{z}/{x}/{y}{r}.png', {
-      maxZoom: 19,
-      attribution: '&copy; CARTO'
-    });
-
-    // Group satellite imagery and text labels into a single default layer
-    const defaultSatelliteView = L.layerGroup([satelliteLayer, labelsOverlay]);
+    // Default coordinates (falls back to Tower, MN area or lat/lon provided in item)
+    const lat = forecastItem?.lat ?? forecastItem?.latitude ?? 47.8105;
+    const lon = forecastItem?.lon ?? forecastItem?.longitude ?? -92.2785;
 
     window._radarState.map = L.map('leafletMap', {
       zoomControl: true,
-      attributionControl: false,
-      layers: [defaultSatelliteView] // Satellite view locked as default base layer
-    }).setView([coords.lat, coords.lon], 7);
+      attributionControl: false
+    }).setView([lat, lon], 7);
 
+    // Standard Leaflet Map Tile Layer (OpenStreetMap)
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 19,
+      attribution: '&copy; OpenStreetMap contributors'
+    }).addTo(window._radarState.map);
   } else {
     window._radarState.map.invalidateSize();
-    const coords = resolveRadarCoordinates(forecastItem);
-    window._radarState.map.panTo([coords.lat, coords.lon]);
   }
 
   window._radarState.currentItem = forecastItem;
   window._radarState.currentMode = defaultMode;
   window._radarState.canvas = document.querySelector('canvas') || mapContainer.querySelector('canvas');
 
-  // 2. Extract Date dynamically
+  // 2. Extract Date dynamically (falls back to forecastItem values or current date)
   const extractedDate = forecastItem?.dateStr || 
                         forecastItem?.date || 
                         forecastItem?.day || 
@@ -2805,28 +2670,26 @@ function initTimezoneSyncedRadarModal(mapModalElement, forecastItem, defaultMode
     dateDisplay.textContent = extractedDate;
   }
 
-  // 3. Connect Slider & Throttled Time Updates
+  // 3. Connect Slider & Render Initial Minute State
   const timelineSlider = document.getElementById("radarTimeSlider") || document.querySelector('input[type="range"]');
   const timeDisplayLabel = document.getElementById("radarTimeLabel") || document.getElementById('timeDisplayLabel');
 
+  const initialMinute = timelineSlider ? parseInt(timelineSlider.value, 10) || 0 : 0;
+  renderRadarLayerAtMinute(initialMinute);
+
   let newSlider = timelineSlider;
   if (timelineSlider) {
+    // Clone node to strip old listeners and prevent duplicate firing
     newSlider = timelineSlider.cloneNode(true);
     timelineSlider.parentNode.replaceChild(newSlider, timelineSlider);
 
-    let animationFrameId = null;
     newSlider.addEventListener('input', (e) => {
       const sliderMinute = parseInt(e.target.value, 10);
-      if (animationFrameId) cancelAnimationFrame(animationFrameId);
-      animationFrameId = requestAnimationFrame(() => {
-        renderRadarLayerAtMinute(sliderMinute);
-      });
+      renderRadarLayerAtMinute(sliderMinute);
     });
   }
 
-  const initialMinute = newSlider ? parseInt(newSlider.value, 10) || 0 : 0;
-  renderRadarLayerAtMinute(initialMinute);
-
+  // Global helper function for timeline drawing triggers
   window.triggerRadarRedraw = function(forcedMin = null) {
     const currentMin = forcedMin !== null ? forcedMin : (newSlider ? parseInt(newSlider.value, 10) : 0);
     renderRadarLayerAtMinute(currentMin);
@@ -2840,15 +2703,17 @@ function initTimezoneSyncedRadarModal(mapModalElement, forecastItem, defaultMode
 
     if (!activeMap) return;
 
+    // Remove old Leaflet grid layer to avoid overlapping rendering artifacts
     if (window._radarState.radarTileLayer) {
       activeMap.removeLayer(window._radarState.radarTileLayer);
       window._radarState.radarTileLayer = null;
     }
 
+    // Generate fresh grid layer instance using the selected minute
     if (typeof createRadarGridLayer === 'function' && activeCanvas) {
       const updatedLayer = createRadarGridLayer(
         activeCanvas,
-        null,
+        0,
         activeItem,
         activeMode,
         null,
@@ -2858,22 +2723,92 @@ function initTimezoneSyncedRadarModal(mapModalElement, forecastItem, defaultMode
 
       if (updatedLayer) {
         updatedLayer.addTo(activeMap);
-        if (typeof updatedLayer.redraw === 'function') {
-          updatedLayer.redraw();
-        }
         window._radarState.radarTileLayer = updatedLayer;
       }
     }
 
+    // Format time string (e.g. 12:30 PM)
     const h = Math.floor(minute / 60);
     const m = Math.round(minute % 60);
     const timeStr = `${h % 12 || 12}:${m < 10 ? '0' : ''}${m} ${h >= 12 ? 'PM' : 'AM'}`;
-    const tzAbbr = typeof getTimezoneAbbreviation === 'function' ? getTimezoneAbbreviation() : '';
+    const tzAbbr = getTimezoneAbbreviation();
 
     if (timeDisplayLabel) {
       timeDisplayLabel.textContent = `${timeStr} ${tzAbbr}`.trim();
     }
   }
+}
+/**
+ * Coordinate Resolution Helper inside Tile Renderers / Grid Layers
+ */
+function resolveRadarCoordinates(currentItem, dataset = []) {
+  const center = window._radarState && window._radarState.map ? window._radarState.map.getCenter() : null;
+
+  const targetLat = 
+    (currentItem ? currentItem.lat : null) ?? 
+    (dataset[0] ? dataset[0].lat : null) ?? 
+    (window._radarState ? window._radarState.lat : null) ?? 
+    (center ? center.lat : null) ?? 
+    45.3827;
+
+  const targetLon = 
+    (currentItem ? (currentItem.lon ?? currentItem.longitude) : null) ?? 
+    (dataset[0] ? (dataset[0].lon ?? dataset[0].longitude) : null) ?? 
+    (window._radarState ? window._radarState.lon : null) ?? 
+    (center ? center.lng : null) ?? 
+    -93.8761;
+
+  return { lat: targetLat, lon: targetLon };
+}
+/**
+ * Dynamically loads Leaflet.js assets if not present
+ */
+function ensureLeafletLoaded(callback) {
+  if (window.L) { callback(); return; }
+  const link = document.createElement("link");
+  link.rel = "stylesheet"; 
+  link.href = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.css";
+  document.head.appendChild(link);
+  
+  const script = document.createElement("script");
+  script.src = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.js";
+  script.onload = callback;
+  document.head.appendChild(script);
+}
+let activeMapItem = null;
+
+// Global Google Map, Traffic Layer, and transit references for Post-8/25/2026 handling
+let postAugMapInstance = null;
+let postAugTrafficLayer = null;
+
+function ensureGoogleMapsApiLoaded(callback) {
+    if (typeof google !== 'undefined' && typeof google.maps !== 'undefined') {
+        if (typeof callback === 'function') callback();
+        return;
+    }
+
+    if (document.getElementById("dynamicGoogleMapsApiScript")) {
+        const checkInterval = setInterval(() => {
+            if (typeof google !== 'undefined' && typeof google.maps !== 'undefined') {
+                clearInterval(checkInterval);
+                if (typeof callback === 'function') callback();
+            }
+        }, 100);
+        return;
+    }
+
+    const script = document.createElement("script");
+    script.id = "dynamicGoogleMapsApiScript";
+    script.src = "https://maps.googleapis.com/maps/api/js?key=AIzaSyDiM11iTvMj2DBgmXdOUMBBWGHiOaylLHg&libraries=places";
+    script.async = true;
+    script.defer = true;
+    script.onload = () => {
+        if (typeof callback === "function") callback();
+    };
+    script.onerror = () => {
+        console.error("Failed to load Google Maps JavaScript API dynamically.");
+    };
+    document.head.appendChild(script);
 }
 
 function updateTrafficOnTimeSliderAndDayCard(totalMinutes, selectedDateStr = null, mapInstance = null) {
