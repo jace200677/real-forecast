@@ -2223,12 +2223,12 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
 
     const activeTargetMap = (typeof window !== "undefined" && window._radarState && window._radarState.map) ? window._radarState.map : (typeof map !== "undefined" ? map : null);
     
-    // Resolve location
+    // Resolve location (Updated to Saint Joseph, Minnesota defaults)
     const mapCenter = activeTargetMap && typeof activeTargetMap.getCenter === 'function' ? activeTargetMap.getCenter() : null;
     const currentGlobalPoint = (typeof targetZoneOrPoint !== 'undefined' && targetZoneOrPoint) ? targetZoneOrPoint : (window._targetZoneOrPoint || null);
     
-    const centerLat = mapCenter ? mapCenter.lat : (currentGlobalPoint && currentGlobalPoint.lat ? parseFloat(currentGlobalPoint.lat) : 47.80);
-    const centerLon = mapCenter ? mapCenter.lng : (currentGlobalPoint && currentGlobalPoint.lon ? parseFloat(currentGlobalPoint.lon) : -92.37);
+    const centerLat = mapCenter ? mapCenter.lat : (currentGlobalPoint && currentGlobalPoint.lat ? parseFloat(currentGlobalPoint.lat) : 45.5635);
+    const centerLon = mapCenter ? mapCenter.lng : (currentGlobalPoint && currentGlobalPoint.lon ? parseFloat(currentGlobalPoint.lon) : -94.3131);
 
     // Resolve target timezone hierarchy
     const targetTimezone = item?.timezone || item?.tz || 
