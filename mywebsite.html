@@ -3355,7 +3355,7 @@ function ensureGoogleMapsApiLoaded(callback) {
     document.head.appendChild(script);
 }
 function getSelectedDayCardDate(canvas, activeX, item, mode, prevItem, nextItem) {
-    // 1. Resolve base reference date from canvas dataset or fallback to current Central Time (CDT/CST)
+    // 1. Resolve base reference date from canvas dataset or fallback to live current time
     let baseDate = new Date();
     if (canvas && canvas.dataset && canvas.dataset.baseDate) {
         const parsedDatasetDate = new Date(canvas.dataset.baseDate);
@@ -3364,13 +3364,13 @@ function getSelectedDayCardDate(canvas, activeX, item, mode, prevItem, nextItem)
         }
     }
 
-    // Format current base date components to ensure consistent matching across latitude/longitude bounds
+    // Format current base date components to ensure consistent matching across timezones
     const cdtOptions = { timeZone: 'America/Chicago', year: 'numeric', month: 'numeric', day: 'numeric', hour12: false };
     const formatter = new Intl.DateTimeFormat('en-US', cdtOptions);
     
     const getDefaultTodayStr = () => {
         const defaultParts = formatter.formatToParts(baseDate);
-        let defM = '8', defD = '28', defY = '2026';
+        let defM = '', defD = '', defY = '';
         defaultParts.forEach(p => {
             if (p.type === 'month') defM = p.value;
             if (p.type === 'day') defD = p.value;
