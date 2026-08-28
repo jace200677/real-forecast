@@ -2770,9 +2770,38 @@ function initTimezoneSyncedRadarModal(mapModalElement, forecastItem, defaultMode
     renderRadarLayerAtMinute(currentMin);
   };
 }
-/**
- * Coordinate Resolution Helper inside Tile Renderers / Grid Layers
- */
+function renderRadarLayerAtMinute(minute) {
+  const state = window._radarState;
+  if (!state || !state.map) return;
+
+  // 1. Remove old radar layer if it exists to prevent stacking or missing tiles
+  if (state.currentLayer) {
+    state.map.removeLayer(state.currentLayer);
+  }
+
+  // 2. Create the new grid layer using the current item, mode, and minute
+  const newLayer = createRadarGridLayer(
+    state.canvas, 
+    null, 
+    state.currentItem, 
+    state.currentMode, 
+    null, 
+    null, 
+    minute
+  );
+
+  if (newLayer) {
+    // 3. Add the layer directly to the map and store reference
+    newLayer.addTo(state.map);
+    state.currentLayer = newLayer;
+
+    // 4. Update UI labels/displays if available
+    const timeDisplayLabel = document.getElementById("radarTimeLabel") || document.getElementById('timeDisplayLabel');
+    if (timeDisplayLabel && newLayer._meta) {
+      timeDisplayLabel.textContent = newLayer._meta.timeStr;
+    }
+  }
+}
 function resolveRadarCoordinates(currentItem, dataset = []) {
   const center = window._radarState && window._radarState.map ? window._radarState.map.getCenter() : null;
 
