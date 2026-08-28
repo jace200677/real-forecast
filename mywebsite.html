@@ -3415,12 +3415,59 @@ function renderRadarLayerAtMinute(minute) {
   const state = window._radarState;
   if (!state || !state.map) return;
 
-  // 1. Remove old radar layer if it exists to prevent stacking or missing tiles
+  // 1. Get the active day card element
+  const activeCard = document.querySelector(
+    '.day-card.active, .forecast-day-card.active, .day-tab.active, .swiper-slide-active, [data-selected="true"], [aria-selected="true"], .selected-day, .history-card.active'
+  );
+
+  // 2. Extract date from the active card attributes or text content
+  let activeDateStr = null;
+  if (activeCard) {
+    activeDateStr = activeCard.dataset.date || activeCard.dataset.dateStr || activeCard.dataset.rawDate || activeCard.getAttribute('data-date');
+    if (!activeDateStr) {
+      const match = (activeCard.innerText || activeCard.textContent || '').match(/(\d{1,2}\/\d{1,2}\/\d{2,4})|(\d{4}-\d{2}-\d{2})/);
+      if (match) activeDateStr = match[0];
+    }
+  }
+
+  // 3. Keep state.currentItem synchronized with the active date
+  if (activeDateStr) {
+    state.selectedDate = activeDateStr;
+
+    // Search available datasets for an item matching the active card date
+    const datasets = [
+      state.dataset,
+      typeof forecastData !== 'undefined' ? forecastData : null,
+      window.currentWeatherData?.daily,
+      window.currentWeatherData?.forecast,
+      window.historyData,
+      window._historyData
+    ].filter(Boolean);
+
+    let matchedItem = null;
+    for (const arr of datasets) {
+      if (Array.isArray(arr)) {
+        matchedItem = arr.find(d => {
+          const dStr = d.dateStr || d.date || d.rawDate;
+          return dStr && (dStr === activeDateStr || dStr.includes(activeDateStr));
+        });
+        if (matchedItem) break;
+      }
+    }
+
+    if (matchedItem) {
+      state.currentItem = matchedItem;
+    } else if (state.currentItem) {
+      state.currentItem = { ...state.currentItem, dateStr: activeDateStr };
+    }
+  }
+
+  // 4. Remove old radar layer to prevent stacking
   if (state.currentLayer) {
     state.map.removeLayer(state.currentLayer);
   }
 
-  // 2. Create the new grid layer using the current item, mode, and minute
+  // 5. Create new grid layer with synchronized item date
   const newLayer = createRadarGridLayer(
     state.canvas, 
     null, 
@@ -3432,11 +3479,11 @@ function renderRadarLayerAtMinute(minute) {
   );
 
   if (newLayer) {
-    // 3. Add the layer directly to the map and store reference
+    // 6. Add layer to the map and store reference
     newLayer.addTo(state.map);
     state.currentLayer = newLayer;
 
-    // 4. Update UI labels/displays if available
+    // 7. Update UI label displays
     const timeDisplayLabel = document.getElementById("radarTimeLabel") || document.getElementById('timeDisplayLabel');
     if (timeDisplayLabel && newLayer._meta) {
       timeDisplayLabel.textContent = newLayer._meta.timeStr;
