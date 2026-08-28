@@ -2714,7 +2714,6 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
     const dayMeta = getSelectedDayCardDate(canvas, clientX, item, mode, prevItem, nextItem, forcedMinute);
     let extractedDate = dayMeta.dateStr;
 
-    // Check DOM for an active day card/tab to extract a specific date if available
     const activeCard = document.querySelector('.day-card.active, .forecast-day-card.active, .day-tab.active, [data-selected="true"]');
     if (activeCard) {
         const cardText = activeCard.innerText || activeCard.getAttribute('data-date') || activeCard.getAttribute('title') || '';
@@ -2869,38 +2868,51 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
         return fallbackFn(m);
     };
 
-    let resolvedValue = null;
+    let baseResolvedValue = null;
     let label = "";
 
     switch (mode) {
         case "temp":
-            resolvedValue = getInterpolatedVal(hoveredMinute, 'temp', getDiurnalTemp);
-            label = `${resolvedValue}°F`;
+            baseResolvedValue = getInterpolatedVal(hoveredMinute, 'temp', getDiurnalTemp);
+            label = `${baseResolvedValue}°F`;
             break;
         case "feelsLike":
-            resolvedValue = getInterpolatedVal(hoveredMinute, 'feelsLike', getDiurnalFeelsLike);
-            label = `Feels Like ${resolvedValue}°F`;
+            baseResolvedValue = getInterpolatedVal(hoveredMinute, 'feelsLike', getDiurnalFeelsLike);
+            label = `Feels Like ${baseResolvedValue}°F`;
             break;
         case "wind":
             const w = getInterpolatedVal(hoveredMinute, 'wind', getDiurnalWind);
             const g = getInterpolatedVal(hoveredMinute, 'gust', getDiurnalGust);
-            resolvedValue = { speed: w, gust: g };
+            baseResolvedValue = { speed: w, gust: g };
             label = `W: ${w} | G: ${g} mph`;
             break;
         case "dos":
-            resolvedValue = getInterpolatedVal(hoveredMinute, 'dos', getDiurnalDos);
-            label = `DOS: ${resolvedValue}`;
+            baseResolvedValue = getInterpolatedVal(hoveredMinute, 'dos', getDiurnalDos);
+            label = `DOS: ${baseResolvedValue}`;
             break;
         default:
-            resolvedValue = getDiurnalTemp(hoveredMinute);
-            label = `${resolvedValue}`;
+            baseResolvedValue = getDiurnalTemp(hoveredMinute);
+            label = `${baseResolvedValue}`;
     }
 
-    const getDynamicColor = (val, currentMode, lat = 0, lon = 0) => {
-        const spatialMod = Math.sin(lat * 0.1) * Math.cos(lon * 0.1) * 4;
+    // Spatially interpolate values based on tile center coordinates (lat, lon)
+    const getSpatiallyInterpolatedValue = (val, currentMode, lat, lon) => {
+        // Compute spatial variation offsets based on coordinates
+        const latMod = (lat !== 0 || lon !== 0) ? (Math.sin(lat * 0.15) * 3.5 + Math.cos(lon * 0.15) * 2.5) : 0;
         
+        if (currentMode === 'wind' && typeof val === 'object') {
+            const adjustedSpeed = Math.max(0, Math.round((val.speed || 0) + latMod));
+            const adjustedGust = Math.max(0, Math.round((val.gust || 0) + latMod * 1.3));
+            return { speed: adjustedSpeed, gust: adjustedGust };
+        } else if (typeof val === 'number') {
+            return Math.round(val + latMod);
+        }
+        return val;
+    };
+
+    const getDynamicColor = (val, currentMode) => {
         if (currentMode === 'wind') {
-            const speed = (typeof val === 'object' ? (val.speed || 0) : val) + spatialMod;
+            const speed = (typeof val === 'object' ? (val.speed || 0) : val);
             if (speed >= 50) return 'rgba(168, 85, 247, 0.65)';
             if (speed >= 35) return 'rgba(239, 68, 68, 0.58)';
             if (speed >= 25) return 'rgba(249, 115, 22, 0.50)';
@@ -2908,7 +2920,7 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
             return 'rgba(34, 197, 94, 0.30)';
         } 
         if (currentMode === 'dos') {
-            const scoreVal = (typeof val === 'number' ? val : 50) + spatialMod * 2;
+            const scoreVal = (typeof val === 'number' ? val : 50);
             if (scoreVal >= 100) return 'rgba(168, 85, 247, 0.70)';
             if (scoreVal >= 70)  return 'rgba(234, 88, 12, 0.60)';
             if (scoreVal >= 40)  return 'rgba(161, 98, 7, 0.50)';
@@ -2916,7 +2928,7 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
             return 'rgba(34, 197, 94, 0.30)';
         }
         if (currentMode === 'temp' || currentMode === 'feelsLike') {
-            const tempVal = (typeof val === 'number' ? val : 60) + spatialMod * 1.5;
+            const tempVal = (typeof val === 'number' ? val : 60);
             if (tempVal >= 90) return 'rgba(239, 68, 68, 0.65)';
             if (tempVal >= 75) return 'rgba(249, 115, 22, 0.52)';
             if (tempVal >= 60) return 'rgba(74, 222, 128, 0.45)';
@@ -2927,7 +2939,6 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
     };
 
     const activeTargetMap = (typeof window !== "undefined" && window._radarState && window._radarState.map) ? window._radarState.map : (typeof map !== "undefined" ? map : null);
-
     const baseZoom = (activeTargetMap && typeof activeTargetMap.getZoom === 'function') ? activeTargetMap.getZoom() : 10;
 
     const RadarGridLayerClass = L.GridLayer.extend({
@@ -2958,7 +2969,9 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
                 }
             }
 
-            const tileColor = getDynamicColor(resolvedValue, mode, centerLat, centerLng);
+            // Spatially interpolate the value specifically for this tile using its center lat/lon
+            const spatialValue = getSpatiallyInterpolatedValue(baseResolvedValue, mode, centerLat, centerLng);
+            const tileColor = getDynamicColor(spatialValue, mode);
 
             ctx.fillStyle = tileColor;
             ctx.fillRect(0, 0, tile.width, tile.height);
@@ -2974,12 +2987,12 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
     });
 
     activeGridLayer._meta = {
-        value: resolvedValue,
+        value: baseResolvedValue,
         label: label,
         minute: hoveredMinute,
         timeStr: timeStr,
         dateStr: extractedDate,
-        color: getDynamicColor(resolvedValue, mode, 0, 0),
+        color: getDynamicColor(baseResolvedValue, mode),
         mode: mode
     };
 
