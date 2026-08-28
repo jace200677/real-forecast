@@ -2216,13 +2216,12 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
     const lat = mapCenter ? mapCenter.lat : (currentGlobalPoint && currentGlobalPoint.lat ? parseFloat(currentGlobalPoint.lat) : 47.80);
     const lon = mapCenter ? mapCenter.lng : (currentGlobalPoint && currentGlobalPoint.lon ? parseFloat(currentGlobalPoint.lon) : -92.37);
 
-    // Resolve target timezone hierarchy (item -> point -> state -> browser fallback)
+    // Resolve target timezone hierarchy
     const targetTimezone = item?.timezone || item?.tz || 
                            currentGlobalPoint?.timezone || currentGlobalPoint?.tz || 
                            window._radarState?.timezone || 
                            (typeof Intl !== 'undefined' && Intl.DateTimeFormat ? Intl.DateTimeFormat().resolvedOptions().timeZone : 'UTC');
 
-    // Extract timezone abbreviation (e.g. CDT, EDT, PST)
     const getTimezoneAbbr = (dateObj, timeZoneStr) => {
         try {
             const parts = new Intl.DateTimeFormat('en-US', {
@@ -2236,7 +2235,6 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
         }
     };
 
-    // Format current date in target timezone as YYYY-MM-DD fallback
     const getTargetTzDateStr = (timeZoneStr) => {
         try {
             return new Intl.DateTimeFormat('en-CA', { timeZone: timeZoneStr }).format(new Date());
@@ -2245,7 +2243,6 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
         }
     };
 
-    // Resolve minute position from forced value, client X interaction, slider DOM, window state, or system time
     let hoveredMinute = null;
     if (forcedMinute !== null && forcedMinute !== undefined) {
         const parsedMinute = safeNum(forcedMinute) ?? 0;
@@ -2271,7 +2268,6 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
         }
     }
 
-    // Extract active card metrics & selected date context from DOM
     let extractedDate = item?.dateStr || item?.date || item?.rawDate || getTargetTzDateStr(targetTimezone);
     let cardMetrics = {};
     const activeCard = document.querySelector('.day-card.active, .forecast-day-card.active, .day-tab.active, .swiper-slide-active, [data-selected="true"], [aria-selected="true"], .selected-day, .history-card.active');
@@ -2312,7 +2308,6 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
         };
     }
 
-    // Built-in forecast preset with hourly override events
     const buildForecastData = [
         {
             dateStr: "8/23/2026", score: 75, tempHigh: 82, tempLow: 60, windMph: 8, gustMph: 14, humidity: 55, pressure: 29.95, uvIndex: 7, precipChance: 10,
@@ -2416,7 +2411,6 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
         }
     ];
 
-    // Universal dataset search
     const globalDataSources = [
         typeof forecastData !== "undefined" ? forecastData : null,
         window._radarState?.dataset,
@@ -2624,7 +2618,6 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
         return Math.round(smoothStep(resolvedPrecip, (resolvedPrecip + nextPrecip) / 2, (m - 900) / 539));
     };
 
-    // Custom override events handling
     const rawEvents = Array.isArray(item?.overrideEvents) ? item.overrideEvents : 
                       (Array.isArray(item?.events) ? item.events : []);
 
@@ -2654,7 +2647,6 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
 
     const hasEvents = sortedEvents.length > 0;
 
-    // Extract exact values from hourly arrays
     const getValFromHourlyArray = (arr, minute, key = null) => {
         if (!Array.isArray(arr) || arr.length === 0) return null;
         const normMin = Math.max(0, Math.min(1439, minute));
@@ -2690,7 +2682,6 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
         return smoothStep(val0, val1, t);
     };
 
-    // Full Interpolation Engine
     const getInterpolatedVal = (m, primaryKeys, fallbackFn, hourlyArrayKeys = []) => {
         const keys = Array.isArray(primaryKeys) ? primaryKeys : [primaryKeys];
 
@@ -2823,20 +2814,14 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
         }
     }
 
-    /**
-     * Spatially interpolates a base value across latitude and longitude fields.
-     * Incorporates trigonometric micro-variations and scale-awareness.
-     */
     const getNwsSpatiallyInterpolatedValue = (val, currentMode, targetLat, targetLon, centerZoom) => {
         if (val === null || val === undefined) return val;
         
-        // Compute delta off original target center
         const dLat = targetLat - lat;
         const dLon = targetLon - lon;
         
         const zoomFactor = Math.max(0.2, 1.2 - (centerZoom * 0.08));
         
-        // Multi-axis geographical gradient factors across Lat and Lon
         const latGradient = Math.sin(targetLat * 0.35) * 3.2;
         const lonGradient = Math.cos(targetLon * 0.35) * 2.8;
         const diagonalGradient = Math.sin((targetLat + targetLon) * 0.15) * 1.5;
@@ -2874,6 +2859,7 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
         return `rgba(${r}, ${g}, ${b}, ${a})`;
     };
 
+    // ALIGNED DYNAMIC COLOR FUNCTION (Full Fix for Values/Colors Mismatch)
     const getDynamicColor = (val, currentMode) => {
         const mType = (currentMode || "").toLowerCase();
 
@@ -2892,52 +2878,51 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
 
         if (mType.includes('wind') || mType.includes('gust')) {
             return interpolateStops(val, [
-                { threshold: 0,  color: 'rgba(115, 130, 205, 0.70)' },
-                { threshold: 6,  color: 'rgba(95, 175, 215, 0.65)' },
-                { threshold: 10, color: 'rgba(65, 195, 185, 0.60)' },
+                { threshold: 0,  color: 'rgba(115, 130, 205, 0.50)' },
+                { threshold: 10, color: 'rgba(65, 195, 185, 0.55)' },
                 { threshold: 20, color: 'rgba(55, 170, 95, 0.60)' },
-                { threshold: 35, color: 'rgba(195, 205, 55, 0.65)' },
+                { threshold: 30, color: 'rgba(195, 205, 55, 0.65)' },
                 { threshold: 45, color: 'rgba(235, 155, 45, 0.70)' },
-                { threshold: 70, color: 'rgba(200, 45, 55, 0.75)' }
+                { threshold: 60, color: 'rgba(200, 45, 55, 0.75)' }
             ], 0);
         } 
 
         if (mType === 'dos') {
             return interpolateStops(val, [
-                { threshold: 0,   color: 'rgba(34, 197, 94, 0.35)' },
-                { threshold: 20,  color: 'rgba(101, 163, 13, 0.45)' },
-                { threshold: 40,  color: 'rgba(161, 98, 7, 0.55)' },
-                { threshold: 70,  color: 'rgba(234, 88, 12, 0.65)' },
-                { threshold: 100, color: 'rgba(168, 85, 247, 0.75)' }
+                { threshold: 0,   color: 'rgba(168, 85, 247, 0.75)' },
+                { threshold: 30,  color: 'rgba(234, 88, 12, 0.65)' },
+                { threshold: 60,  color: 'rgba(161, 98, 7, 0.55)' },
+                { threshold: 80,  color: 'rgba(101, 163, 13, 0.45)' },
+                { threshold: 100, color: 'rgba(34, 197, 94, 0.35)' }
             ], 50);
         }
 
         if (['temp', 'temperature', 'feelslike', 'feels_like'].includes(mType)) {
             return interpolateStops(val, [
-                { threshold: -5,  color: 'rgba(125, 110, 210, 0.75)' },
+                { threshold: -10, color: 'rgba(125, 110, 210, 0.75)' },
                 { threshold: 15,  color: 'rgba(105, 155, 220, 0.70)' },
-                { threshold: 30,  color: 'rgba(85, 190, 205, 0.65)' },
-                { threshold: 50,  color: 'rgba(65, 165, 115, 0.60)' },
-                { threshold: 70,  color: 'rgba(105, 195, 75, 0.62)' },
-                { threshold: 85,  color: 'rgba(235, 185, 45, 0.68)' },
-                { threshold: 100, color: 'rgba(205, 45, 45, 0.75)' }
+                { threshold: 32,  color: 'rgba(85, 190, 205, 0.65)' },
+                { threshold: 55,  color: 'rgba(65, 165, 115, 0.60)' },
+                { threshold: 75,  color: 'rgba(105, 195, 75, 0.62)' },
+                { threshold: 90,  color: 'rgba(235, 185, 45, 0.68)' },
+                { threshold: 105, color: 'rgba(205, 45, 45, 0.75)' }
             ], 60);
         }
 
         if (['precip', 'rain', 'chance'].includes(mType)) {
             return interpolateStops(val, [
-                { threshold: 0,   color: 'rgba(148, 163, 184, 0.15)' },
-                { threshold: 25,  color: 'rgba(56, 189, 248, 0.45)' },
-                { threshold: 50,  color: 'rgba(37, 99, 235, 0.65)' },
-                { threshold: 75,  color: 'rgba(124, 58, 237, 0.75)' },
-                { threshold: 100, color: 'rgba(219, 39, 119, 0.85)' }
+                { threshold: 0,   color: 'rgba(148, 163, 184, 0.10)' },
+                { threshold: 25,  color: 'rgba(56, 189, 248, 0.40)' },
+                { threshold: 50,  color: 'rgba(37, 99, 235, 0.60)' },
+                { threshold: 75,  color: 'rgba(124, 58, 237, 0.70)' },
+                { threshold: 100, color: 'rgba(219, 39, 119, 0.80)' }
             ], 0);
         }
 
         if (mType === 'uv') {
             return interpolateStops(val, [
-                { threshold: 0,  color: 'rgba(34, 197, 94, 0.35)' },
-                { threshold: 3,  color: 'rgba(234, 179, 8, 0.50)' },
+                { threshold: 0,  color: 'rgba(34, 197, 94, 0.25)' },
+                { threshold: 3,  color: 'rgba(234, 179, 8, 0.45)' },
                 { threshold: 6,  color: 'rgba(249, 115, 22, 0.60)' },
                 { threshold: 8,  color: 'rgba(239, 68, 68, 0.70)' },
                 { threshold: 11, color: 'rgba(168, 85, 247, 0.80)' }
@@ -2955,10 +2940,10 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
 
         if (mType === 'pressure') {
             return interpolateStops(val, [
-                { threshold: 28.5,  color: 'rgba(225, 29, 72, 0.75)' },
-                { threshold: 29.5,  color: 'rgba(147, 51, 234, 0.60)' },
-                { threshold: 29.92, color: 'rgba(14, 165, 233, 0.50)' },
-                { threshold: 30.5,  color: 'rgba(234, 179, 8, 0.60)' }
+                { threshold: 28.5, color: 'rgba(225, 29, 72, 0.75)' },
+                { threshold: 29.5, color: 'rgba(147, 51, 234, 0.60)' },
+                { threshold: 29.9, color: 'rgba(14, 165, 233, 0.50)' },
+                { threshold: 30.5, color: 'rgba(234, 179, 8, 0.60)' }
             ], 29.92);
         }
 
@@ -3005,7 +2990,6 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
                 } catch (err) {}
             }
 
-            // Latitude and Longitude spatial values calculated across tile bounds
             const centerVal = getNwsSpatiallyInterpolatedValue(baseResolvedValue, effectiveSubMode, centerTileLat, centerTileLng, currentZoom);
             const nwVal = getNwsSpatiallyInterpolatedValue(baseResolvedValue, effectiveSubMode, northLat, westLng, currentZoom);
             const seVal = getNwsSpatiallyInterpolatedValue(baseResolvedValue, effectiveSubMode, southLat, eastLng, currentZoom);
@@ -3014,7 +2998,6 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
             const nwColor = getDynamicColor(nwVal, effectiveSubMode);
             const seColor = getDynamicColor(seVal, effectiveSubMode);
 
-            // Bilinear radial gradient across latitude and longitude spatial limits
             const gradient = ctx.createRadialGradient(
                 tile.width / 2, tile.height / 2, 2,
                 tile.width / 2, tile.height / 2, Math.max(tile.width, tile.height) * 0.75
@@ -3049,7 +3032,66 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
         overrideEvents: sortedEvents
     };
 
+    // Interaction handler for desktop hover and mobile tap
+    const attachMapInteractionHandlers = (mapObj, layerData) => {
+        if (!mapObj) return;
+
+        if (!mapObj._radarTooltip) {
+            mapObj._radarTooltip = L.tooltip({
+                permanent: false,
+                direction: 'top',
+                sticky: true,
+                className: 'radar-grid-tooltip'
+            });
+        }
+
+        const updateTooltipPosition = (e) => {
+            const currentZoom = mapObj.getZoom();
+            const clickedLat = e.latlng.lat;
+            const clickedLng = e.latlng.lng;
+            
+            const localVal = getNwsSpatiallyInterpolatedValue(
+                layerData.value, 
+                layerData.mode, 
+                clickedLat, 
+                clickedLng, 
+                currentZoom
+            );
+
+            let localLabel = `${localVal}`;
+            if (['temp', 'temperature'].includes(layerData.mode)) localLabel = `${localVal}°F`;
+            else if (['feelslike', 'feels_like'].includes(layerData.mode)) localLabel = `Feels Like ${localVal}°F`;
+            else if (['wind', 'gust'].includes(layerData.mode)) localLabel = `${layerData.mode.toUpperCase()}: ${localVal} mph`;
+            else if (layerData.mode === 'dos') localLabel = `DOS: ${localVal}`;
+            else if (layerData.mode === 'precip') localLabel = `Chance: ${localVal}%`;
+            else if (layerData.mode === 'humidity') localLabel = `Humidity: ${localVal}%`;
+            else if (layerData.mode === 'pressure') localLabel = `${localVal} inHg`;
+            else if (layerData.mode === 'uv') localLabel = `UV Index: ${localVal}`;
+
+            const tooltipContent = `
+                <div style="font-family: sans-serif; font-size: 12px; padding: 3px 6px; text-align: center;">
+                    <strong>${localLabel}</strong><br/>
+                    <small style="opacity: 0.8;">${layerData.timeStr} (${layerData.dateStr})</small>
+                </div>
+            `;
+
+            mapObj._radarTooltip
+                .setLatLng(e.latlng)
+                .setContent(tooltipContent)
+                .openOn(mapObj);
+        };
+
+        if (mapObj._radarInteractHandler) {
+            mapObj.off('click tap mousemove', mapObj._radarInteractHandler);
+        }
+
+        mapObj._radarInteractHandler = (e) => updateTooltipPosition(e);
+        mapObj.on('click tap mousemove', mapObj._radarInteractHandler);
+    };
+
     if (activeTargetMap) {
+        attachMapInteractionHandlers(activeTargetMap, activeGridLayer._meta);
+
         if (!window.satelliteLayer) {
             window.satelliteLayer = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
                 attribution: 'Tiles &copy; Esri &mdash; Source: Esri, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-EGP',
