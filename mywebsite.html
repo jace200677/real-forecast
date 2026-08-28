@@ -2268,15 +2268,22 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
         }
     }
 
-    let extractedDate = item?.dateStr || item?.date || item?.rawDate || getTargetTzDateStr(targetTimezone);
+    // --- FIX: PRIORITIZE ACTIVE DAY CARD DATE OVER PASSED ITEM / TODAY ---
     let cardMetrics = {};
+    let activeCardDate = null;
     const activeCard = document.querySelector('.day-card.active, .forecast-day-card.active, .day-tab.active, .swiper-slide-active, [data-selected="true"], [aria-selected="true"], .selected-day, .history-card.active');
     
     if (activeCard) {
-        const cardText = activeCard.innerText || activeCard.textContent || '';
-        const dateMatch = cardText.match(/([A-Za-z]{3}\s*\(\d{1,2}\/\d{1,2}\/\d{4}\))|(\d{1,2}\/\d{1,2}\/\d{2,4})|([A-Za-z]{3}\s+\d{1,2})|(\d{4}-\d{2}-\d{2})/);
-        if (dateMatch && dateMatch[0]) {
-            extractedDate = dateMatch[0];
+        // First check explicit data attributes on the active element
+        activeCardDate = activeCard.dataset.date || activeCard.dataset.dateStr || activeCard.dataset.rawDate || activeCard.getAttribute('data-date');
+
+        // Fallback: Parse card text content if dataset attribute is missing
+        if (!activeCardDate) {
+            const cardText = activeCard.innerText || activeCard.textContent || '';
+            const dateMatch = cardText.match(/(\d{1,2}\/\d{1,2}\/\d{2,4})|(\d{4}-\d{2}-\d{2})/);
+            if (dateMatch && dateMatch[0]) {
+                activeCardDate = dateMatch[0];
+            }
         }
 
         const extractNum = (selectors, textRegex) => {
@@ -2307,6 +2314,12 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
             condition: activeCard.dataset.condition || activeCard.getAttribute('data-weather') || ''
         };
     }
+
+    // Resolve date order: Active Card > Passed Item Date > Radar State > Fallback Today
+    let extractedDate = activeCardDate || 
+                        item?.dateStr || item?.date || item?.rawDate || 
+                        window._radarState?.selectedDate || 
+                        getTargetTzDateStr(targetTimezone);
 
     const buildForecastData = [
         {
@@ -2421,16 +2434,18 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
         buildForecastData
     ].filter(Boolean);
 
+    // Dynamic resolution of the active forecast data item matching target date
     const normTarget = normalizeDateStr(extractedDate);
+    let matchedItem = null;
     for (const dataArr of globalDataSources) {
         if (Array.isArray(dataArr)) {
-            const matched = dataArr.find(d => normalizeDateStr(d.dateStr || d.date || d.rawDate) === normTarget);
-            if (matched) {
-                item = { ...matched, ...item };
-                break;
-            }
+            matchedItem = dataArr.find(d => normalizeDateStr(d.dateStr || d.date || d.rawDate) === normTarget);
+            if (matchedItem) break;
         }
     }
+
+    // Replace properties cleanly without retaining stale item references
+    item = matchedItem ? { ...matchedItem, ...item, dateStr: extractedDate } : { ...item, dateStr: extractedDate };
 
     const h = Math.floor(hoveredMinute / 60);
     const m = Math.round(hoveredMinute % 60);
@@ -2859,7 +2874,6 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
         return `rgba(${r}, ${g}, ${b}, ${a})`;
     };
 
-    // ALIGNED DYNAMIC COLOR FUNCTION (Full Fix for Values/Colors Mismatch)
     const getDynamicColor = (val, currentMode) => {
         const mType = (currentMode || "").toLowerCase();
 
@@ -3032,7 +3046,6 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
         overrideEvents: sortedEvents
     };
 
-    // Interaction handler for desktop hover and mobile tap
     const attachMapInteractionHandlers = (mapObj, layerData) => {
         if (!mapObj) return;
 
