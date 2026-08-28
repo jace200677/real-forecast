@@ -2689,7 +2689,7 @@ function getSelectedDayCardDate(canvas, activeX, item, mode, prevItem, nextItem)
 
 /**
  * Creates or updates the radar grid layer by extracting interpolated graph values dynamically,
- * matching NWS spatial rendering behavior for map tiles without hardcoded test-date overrides.
+ * distinguishing between wind speed and wind gust modes, and applying NWS-style spatial map tile rendering.
  */
 function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, nextItem = null, forcedMinute = 0) {
     if (!canvas) return null;
@@ -2876,21 +2876,36 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
     let baseResolvedValue = null;
     let label = "";
 
-    switch (mode) {
+    // Safely evaluate mode strings supporting both standard short names and explicit wind sub-types
+    const normalizedMode = (mode || "").toLowerCase();
+
+    switch (normalizedMode) {
         case "temp":
+        case "temperature":
             baseResolvedValue = getInterpolatedVal(hoveredMinute, 'temp', getDiurnalTemp);
             label = `${baseResolvedValue}°F`;
             break;
-        case "feelsLike":
+        case "feelslike":
+        case "feels_like":
             baseResolvedValue = getInterpolatedVal(hoveredMinute, 'feelsLike', getDiurnalFeelsLike);
             label = `Feels Like ${baseResolvedValue}°F`;
             break;
         case "wind":
+        case "windspeed":
+        case "wind_speed": {
             const w = getInterpolatedVal(hoveredMinute, 'wind', getDiurnalWind);
-            const g = getInterpolatedVal(hoveredMinute, 'gust', getDiurnalGust);
-            baseResolvedValue = { speed: w, gust: g };
-            label = `W: ${w} | G: ${g} mph`;
+            baseResolvedValue = w; // Explicitly isolatable wind speed scalar value
+            label = `Wind: ${w} mph`;
             break;
+        }
+        case "gust":
+        case "windgust":
+        case "wind_gust": {
+            const g = getInterpolatedVal(hoveredMinute, 'gust', getDiurnalGust);
+            baseResolvedValue = g; // Explicitly isolatable wind gust scalar value
+            label = `Gust: ${g} mph`;
+            break;
+        }
         case "dos":
             baseResolvedValue = getInterpolatedVal(hoveredMinute, 'dos', getDiurnalDos);
             label = `DOS: ${baseResolvedValue}`;
@@ -2904,14 +2919,12 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
     const getNwsSpatiallyInterpolatedValue = (val, currentMode, lat, lon, centerZoom) => {
         if (lat === 0 && lon === 0) return val;
         
-        // Scale gradient intensity dynamically inverse to map zoom level (NWS digital forecast grid style)
         const zoomFactor = Math.max(0.2, 1.2 - (centerZoom * 0.08));
         const regionalGrad = (Math.sin(lat * 0.35) * Math.cos(lon * 0.35) * 4.5 + Math.sin(lat * 0.12) * 2.5) * zoomFactor;
 
-        if (currentMode === 'wind' && typeof val === 'object') {
-            const adjustedSpeed = Math.max(0, Math.round((val.speed || 0) + regionalGrad));
-            const adjustedGust = Math.max(adjustedSpeed, Math.round((val.gust || 0) + regionalGrad * 1.25));
-            return { speed: adjustedSpeed, gust: adjustedGust };
+        const mType = (currentMode || "").toLowerCase();
+        if ((mType.includes('wind') || mType.includes('gust')) && typeof val === 'number') {
+            return Math.max(0, Math.round((val + regionalGrad) * 10) / 10);
         } else if (typeof val === 'number') {
             return Math.round((val + regionalGrad) * 10) / 10;
         }
@@ -2936,8 +2949,9 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
     };
 
     const getDynamicColor = (val, currentMode) => {
-        if (currentMode === 'wind') {
-            const speed = (typeof val === 'object' ? (val.speed || 0) : val);
+        const mType = (currentMode || "").toLowerCase();
+        if (mType.includes('wind') || mType.includes('gust')) {
+            const speed = (typeof val === 'number' ? val : 0);
             const stops = [
                 { threshold: 0, color: 'rgba(115, 130, 205, 0.70)' },
                 { threshold: 6, color: 'rgba(95, 175, 215, 0.65)' },
@@ -2956,7 +2970,7 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
                 }
             }
         } 
-        if (currentMode === 'dos') {
+        if (mType === 'dos') {
             const scoreVal = (typeof val === 'number' ? val : 50);
             const stops = [
                 { threshold: 0, color: 'rgba(34, 197, 94, 0.35)' },
@@ -2974,7 +2988,7 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
                 }
             }
         }
-        if (currentMode === 'temp' || currentMode === 'feelsLike') {
+        if (mType === 'temp' || mType === 'temperature' || mType === 'feelslike' || mType === 'feels_like') {
             const tempVal = (typeof val === 'number' ? val : 60);
             const stops = [
                 { threshold: -5, color: 'rgba(125, 110, 210, 0.75)' },
@@ -3027,7 +3041,6 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
                 } catch (err) {}
             }
 
-            // Derive tile center and edge values using strict NWS multi-point spatial interpolation
             const centerVal = getNwsSpatiallyInterpolatedValue(baseResolvedValue, mode, centerLat, centerLng, currentZoom);
             const centerColor = getDynamicColor(centerVal, mode);
 
