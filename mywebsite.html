@@ -1236,7 +1236,7 @@ async function buildForecast() {
             else if (conditionSwing < -1.5) weatherSummary = "Cloudy & Breezy";
             else weatherSummary = "Cloudy, T-Storms & Windy";
 
-        } else if (forecastYear === 2026 && forecastMonth === 8 && dateNum === 28 && isMnUsa || isNdUsa) {
+        } else if (forecastYear === 2026 && forecastMonth === 8 && dateNum === 28) {
             const lat = targetZoneOrPoint ? parseFloat(targetZoneOrPoint.lat) : 45.0;
             const lon = targetZoneOrPoint ? parseFloat(targetZoneOrPoint.lon) : -93.0;
 
