@@ -2312,6 +2312,110 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
         };
     }
 
+    // Built-in 8/23/2026 - 9/5/2026 forecast preset with hourly override events
+    const buildForecastData = [
+        {
+            dateStr: "8/23/2026", score: 75, tempHigh: 82, tempLow: 60, windMph: 8, gustMph: 14, humidity: 55, pressure: 29.95, uvIndex: 7, precipChance: 10,
+            overrideEvents: [
+                { minute: 360, temp: 60, wind: 5, gust: 8, precip: 0, dos: 85 },
+                { minute: 900, temp: 82, wind: 12, gust: 18, precip: 10, dos: 70 },
+                { minute: 1260, temp: 70, wind: 6, gust: 10, precip: 5, dos: 80 }
+            ]
+        },
+        {
+            dateStr: "8/24/2026", score: 68, tempHigh: 78, tempLow: 58, windMph: 12, gustMph: 22, humidity: 65, pressure: 29.88, uvIndex: 5, precipChance: 40,
+            overrideEvents: [
+                { minute: 480, temp: 62, wind: 8, gust: 14, precip: 10, dos: 75 },
+                { minute: 840, temp: 76, wind: 16, gust: 26, precip: 50, dos: 60 },
+                { minute: 1140, temp: 66, wind: 10, gust: 18, precip: 20, dos: 70 }
+            ]
+        },
+        {
+            dateStr: "8/25/2026", score: 82, tempHigh: 80, tempLow: 56, windMph: 7, gustMph: 12, humidity: 50, pressure: 30.02, uvIndex: 8, precipChance: 0,
+            overrideEvents: [
+                { minute: 360, temp: 56, wind: 4, gust: 8, precip: 0, dos: 90 },
+                { minute: 960, temp: 80, wind: 9, gust: 14, precip: 0, dos: 80 }
+            ]
+        },
+        {
+            dateStr: "8/26/2026", score: 80, tempHigh: 84, tempLow: 62, windMph: 9, gustMph: 15, humidity: 52, pressure: 29.98, uvIndex: 8, precipChance: 5,
+            overrideEvents: [
+                { minute: 420, temp: 62, wind: 5, gust: 9, precip: 0, dos: 85 },
+                { minute: 900, temp: 84, wind: 11, gust: 17, precip: 10, dos: 75 }
+            ]
+        },
+        {
+            dateStr: "8/27/2026", score: 72, tempHigh: 81, tempLow: 64, windMph: 11, gustMph: 19, humidity: 68, pressure: 29.91, uvIndex: 6, precipChance: 30,
+            overrideEvents: [
+                { minute: 360, temp: 64, wind: 7, gust: 12, precip: 15, dos: 78 },
+                { minute: 840, temp: 81, wind: 14, gust: 22, precip: 45, dos: 65 }
+            ]
+        },
+        {
+            dateStr: "8/28/2026", score: 85, tempHigh: 79, tempLow: 55, windMph: 6, gustMph: 10, humidity: 48, pressure: 30.08, uvIndex: 8, precipChance: 0,
+            overrideEvents: [
+                { minute: 360, temp: 55, wind: 3, gust: 6, precip: 0, dos: 92 },
+                { minute: 900, temp: 79, wind: 8, gust: 12, precip: 0, dos: 82 }
+            ]
+        },
+        {
+            dateStr: "8/29/2026", score: 88, tempHigh: 77, tempLow: 54, windMph: 5, gustMph: 9, humidity: 45, pressure: 30.12, uvIndex: 8, precipChance: 0,
+            overrideEvents: [
+                { minute: 360, temp: 54, wind: 3, gust: 5, precip: 0, dos: 95 },
+                { minute: 900, temp: 77, wind: 7, gust: 10, precip: 0, dos: 85 }
+            ]
+        },
+        {
+            dateStr: "8/30/2026", score: 84, tempHigh: 80, tempLow: 57, windMph: 7, gustMph: 12, humidity: 50, pressure: 30.05, uvIndex: 7, precipChance: 10,
+            overrideEvents: [
+                { minute: 360, temp: 57, wind: 4, gust: 8, precip: 0, dos: 90 },
+                { minute: 930, temp: 80, wind: 9, gust: 14, precip: 10, dos: 80 }
+            ]
+        },
+        {
+            dateStr: "8/31/2026", score: 79, tempHigh: 83, tempLow: 61, windMph: 10, gustMph: 16, humidity: 58, pressure: 29.97, uvIndex: 7, precipChance: 20,
+            overrideEvents: [
+                { minute: 420, temp: 61, wind: 6, gust: 10, precip: 5, dos: 84 },
+                { minute: 900, temp: 83, wind: 12, gust: 18, precip: 25, dos: 74 }
+            ]
+        },
+        {
+            dateStr: "9/1/2026", score: 76, tempHigh: 78, tempLow: 59, windMph: 11, gustMph: 18, humidity: 62, pressure: 29.93, uvIndex: 6, precipChance: 35,
+            overrideEvents: [
+                { minute: 360, temp: 59, wind: 7, gust: 11, precip: 10, dos: 80 },
+                { minute: 870, temp: 78, wind: 13, gust: 20, precip: 45, dos: 70 }
+            ]
+        },
+        {
+            dateStr: "9/2/2026", score: 81, tempHigh: 76, tempLow: 53, windMph: 8, gustMph: 14, humidity: 49, pressure: 30.06, uvIndex: 7, precipChance: 5,
+            overrideEvents: [
+                { minute: 360, temp: 53, wind: 4, gust: 8, precip: 0, dos: 88 },
+                { minute: 900, temp: 76, wind: 10, gust: 16, precip: 5, dos: 78 }
+            ]
+        },
+        {
+            dateStr: "9/3/2026", score: 83, tempHigh: 77, tempLow: 52, windMph: 6, gustMph: 11, humidity: 47, pressure: 30.10, uvIndex: 7, precipChance: 0,
+            overrideEvents: [
+                { minute: 360, temp: 52, wind: 3, gust: 6, precip: 0, dos: 90 },
+                { minute: 900, temp: 77, wind: 8, gust: 13, precip: 0, dos: 80 }
+            ]
+        },
+        {
+            dateStr: "9/4/2026", score: 80, tempHigh: 81, tempLow: 56, windMph: 9, gustMph: 15, humidity: 53, pressure: 30.01, uvIndex: 7, precipChance: 10,
+            overrideEvents: [
+                { minute: 390, temp: 56, wind: 5, gust: 9, precip: 0, dos: 86 },
+                { minute: 900, temp: 81, wind: 11, gust: 17, precip: 15, dos: 76 }
+            ]
+        },
+        {
+            dateStr: "9/5/2026", score: 77, tempHigh: 82, tempLow: 60, windMph: 10, gustMph: 17, humidity: 59, pressure: 29.94, uvIndex: 6, precipChance: 25,
+            overrideEvents: [
+                { minute: 360, temp: 60, wind: 6, gust: 10, precip: 5, dos: 82 },
+                { minute: 870, temp: 82, wind: 12, gust: 20, precip: 30, dos: 72 }
+            ]
+        }
+    ];
+
     // Universal dataset search to sync item object with graph values from anywhere
     const globalDataSources = [
         typeof forecastData !== "undefined" ? forecastData : null,
@@ -2319,7 +2423,8 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
         window.currentWeatherData?.daily,
         window.currentWeatherData?.forecast,
         window.historyData,
-        window._historyData
+        window._historyData,
+        buildForecastData
     ].filter(Boolean);
 
     const normTarget = normalizeDateStr(extractedDate);
@@ -2420,15 +2525,15 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
     let midnightStartTemp = Math.round((prevHigh + morningLow) / 2);
     if (effectivePrevItem && Array.isArray(effectivePrevItem.overrideEvents) && effectivePrevItem.overrideEvents.length > 0) {
         const prevEvents = [...effectivePrevItem.overrideEvents].sort((a, b) => a.minute - b.minute);
-        const lastEv = [...prevEvents].reverse().find(e => e.temp !== undefined);
-        if (lastEv) midnightStartTemp = lastEv.temp;
+        const lastEv = [...prevEvents].reverse().find(e => e.temp !== undefined || e.temperature !== undefined);
+        if (lastEv) midnightStartTemp = safeNum(lastEv.temp ?? lastEv.temperature) ?? midnightStartTemp;
     }
 
     let midnightEndTemp = Math.round((todayHigh + tomorrowLow) / 2);
     if (effectiveNextItem && Array.isArray(effectiveNextItem.overrideEvents) && effectiveNextItem.overrideEvents.length > 0) {
         const nextEvents = [...effectiveNextItem.overrideEvents].sort((a, b) => a.minute - b.minute);
-        const firstEv = nextEvents.find(e => e.temp !== undefined);
-        if (firstEv) midnightEndTemp = firstEv.temp;
+        const firstEv = nextEvents.find(e => e.temp !== undefined || e.temperature !== undefined);
+        if (firstEv) midnightEndTemp = safeNum(firstEv.temp ?? firstEv.temperature) ?? midnightEndTemp;
     }
 
     const isWinterInversion = item?.isWinterInversion || (todayHigh < morningLow);
@@ -2519,8 +2624,35 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
         return Math.round(smoothStep(resolvedPrecip, (resolvedPrecip + nextPrecip) / 2, (m - 900) / 539));
     };
 
-    const hasEvents = Array.isArray(item?.overrideEvents) && item.overrideEvents.length > 0;
-    const sortedEvents = hasEvents ? [...item.overrideEvents].sort((a, b) => a.minute - b.minute) : [];
+    // Consolidated extraction and validation of custom override events
+    const rawEvents = Array.isArray(item?.overrideEvents) ? item.overrideEvents : 
+                      (Array.isArray(item?.events) ? item.events : []);
+
+    const sortedEvents = rawEvents
+        .map(ev => {
+            if (typeof ev !== 'object' || ev === null) return null;
+            let minute = safeNum(ev.minute ?? ev.min ?? ev.m ?? ev.time);
+            if (minute === null && typeof ev.timeStr === 'string') {
+                const parts = ev.timeStr.match(/(\d{1,2}):(\d{2})\s*(AM|PM)?/i);
+                if (parts) {
+                    let hr = parseInt(parts[1], 10);
+                    const min = parseInt(parts[2], 10);
+                    const ampm = parts[3] ? parts[3].toUpperCase() : null;
+                    if (ampm === 'PM' && hr < 12) hr += 12;
+                    if (ampm === 'AM' && hr === 12) hr = 0;
+                    minute = hr * 60 + min;
+                }
+            }
+            if (minute === null) return null;
+            return {
+                ...ev,
+                minute: Math.max(0, Math.min(1439, Math.round(minute)))
+            };
+        })
+        .filter(Boolean)
+        .sort((a, b) => a.minute - b.minute);
+
+    const hasEvents = sortedEvents.length > 0;
 
     // Extract exact values from 24-hour or sub-daily chart arrays from anywhere
     const getValFromHourlyArray = (arr, minute, key = null) => {
@@ -2558,26 +2690,43 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
         return smoothStep(val0, val1, t);
     };
 
-    // Interpolation check looking at overrideEvents -> hourly arrays -> diurnal fallbacks
-    const getInterpolatedVal = (m, key, fallbackFn, hourlyArrayKeys = []) => {
-        if (hasEvents) {
-            const exact = sortedEvents.find(e => e.minute === m && e[key] !== undefined);
-            if (exact && safeNum(exact[key]) !== null) return safeNum(exact[key]);
-            const prevEvent = [...sortedEvents].reverse().find(e => e.minute <= m && e[key] !== undefined);
-            const nextEvent = sortedEvents.find(e => e.minute >= m && e[key] !== undefined);
+    // Full Interpolation Engine: overrideEvents -> hourly arrays -> diurnal fallbacks
+    const getInterpolatedVal = (m, primaryKeys, fallbackFn, hourlyArrayKeys = []) => {
+        const keys = Array.isArray(primaryKeys) ? primaryKeys : [primaryKeys];
 
-            if (prevEvent && nextEvent) {
-                if (prevEvent.minute === nextEvent.minute) return safeNum(prevEvent[key]);
+        const extractEventValue = (ev) => {
+            if (!ev) return null;
+            for (const k of keys) {
+                if (ev[k] !== undefined && ev[k] !== null) {
+                    const parsed = safeNum(ev[k]);
+                    if (parsed !== null) return parsed;
+                }
+            }
+            return null;
+        };
+
+        if (hasEvents) {
+            const exact = sortedEvents.find(e => e.minute === m && extractEventValue(e) !== null);
+            if (exact) return extractEventValue(exact);
+
+            const prevEvent = [...sortedEvents].reverse().find(e => e.minute <= m && extractEventValue(e) !== null);
+            const nextEvent = sortedEvents.find(e => e.minute >= m && extractEventValue(e) !== null);
+
+            const prevVal = extractEventValue(prevEvent);
+            const nextVal = extractEventValue(nextEvent);
+
+            if (prevEvent && nextEvent && prevVal !== null && nextVal !== null) {
+                if (prevEvent.minute === nextEvent.minute) return prevVal;
                 const t = (m - prevEvent.minute) / (nextEvent.minute - prevEvent.minute);
-                return Math.round(smoothStep(safeNum(prevEvent[key]), safeNum(nextEvent[key]), t));
-            } else if (prevEvent) {
+                return smoothStep(prevVal, nextVal, t);
+            } else if (prevEvent && prevVal !== null) {
                 const endVal = fallbackFn(1439);
                 const t = (m - prevEvent.minute) / (1439 - prevEvent.minute || 1);
-                return Math.round(smoothStep(safeNum(prevEvent[key]), endVal, Math.min(1, t)));
-            } else if (nextEvent) {
+                return smoothStep(prevVal, endVal, Math.min(1, t));
+            } else if (nextEvent && nextVal !== null) {
                 const startVal = fallbackFn(0);
                 const t = m / (nextEvent.minute || 1);
-                return Math.round(smoothStep(startVal, safeNum(nextEvent[key]), Math.max(0, t)));
+                return smoothStep(startVal, nextVal, Math.max(0, t));
             }
         }
 
@@ -2587,9 +2736,11 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
                 try { arr = JSON.parse(arr); } catch (e) {}
             }
             if (Array.isArray(arr) && arr.length > 0) {
-                const chartVal = getValFromHourlyArray(arr, m, key);
-                if (chartVal !== null) {
-                    return key === 'pressure' || key === 'uv' ? +chartVal.toFixed(2) : Math.round(chartVal);
+                for (const k of keys) {
+                    const chartVal = getValFromHourlyArray(arr, m, k);
+                    if (chartVal !== null) {
+                        return chartVal;
+                    }
                 }
             }
         }
@@ -2597,15 +2748,15 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
         return fallbackFn(m);
     };
 
-    const getInterpolatedTemp = (m) => getInterpolatedVal(m, 'temp', getDiurnalTemp, ['hourlyTemps', 'temps', 'hourly', 'hourlyData', 'chartData', 'tempRange']);
-    const getInterpolatedFeelsLike = (m) => getInterpolatedVal(m, 'feelsLike', getDiurnalFeelsLike, ['hourlyFeelsLike', 'feelsLike', 'hourly']);
-    const getInterpolatedWind = (m) => getInterpolatedVal(m, 'wind', getDiurnalWind, ['hourlyWind', 'winds', 'hourly']);
-    const getInterpolatedGust = (m) => getInterpolatedVal(m, 'gust', getDiurnalGust, ['hourlyGust', 'gusts', 'hourly']);
-    const getInterpolatedDos = (m) => getInterpolatedVal(m, 'dos', getDiurnalDos, ['hourlyDos', 'scores', 'dosList', 'hourly']);
-    const getInterpolatedPressure = (m) => getInterpolatedVal(m, 'pressure', getDiurnalPressure, ['hourlyPressure', 'pressures', 'hourly']);
-    const getInterpolatedHumidity = (m) => getInterpolatedVal(m, 'humidity', getDiurnalHumidity, ['hourlyHumidity', 'humidities', 'hourly']);
-    const getInterpolatedUv = (m) => getInterpolatedVal(m, 'uv', getDiurnalUv, ['hourlyUv', 'uvList', 'hourly']);
-    const getInterpolatedPrecip = (m) => getInterpolatedVal(m, 'precip', getDiurnalPrecip, ['hourlyPrecip', 'precips', 'hourly']);
+    const getInterpolatedTemp = (m) => Math.round(getInterpolatedVal(m, ['temp', 'temperature', 't'], getDiurnalTemp, ['hourlyTemps', 'temps', 'hourly', 'hourlyData', 'chartData', 'tempRange']));
+    const getInterpolatedFeelsLike = (m) => Math.round(getInterpolatedVal(m, ['feelsLike', 'feels_like', 'fl'], getDiurnalFeelsLike, ['hourlyFeelsLike', 'feelsLike', 'hourly']));
+    const getInterpolatedWind = (m) => Math.round(getInterpolatedVal(m, ['wind', 'windSpeed', 'speed', 'w'], getDiurnalWind, ['hourlyWind', 'winds', 'hourly']));
+    const getInterpolatedGust = (m) => Math.round(getInterpolatedVal(m, ['gust', 'windGust', 'g'], getDiurnalGust, ['hourlyGust', 'gusts', 'hourly']));
+    const getInterpolatedDos = (m) => Math.round(getInterpolatedVal(m, ['dos', 'score', 'rating'], getDiurnalDos, ['hourlyDos', 'scores', 'dosList', 'hourly']));
+    const getInterpolatedPressure = (m) => +getInterpolatedVal(m, ['pressure', 'press', 'p'], getDiurnalPressure, ['hourlyPressure', 'pressures', 'hourly']).toFixed(2);
+    const getInterpolatedHumidity = (m) => Math.round(getInterpolatedVal(m, ['humidity', 'hum', 'h'], getDiurnalHumidity, ['hourlyHumidity', 'humidities', 'hourly']));
+    const getInterpolatedUv = (m) => +getInterpolatedVal(m, ['uv', 'uvIndex', 'u'], getDiurnalUv, ['hourlyUv', 'uvList', 'hourly']).toFixed(1);
+    const getInterpolatedPrecip = (m) => Math.round(getInterpolatedVal(m, ['precip', 'precipChance', 'rain', 'pr'], getDiurnalPrecip, ['hourlyPrecip', 'precips', 'hourly']));
 
     let baseResolvedValue = null;
     let label = "";
@@ -2860,7 +3011,8 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
         color: getDynamicColor(baseResolvedValue, effectiveSubMode),
         mode: effectiveSubMode,
         timezone: targetTimezone,
-        tzAbbr: tzAbbr
+        tzAbbr: tzAbbr,
+        overrideEvents: sortedEvents
     };
 
     if (activeTargetMap) {
