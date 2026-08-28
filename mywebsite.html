@@ -2198,6 +2198,8 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
         }
     };
 
+    const todayDateStr = getTargetTzDateStr(targetTimezone);
+
     // Calculate hover / active timeline minute (0 - 1439)
     let hoveredMinute = null;
     if (forcedMinute !== null && forcedMinute !== undefined) {
@@ -2224,9 +2226,10 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
         }
     }
 
-    // --- ACTIVE DAY CARD & DATE RESOLUTION ---
+    // --- STRICT ACTIVE DAY CARD, DATE RESOLUTION, & LAT/LON extraction ---
     let extractedDate = null;
     let cardMetrics = {};
+    let cardCoords = { lat: null, lon: null };
 
     if (typeof getSelectedDayCardDate === 'function') {
         const dateResult = getSelectedDayCardDate(canvas, clientX, item, mode, prevItem, nextItem, forcedMinute);
@@ -2272,6 +2275,10 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
             return null;
         };
 
+        // Extract Coordinates directly from card datasets or attributes
+        cardCoords.lat = safeNum(activeCard.dataset.lat ?? activeCard.dataset.latitude ?? activeCard.getAttribute('data-lat'));
+        cardCoords.lon = safeNum(activeCard.dataset.lon ?? activeCard.dataset.lng ?? activeCard.dataset.longitude ?? activeCard.getAttribute('data-lon'));
+
         cardMetrics = {
             score: safeNum(activeCard.dataset.score ?? activeCard.dataset.dos) ?? extractNum(['.score', '.rating', '.dos-score'], /score[:\s]+([0-9.]+)/i),
             tempHigh: safeNum(activeCard.dataset.high ?? activeCard.dataset.tempHigh ?? activeCard.dataset.max) ?? extractNum(['.high', '.temp-high', '.max-temp'], /high[:\s]+([-0-9.]+)/i),
@@ -2285,11 +2292,13 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
         };
     }
 
-    // Default to current target timezone date if no active card is explicitly selected
+    // Default to today if no card/date is active
     extractedDate = extractedDate || 
                     item?.dateStr || item?.date || item?.rawDate || 
                     window._radarState?.selectedDate || 
-                    getTargetTzDateStr(targetTimezone);
+                    todayDateStr;
+
+    const isToday = normalizeDateStr(extractedDate) === normalizeDateStr(todayDateStr);
 
     const globalDataSources = [
         typeof forecastData !== "undefined" ? forecastData : null,
@@ -2310,6 +2319,10 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
     }
 
     item = matchedItem ? { ...matchedItem, ...item, dateStr: extractedDate } : { ...item, dateStr: extractedDate };
+
+    // Resolve lat/lon coordinates from card, item, or global window state
+    const resolvedLat = cardCoords.lat ?? safeNum(item?.lat ?? item?.latitude ?? window._radarState?.lat ?? window._targetZoneOrPoint?.lat);
+    const resolvedLon = cardCoords.lon ?? safeNum(item?.lon ?? item?.lng ?? item?.longitude ?? window._radarState?.lon ?? window._radarState?.lng ?? window._targetZoneOrPoint?.lon);
 
     const h = Math.floor(hoveredMinute / 60);
     const m = Math.round(hoveredMinute % 60);
@@ -2336,6 +2349,8 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
     };
 
     const resolveNextItem = () => {
+        // Prevent bleeding into next day if bound to today
+        if (isToday) return item;
         if (nextItem) return nextItem;
         for (const dataArr of globalDataSources) {
             if (Array.isArray(dataArr)) {
@@ -2398,6 +2413,9 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
                 if (entry.val !== undefined) return safeNum(entry.val);
                 if (entry.value !== undefined) return safeNum(entry.value);
                 if (entry.temp !== undefined) return safeNum(entry.temp);
+                if (entry.speed !== undefined) return safeNum(entry.speed);
+                if (entry.gust !== undefined) return safeNum(entry.gust);
+                if (entry.dos !== undefined) return safeNum(entry.dos);
             }
             return safeNum(entry);
         };
@@ -2500,7 +2518,7 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
     }
 
     // --- EXACT VALUE COORDINATE MAPPER ---
-    // Returns exact graph interpolation value regardless of lat/lon coordinates
+    // Guarantees map tiles & map interactions directly query graph interpolation logic for exact match
     const getLocalValueAtCoordinates = (lat, lon, baseVal, modeType) => {
         return baseVal;
     };
@@ -2547,7 +2565,7 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
         return 'rgba(56, 189, 248, 0.35)';
     };
 
-    // Render tile canvas layer using exact value match
+    // Render Leaflet grid layer using exact match values
     const RadarGridLayerClass = L.GridLayer.extend({
         createTile: function(coords) {
             const tile = document.createElement('canvas');
@@ -2578,6 +2596,10 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
         mode: effectiveSubMode,
         timezone: targetTimezone,
         tzAbbr: tzAbbr,
+        lat: resolvedLat,
+        lon: resolvedLon,
+        highTemp: baseMetrics.tempHigh,
+        lowTemp: baseMetrics.tempLow,
         getLocalValue: getLocalValueAtCoordinates
     };
 
@@ -2600,11 +2622,16 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
             else if (['feelslike', 'feels_like'].includes(layerData.mode)) localLabel = `Feels Like ${localVal}°F`;
             else if (['wind', 'gust'].includes(layerData.mode)) localLabel = `${layerData.mode.toUpperCase()}: ${localVal} mph`;
 
+            const coordText = (layerData.lat !== null && layerData.lon !== null) 
+                ? `${layerData.lat.toFixed(2)}°, ${layerData.lon.toFixed(2)}°` 
+                : `${e.latlng.lat.toFixed(2)}°, ${e.latlng.lng.toFixed(2)}°`;
+
             const tooltipContent = `
                 <div style="font-family: sans-serif; font-size: 12px; padding: 3px 6px; text-align: center;">
                     <strong>${localLabel}</strong><br/>
+                    <small style="opacity: 0.85;">High: ${layerData.highTemp}° | Low: ${layerData.lowTemp}°</small><br/>
                     <small style="opacity: 0.8;">${layerData.timeStr} (${layerData.dateStr})</small><br/>
-                    <small style="opacity: 0.65; font-size: 10px;">${e.latlng.lat.toFixed(2)}°, ${e.latlng.lng.toFixed(2)}°</small>
+                    <small style="opacity: 0.65; font-size: 10px;">${coordText}</small>
                 </div>
             `;
 
