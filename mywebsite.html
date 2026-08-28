@@ -2134,8 +2134,6 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
     const scaleFactor = Math.min(width / 650, 1.5);
     const padLeft = Math.round(45 * scaleFactor);
     const padRight = Math.round(20 * scaleFactor);
-    const padTop = Math.round(30 * scaleFactor);
-    const padBottom = Math.round(35 * scaleFactor);
     const graphWidth = width - padLeft - padRight;
 
     // Safe numeric parser to prevent NaN propagation
@@ -2145,7 +2143,7 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
         return isNaN(n) ? null : n;
     };
 
-    // Normalize date strings for accurate comparison across formats (e.g., 08/29/2026 vs 8/29/2026)
+    // Normalize date strings for accurate comparison across formats
     const normalizeDateStr = (str) => {
         if (!str) return '';
         const match = str.match(/\b\d{1,2}\/\d{1,2}\/\d{2,4}\b/) || str.match(/\b\d{4}-\d{2}-\d{2}\b/);
@@ -2219,30 +2217,42 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
         }
     }
 
-    // --- ENHANCED ACTIVE DAY CARD DATE RESOLUTION ---
+    // --- ENHANCED ACTIVE DAY CARD DATE RESOLUTION VIA getSelectedDayCardDate ---
+    let extractedDate = null;
     let cardMetrics = {};
-    let activeCardDate = null;
+
+    // 1. Prioritize resolution via getSelectedDayCardDate helper if available
+    if (typeof getSelectedDayCardDate === 'function') {
+        const dateResult = getSelectedDayCardDate(canvas, clientX, item, mode, prevItem, nextItem, forcedMinute);
+        if (dateResult) {
+            if (typeof dateResult === 'string') {
+                extractedDate = dateResult;
+            } else if (typeof dateResult === 'object') {
+                extractedDate = dateResult.dateStr || dateResult.date || dateResult.formattedDate || dateResult.rawDate;
+            }
+        }
+    }
+
+    // 2. Active DOM Card Scrape Fallback
     const activeCard = document.querySelector('.day-card.active, .forecast-day-card.active, .day-tab.active, .swiper-slide-active, [data-selected="true"], [aria-selected="true"], .selected-day, .history-card.active, .day.active, .forecast-card.active');
 
     if (activeCard) {
-        // 1. Check explicit dataset properties on active container
-        activeCardDate = activeCard.dataset.date || activeCard.dataset.dateStr || activeCard.dataset.rawDate || activeCard.getAttribute('data-date');
+        if (!extractedDate) {
+            let activeCardDate = activeCard.dataset.date || activeCard.dataset.dateStr || activeCard.dataset.rawDate || activeCard.getAttribute('data-date');
 
-        // 2. Check inner date elements (e.g., .date, .day-date, .card-date)
-        if (!activeCardDate) {
-            const dateSubEl = activeCard.querySelector('.date, .day-date, .card-date, .forecast-date, [data-date]');
-            if (dateSubEl) {
-                activeCardDate = dateSubEl.dataset.date || dateSubEl.innerText || dateSubEl.textContent || '';
+            if (!activeCardDate) {
+                const dateSubEl = activeCard.querySelector('.date, .day-date, .card-date, .forecast-date, [data-date]');
+                if (dateSubEl) {
+                    activeCardDate = dateSubEl.dataset.date || dateSubEl.innerText || dateSubEl.textContent || '';
+                }
             }
-        }
 
-        // 3. Fallback to scanning card text for formatted date strings
-        const cardText = activeCard.innerText || activeCard.textContent || '';
-        if (!activeCardDate && cardText) {
-            const dateMatch = cardText.match(/\b(\d{1,2}\/\d{1,2}\/\d{2,4})\b|\b(\d{4}-\d{2}-\d{2})\b/);
-            if (dateMatch) {
-                activeCardDate = dateMatch[0];
+            const cardText = activeCard.innerText || activeCard.textContent || '';
+            if (!activeCardDate && cardText) {
+                const dateMatch = cardText.match(/\b(\d{1,2}\/\d{1,2}\/\d{2,4})\b|\b(\d{4}-\d{2}-\d{2})\b/);
+                if (dateMatch) activeCardDate = dateMatch[0];
             }
+            extractedDate = activeCardDate;
         }
 
         const extractNum = (selectors, textRegex) => {
@@ -2253,6 +2263,7 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
                     if (match) return safeNum(match[0]);
                 }
             }
+            const cardText = activeCard.innerText || activeCard.textContent || '';
             if (textRegex && cardText) {
                 const match = cardText.match(textRegex);
                 if (match && match[1]) return safeNum(match[1]);
@@ -2274,11 +2285,11 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
         };
     }
 
-    // Prioritize active card date over passed item / radar state / system today
-    let extractedDate = activeCardDate || 
-                        item?.dateStr || item?.date || item?.rawDate || 
-                        window._radarState?.selectedDate || 
-                        getTargetTzDateStr(targetTimezone);
+    // 3. Ultimate Fallback Hierarchy
+    extractedDate = extractedDate || 
+                    item?.dateStr || item?.date || item?.rawDate || 
+                    window._radarState?.selectedDate || 
+                    getTargetTzDateStr(targetTimezone);
 
     const buildForecastData = [
         {
