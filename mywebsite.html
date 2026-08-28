@@ -2320,9 +2320,9 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
 
     item = matchedItem ? { ...matchedItem, ...item, dateStr: extractedDate } : { ...item, dateStr: extractedDate };
 
-    // Resolve lat/lon coordinates from card, item, or global window state
-    const resolvedLat = cardCoords.lat ?? safeNum(item?.lat ?? item?.latitude ?? window._radarState?.lat ?? window._targetZoneOrPoint?.lat);
-    const resolvedLon = cardCoords.lon ?? safeNum(item?.lon ?? item?.lng ?? item?.longitude ?? window._radarState?.lon ?? window._radarState?.lng ?? window._targetZoneOrPoint?.lon);
+    // Resolve lat/lon center point from card, item, or global window state
+    const centerLat = cardCoords.lat ?? safeNum(item?.lat ?? item?.latitude ?? window._radarState?.lat ?? window._targetZoneOrPoint?.lat) ?? 0;
+    const centerLon = cardCoords.lon ?? safeNum(item?.lon ?? item?.lng ?? item?.longitude ?? window._radarState?.lon ?? window._radarState?.lng ?? window._targetZoneOrPoint?.lon) ?? 0;
 
     const h = Math.floor(hoveredMinute / 60);
     const m = Math.round(hoveredMinute % 60);
@@ -2448,7 +2448,7 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
         return fallbackFn(m);
     };
 
-    // Interpolation bindings
+    // Interpolation bindings directly from graph
     const getInterpolatedTemp = (m) => Math.round(getInterpolatedVal(m, ['temp', 'temperature', 't'], getDiurnalTemp, ['hourlyTemps', 'temps', 'hourly', 'hourlyData', 'chartData']));
     const getInterpolatedFeelsLike = (m) => Math.round(getInterpolatedVal(m, ['feelsLike', 'fl'], (min) => getDiurnalTemp(min) + (item?.feelsLikeOffset || 0), ['hourlyFeelsLike', 'feelsLike']));
     const getInterpolatedWind = (m) => Math.round(getInterpolatedVal(m, ['wind', 'speed', 'w'], () => baseMetrics.windMph, ['hourlyWind', 'winds']));
@@ -2517,10 +2517,41 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
         }
     }
 
-    // --- EXACT VALUE COORDINATE MAPPER ---
-    // Guarantees map tiles & map interactions directly query graph interpolation logic for exact match
+    // --- SPATIAL LAT/LON VALUE ADJUSTER ---
+    // Reads exact graph value at center coordinate, then applies a smooth gradient shift based on target Lat/Lon
     const getLocalValueAtCoordinates = (lat, lon, baseVal, modeType) => {
-        return baseVal;
+        if (baseVal === null || baseVal === undefined) return baseVal;
+        
+        // Compute delta offset relative to selected location center
+        const dLat = (lat - centerLat);
+        const dLon = (lon - centerLon);
+
+        let delta = 0;
+        const mType = (modeType || "").toLowerCase();
+
+        if (['temp', 'temperature', 'feelslike', 'feels_like'].includes(mType)) {
+            // Temperature drops slightly moving North (+lat) and rises moving South (-lat)
+            delta = (-dLat * 1.5) + (dLon * 0.3);
+        } else if (['wind', 'gust'].includes(mType)) {
+            // Wind speed varies slightly with geographical displacement
+            delta = (dLat * 0.8) + (dLon * 0.4);
+        } else if (['pressure'].includes(mType)) {
+            // Barometric pressure spatial gradient
+            delta = (dLat * 0.02) - (dLon * 0.01);
+        } else if (['humidity', 'precip'].includes(mType)) {
+            // Moisture gradients
+            delta = (-dLat * 2.0) + (dLon * 1.2);
+        }
+
+        const adjustedVal = baseVal + delta;
+
+        if (['temp', 'temperature', 'feelslike', 'feels_like', 'wind', 'gust', 'humidity', 'precip', 'dos'].includes(mType)) {
+            return Math.round(adjustedVal);
+        } else if (['pressure', 'uv'].includes(mType)) {
+            return +adjustedVal.toFixed(2);
+        }
+
+        return Math.round(adjustedVal);
     };
 
     const parseRgba = (rgbaStr) => {
@@ -2565,7 +2596,7 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
         return 'rgba(56, 189, 248, 0.35)';
     };
 
-    // Render Leaflet grid layer using exact match values
+    // Render Leaflet grid layer using spatial coordinate-adjusted values
     const RadarGridLayerClass = L.GridLayer.extend({
         createTile: function(coords) {
             const tile = document.createElement('canvas');
@@ -2574,7 +2605,15 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
             tile.height = size.y;
             const ctx = tile.getContext('2d');
 
-            const tileColor = getDynamicColor(baseResolvedValue, effectiveSubMode);
+            // Calculate center lat/lon of this tile
+            const nwPoint = coords.scaleBy(size);
+            const centerPoint = nwPoint.add([size.x / 2, size.y / 2]);
+            const tileLatLng = this._map.unproject(centerPoint, coords.z);
+
+            // Compute local value for tile canvas rendering
+            const localTileVal = getLocalValueAtCoordinates(tileLatLng.lat, tileLatLng.lng, baseResolvedValue, effectiveSubMode);
+            const tileColor = getDynamicColor(localTileVal, effectiveSubMode);
+
             ctx.fillStyle = tileColor;
             ctx.fillRect(0, 0, tile.width, tile.height);
             return tile;
@@ -2596,8 +2635,8 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
         mode: effectiveSubMode,
         timezone: targetTimezone,
         tzAbbr: tzAbbr,
-        lat: resolvedLat,
-        lon: resolvedLon,
+        lat: centerLat,
+        lon: centerLon,
         highTemp: baseMetrics.tempHigh,
         lowTemp: baseMetrics.tempLow,
         getLocalValue: getLocalValueAtCoordinates
@@ -2622,16 +2661,12 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
             else if (['feelslike', 'feels_like'].includes(layerData.mode)) localLabel = `Feels Like ${localVal}°F`;
             else if (['wind', 'gust'].includes(layerData.mode)) localLabel = `${layerData.mode.toUpperCase()}: ${localVal} mph`;
 
-            const coordText = (layerData.lat !== null && layerData.lon !== null) 
-                ? `${layerData.lat.toFixed(2)}°, ${layerData.lon.toFixed(2)}°` 
-                : `${e.latlng.lat.toFixed(2)}°, ${e.latlng.lng.toFixed(2)}°`;
-
             const tooltipContent = `
                 <div style="font-family: sans-serif; font-size: 12px; padding: 3px 6px; text-align: center;">
                     <strong>${localLabel}</strong><br/>
                     <small style="opacity: 0.85;">High: ${layerData.highTemp}° | Low: ${layerData.lowTemp}°</small><br/>
                     <small style="opacity: 0.8;">${layerData.timeStr} (${layerData.dateStr})</small><br/>
-                    <small style="opacity: 0.65; font-size: 10px;">${coordText}</small>
+                    <small style="opacity: 0.65; font-size: 10px;">${e.latlng.lat.toFixed(2)}°, ${e.latlng.lng.toFixed(2)}°</small>
                 </div>
             `;
 
