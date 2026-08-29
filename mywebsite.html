@@ -5032,11 +5032,15 @@ function drawForecastCanvasGraph(item, mode, canvas, activeX = null, prevItem = 
     const isWinterInversion = item.isWinterInversion || (todayHigh < morningLow);
 
     // Updated historical data source handler using the synchronized grid/card extraction patterns
+    // Updated historical data source handler using the synchronized grid/card extraction patterns
     const getHistoricalSourceData = (item, propName, fallbackVal = 0) => {
         const historyModalEl = document.getElementById('historyModal');
-        const historyDateInput = historyModalEl ? historyModalEl.querySelector('input[type="date"], input.history-date, #historyDate, [name="historyDate"]') : null;
+        const historyDateInput = historyModalEl ? historyModalEl.querySelector('input[type="date"], input.history-date, #historyDate, [name="historyDate"], #historyDateDisplay, .selected-history-date') : null;
         
         let extractedDate = historyDateInput && historyDateInput.value ? historyDateInput.value : null;
+        if (!extractedDate && historyModalEl) {
+            extractedDate = historyModalEl.dataset.date || historyModalEl.getAttribute('data-date');
+        }
         if (!extractedDate) {
             const activeHistoryCard = document.querySelector('.history-card.active, .history-row.active, [data-history-active="true"]');
             if (activeHistoryCard) {
@@ -5048,6 +5052,11 @@ function drawForecastCanvasGraph(item, mode, canvas, activeX = null, prevItem = 
         if (!extractedDate) {
             if (item.noaaValues && item.noaaValues[propName] !== undefined) return item.noaaValues[propName];
             return item[propName] !== undefined ? item[propName] : fallbackVal;
+        }
+
+        // If the item itself explicitly carries its own NOAA/historical source payload, prioritize it
+        if (item.isNoaaSource && item.noaaValues && item.noaaValues[propName] !== undefined) {
+            return item.noaaValues[propName];
         }
 
         const itemDate = new Date(extractedDate);
