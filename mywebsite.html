@@ -501,6 +501,9 @@ let uploadedFiles = [];
 function verifyDeviceAccess() {
     const currentDevice = window.localStorage.getItem("DEVICE_NAME") || "UNKNOWN-DEVICE";
     
+    // Show an alert popup with the current device name
+    alert("Current Device: " + currentDevice);
+
     if (ALLOWED_DEVICES.includes(currentDevice)) {
         // Show broadcast control for authorized administrative hardware
         document.getElementById("broadcast-alert-btn").style.display = "block";
@@ -509,7 +512,6 @@ function verifyDeviceAccess() {
         document.getElementById("broadcast-alert-btn").style.display = "none";
     }
 }
-
 // 2. Modal Controls
 function openAlertModal() {
     document.getElementById("alert-modal").style.display = "flex";
