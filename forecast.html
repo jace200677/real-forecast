@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Iowa Forecast Dashboard</title>
+    <title>Iowa Satellite Dashboard</title>
     <!-- Leaflet CSS & JS for Interactive Map -->
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
@@ -76,11 +76,18 @@ function initMap() {
     // Initialize Leaflet Map centered on Iowa
     map = L.map('map').setView(iowaCoords, 7);
 
-    // Dark-themed tile layer matching original UI
+    // Dark-themed base tile layer
     L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
         attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
         subdomains: 'abcd',
         maxZoom: 19
+    }).addTo(map);
+
+    // IEM GOES-East Visible Satellite Overlay
+    L.tileLayer('https://mesonet.agron.iastate.edu/cache/tile.py/1.0.0/goes-east-vis-1km/{z}/{x}/{y}.png', {
+        attribution: 'Satellite Imagery courtesy of <a href="https://mesonet.agron.iastate.edu/">IEM / Iowa State University</a>',
+        maxZoom: 19,
+        opacity: 0.75
     }).addTo(map);
 
     // Key Iowa Cities Markers
