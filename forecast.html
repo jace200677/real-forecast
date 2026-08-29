@@ -32,7 +32,7 @@
             width: 100%;
             height: 100%;
             border-radius: 6px;
-            background: #121212;
+            background: #121212; /* Dark background fallback prevents white flashes */
         }
 
         .btn-controls, .timeline-controls {
@@ -136,22 +136,16 @@ function initMap() {
     map = L.map('map', {
         center: iowaCoords,
         zoom: 7,
-        maxZoom: 19 // Unlocks deep house-level zoom
+        maxZoom: 19 // Increased map limit to permit house-level zooming
     });
 
-    // High-Resolution Satellite Base Layer (Esri World Imagery - Free, No Key, House Level Detail)
-    baseSatLayer = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
-        attribution: 'Tiles &copy; Esri &mdash; Source: Esri, Maxar, Earthstar Geographics, USDA, USGS',
+    // Dark Street Tile Layer (CartoDB Dark Matter - No API Key required)
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/">CARTO</a>',
+        subdomains: 'abcd',
         maxZoom: 19,
-        maxNativeZoom: 18,
+        maxNativeZoom: 19,
         zIndex: 1
-    }).addTo(map);
-
-    // Street Names and Boundaries Layer for Navigation Context
-    L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}', {
-        attribution: '',
-        maxZoom: 19,
-        zIndex: 4
     }).addTo(map);
 
     // Key Iowa City Markers
@@ -189,7 +183,7 @@ function updateTimeDisplay() {
     document.getElementById('timeDisplay').innerText = `${time.formatted} UTC`;
 }
 
-// Dynamically updates time-stamped weather overlay on top of house-level imagery
+// Dynamically updates base satellite imagery and IEM GOES layer by date and time
 function updateAllLayers() {
     const dateVal = document.getElementById('dateInput').value;
     if (!dateVal) return;
@@ -198,7 +192,21 @@ function updateAllLayers() {
     const dateClean = dateVal.replace(/-/g, ''); // YYYYMMDD
     const timestamp = `${dateClean}${time.hrs}${time.mins}`; // YYYYMMDDHHMM
 
-    // Time-Aware Weather/Cloud Overlay (IEM GOES-East 1km Visible)
+    // 1. Time-aware Base Satellite Layer (NASA GIBS MODIS Terra True Color URL - preserved exactly)
+    const nasaTileUrl = `https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/MODIS_Terra_CorrectedReflectance_TrueColor/default/${dateVal}/GoogleMapsCompatible_Level9/{z}/{y}/{x}.jpg`;
+
+    if (baseSatLayer) {
+        map.removeLayer(baseSatLayer);
+    }
+
+    baseSatLayer = L.tileLayer(nasaTileUrl, {
+        attribution: 'Base Satellite &copy; <a href="https://gibs.earthdata.nasa.gov/">NASA GIBS</a>',
+        maxZoom: 19,        // Allows user to zoom in to level 19
+        maxNativeZoom: 9,   // Upscales level 9 tiles continuously past level 9 without broken URLs
+        zIndex: 2
+    }).addTo(map);
+
+    // 2. Time-aware Overlay Layer (IEM GOES-East 1km Visible URL - preserved exactly)
     const iemTileUrl = `https://mesonet.agron.iastate.edu/cache/tile.py/1.0.0/goes-east-vis-1km-${timestamp}/{z}/{x}/{y}.png`;
 
     if (overlaySatLayer) {
@@ -208,8 +216,9 @@ function updateAllLayers() {
     overlaySatLayer = L.tileLayer(iemTileUrl, {
         attribution: 'GOES Overlay &copy; <a href="https://mesonet.agron.iastate.edu/">IEM / ISU</a>',
         maxZoom: 19,
-        opacity: 0.5,
-        zIndex: 2
+        maxNativeZoom: 19,
+        opacity: 0.6,
+        zIndex: 3
     }).addTo(map);
 }
 
