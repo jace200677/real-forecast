@@ -6238,7 +6238,7 @@ function updateCardView(selectedVal, data, cardContainerId = 'historyCardContain
   const formattedDateStr = `${mNum}/${dNum}/${y}`;
   const paddedDateStr = `${String(mNum).padStart(2, '0')}/${String(dNum).padStart(2, '0')}/${y}`;
 
-  // 1.5 Check Radar Modal or Global Store Sources first, ensuring exact map/item synchronization
+  // 1.5 Check Radar Modal or Global Store Sources first, synchronized with active day map/location states
   let radarSourceItem = null;
   const globalRadarStore = window._radarState?.currentItem || window.radarModalData || window.activeRadarItem || window.radarCache;
   
@@ -6253,7 +6253,7 @@ function updateCardView(selectedVal, data, cardContainerId = 'historyCardContain
                             globalRadarStore.dateStr === paddedDateStr || 
                             globalRadarStore.date === formattedDateStr || 
                             globalRadarStore.date === paddedDateStr;
-      if (targetKeyMatch || globalRadarStore.isRadarActive || globalRadarStore.lat) {
+      if (targetKeyMatch || globalRadarStore.isRadarActive || window._radarState) {
         radarSourceItem = globalRadarStore;
       }
     }
@@ -6261,22 +6261,22 @@ function updateCardView(selectedVal, data, cardContainerId = 'historyCardContain
 
   // Fallback or combine with standard payload array
   const sourceList = Array.isArray(data) ? data : (window.historyDataPayload || []);
-  const standardOverride = sourceList.find(i => 
+  const baseOverrideItem = sourceList.find(i => 
     i.dateStr === formattedDateStr || 
     i.dateStr === paddedDateStr || 
     i.date === formattedDateStr || 
     i.date === paddedDateStr
   );
 
-  // Merge radar map values over standard overrides and base items
-  const overrideItem = radarSourceItem ? { ...standardOverride, ...radarSourceItem } : standardOverride;
+  // Fully merge radar map values and location parameters over the payload/override item
+  const overrideItem = radarSourceItem ? { ...(baseOverrideItem || {}), ...radarSourceItem } : baseOverrideItem;
 
   let matchedItem;
 
   // 2. Classify strictly past date range source rules
   if (selectedDateObj < cutoffDateObj) {
     // Strictly NOAA Historical Archive (Before 8/23/2026)
-    const baseNoaa = overrideItem && overrideItem.isNoaaSource ? overrideItem : (overrideItem || {
+    matchedItem = overrideItem && overrideItem.isNoaaSource ? overrideItem : (overrideItem || {
       dateStr: formattedDateStr,
       date: formattedDateStr,
       dos: Math.floor(Math.random() * 4) + 6,
@@ -6289,27 +6289,25 @@ function updateCardView(selectedVal, data, cardContainerId = 'historyCardContain
         wind: Math.round(8 + 5 * Math.cos(i / 24 * Math.PI * 2))
       }))
     });
-    matchedItem = radarSourceItem ? { ...baseNoaa, ...radarSourceItem } : baseNoaa;
   } else {
     // Dates from 8/23/2026 up to Yesterday
-    if (overrideItem || radarSourceItem) {
-      const activeSource = overrideItem || radarSourceItem;
-      const highTemp = activeSource.highTemp ?? activeSource.tempHigh ?? 70;
-      const lowTemp = activeSource.lowTemp ?? activeSource.tempLow ?? 50;
+    if (overrideItem) {
+      const highTemp = overrideItem.highTemp ?? overrideItem.tempHigh ?? 70;
+      const lowTemp = overrideItem.lowTemp ?? overrideItem.tempLow ?? 50;
       const baseTemp = (highTemp + lowTemp) / 2;
-      const baseWind = activeSource.wind ?? activeSource.windSpeed ?? activeSource.w ?? 10;
-      const dosScore = activeSource.dos ?? activeSource.projectedScore ?? 5;
+      const baseWind = overrideItem.wind ?? overrideItem.windSpeed ?? overrideItem.w ?? 10;
+      const dosScore = overrideItem.dos ?? overrideItem.projectedScore ?? 5;
 
       matchedItem = {
-        ...activeSource,
+        ...overrideItem,
         dateStr: formattedDateStr,
         date: formattedDateStr,
-        condition: activeSource.condition || "Radar / Archive Event Record",
+        condition: overrideItem.condition || "Radar / Archive Event Record",
         highTemp: highTemp,
         lowTemp: lowTemp,
         wind: baseWind,
         dos: dosScore > 10 ? Math.min(10, Math.max(0, Math.round(dosScore / 10))) : dosScore,
-        hourly: activeSource.hourly || activeSource.hours || activeSource.hourlyData || activeSource.history || Array.from({ length: 24 }, (_, i) => ({
+        hourly: overrideItem.hourly || overrideItem.hours || overrideItem.hourlyData || Array.from({ length: 24 }, (_, i) => ({
           temp: Math.round(baseTemp + ((highTemp - lowTemp) / 2 || 10) * Math.sin((i - 6) / 24 * Math.PI * 2)),
           wind: Math.max(1, Math.round(baseWind + 3 * Math.sin(i / 12 * Math.PI)))
         }))
@@ -6353,7 +6351,7 @@ function updateCardView(selectedVal, data, cardContainerId = 'historyCardContain
   // 3. Normalize wind & temperature properties across varied payload schemas
   matchedItem.wind = matchedItem.wind ?? matchedItem.windSpeed ?? matchedItem.w ?? 0;
 
-  const rawHourly = matchedItem.hourly || matchedItem.hours || matchedItem.hourlyData || matchedItem.history || [];
+  const rawHourly = matchedItem.hourly || matchedItem.hours || matchedItem.hourlyData || [];
   const normalizedHourly = rawHourly.map(h => {
     if (typeof h === 'number') {
       return { temp: h, wind: matchedItem.wind };
@@ -6366,7 +6364,7 @@ function updateCardView(selectedVal, data, cardContainerId = 'historyCardContain
   });
   matchedItem.hourly = normalizedHourly;
 
-  // 4. Render HTML template
+  // 4. Render HTML template with map/location identifiers synchronized from active states
   cardContainer.innerHTML = `
     <div class="history-card" style="background:#18181c; border: 1px solid #27272a; border-radius: 12px; padding: 16px; color: #fff; width: 100%; box-sizing: border-box; display: flex; flex-direction: column; justify-content: space-between; box-shadow: 0 4px 12px rgba(0,0,0,0.4);">
       <div>
@@ -6375,9 +6373,10 @@ function updateCardView(selectedVal, data, cardContainerId = 'historyCardContain
           <span style="font-size: 12px; background:#27272a; padding: 3px 8px; border-radius: 4px; color:#a1a1aa;">DOS: ${matchedItem.dos}/10</span>
         </div>
         <div style="font-size: 13px; color: #e4e4e7; margin-bottom: 10px;">${matchedItem.condition}</div>
-        <div style="font-size: 12px; color: #a1a1aa; margin-bottom: 12px; display: flex; gap: 15px;">
+        <div style="font-size: 12px; color: #a1a1aa; margin-bottom: 12px; display: flex; gap: 15px; flex-wrap: wrap;">
           <span>🌡️ ${matchedItem.highTemp}° / ${matchedItem.lowTemp}°F</span>
           <span>💨 ${matchedItem.wind} mph</span>
+          ${matchedItem.lat && matchedItem.lon ? `<span style="color:#38bdf8;">📍 (${Number(matchedItem.lat).toFixed(2)}, ${Number(matchedItem.lon).toFixed(2)})</span>` : ''}
         </div>
       </div>
 
