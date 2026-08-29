@@ -1989,61 +1989,83 @@ function openForecastGraphModal(item, fullForecast = [], itemIndex = -1) {
         });
         
         // Attach click handler for Weather Map Modal Button
-        document.getElementById("weatherMapModalBtn")?.addEventListener("click", () => {
-    const currentMode = document.getElementById("graphTypeSelect")?.value || "temp";
-    
-    // 1. Identify active selected day card/tab element from UI
-    const dayElements = document.querySelectorAll('.day-tab, .forecast-day-card, .day-card'); 
-    let selectedDayIndex = 0;
-    
-    dayElements.forEach((el, index) => {
-        if (
-            el.classList.contains('active') || 
-            el.classList.contains('selected') || 
-            el.getAttribute('aria-selected') === 'true' ||
-            el.dataset.selected === 'true'
-        ) {
-            selectedDayIndex = index;
-        }
-    });
+        document.getElementById("weatherMapModalBtn")?.addEventListener("click", async () => {
+            const currentMode = document.getElementById("graphTypeSelect")?.value || "temp";
+            
+            // 1. Identify active selected day card/tab element from UI
+            const dayElements = document.querySelectorAll('.day-tab, .forecast-day-card, .day-card'); 
+            let selectedDayIndex = itemIndex >= 0 ? itemIndex : 0;
+            
+            dayElements.forEach((el, index) => {
+                if (
+                    el.classList.contains('active') || 
+                    el.classList.contains('selected') || 
+                    el.getAttribute('aria-selected') === 'true' ||
+                    el.dataset.selected === 'true'
+                ) {
+                    selectedDayIndex = index;
+                }
+            });
 
-    // 2. Safely resolve root dataset from active state or window context
-    const rootData = window._radarState?.currentItem || window.currentWeatherData || {};
+            // 2. Resolve root dataset: Check active forecast sources -> historical globals -> function parameters
+            const rootData = window._radarState?.currentItem || 
+                             window.currentWeatherData || 
+                             (fullForecast && fullForecast.length > 0 ? fullForecast : null) ||
+                             window.historicalWeatherData || 
+                             window.weatherHistory || 
+                             window.pastWeatherData || 
+                             item || 
+                             {};
 
-    // 3. Helper to extract forecast array across standard schema variations
-    const extractDaysArray = (data) => {
-        if (!data) return [];
-        if (Array.isArray(data)) return data;
-        return data.daily || data.forecast || data.days || data.weekly || data.list || data.data || data.timeline || [];
-    };
+            // 3. Helper to extract forecast or historical arrays across standard schema variations
+            const extractDaysArray = (data) => {
+                if (!data) return [];
+                if (Array.isArray(data)) return data;
+                return data.daily || data.forecast || data.days || data.weekly || data.list || 
+                       data.timeline || data.history || data.historical || data.past || 
+                       data.archive || data.data || [];
+            };
 
-    let daysArray = extractDaysArray(rootData);
-    if (daysArray.length === 0 && rootData && typeof rootData === 'object') {
-        for (const key of Object.keys(rootData)) {
-            if (rootData[key] && typeof rootData[key] === 'object') {
-                const nested = extractDaysArray(rootData[key]);
-                if (nested.length > 0) {
-                    daysArray = nested;
-                    break;
+            let daysArray = extractDaysArray(rootData);
+
+            // Deep search nested objects if top-level keys match nothing
+            if (daysArray.length === 0 && rootData && typeof rootData === 'object') {
+                for (const key of Object.keys(rootData)) {
+                    if (rootData[key] && typeof rootData[key] === 'object') {
+                        const nested = extractDaysArray(rootData[key]);
+                        if (nested.length > 0) {
+                            daysArray = nested;
+                            break;
+                        }
+                    }
                 }
             }
-        }
-    }
 
-    // 4. Extract target selected day card object
-    const selectedDayCard = daysArray[selectedDayIndex] || daysArray[0] || rootData;
+            // 4. Fallback API fetch if no local dataset exists
+            if (daysArray.length === 0 && typeof fetchHistoricalData === 'function') {
+                try {
+                    const fetchedHistory = await fetchHistoricalData();
+                    daysArray = extractDaysArray(fetchedHistory);
+                } catch (err) {
+                    console.error("Failed to load historical weather data:", err);
+                }
+            }
 
-    // Preserve parent metadata (lat, lon, timezone) on selected card object
-    if (selectedDayCard !== rootData && typeof rootData === 'object') {
-        selectedDayCard.lat = selectedDayCard.lat ?? rootData.lat ?? rootData.latitude;
-        selectedDayCard.lon = selectedDayCard.lon ?? rootData.lon ?? rootData.longitude;
-        selectedDayCard.timezone = selectedDayCard.timezone ?? rootData.timezone ?? rootData.tz;
-        selectedDayCard.days = daysArray; // Preserve full collection reference
-    }
+            // 5. Extract target selected day card object
+            const selectedDayCard = daysArray[selectedDayIndex] || daysArray[0] || item || rootData;
 
-    // 5. Open radar modal targeting the isolated selected day card
-    openWeatherMapModal(selectedDayCard, currentMode, selectedDayIndex);
-});
+            // Preserve parent metadata (lat, lon, timezone) on selected card object
+            if (selectedDayCard && typeof rootData === 'object') {
+                selectedDayCard.lat = selectedDayCard.lat ?? rootData.lat ?? rootData.latitude ?? item?.lat;
+                selectedDayCard.lon = selectedDayCard.lon ?? rootData.lon ?? rootData.longitude ?? item?.lon;
+                selectedDayCard.timezone = selectedDayCard.timezone ?? rootData.timezone ?? rootData.tz ?? item?.timezone;
+                selectedDayCard.days = daysArray;
+                selectedDayCard.isHistorical = !rootData.daily && !rootData.forecast && !window.currentWeatherData;
+            }
+
+            // 6. Open radar modal targeting the isolated selected day card
+            openWeatherMapModal(selectedDayCard, currentMode, selectedDayIndex);
+        });
         
         const updateScrubber = (clientX) => {
             const rect = canvas.getBoundingClientRect();
@@ -2078,7 +2100,11 @@ function openForecastGraphModal(item, fullForecast = [], itemIndex = -1) {
     
     const currentMode = document.getElementById("graphTypeSelect").value || "temp";
     const modalCanvas = document.getElementById("forecastGraphCanvas");
-    updateTrafficButtonState();
+    
+    if (typeof updateTrafficButtonState === "function") {
+        updateTrafficButtonState();
+    }
+    
     setTimeout(() => {
         const rect = modalCanvas.getBoundingClientRect();
         modalCanvas.width = rect.width * (window.devicePixelRatio || 1);
