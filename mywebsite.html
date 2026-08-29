@@ -6098,7 +6098,7 @@ function drawForecastCanvasGraph(item, mode, canvas, activeX = null, prevItem = 
         ctx.fillText(tooltipText, boxX + 8, 20 * scaleFactor);
     }
 }
-   function openForecastGraphModal(item, fullForecast = [], itemIndex = -1) {
+function openForecastGraphModal(item, fullForecast = [], itemIndex = -1) {
     let modal = document.getElementById("forecastGraphModal");
     if (!modal) {
         modal = document.createElement("div");
@@ -6261,13 +6261,16 @@ function drawForecastCanvasGraph(item, mode, canvas, activeX = null, prevItem = 
         canvas.addEventListener("touchend", clearScrubber);
         canvas.addEventListener("touchcancel", clearScrubber);
     }
-    
-    // Normalize item hourly schema if historical data uses 'hours' or 'history'
-    if (item && typeof item === 'object') {
-        item.hourly = item.hourly || item.hours || item.hourlyData || item.history || item.timeline || [];
+
+    // Resolve active item directly from radar modal state if available
+    const activeItem = window._radarState?.currentItem || item;
+
+    // Normalize item hourly schema if historical or radar data uses 'hours', 'history', or nested hourly structure
+    if (activeItem && typeof activeItem === 'object') {
+        activeItem.hourly = activeItem.hourly || activeItem.hours || activeItem.hourlyData || activeItem.history || activeItem.timeline || [];
     }
 
-    modal.currentItem = item;
+    modal.currentItem = activeItem;
     modal.prevItem = (fullForecast && itemIndex > 0) ? fullForecast[itemIndex - 1] : null;
     modal.nextItem = (fullForecast && itemIndex >= 0 && itemIndex < fullForecast.length - 1) ? fullForecast[itemIndex + 1] : null;
     modal.dragX = null;
@@ -6284,7 +6287,7 @@ function drawForecastCanvasGraph(item, mode, canvas, activeX = null, prevItem = 
         const rect = modalCanvas.getBoundingClientRect();
         modalCanvas.width = rect.width * (window.devicePixelRatio || 1);
         modalCanvas.height = rect.height * (window.devicePixelRatio || 1);
-        drawForecastCanvasGraph(item, currentMode, modalCanvas, null, modal.prevItem, modal.nextItem);
+        drawForecastCanvasGraph(activeItem, currentMode, modalCanvas, null, modal.prevItem, modal.nextItem);
     }, 50);
 }
 function closeModal() {
