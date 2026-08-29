@@ -5023,7 +5023,6 @@ function drawForecastCanvasGraph(item, mode, canvas, activeX = null, prevItem = 
     const isWinterInversion = item.isWinterInversion || (todayHigh < morningLow);
 
     const getDiurnalTemp = (m) => {
-        // If history source, directly leverage hourly array values if provided from NOAA record
         if (isHistorySource && Array.isArray(item.hourly) && item.hourly.length === 24) {
             const hourIdx = Math.min(23, Math.floor(m / 60));
             const nextHourIdx = Math.min(23, hourIdx + 1);
@@ -5051,6 +5050,14 @@ function drawForecastCanvasGraph(item, mode, canvas, activeX = null, prevItem = 
 
     const peakMin = 15 * 60;
     const getDiurnalFeelsLike = (m) => {
+        if (isHistorySource && Array.isArray(item.hourly) && item.hourly.length === 24) {
+            const hourIdx = Math.min(23, Math.floor(m / 60));
+            const nextHourIdx = Math.min(23, hourIdx + 1);
+            const tFraction = (m % 60) / 60;
+            const currentHVal = item.hourly[hourIdx].feelsLike !== undefined ? item.hourly[hourIdx].feelsLike : item.hourly[hourIdx].temp;
+            const nextHVal = item.hourly[nextHourIdx].feelsLike !== undefined ? item.hourly[nextHourIdx].feelsLike : item.hourly[nextHourIdx].temp;
+            return Math.round(currentHVal + (nextHVal - currentHVal) * tFraction);
+        }
         if (isToday && m <= currentMinutes && Array.isArray(item.historicalFeelsLike) && item.historicalFeelsLike[m]) {
             return item.historicalFeelsLike[m];
         }
@@ -5062,6 +5069,14 @@ function drawForecastCanvasGraph(item, mode, canvas, activeX = null, prevItem = 
     const nextWind = (effectiveNextItem && effectiveNextItem.windMph !== undefined) ? effectiveNextItem.windMph : baseWindVal;
     
     const getDiurnalWind = (m) => {
+        if (isHistorySource && Array.isArray(item.hourly) && item.hourly.length === 24) {
+            const hourIdx = Math.min(23, Math.floor(m / 60));
+            const nextHourIdx = Math.min(23, hourIdx + 1);
+            const tFraction = (m % 60) / 60;
+            const currentHVal = item.hourly[hourIdx].wind !== undefined ? item.hourly[hourIdx].wind : (item.hourly[hourIdx].windMph || baseWindVal);
+            const nextHVal = item.hourly[nextHourIdx].wind !== undefined ? item.hourly[nextHourIdx].wind : (item.hourly[nextHourIdx].windMph || baseWindVal);
+            return Math.round(currentHVal + (nextHVal - currentHVal) * tFraction);
+        }
         if (isToday && m <= currentMinutes && Array.isArray(item.historicalWind) && item.historicalWind[m]) {
             return item.historicalWind[m];
         }
@@ -5077,6 +5092,14 @@ function drawForecastCanvasGraph(item, mode, canvas, activeX = null, prevItem = 
     const nextGust = (effectiveNextItem && effectiveNextItem.gustMph !== undefined) ? effectiveNextItem.gustMph : baseGustVal;
     
     const getDiurnalGust = (m) => {
+        if (isHistorySource && Array.isArray(item.hourly) && item.hourly.length === 24) {
+            const hourIdx = Math.min(23, Math.floor(m / 60));
+            const nextHourIdx = Math.min(23, hourIdx + 1);
+            const tFraction = (m % 60) / 60;
+            const currentHVal = item.hourly[hourIdx].gust !== undefined ? item.hourly[hourIdx].gust : (item.hourly[hourIdx].gustMph || baseGustVal);
+            const nextHVal = item.hourly[nextHourIdx].gust !== undefined ? item.hourly[nextHourIdx].gust : (item.hourly[nextHourIdx].gustMph || baseGustVal);
+            return Math.round(currentHVal + (nextHVal - currentHVal) * tFraction);
+        }
         if (isToday && m <= currentMinutes && Array.isArray(item.historicalGust) && item.historicalGust[m]) {
             return item.historicalGust[m];
         }
@@ -5092,6 +5115,14 @@ function drawForecastCanvasGraph(item, mode, canvas, activeX = null, prevItem = 
     const nextDos = (effectiveNextItem && (effectiveNextItem.dos !== undefined || effectiveNextItem.score !== undefined)) ? (effectiveNextItem.dos !== undefined ? effectiveNextItem.dos : effectiveNextItem.score) : baseDosVal;
     
     const getDiurnalDos = (m) => {
+        if (isHistorySource && Array.isArray(item.hourly) && item.hourly.length === 24) {
+            const hourIdx = Math.min(23, Math.floor(m / 60));
+            const nextHourIdx = Math.min(23, hourIdx + 1);
+            const tFraction = (m % 60) / 60;
+            const currentHVal = item.hourly[hourIdx].dos !== undefined ? item.hourly[hourIdx].dos : (item.hourly[hourIdx].score || baseDosVal);
+            const nextHVal = item.hourly[nextHourIdx].dos !== undefined ? item.hourly[nextHourIdx].dos : (item.hourly[nextHourIdx].score || baseDosVal);
+            return Math.round(currentHVal + (nextHVal - currentHVal) * tFraction);
+        }
         if (isToday && m <= currentMinutes && Array.isArray(item.historicalDos) && item.historicalDos[m]) {
             return item.historicalDos[m];
         }
@@ -5105,6 +5136,14 @@ function drawForecastCanvasGraph(item, mode, canvas, activeX = null, prevItem = 
     const prevPressure = (effectivePrevItem && effectivePrevItem.pressure !== undefined) ? effectivePrevItem.pressure : (item.pressure || 29.92);
     const nextPressure = (effectiveNextItem && effectiveNextItem.pressure !== undefined) ? effectiveNextItem.pressure : (item.pressure || 29.92);
     const getDiurnalPressure = (m) => {
+        if (isHistorySource && Array.isArray(item.hourly) && item.hourly.length === 24) {
+            const hourIdx = Math.min(23, Math.floor(m / 60));
+            const nextHourIdx = Math.min(23, hourIdx + 1);
+            const tFraction = (m % 60) / 60;
+            const currentHVal = item.hourly[hourIdx].pressure !== undefined ? item.hourly[hourIdx].pressure : (item.pressure || 29.92);
+            const nextHVal = item.hourly[nextHourIdx].pressure !== undefined ? item.hourly[nextHourIdx].pressure : (item.pressure || 29.92);
+            return +(currentHVal + (nextHVal - currentHVal) * tFraction).toFixed(2);
+        }
         if (isToday && m <= currentMinutes && Array.isArray(item.historicalPressure) && item.historicalPressure[m]) {
             return item.historicalPressure[m];
         }
@@ -5118,6 +5157,14 @@ function drawForecastCanvasGraph(item, mode, canvas, activeX = null, prevItem = 
     const prevHumidity = (effectivePrevItem && effectivePrevItem.humidity !== undefined) ? effectivePrevItem.humidity : (item.humidity || 50);
     const nextHumidity = (effectiveNextItem && effectiveNextItem.humidity !== undefined) ? effectiveNextItem.humidity : (item.humidity || 50);
     const getDiurnalHumidity = (m) => {
+        if (isHistorySource && Array.isArray(item.hourly) && item.hourly.length === 24) {
+            const hourIdx = Math.min(23, Math.floor(m / 60));
+            const nextHourIdx = Math.min(23, hourIdx + 1);
+            const tFraction = (m % 60) / 60;
+            const currentHVal = item.hourly[hourIdx].humidity !== undefined ? item.hourly[hourIdx].humidity : (item.humidity || 50);
+            const nextHVal = item.hourly[nextHourIdx].humidity !== undefined ? item.hourly[nextHourIdx].humidity : (item.humidity || 50);
+            return Math.round(currentHVal + (nextHVal - currentHVal) * tFraction);
+        }
         if (isToday && m <= currentMinutes && Array.isArray(item.historicalHumidity) && item.historicalHumidity[m]) {
             return item.historicalHumidity[m];
         }
@@ -5129,6 +5176,14 @@ function drawForecastCanvasGraph(item, mode, canvas, activeX = null, prevItem = 
     };
 
     const getDiurnalUv = (m) => {
+        if (isHistorySource && Array.isArray(item.hourly) && item.hourly.length === 24) {
+            const hourIdx = Math.min(23, Math.floor(m / 60));
+            const nextHourIdx = Math.min(23, hourIdx + 1);
+            const tFraction = (m % 60) / 60;
+            const currentHVal = item.hourly[hourIdx].uv !== undefined ? item.hourly[hourIdx].uv : (item.hourly[hourIdx].uvIndex || 0);
+            const nextHVal = item.hourly[nextHourIdx].uv !== undefined ? item.hourly[nextHourIdx].uv : (item.hourly[nextHourIdx].uvIndex || 0);
+            return +(currentHVal + (nextHVal - currentHVal) * tFraction).toFixed(1);
+        }
         if (isToday && m <= currentMinutes && Array.isArray(item.historicalUv) && item.historicalUv[m]) {
             return item.historicalUv[m];
         }
@@ -5141,6 +5196,14 @@ function drawForecastCanvasGraph(item, mode, canvas, activeX = null, prevItem = 
     const prevPrecip = (effectivePrevItem && effectivePrevItem.precipChance !== undefined) ? effectivePrevItem.precipChance : (item.precipChance || 0);
     const nextPrecip = (effectiveNextItem && effectiveNextItem.precipChance !== undefined) ? effectiveNextItem.precipChance : (item.precipChance || 0);
     const getDiurnalPrecip = (m) => {
+        if (isHistorySource && Array.isArray(item.hourly) && item.hourly.length === 24) {
+            const hourIdx = Math.min(23, Math.floor(m / 60));
+            const nextHourIdx = Math.min(23, hourIdx + 1);
+            const tFraction = (m % 60) / 60;
+            const currentHVal = item.hourly[hourIdx].precip !== undefined ? item.hourly[hourIdx].precip : (item.hourly[hourIdx].precipChance || 0);
+            const nextHVal = item.hourly[nextHourIdx].precip !== undefined ? item.hourly[nextHourIdx].precip : (item.hourly[nextHourIdx].precipChance || 0);
+            return Math.round(currentHVal + (nextHVal - currentHVal) * tFraction);
+        }
         if (isToday && m <= currentMinutes && Array.isArray(item.historicalPrecip) && item.historicalPrecip[m]) {
             return item.historicalPrecip[m];
         }
@@ -5153,7 +5216,7 @@ function drawForecastCanvasGraph(item, mode, canvas, activeX = null, prevItem = 
     const sortedEvents = hasEvents ? [...item.overrideEvents].sort((a, b) => a.minute - b.minute) : [];
 
     const getInterpolatedVal = (m, key, fallbackFn) => {
-        if (isHistorySource && key === 'temp' && Array.isArray(item.hourly) && item.hourly.length === 24) {
+        if (isHistorySource && Array.isArray(item.hourly) && item.hourly.length === 24) {
             return fallbackFn(m);
         }
 
@@ -5299,49 +5362,32 @@ function drawForecastCanvasGraph(item, mode, canvas, activeX = null, prevItem = 
             ctx.setLineDash([]);
         };
 
-        if (isToday && !isHistorySource) {
-            const currentIdx = pts.findIndex(p => p.minute >= currentMinutes);
-            const pastPts = pts.slice(0, Math.max(1, currentIdx + 1));
-            const futurePts = pts.slice(Math.max(0, currentIdx));
-            if (pastPts.length > 0) renderPath(pastPts, activeStyle, true);
-            if (futurePts.length > 0) renderPath(futurePts, activeStyle, false);
+        if ((isToday && !isHistorySource) || isHistorySource) {
+            renderPath(pts, activeStyle, true);
         } else {
             renderPath(pts, activeStyle, false);
         }
     };
 
     // Draw Modes (Temperature, Feels Like, Wind, DOS, Pressure, Humidity, UV, Precip)
+    let getYFn = null;
     if (mode === "temp" || mode === "feelsLike") {
         const valKey = mode === "temp" ? 'temp' : 'feelsLike';
         const allVals = points.map(p => p[valKey]);
         const minY = Math.min(...allVals) - 5;
         const maxY = Math.max(...allVals) + 5;
-        const getY = (p) => padTop + graphHeight - ((p[valKey] - minY) / (maxY - minY)) * graphHeight;
+        getYFn = (p) => padTop + graphHeight - ((p[valKey] - minY) / (maxY - minY)) * graphHeight;
 
         const fillGrad = ctx.createLinearGradient(0, padTop, 0, height - padBottom);
         fillGrad.addColorStop(0, appleTempColor(Math.max(...allVals)));
         fillGrad.addColorStop(1, appleTempColor(Math.min(...allVals)));
 
-        drawSegmentedLine(points, fillGrad, 3, getY, true);
-
-        if (isToday && !isHistorySource) {
-            const currentX = padLeft + (currentMinutes / 1439) * graphWidth;
-            const currentVal = mode === "temp" ? getInterpolatedTemp(currentMinutes) : getInterpolatedFeelsLike(currentMinutes);
-            const currentY = padTop + graphHeight - ((currentVal - minY) / (maxY - minY)) * graphHeight;
-
-            ctx.fillStyle = "#ffffff";
-            ctx.beginPath();
-            ctx.arc(currentX, currentY, 5 * scaleFactor, 0, Math.PI * 2);
-            ctx.fill();
-            ctx.strokeStyle = "#000";
-            ctx.lineWidth = 1.5;
-            ctx.stroke();
-        }
+        drawSegmentedLine(points, fillGrad, 3, getYFn, true);
     } else if (mode === "wind") {
         const allWinds = points.map(p => p.wind);
         const allGusts = points.map(p => p.gust);
         const maxSpeed = Math.max(10, Math.max(...allGusts) + 5);
-        const getWindY = (p) => padTop + graphHeight - ((p.wind - 0) / maxSpeed) * graphHeight;
+        getYFn = (p) => padTop + graphHeight - ((p.wind - 0) / maxSpeed) * graphHeight;
         const getGustY = (p) => padTop + graphHeight - ((p.gust - 0) / maxSpeed) * graphHeight;
 
         const createSpeedGradient = () => {
@@ -5353,67 +5399,52 @@ function drawForecastCanvasGraph(item, mode, canvas, activeX = null, prevItem = 
             return grad;
         };
         const windGrad = createSpeedGradient();
-        drawSegmentedLine(points, windGrad, 2.5, getWindY, true);
+        drawSegmentedLine(points, windGrad, 2.5, getYFn, true);
         drawSegmentedLine(points, windGrad, 2.0, getGustY, false);
-
-        if (isToday && !isHistorySource) {
-            const currentX = padLeft + (currentMinutes / 1439) * graphWidth;
-            const currentWindVal = getInterpolatedWind(currentMinutes);
-            ctx.fillStyle = getDynamicWindColor(currentWindVal);
-            ctx.beginPath(); 
-            ctx.arc(currentX, getWindY({ wind: currentWindVal }), 5 * scaleFactor, 0, Math.PI * 2); 
-            ctx.fill();
-            ctx.strokeStyle = "#000";
-            ctx.lineWidth = 1.5;
-            ctx.stroke();
-        }
     } else if (mode === "dos") {
         const allDos = points.map(p => p.dos);
         const minY = Math.max(0, Math.min(...allDos) - 5);
         const maxY = Math.max(...allDos) + 5;
-        const getDosY = (p) => padTop + graphHeight - ((p.dos - minY) / (maxY - minY)) * graphHeight;
+        getYFn = (p) => padTop + graphHeight - ((p.dos - minY) / (maxY - minY)) * graphHeight;
 
         const dosGrad = ctx.createLinearGradient(0, padTop, 0, height - padBottom);
         dosGrad.addColorStop(0, typeof getLerpColor === "function" ? getLerpColor(item.dos || item.score || 5) : "#33ff55");
         dosGrad.addColorStop(1, "#115522");
-        drawSegmentedLine(points, dosGrad, 3, getDosY, true);
-
-        if (isToday && !isHistorySource) {
-            const currentX = padLeft + (currentMinutes / 1439) * graphWidth;
-            const currentY = padTop + graphHeight - ((getInterpolatedDos(currentMinutes) - minY) / (maxY - minY)) * graphHeight;
-            ctx.fillStyle = "#ffffff";
-            ctx.beginPath(); ctx.arc(currentX, currentY, 5 * scaleFactor, 0, Math.PI * 2); ctx.fill();
-        }
+        drawSegmentedLine(points, dosGrad, 3, getYFn, true);
     } else if (mode === "pressure") {
         const allP = points.map(p => p.pressure);
         const minY = Math.min(...allP) - 0.1;
         const maxY = Math.max(...allP) + 0.1;
-        const getPY = (p) => padTop + graphHeight - ((p.pressure - minY) / (maxY - minY)) * graphHeight;
-        drawSegmentedLine(points, "#A259FF", 3, getPY, true);
+        getYFn = (p) => padTop + graphHeight - ((p.pressure - minY) / (maxY - minY)) * graphHeight;
+        drawSegmentedLine(points, "#A259FF", 3, getYFn, true);
     } else if (mode === "humidity") {
-        const getHY = (p) => padTop + graphHeight - (p.humidity / 100) * graphHeight;
+        getYFn = (p) => padTop + graphHeight - (p.humidity / 100) * graphHeight;
         const humGrad = ctx.createLinearGradient(0, padTop, 0, height - padBottom);
         humGrad.addColorStop(0, "#00C6FF"); humGrad.addColorStop(1, "#0072FF");
-        drawSegmentedLine(points, humGrad, 3, getHY, true);
+        drawSegmentedLine(points, humGrad, 3, getYFn, true);
     } else if (mode === "uv") {
         const allUv = points.map(p => p.uv);
         const maxUv = Math.max(10, Math.max(...allUv) + 2);
-        const getUvY = (p) => padTop + graphHeight - (p.uv / maxUv) * graphHeight;
+        getYFn = (p) => padTop + graphHeight - (p.uv / maxUv) * graphHeight;
 
         const uvGrad = ctx.createLinearGradient(0, padTop, 0, height - padBottom);
         uvGrad.addColorStop(0, appleUvColor(maxUv));
         uvGrad.addColorStop(1, appleUvColor(0));
         
-        drawSegmentedLine(points, uvGrad, 3, getUvY, true);
+        drawSegmentedLine(points, uvGrad, 3, getYFn, true);
     } else if (mode === "precip") {
         const barWidth = (graphWidth / points.length) * 0.9;
+        getYFn = (p) => {
+            const barH = (p.precip / 100) * graphHeight;
+            return padTop + graphHeight - barH;
+        };
         points.forEach((p) => {
             if (p.precip > 0) {
                 const barH = (p.precip / 100) * graphHeight;
                 const yPos = padTop + graphHeight - barH;
                 
                 const precipColor = lerpColor("#80D0FF", "#0055FF", p.precip / 100);
-                ctx.globalAlpha = (isToday && !isHistorySource && p.minute < currentMinutes) ? 0.3 : 0.85;
+                ctx.globalAlpha = 0.85;
                 
                 ctx.fillStyle = precipColor;
                 if (typeof ctx.roundRect === "function") {
@@ -5428,12 +5459,16 @@ function drawForecastCanvasGraph(item, mode, canvas, activeX = null, prevItem = 
         });
     }
 
-    // Tooltip rendering on Hover
-    if (activeX !== null && activeX >= padLeft && activeX <= width - padRight) {
+    // Tooltip rendering on Hover with point locked exactly onto the line/graph
+    if (activeX !== null && activeX >= padLeft && activeX <= width - padRight && getYFn) {
         const clampedX = Math.max(padLeft, Math.min(width - padRight, activeX));
         const ratio = (clampedX - padLeft) / graphWidth;
         const hoveredMinute = Math.round(ratio * 1439);
 
+        // Find nearest point data sample or interpolate precisely for smooth tracking
+        const exactMatchIndex = Math.min(points.length - 1, Math.max(0, Math.round(hoveredMinute / 15)));
+        const targetPoint = points[exactMatchIndex] || points[0];
+        
         const h = Math.floor(hoveredMinute / 60);
         const m = Math.round(hoveredMinute % 60);
         const timeStr = `${h % 12 || 12}:${m < 10 ? '0' : ''}${m}${h >= 12 ? 'PM' : 'AM'}`;
@@ -5446,6 +5481,18 @@ function drawForecastCanvasGraph(item, mode, canvas, activeX = null, prevItem = 
         ctx.lineTo(clampedX, height - padBottom);
         ctx.stroke();
         ctx.setLineDash([]);
+
+        // Draw dot strictly on the curve/graph line
+        const dotX = targetPoint.x;
+        const dotY = getYFn(targetPoint);
+
+        ctx.fillStyle = "#ffffff";
+        ctx.beginPath();
+        ctx.arc(dotX, dotY, 3.5, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.strokeStyle = "#000000";
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
 
         const hTemp = getInterpolatedTemp(hoveredMinute);
         const nearbyEvent = hasEvents ? sortedEvents.find(e => Math.abs(e.minute - hoveredMinute) <= 20 && e.label) : null;
@@ -5462,7 +5509,7 @@ function drawForecastCanvasGraph(item, mode, canvas, activeX = null, prevItem = 
 
         ctx.font = `bold ${Math.max(10, Math.round(12 * scaleFactor))}px sans-serif`;
         const textWidth = ctx.measureText(tooltipText).width;
-        let boxX = clampedX - textWidth / 2 - 8;
+        let boxX = dotX - textWidth / 2 - 8;
         boxX = Math.max(padLeft, Math.min(width - padRight - textWidth - 16, boxX));
 
         ctx.fillStyle = "rgba(0, 0, 0, 0.85)";
