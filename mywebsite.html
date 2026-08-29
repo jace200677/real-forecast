@@ -5031,19 +5031,34 @@ function drawForecastCanvasGraph(item, mode, canvas, activeX = null, prevItem = 
 
     const isWinterInversion = item.isWinterInversion || (todayHigh < morningLow);
 
-    // Helper to evaluate source data type based on the August 22/23, 2026 threshold
+    // Updated historical data source handler using the synchronized grid/card extraction patterns
     const getHistoricalSourceData = (item, propName, fallbackVal = 0) => {
-        const itemDate = new Date(item.date || item.timestamp);
-        const cutoffDate = new Date('2026-08-23T00:00:00'); // On or after 8/23/2026
+        const historyModalEl = document.getElementById('historyModal');
+        const historyDateInput = historyModalEl ? historyModalEl.querySelector('input[type="date"], input.history-date, #historyDate, [name="historyDate"]') : null;
+        
+        let extractedDate = historyDateInput && historyDateInput.value ? historyDateInput.value : null;
+        if (!extractedDate) {
+            const activeHistoryCard = document.querySelector('.history-card.active, .history-row.active, [data-history-active="true"]');
+            if (activeHistoryCard) {
+                extractedDate = activeHistoryCard.dataset.date || activeHistoryCard.dataset.dateStr || activeHistoryCard.getAttribute('data-date');
+            }
+        }
 
-        if (itemDate >= cutoffDate) {
-            // After 8/22/2026: Check for overrides first, fallback to NOAA/standard values
+        extractedDate = extractedDate || item.dateStr || item.date || item.timestamp;
+        if (!extractedDate) {
+            if (item.noaaValues && item.noaaValues[propName] !== undefined) return item.noaaValues[propName];
+            return item[propName] !== undefined ? item[propName] : fallbackVal;
+        }
+
+        const itemDate = new Date(extractedDate);
+        const cutoffDate = new Date('2026-08-23T00:00:00');
+
+        if (!isNaN(itemDate.getTime()) && itemDate >= cutoffDate) {
             if (item.overrideValues && item.overrideValues[propName] !== undefined) {
                 return item.overrideValues[propName];
             }
         }
         
-        // Before 8/23/2026 or if no override exists, use NOAA values
         if (item.noaaValues && item.noaaValues[propName] !== undefined) {
             return item.noaaValues[propName];
         }
