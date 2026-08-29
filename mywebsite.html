@@ -5541,8 +5541,8 @@ function drawForecastCanvasGraph(item, mode, canvas, activeX = null, prevItem = 
         ctx.fill();
     }
 
-    // Tooltip & Interactive Point Rendering on Hover / Drag (skipped if history/past date)
-    if (!isHistorySource && activeX !== null && activeX >= padLeft && activeX <= width - padRight && getYFn) {
+    // Tooltip & Interactive Point Rendering on Hover / Drag (enabled for history/past dates as well)
+    if (activeX !== null && activeX >= padLeft && activeX <= width - padRight && getYFn) {
         const clampedX = Math.max(padLeft, Math.min(width - padRight, activeX));
         const ratio = (clampedX - padLeft) / graphWidth;
         const hoveredMinute = Math.round(ratio * 1439);
