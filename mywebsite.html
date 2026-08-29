@@ -6306,29 +6306,34 @@ function updateCardView(selectedVal, data, cardContainerId = 'historyCardContain
         highTemp: highTemp,
         lowTemp: lowTemp,
         wind: baseWind,
-        dos: dosScore > 10 ? Math.min(10, Math.max(0, Math.round(dosScore / 10))) : dosScore,
+        dos: dosScore > 10 ? Math.min(10, Math.max(0, Math.round(dosScore / 10))) : Math.max(0, dosScore),
         hourly: overrideItem.hourly || overrideItem.hours || overrideItem.hourlyData || Array.from({ length: 24 }, (_, i) => ({
           temp: Math.round(baseTemp + ((highTemp - lowTemp) / 2 || 10) * Math.sin((i - 6) / 24 * Math.PI * 2)),
           wind: Math.max(1, Math.round(baseWind + 3 * Math.sin(i / 12 * Math.PI)))
         }))
       };
     } else {
-      // Calculate day metrics via helper functions if no override or radar entry is found
+      // Extract active target location state to prevent passing null coordinates to metric calculations
+      const activeLocation = window._radarState?.targetLocation || 
+                             window.activeLocation || 
+                             window.selectedPoint || 
+                             (radarSourceItem ? { lat: radarSourceItem.lat, lon: radarSourceItem.lon, name: radarSourceItem.name } : null);
+
       let metrics = {};
       if (typeof calculateForecastDayCardMetrics === 'function') {
-        metrics = calculateForecastDayCardMetrics(yNum, mNum, dNum, null, [], 1, 1, 5, 0) || {};
+        metrics = calculateForecastDayCardMetrics(yNum, mNum, dNum, activeLocation, [], 1, 1, 5, 0) || {};
       } else if (typeof calculateForecastDayMetrics === 'function') {
-        metrics = calculateForecastDayMetrics(yNum, mNum, dNum, null, [], 1, 1, 5, 0) || {};
+        metrics = calculateForecastDayMetrics(yNum, mNum, dNum, activeLocation, [], 1, 1, 5, 0) || {};
       }
 
       const highTemp = metrics.tempHigh ?? metrics.highTemp ?? 70;
-      const lowTemp = metrics.tempLow ?? metrics.lowTemp ?? 50;
+      const lowTemp = metrics.tempLow ?? metrics.tempLow ?? 50;
       const baseTemp = (highTemp + lowTemp) / 2;
       const baseWind = metrics.windMph ?? metrics.wind ?? 10;
       
       const rawScore = metrics.projectedScore ?? metrics.dos;
       const dosScore = rawScore !== undefined 
-        ? (rawScore > 10 ? Math.min(10, Math.max(0, Math.round(rawScore / 10))) : rawScore) 
+        ? (rawScore > 10 ? Math.min(10, Math.max(0, Math.round(rawScore / 10))) : Math.max(0, rawScore)) 
         : 5;
 
       matchedItem = {
@@ -6340,6 +6345,8 @@ function updateCardView(selectedVal, data, cardContainerId = 'historyCardContain
         highTemp: highTemp,
         lowTemp: lowTemp,
         wind: baseWind,
+        lat: activeLocation?.lat ?? null,
+        lon: activeLocation?.lon ?? null,
         hourly: Array.from({ length: 24 }, (_, i) => ({
           temp: Math.round(baseTemp + ((highTemp - lowTemp) / 2 || 10) * Math.sin((i - 6) / 24 * Math.PI * 2)),
           wind: Math.max(1, Math.round(baseWind + 3 * Math.sin(i / 12 * Math.PI)))
