@@ -626,41 +626,47 @@ let drawnItems;
 let drawControl;
 
 function initPolygonMap() {
+    // 1. If the map instance already exists, remove it entirely to prevent container collision bugs
     if (geofenceMap) {
-        geofenceMap.invalidateSize();
+        geofenceMap.remove();
+        geofenceMap = null;
+    }
+
+    // 2. Double-check that the DOM element exists before running Leaflet
+    const mapElement = document.getElementById('geofence-map');
+    if (!mapElement) {
+        console.error("Leaflet error: #geofence-map container not found in DOM.");
         return;
     }
 
-    // 1. Initialize the Leaflet map
+    // 3. Initialize the Leaflet map centered on Tower, MN
     geofenceMap = L.map('geofence-map').setView([47.8083, -92.2773], 10);
 
-    // 2. Define Base Tile Layers (Street View and Satellite View)
+    // 4. Define Base Tile Layers
     const streetLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
         maxZoom: 19,
         attribution: '&copy; OpenStreetMap contributors'
     });
 
-    // High-resolution Esri World Imagery Satellite Layer
     const satelliteLayer = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
         maxZoom: 19,
-        attribution: 'Tiles &copy; Esri &mdash; Source: Esri, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-EGP, and the GIS User Community'
+        attribution: 'Tiles &copy; Esri &mdash; Source: Esri, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-EGP, and GIS Community'
     });
 
-    // Set Satellite as the default starting layer so it shows immediately
+    // Default to satellite view
     satelliteLayer.addTo(geofenceMap);
 
-    // 3. Add Layer Control box to toggle between Satellite and Street view in top-left
     const baseMaps = {
         "Satellite (Esri)": satelliteLayer,
         "Street Map (OSM)": streetLayer
     };
     L.control.layers(baseMaps).addTo(geofenceMap);
 
-    // 4. Initialize FeatureGroup to store editable drawn polygons
+    // 5. Initialize FeatureGroup for drawing
     drawnItems = new L.FeatureGroup();
     geofenceMap.addLayer(drawnItems);
 
-    // 5. Configure Leaflet.Draw toolbar controls for NWS-style polygon creation
+    // 6. Configure Leaflet.Draw toolbar controls
     const drawPluginOptions = {
         position: 'topright',
         draw: {
@@ -690,14 +696,18 @@ function initPolygonMap() {
     drawControl = new L.Control.Draw(drawPluginOptions);
     geofenceMap.addControl(drawControl);
 
-    // 6. Event listener when a new polygon/shape is created
+    // 7. Event listener when a new polygon/shape is created
     geofenceMap.on(L.Draw.Event.CREATED, function (e) {
         drawnItems.clearLayers();
         const layer = e.layer;
         drawnItems.addLayer(layer);
     });
-}
 
+    // 8. Force Leaflet to calculate container size dimensions correctly after CSS display changes
+    setTimeout(() => {
+        geofenceMap.invalidateSize();
+    }, 250);
+}
 // 3. Payload Dispatch & Persistence (Saves to backend DB for all users)
 function submitAlertBroadcast() {
     const payload = {
