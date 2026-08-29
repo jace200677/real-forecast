@@ -5536,27 +5536,15 @@ function drawForecastCanvasGraph(item, mode, canvas, activeX = null, prevItem = 
 
     const isWinterInversion = item.isWinterInversion || (todayHigh < morningLow);
 
+    // Enhanced historical data resolver utilizing historyDateInput
     const getHistoricalSourceData = (item, propName, fallbackVal = 0) => {
-        // Resolve data keyed by active searched coordinates
-        if (activeCoords && activeCoords.lat !== null && activeCoords.lon !== null) {
-            const coordKey = `${activeCoords.lat},${activeCoords.lon}`;
-            if (item.coordsData && item.coordsData[coordKey] && item.coordsData[coordKey][propName] !== undefined) {
-                return item.coordsData[coordKey][propName];
-            }
-            if (item.hourlyByCoords && item.hourlyByCoords[coordKey] && propName === 'hourly') {
-                return item.hourlyByCoords[coordKey];
-            }
-        }
-
-        if (isOverrideRange(item.dateStr || item.date)) {
-            if (item.overrideValues && item.overrideValues[propName] !== undefined) {
-                return item.overrideValues[propName];
-            }
-        }
-
-        const historyDateInput = historyModalEl ? historyModalEl.querySelector('input[type="date"], input.history-date, #historyDate, [name="historyDate"], #historyDateDisplay, .selected-history-date') : null;
+        // 1. Resolve active date from history input element or fallback references
+        const historyDateInput = historyModalEl 
+            ? historyModalEl.querySelector('input[type="date"], input.history-date, #historyDate, [name="historyDate"], #historyDateDisplay, .selected-history-date') 
+            : null;
         
         let extractedDate = historyDateInput && historyDateInput.value ? historyDateInput.value : null;
+        
         if (!extractedDate && historyModalEl) {
             extractedDate = historyModalEl.dataset.date || historyModalEl.getAttribute('data-date');
         }
@@ -5568,6 +5556,39 @@ function drawForecastCanvasGraph(item, mode, canvas, activeX = null, prevItem = 
         }
 
         extractedDate = extractedDate || item.dateStr || item.date || item.timestamp;
+
+        // 2. Resolve coordinate key if present
+        if (activeCoords && activeCoords.lat !== null && activeCoords.lon !== null) {
+            const coordKey = `${activeCoords.lat},${activeCoords.lon}`;
+            
+            // Check coordinate + date specific lookup maps if available
+            if (item.historyByDate && extractedDate && item.historyByDate[extractedDate]) {
+                const dateData = item.historyByDate[extractedDate];
+                if (dateData.coordsData && dateData.coordsData[coordKey] && dateData.coordsData[coordKey][propName] !== undefined) {
+                    return dateData.coordsData[coordKey][propName];
+                }
+            }
+            if (item.coordsData && item.coordsData[coordKey] && item.coordsData[coordKey][propName] !== undefined) {
+                return item.coordsData[coordKey][propName];
+            }
+            if (item.hourlyByCoords && item.hourlyByCoords[coordKey] && propName === 'hourly') {
+                return item.hourlyByCoords[coordKey];
+            }
+        }
+
+        // 3. Direct date map lookup on item (e.g., item.historyByDate['2026-08-28'])
+        if (extractedDate && item.historyByDate && item.historyByDate[extractedDate]) {
+            const dateObj = item.historyByDate[extractedDate];
+            if (dateObj[propName] !== undefined) return dateObj[propName];
+        }
+
+        // 4. Fallback to override range or source-specific objects
+        if (isOverrideRange(extractedDate)) {
+            if (item.overrideValues && item.overrideValues[propName] !== undefined) {
+                return item.overrideValues[propName];
+            }
+        }
+
         if (!extractedDate) {
             if (item.noaaValues && item.noaaValues[propName] !== undefined) return item.noaaValues[propName];
             return item[propName] !== undefined ? item[propName] : fallbackVal;
