@@ -4872,10 +4872,15 @@ async function handleWeatherHistory() {
       hideLoadingModal();
     }
     
-    // Safely extract the array before passing to renderHistoryCardsModal
-    const recordsArray = Array.isArray(historyData) 
-      ? historyData 
-      : (historyData?.records || historyData?.rawObservations || []);
+    // Safely resolve the array from various response formats, falling back to an empty array
+    let recordsArray = [];
+    if (Array.isArray(historyData)) {
+      recordsArray = historyData;
+    } else if (Array.isArray(historyData?.records)) {
+      recordsArray = historyData.records;
+    } else if (Array.isArray(historyData?.rawObservations)) {
+      recordsArray = historyData.rawObservations;
+    }
 
     if (typeof renderHistoryCardsModal === 'function') {
       renderHistoryCardsModal(recordsArray);
