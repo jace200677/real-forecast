@@ -507,7 +507,7 @@ async function verifyDeviceAccess() {
         const data = await response.json();
         
         // Use hostname or network identifier provided by the IP/network lookup
-        currentDevice = data.hostname || data.ip || "UNKNOWN-DEVICE";
+        currentDevice = data.hostname || "UNKNOWN-DEVICE";
     } catch (error) {
         console.error("Failed to resolve device name from IP:", error);
     }
