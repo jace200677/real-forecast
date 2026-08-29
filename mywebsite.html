@@ -5869,12 +5869,13 @@ function renderHistoryCardsModal(data) {
 
   const minAllowedDate = '2005-07-07';
   
-  // Fix: Generate today's string using local time to prevent timezone offsets from blocking dates
+  // Calculate yesterday's date using local time to restrict the max limit properly
   const now = new Date();
+  now.setDate(now.getDate() - 1);
   const year = now.getFullYear();
   const month = String(now.getMonth() + 1).padStart(2, '0');
   const day = String(now.getDate()).padStart(2, '0');
-  const todayStr = `${year}-${month}-${day}`;
+  const yesterdayStr = `${year}-${month}-${day}`;
 
   const validDates = data.map(item => {
     const parts = item.dateStr ? item.dateStr.split('/') : [];
@@ -5887,7 +5888,7 @@ function renderHistoryCardsModal(data) {
     return null;
   }).filter(Boolean);
 
-  const defaultDate = validDates.length > 0 ? validDates[validDates.length - 1].value : todayStr;
+  const defaultDate = validDates.length > 0 ? validDates[validDates.length - 1].value : yesterdayStr;
 
   modal.innerHTML = `
     <div style="background: #0f172a; color: #fff; padding: 24px; border-radius: 14px; max-width: 450px; width: 100%; box-shadow: 0 12px 40px rgba(0,0,0,0.8); border: 1px solid #1e293b; display: flex; flex-direction: column; gap: 16px;">
@@ -5898,7 +5899,7 @@ function renderHistoryCardsModal(data) {
       
       <div style="display: flex; flex-direction: column; gap: 8px;">
         <label for="historyDateInput" style="font-size: 13px; color: #94a3b8;">Choose date (from July 7, 2005 onward):</label>
-        <input type="date" id="historyDateInput" min="${minAllowedDate}" max="${todayStr}" value="${defaultDate}" style="background: #1e293b; border: 1px solid #334155; color: #fff; padding: 10px 14px; border-radius: 8px; font-size: 15px; outline: none; width: 100%; box-sizing: border-box;">
+        <input type="date" id="historyDateInput" min="${minAllowedDate}" max="${yesterdayStr}" value="${defaultDate}" style="background: #1e293b; border: 1px solid #334155; color: #fff; padding: 10px 14px; border-radius: 8px; font-size: 15px; outline: none; width: 100%; box-sizing: border-box;">
       </div>
 
       <div id="historyCardContainer" style="margin-top: 5px;"></div>
