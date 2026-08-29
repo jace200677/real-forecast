@@ -2760,20 +2760,40 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
         }
     }
 
-    // Direct return of actual interpolated base value without adding or subtracting artificial spatial variations
+    // Calculates dynamic values across map coordinates relative to map center
     const getLocalValueAtCoordinates = (lat, lon, baseVal, modeType) => {
         if (baseVal === null || baseVal === undefined) return baseVal;
         const mType = (modeType || "").toLowerCase();
-        if (mType === 'pressure') {
-            return +Number(baseVal).toFixed(2);
+
+        // Calculate spatial delta relative to center point location
+        const dLat = (lat !== undefined && lat !== null) ? (lat - centerLat) : 0;
+        const dLon = (lon !== undefined && lon !== null) ? (lon - centerLon) : 0;
+
+        let variation = 0;
+        if (['temp', 'temperature', 'feelslike', 'feels_like'].includes(mType)) {
+            variation = (-1.8 * dLat) + (0.6 * Math.sin(dLon * 2.5));
+        } else if (['wind', 'gust', 'windspeed', 'windgust'].includes(mType)) {
+            variation = (1.5 * Math.cos(dLat * 3.0)) + (1.2 * Math.sin(dLon * 3.0));
+        } else if (mType === 'pressure') {
+            variation = (-0.025 * dLat) + (0.01 * dLon);
+        } else if (mType === 'humidity') {
+            variation = (3.5 * Math.sin(dLat * 2.0)) - (2.5 * dLon);
+        } else if (mType === 'precip') {
+            variation = (6.0 * Math.sin(dLat * 3.5 + dLon * 3.5));
+        } else if (mType === 'dos') {
+            variation = (-2.0 * dLat) + (1.5 * Math.cos(dLon * 2.0));
+        } else if (mType === 'uv') {
+            variation = (-0.35 * dLat);
         }
-        if (mType === 'uv') {
-            return +Number(baseVal).toFixed(1);
-        }
-        if (typeof baseVal === 'number') {
-            return Math.round(baseVal);
-        }
-        return baseVal;
+
+        const calculatedVal = baseVal + variation;
+
+        if (mType === 'pressure') return +Math.max(26.0, Math.min(32.0, calculatedVal)).toFixed(2);
+        if (mType === 'uv') return +Math.max(0, Math.min(15, calculatedVal)).toFixed(1);
+        if (['humidity', 'precip', 'dos'].includes(mType)) return Math.max(0, Math.min(100, Math.round(calculatedVal)));
+        if (mType.includes('wind') || mType.includes('gust')) return Math.max(0, Math.round(calculatedVal));
+
+        return Math.round(calculatedVal);
     };
 
     const parseRgba = (rgbaStr) => {
@@ -2934,65 +2954,66 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
         getLocalValue: getLocalValueAtCoordinates
     };
 
-   const attachMapInteractionHandlers = (mapObj, layerData) => {
-    if (!mapObj) return;
+    const attachMapInteractionHandlers = (mapObj, layerData) => {
+        if (!mapObj) return;
 
-    if (!mapObj._radarTooltip) {
-        mapObj._radarTooltip = L.tooltip({
-            permanent: false,
-            direction: 'top',
-            sticky: true,
-            className: 'radar-grid-tooltip'
-        });
-    }
-
-    const updateTooltipPosition = (e) => {
-        const localVal = layerData.getLocalValue(e.latlng.lat, e.latlng.lng, layerData.value, layerData.mode);
-
-        let localLabel = `${localVal}`;
-        if (['temp', 'temperature'].includes(layerData.mode)) localLabel = `${localVal}°F`;
-        else if (['feelslike', 'feels_like'].includes(layerData.mode)) localLabel = `Feels Like ${localVal}°F`;
-        else if (['wind', 'gust'].includes(layerData.mode)) localLabel = `${layerData.mode.toUpperCase()}: ${localVal} mph`;
-        else if (layerData.mode === 'dos') localLabel = `DOS: ${localVal}`;
-        else if (layerData.mode === 'precip') localLabel = `Chance: ${localVal}%`;
-        else if (layerData.mode === 'humidity') localLabel = `Humidity: ${localVal}%`;
-        else if (layerData.mode === 'pressure') localLabel = `${localVal} inHg`;
-        else if (layerData.mode === 'uv') localLabel = `UV Index: ${localVal}`;
-
-        const tooltipContent = `
-            <div style="font-family: sans-serif; font-size: 12px; padding: 3px 6px; text-align: center;">
-                <strong>${localLabel}</strong><br/>
-                <small style="opacity: 0.8;">${layerData.timeStr} (${layerData.dateStr})</small><br/>
-                <small style="opacity: 0.65; font-size: 10px;">${e.latlng.lat.toFixed(2)}°, ${e.latlng.lng.toFixed(2)}°</small>
-            </div>
-        `;
-
-        mapObj._radarTooltip
-            .setLatLng(e.latlng)
-            .setContent(tooltipContent)
-            .openOn(mapObj);
-    };
-
-    // Clean up previous event listeners if layer updates
-    if (mapObj._radarInteractHandler) {
-        mapObj.off('mousemove click tap', mapObj._radarInteractHandler);
-    }
-    if (mapObj._radarMouseOutHandler) {
-        mapObj.off('mouseout', mapObj._radarMouseOutHandler);
-    }
-
-    // Bind hover (mousemove) along with click and tap
-    mapObj._radarInteractHandler = (e) => updateTooltipPosition(e);
-    mapObj.on('mousemove click tap', mapObj._radarInteractHandler);
-
-    // Hide tooltip when the cursor leaves the map container
-    mapObj._radarMouseOutHandler = () => {
-        if (mapObj._radarTooltip) {
-            mapObj.closeTooltip(mapObj._radarTooltip);
+        if (!mapObj._radarTooltip) {
+            mapObj._radarTooltip = L.tooltip({
+                permanent: false,
+                direction: 'top',
+                sticky: true,
+                className: 'radar-grid-tooltip'
+            });
         }
+
+        const updateTooltipPosition = (e) => {
+            const localVal = layerData.getLocalValue(e.latlng.lat, e.latlng.lng, layerData.value, layerData.mode);
+
+            let localLabel = `${localVal}`;
+            if (['temp', 'temperature'].includes(layerData.mode)) localLabel = `${localVal}°F`;
+            else if (['feelslike', 'feels_like'].includes(layerData.mode)) localLabel = `Feels Like ${localVal}°F`;
+            else if (['wind', 'gust'].includes(layerData.mode)) localLabel = `${layerData.mode.toUpperCase()}: ${localVal} mph`;
+            else if (layerData.mode === 'dos') localLabel = `DOS: ${localVal}`;
+            else if (layerData.mode === 'precip') localLabel = `Chance: ${localVal}%`;
+            else if (layerData.mode === 'humidity') localLabel = `Humidity: ${localVal}%`;
+            else if (layerData.mode === 'pressure') localLabel = `${localVal} inHg`;
+            else if (layerData.mode === 'uv') localLabel = `UV Index: ${localVal}`;
+
+            const tooltipContent = `
+                <div style="font-family: sans-serif; font-size: 12px; padding: 3px 6px; text-align: center;">
+                    <strong>${localLabel}</strong><br/>
+                    <small style="opacity: 0.8;">${layerData.timeStr} (${layerData.dateStr})</small><br/>
+                    <small style="opacity: 0.65; font-size: 10px;">${e.latlng.lat.toFixed(2)}°, ${e.latlng.lng.toFixed(2)}°</small>
+                </div>
+            `;
+
+            mapObj._radarTooltip
+                .setLatLng(e.latlng)
+                .setContent(tooltipContent)
+                .openOn(mapObj);
+        };
+
+        // Clean up previous event handlers
+        if (mapObj._radarInteractHandler) {
+            mapObj.off('mousemove click tap', mapObj._radarInteractHandler);
+        }
+        if (mapObj._radarMouseOutHandler) {
+            mapObj.off('mouseout', mapObj._radarMouseOutHandler);
+        }
+
+        // Bind mousemove for desktop/laptop hover tracking alongside click and tap
+        mapObj._radarInteractHandler = (e) => updateTooltipPosition(e);
+        mapObj.on('mousemove click tap', mapObj._radarInteractHandler);
+
+        // Hide tooltip on mouseout
+        mapObj._radarMouseOutHandler = () => {
+            if (mapObj._radarTooltip) {
+                mapObj.closeTooltip(mapObj._radarTooltip);
+            }
+        };
+        mapObj.on('mouseout', mapObj._radarMouseOutHandler);
     };
-    mapObj.on('mouseout', mapObj._radarMouseOutHandler);
-};
+
     if (activeTargetMap) {
         attachMapInteractionHandlers(activeTargetMap, activeGridLayer._meta);
 
