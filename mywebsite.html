@@ -2226,8 +2226,8 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
     const mapCenter = activeTargetMap && typeof activeTargetMap.getCenter === 'function' ? activeTargetMap.getCenter() : null;
     const currentGlobalPoint = (typeof targetZoneOrPoint !== 'undefined' && targetZoneOrPoint) ? targetZoneOrPoint : (window._targetZoneOrPoint || null);
     
-    const centerLat = mapCenter ? mapCenter.lat : (currentGlobalPoint && (currentGlobalPoint.lat !== undefined) ? parseFloat(currentGlobalPoint.lat) : 45.5635);
-    const centerLon = mapCenter ? mapCenter.lng : (currentGlobalPoint && (currentGlobalPoint.lon !== undefined || currentGlobalPoint.lng !== undefined) ? parseFloat(currentGlobalPoint.lon ?? currentGlobalPoint.lng) : -94.3131);
+    const centerLat = mapCenter ? mapCenter.lat : (currentGlobalPoint && (currentGlobalPoint.lat !== undefined) ? parseFloat(currentGlobalPoint.lat) : 45.0);
+    const centerLon = mapCenter ? mapCenter.lng : (currentGlobalPoint && (currentGlobalPoint.lon !== undefined || currentGlobalPoint.lng !== undefined) ? parseFloat(currentGlobalPoint.lon ?? currentGlobalPoint.lng) : -93.0);
 
     // Resolve target timezone hierarchy
     const targetTimezone = item?.timezone || item?.tz || 
