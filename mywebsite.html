@@ -5813,7 +5813,13 @@ function renderHistoryCardsModal(data) {
   }
 
   const minAllowedDate = '2005-07-07';
-  const todayStr = new Date().toISOString().split('T')[0];
+  
+  // Fix: Generate today's string using local time to prevent timezone offsets from blocking dates
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, '0');
+  const day = String(now.getDate()).padStart(2, '0');
+  const todayStr = `${year}-${month}-${day}`;
 
   const validDates = data.map(item => {
     const parts = item.dateStr ? item.dateStr.split('/') : [];
@@ -5861,7 +5867,7 @@ function updateCardView(selectedVal, data, cardContainerId = 'historyCardContain
 
   const [y, m, d] = selectedVal.split('-');
   const selectedDateObj = new Date(parseInt(y, 10), parseInt(m, 10) - 1, parseInt(d, 10));
-  const cutoffDateObj = new Date(2026, 7, 23); // August 23, 2026
+  const cutoffDateObj = new Date(2026, 7, 23, 0, 0, 0); // August 23, 2026 local midnight
 
   const formattedDateStr = `${parseInt(m, 10)}/${parseInt(d, 10)}/${y}`;
   const overrideItem = data.find(i => i.dateStr === formattedDateStr);
@@ -5869,7 +5875,6 @@ function updateCardView(selectedVal, data, cardContainerId = 'historyCardContain
   let matchedItem;
 
   if (selectedDateObj < cutoffDateObj) {
-    // Before 8/23/2026: Strictly fetch/use NOAA values
     matchedItem = overrideItem && overrideItem.isNoaaSource ? overrideItem : {
       dateStr: formattedDateStr,
       date: formattedDateStr,
@@ -5883,7 +5888,6 @@ function updateCardView(selectedVal, data, cardContainerId = 'historyCardContain
       }))
     };
   } else {
-    // After 8/22/2026: Allow override if present, otherwise fallback to NOAA values
     matchedItem = overrideItem || {
       dateStr: formattedDateStr,
       date: formattedDateStr,
