@@ -4904,10 +4904,23 @@ async function handleWeatherHistory() {
  * Fetches historical grid observations from 2026-08-22 up to 1 day before current date
  */
 function calculateForecastDayCardMetrics(observations, targetDateStr) {
-  // 1. Filter observations for the requested calendar date in UTC/ISO
-  const dayObs = observations.filter(obs => {
-    if (!obs.properties || !obs.properties.timestamp) return false;
-    return obs.properties.timestamp.startsWith(targetDateStr);
+  // Ensure observations is always treated as an array to prevent .filter crashes
+  let obsArray = [];
+  if (Array.isArray(observations)) {
+    obsArray = observations;
+  } else if (Array.isArray(observations?.features)) {
+    obsArray = observations.features;
+  } else if (Array.isArray(observations?.observations)) {
+    obsArray = observations.observations;
+  } else if (Array.isArray(observations?.records)) {
+    obsArray = observations.records;
+  }
+
+  // 1. Filter observations safely for the requested calendar date
+  const dayObs = obsArray.filter(obs => {
+    if (!obs || typeof obs !== 'object') return false;
+    const timestamp = obs.properties?.timestamp || obs.timestamp;
+    return typeof timestamp === 'string' && timestamp.startsWith(targetDateStr);
   });
 
   if (!dayObs.length) {
@@ -4926,42 +4939,45 @@ function calculateForecastDayCardMetrics(observations, targetDateStr) {
   }
 
   // Helper functions for unit conversions
-  const cToF = (c) => (c !== null && c !== undefined) ? Math.round((c * 9 / 5) + 32) : null;
-  const msToMph = (ms) => (ms !== null && ms !== undefined) ? Math.round(ms * 2.23694) : null;
-  const paToHpa = (pa) => (pa !== null && pa !== undefined) ? Math.round(pa / 100) : null;
+  const cToF = (c) => (c !== null && c !== undefined && !isNaN(c)) ? Math.round((c * 9 / 5) + 32) : null;
+  const msToMph = (ms) => (ms !== null && ms !== undefined && !isNaN(ms)) ? Math.round(ms * 2.23694) : null;
+  const paToHpa = (pa) => (pa !== null && pa !== undefined && !isNaN(pa)) ? Math.round(pa / 100) : null;
 
   // Extract arrays of values filtering out null/undefined entries
   const tempsF = dayObs
-    .map(o => cToF(o.properties.temperature?.value))
+    .map(o => cToF(o.properties?.temperature?.value ?? o.temperature))
     .filter(v => v !== null);
 
   const windsMph = dayObs
-    .map(o => msToMph(o.properties.windSpeed?.value))
+    .map(o => msToMph(o.properties?.windSpeed?.value ?? o.windSpeed))
     .filter(v => v !== null);
 
   const gustsMph = dayObs
-    .map(o => msToMph(o.properties.windGust?.value))
+    .map(o => msToMph(o.properties?.windGust?.value ?? o.windGust))
     .filter(v => v !== null);
 
   const pressuresHpa = dayObs
-    .map(o => paToHpa(o.properties.barometricPressure?.value))
+    .map(o => paToHpa(o.properties?.barometricPressure?.value ?? o.barometricPressure))
     .filter(v => v !== null);
 
   const humiditiesPct = dayObs
-    .map(o => o.properties.relativeHumidity?.value)
+    .map(o => {
+      const val = o.properties?.relativeHumidity?.value ?? o.relativeHumidity;
+      return (val !== null && val !== undefined && !isNaN(val)) ? Math.round(val) : null;
+    })
     .filter(v => v !== null);
 
   const uvs = dayObs
-    .map(o => o.properties.uvIndex?.value)
-    .filter(v => v !== null);
+    .map(o => o.properties?.uvIndex?.value ?? o.uvIndex)
+    .filter(v => v !== null && v !== undefined && !isNaN(v));
 
   const precipsMm = dayObs
-    .map(o => o.properties.precipitationLastHour?.value)
-    .filter(v => v !== null);
+    .map(o => o.properties?.precipitationLastHour?.value ?? o.precipitation)
+    .filter(v => v !== null && v !== undefined && !isNaN(v));
 
   // Extract text weather descriptions to aggregate dominant condition
   const conditions = dayObs
-    .map(o => o.properties.textDescription)
+    .map(o => o.properties?.textDescription || o.textDescription || o.condition)
     .filter(v => Boolean(v));
 
   // Determine most frequent weather description
