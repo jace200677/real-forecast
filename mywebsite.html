@@ -4057,36 +4057,35 @@ function initTimezoneSyncedRadarModal(mapModalElement, forecastItem, defaultMode
   const currentMinuteOfDay = (now.getHours() * 60) + now.getMinutes();
   const timelineSlider = document.getElementById("radarTimeSlider");
 
-  // Base WMS URL
-  const starWmsBaseUrl = 'https://www.star.nesdis.noaa.gov/wms/wms.php';
+  // Updated base WMS URL for NASA GIBS
+  const gibsWmsBaseUrl = 'https://gibs.earthdata.nasa.gov/wms/epsg4326/best/wms.cgi';
 
   // Dynamic satellite layer updater using setParams for smooth tile refreshing
   const updateSatelliteOverlay = (minuteOffset = 0) => {
-    const timestamp = Date.now();
+    // NASA GIBS expects TIME formatted as YYYY-MM-DD or YYYY-MM-DDTHH:MM:SSZ
+    let gibsTime = activeIsoDate;
+
+    if (isToday || isPast) {
+      const hours = String(Math.floor(minuteOffset / 60)).padStart(2, '0');
+      const mins = String(minuteOffset % 60).padStart(2, '0');
+      gibsTime = `${activeIsoDate}T${hours}:${mins}:00Z`;
+    }
+
     let wmsParams = {
-      layers: 'basemap_surface',
+      layers: 'MODIS_Terra_CorrectedReflectance_TrueColor', // Replace with your desired GIBS layer name
       format: 'image/png',
       transparent: true,
-      maxZoom: 19,
-      attribution: 'NOAA / NESDIS STAR',
-      _cb: timestamp
+      maxZoom: 9, // GIBS raster layers typically cap at lower zoom levels depending on the satellite
+      attribution: 'NASA GIBS',
+      time: gibsTime
     };
-
-    if (isToday) {
-      wmsParams.time = timestamp;
-    } else if (isPast) {
-      wmsParams.date = activeIsoDate;
-      wmsParams.min = minuteOffset;
-    } else if (isFuture) {
-      wmsParams.time = timestamp;
-    }
 
     if (window._radarState.satelliteLayer) {
       // Update parameters dynamically & redraw active tiles without destroying layer
       window._radarState.satelliteLayer.setParams(wmsParams, false);
       window._radarState.satelliteLayer.redraw();
     } else {
-      window._radarState.satelliteLayer = L.tileLayer.wms(starWmsBaseUrl, wmsParams).addTo(window._radarState.map);
+      window._radarState.satelliteLayer = L.tileLayer.wms(gibsWmsBaseUrl, wmsParams).addTo(window._radarState.map);
     }
 
     // Canvas weather layer update
