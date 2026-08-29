@@ -5344,14 +5344,23 @@ function drawForecastCanvasGraph(item, mode, canvas, activeX = null, prevItem = 
 
     const drawSegmentedLine = (pts, activeStyle, lineWidth, getYVal, fillUnder = false) => {
         if (isToday) {
-            // Split into past (dotted) and future (solid) segments around currentMinutes
             const pastPts = pts.filter(p => p.minute <= currentMinutes);
             const futurePts = pts.filter(p => p.minute >= currentMinutes);
+
+            // Ensure smooth connection point at currentMinutes by sharing the exact boundary point
+            if (pastPts.length > 0 && futurePts.length > 0 && pastPts[pastPts.length - 1].minute !== futurePts[0].minute) {
+                const exactMatchIndex = Math.min(pts.length - 1, Math.max(0, Math.round(currentMinutes / 15)));
+                const boundaryPt = pts[exactMatchIndex];
+                if (boundaryPt) {
+                    if (!pastPts.some(p => p.minute === boundaryPt.minute)) pastPts.push(boundaryPt);
+                    if (!futurePts.some(p => p.minute === boundaryPt.minute)) futurePts.unshift(boundaryPt);
+                }
+            }
 
             const renderPath = (segmentPts, style, isDashed) => {
                 if (segmentPts.length < 2) return;
                 
-                if (fillUnder && !isDashed) {
+                if (fillUnder) {
                     ctx.beginPath();
                     ctx.moveTo(segmentPts[0].x, height - padBottom);
                     ctx.lineTo(segmentPts[0].x, getYVal(segmentPts[0]));
@@ -5360,13 +5369,13 @@ function drawForecastCanvasGraph(item, mode, canvas, activeX = null, prevItem = 
                     ctx.closePath();
                     
                     ctx.fillStyle = style;
-                    ctx.globalAlpha = 0.15;
+                    ctx.globalAlpha = isDashed ? 0.10 : 0.15; // Slightly softer fill for past section if desired
                     ctx.fill();
                     ctx.globalAlpha = 1.0;
                 }
 
                 ctx.beginPath();
-                ctx.setLineDash(isDashed ? [4, 4] : []);
+                ctx.setLineDash(isDashed ? [3, 3] : []);
                 ctx.strokeStyle = style;
                 ctx.lineWidth = lineWidth + 2 * scaleFactor;
                 
@@ -5565,7 +5574,6 @@ function drawForecastCanvasGraph(item, mode, canvas, activeX = null, prevItem = 
         const dotX = targetPoint.x;
         const dotY = getYFn(targetPoint);
 
-        // Standardized look for hover/drag (no plus sign overlay, uniform standard circle indicator)
         ctx.fillStyle = "#ffffff";
         ctx.beginPath();
         ctx.arc(dotX, dotY, isDragging ? 5 : 3.5, 0, Math.PI * 2);
