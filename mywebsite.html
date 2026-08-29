@@ -2943,36 +2943,49 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
     if (activeTargetMap) {
     attachMapInteractionHandlers(activeTargetMap, activeGridLayer._meta);
 
-    // 1. Extract Date String and Time Slider Values from DOM/Meta
-    const dateStr = activeGridLayer._meta?.dateStr || document.getElementById('dateSelect')?.value || new Date().toISOString().split('T')[0];
-    const timeSliderVal = document.getElementById('timeSlider')?.value ?? 'default';
+    // 1. Retrieve Date String and Time Slider values safely
+    const dateStr = activeGridLayer._meta?.dateStr 
+        || document.getElementById('dateSelect')?.value 
+        || new Date().toISOString().split('T')[0];
+        
+    const timeSlider = document.getElementById('timeSlider');
+    const timeSliderVal = timeSlider ? timeSlider.value : 'default';
 
-    // 2. Determine Satellite URL (Default: Esri Cloud-Free / Dynamic: Time-Based URL)
-    let satelliteUrl = 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}';
-    let attributionText = 'Tiles &copy; Esri &mdash; Source: Esri, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-EGP';
+    // 2. Base Configuration Definitions
+    const ESRI_CLOUD_FREE_URL = 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}';
+    const ESRI_ATTRIBUTION = 'Tiles &copy; Esri &mdash; Source: Esri, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-EGP';
 
-    if (timeSliderVal !== 'default' && activeGridLayer._meta?.satelliteUrls?.[timeSliderVal]) {
-        // Use time-specific satellite tile URL if custom slider value is provided
-        satelliteUrl = activeGridLayer._meta.satelliteUrls[timeSliderVal];
-        attributionText = `Satellite Imagery (${dateStr})`;
+    // 3. Fallback / Default handling: Cloud-free Esri imagery
+    let targetSatelliteUrl = ESRI_CLOUD_FREE_URL;
+    let targetAttribution = ESRI_ATTRIBUTION;
+
+    // 4. If time slider is set (not default/missing), attempt NOAA STAR 1-Minute GOES Iowa imagery lookup
+    if (timeSliderVal !== 'default') {
+        // Retrieve dynamic NOAA STAR URL mapped to current time slider step/timestamp
+        const goesUrl = activeGridLayer._meta?.satelliteUrls?.[timeSliderVal] 
+            || activeGridLayer._meta?.goesSatelliteUrl;
+
+        if (goesUrl) {
+            targetSatelliteUrl = goesUrl;
+            targetAttribution = `1-Minute Iowa Satellite (GOES) — NOAA STAR (${dateStr})`;
+        }
     }
 
-    // 3. Non-Blocking / Non-Freezing Tile Layer Update
-    // Request Animation Frame prevents UI thread lock when switching/rebuilding tile layers
+    // 5. Non-Blocking / Non-Freezing Leaflet Tile Update
     requestAnimationFrame(() => {
         if (window.satelliteLayer) {
-            // Smoothly swap tile source if URL changed without thrashing the DOM
-            if (window.satelliteLayer._url !== satelliteUrl) {
-                window.satelliteLayer.setUrl(satelliteUrl);
+            // Swap tile source in-place without rebuilding the layer to avoid UI stutter/freezing
+            if (window.satelliteLayer._url !== targetSatelliteUrl) {
+                window.satelliteLayer.setUrl(targetSatelliteUrl);
             }
         } else {
-            // Instantiate satellite layer with smooth fade animations
-            window.satelliteLayer = L.tileLayer(satelliteUrl, {
-                attribution: attributionText,
+            // Instantiate standard Leaflet TileLayer with async optimizations
+            window.satelliteLayer = L.tileLayer(targetSatelliteUrl, {
+                attribution: targetAttribution,
                 maxZoom: 19,
-                updateWhenIdle: true,     // Prevents lag while panning/zooming
-                updateWhenZooming: false,  // Prevents frame drops during zoom transitions
-                keepBuffer: 2              // Pre-buffers adjacent tiles for smooth scrolling
+                updateWhenIdle: true,     // Delay tile requests until panning finishes to reduce main thread lag
+                updateWhenZooming: false,  // Skip rendering intermediate tiles during active zoom
+                keepBuffer: 2              // Pre-buffer surrounding tiles for smoother interaction
             });
         }
 
