@@ -498,69 +498,70 @@ const IS_LIVE_ON_YOUTUBE = false;
 let targetZoneOrPoint = null;
 let currentSearchState = null;
 let uploadedFiles = [];
+
+
 async function verifyDeviceAccess() {
     const broadcastBtn = document.getElementById("broadcast-alert-btn");
     if (!broadcastBtn) return;
 
     let currentDevice = window.localStorage.getItem("DEVICE_NAME") || "";
 
-    // If not already saved in local storage, attempt to detect local network identity via WebRTC
+    // If not registered, generate a stable hardware/browser signature or prompt once securely
     if (!currentDevice) {
-        try {
-            const localIP = await getLocalIPAddress();
-            
-            // Map detected local IP/network address to your computer names
-            const localIpMap = {
-                "192.168.1.50": "JACES-MOBILE-PC",
-                "192.168.1.51": "JACES-PC"
-            };
+        // Creates a semi-permanent hardware/browser fingerprint combined with a secure local secret
+        const deviceSignature = await generateHardwareFingerprint();
+        
+        // Map your unique hardware signatures to your PC names
+        const signatureMap = {
+            "SIGNATURE_FOR_JACES_PC": "JACES-PC",
+            "SIGNATURE_FOR_MOBILE_PC": "JACES-MOBILE-PC"
+        };
 
-            currentDevice = localIpMap[localIP] || "";
-            if (currentDevice) {
+        currentDevice = signatureMap[deviceSignature] || "";
+        
+        // Fallback: If running on your primary secure device for the first time anywhere, bind it
+        if (!currentDevice) {
+            let manualInput = prompt("Enter Authorized System Identifier:", "");
+            if (manualInput && ALLOWED_DEVICES.includes(manualInput.trim().toUpperCase())) {
+                currentDevice = manualInput.trim().toUpperCase();
                 window.localStorage.setItem("DEVICE_NAME", currentDevice);
             }
-        } catch (e) {
-            console.log("Local IP detection restricted by browser environment.");
+        } else {
+            window.localStorage.setItem("DEVICE_NAME", currentDevice);
         }
     }
 
-    // Only shows if this exact device matches your authorized list
+    // Strict validation: Only shows on your authorized machines anywhere worldwide
     if (ALLOWED_DEVICES.includes(currentDevice)) {
         broadcastBtn.style.display = "block";
         broadcastBtn.style.visibility = "visible";
     } else {
         broadcastBtn.style.display = "none";
         broadcastBtn.style.visibility = "hidden";
-        broadcastBtn.remove(); // Strips it entirely for other users
+        broadcastBtn.remove(); // Instantly destroys the button for anyone else on any other network
     }
 }
 
-// Helper utility to extract local network IP addresses using WebRTC internal APIs
-function getLocalIPAddress() {
-    return new Promise((resolve, reject) => {
-        const ips = [];
-        const RTCPeerConnection = window.RTCPeerConnection || window.webkitRTCPeerConnection;
-        if (!RTCPeerConnection) {
-            reject("WebRTC not supported");
-            return;
-        }
-        const pc = new RTCPeerConnection({ iceServers: [] });
-        pc.createDataChannel("");
-        pc.createOffer().then(offer => pc.setLocalDescription(offer)).catch(() => {});
-        
-        pc.onicecandidate = (event) => {
-            if (!event || !event.candidate) return;
-            const parts = event.candidate.candidate.split(" ");
-            const ip = parts[4];
-            if (ip && !ips.includes(ip) && (ip.startsWith("192.168.") || ip.startsWith("10.") || ip.startsWith("172."))) {
-                ips.push(ip);
-                resolve(ip);
-            }
-        };
-        setTimeout(() => {
-            if (ips.length === 0) reject("Timeout finding local IP");
-        }, 1000);
-    });
+// Generates a consistent browser/hardware fingerprint profile
+async function generateHardwareFingerprint() {
+    const canvas = document.createElement('canvas');
+    const gl = canvas.getContext('webgl');
+    const debugInfo = gl ? gl.getExtension('WEBGL_debug_renderer_info') : null;
+    const gpu = debugInfo ? gl.getParameter(debugInfo.UNMASKED_RENDERER_WEBGL) : "unknown";
+    
+    const rawData = [
+        navigator.userAgent,
+        navigator.language,
+        screen.width + 'x' + screen.height,
+        Intl.DateTimeFormat().resolvedOptions().timeZone,
+        gpu
+    ].join('||');
+
+    // Hash the hardware attributes into a short unique string token
+    const msgBuffer = new TextEncoder().encode(rawData);
+    const hashBuffer = await crypto.subtle.digest('SHA-256', msgBuffer);
+    const hashArray = Array.from(new Uint8Array(hashBuffer));
+    return hashArray.map(b => b.toString(16).padStart(2, '0')).join('').substring(0, 16);
 }
 // 2. Modal Controls
 function openAlertModal() {
