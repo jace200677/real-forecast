@@ -2007,28 +2007,32 @@ function openForecastGraphModal(item, fullForecast = [], itemIndex = -1) {
                 }
             });
 
-            // 2. Resolve root dataset: Check active forecast sources -> historical globals -> function parameters
-            const rootData = window._radarState?.currentItem || 
-                             window.currentWeatherData || 
-                             (fullForecast && fullForecast.length > 0 ? fullForecast : null) ||
-                             window.historicalWeatherData || 
-                             window.weatherHistory || 
-                             window.pastWeatherData || 
-                             item || 
-                             {};
+            // 2. Explicitly determine if item or app mode is historical
+            const isHistoricalItem = !!(
+                item?.isHistorical || 
+                window._radarState?.isHistorical || 
+                window.isHistoricalMode || 
+                item?.history || 
+                item?.historical
+            );
 
-            // 3. Helper to extract forecast or historical arrays across standard schema variations
+            // 3. Resolve root dataset prioritizing historical data sources when in historical mode
+            const rootData = isHistoricalItem
+                ? (window.historicalWeatherData || window.weatherHistory || window.pastWeatherData || item || {})
+                : (window._radarState?.currentItem || window.currentWeatherData || (fullForecast && fullForecast.length > 0 ? fullForecast : null) || item || {});
+
+            // 4. Helper to extract forecast or historical arrays across schema variations
             const extractDaysArray = (data) => {
                 if (!data) return [];
                 if (Array.isArray(data)) return data;
-                return data.daily || data.forecast || data.days || data.weekly || data.list || 
-                       data.timeline || data.history || data.historical || data.past || 
+                return data.history || data.historical || data.past || 
+                       data.daily || data.forecast || data.days || 
+                       data.weekly || data.list || data.timeline || 
                        data.archive || data.data || [];
             };
 
             let daysArray = extractDaysArray(rootData);
 
-            // Deep search nested objects if top-level keys match nothing
             if (daysArray.length === 0 && rootData && typeof rootData === 'object') {
                 for (const key of Object.keys(rootData)) {
                     if (rootData[key] && typeof rootData[key] === 'object') {
@@ -2041,8 +2045,8 @@ function openForecastGraphModal(item, fullForecast = [], itemIndex = -1) {
                 }
             }
 
-            // 4. Fallback API fetch if no local dataset exists
-            if (daysArray.length === 0 && typeof fetchHistoricalData === 'function') {
+            // Fallback API fetch if no local historical dataset exists
+            if (daysArray.length === 0 && isHistoricalItem && typeof fetchHistoricalData === 'function') {
                 try {
                     const fetchedHistory = await fetchHistoricalData();
                     daysArray = extractDaysArray(fetchedHistory);
@@ -2054,13 +2058,13 @@ function openForecastGraphModal(item, fullForecast = [], itemIndex = -1) {
             // 5. Extract target selected day card object
             const selectedDayCard = daysArray[selectedDayIndex] || daysArray[0] || item || rootData;
 
-            // Preserve parent metadata (lat, lon, timezone) on selected card object
+            // Preserve parent metadata & explicit historical state flag
             if (selectedDayCard && typeof rootData === 'object') {
                 selectedDayCard.lat = selectedDayCard.lat ?? rootData.lat ?? rootData.latitude ?? item?.lat;
                 selectedDayCard.lon = selectedDayCard.lon ?? rootData.lon ?? rootData.longitude ?? item?.lon;
                 selectedDayCard.timezone = selectedDayCard.timezone ?? rootData.timezone ?? rootData.tz ?? item?.timezone;
                 selectedDayCard.days = daysArray;
-                selectedDayCard.isHistorical = !rootData.daily && !rootData.forecast && !window.currentWeatherData;
+                selectedDayCard.isHistorical = isHistoricalItem;
             }
 
             // 6. Open radar modal targeting the isolated selected day card
@@ -2092,6 +2096,11 @@ function openForecastGraphModal(item, fullForecast = [], itemIndex = -1) {
         canvas.addEventListener("touchcancel", clearScrubber);
     }
     
+    // Normalize item hourly schema if historical data uses 'hours' or 'history'
+    if (item && typeof item === 'object') {
+        item.hourly = item.hourly || item.hours || item.hourlyData || item.history || item.timeline || [];
+    }
+
     modal.currentItem = item;
     modal.prevItem = (fullForecast && itemIndex > 0) ? fullForecast[itemIndex - 1] : null;
     modal.nextItem = (fullForecast && itemIndex >= 0 && itemIndex < fullForecast.length - 1) ? fullForecast[itemIndex + 1] : null;
