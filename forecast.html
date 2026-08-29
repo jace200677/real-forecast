@@ -187,8 +187,11 @@ function updateAllLayers() {
 
     const time = getFormattedTime();
     
-    // Format timestamp without seconds/Z suffix to match IEM CGI expectation (YYYY-MM-DDTHH:MM)
-    const timeFormatted = `${dateVal}T${time.hrs}:${time.mins}`;
+    // Round minutes down to the nearest 5-minute interval (GOES scan frequency)
+    const roundedMins = (Math.floor(parseInt(time.mins, 10) / 5) * 5).toString().padStart(2, '0');
+    
+    // Format timestamp as YYYY-MM-DDTHH:MM
+    const timeFormatted = `${dateVal}T${time.hrs}:${roundedMins}`;
 
     if (baseSatLayer) {
         map.removeLayer(baseSatLayer);
@@ -198,8 +201,10 @@ function updateAllLayers() {
         layers: 'conus_vis',
         format: 'image/png',
         transparent: true,
+        version: '1.1.1',
+        srs: 'EPSG:3857',
         time: timeFormatted,
-        crs: L.CRS.EPSG3857,
+        uppercase: true,
         attribution: 'Satellite &copy; <a href="https://mesonet.agron.iastate.edu/">Iowa State University IEM</a>',
         maxZoom: 19,
         zIndex: 2
