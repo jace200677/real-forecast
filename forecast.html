@@ -198,26 +198,19 @@ function updateAllLayers() {
     const dateVal = document.getElementById('dateInput').value;
     if (!dateVal) return;
 
-    const time = getFormattedTime();
-    
-    // Round minutes down to nearest 5-minute interval
-    const roundedMins = (Math.floor(parseInt(time.mins, 10) / 5) * 5).toString().padStart(2, '0');
-    
-    // Format timestamp as YYYYMMDDHHMM (e.g., 202608291800)
-    const formattedDate = dateVal.replace(/-/g, '');
-    const timeFormatted = `${formattedDate}${time.hrs}${roundedMins}`;
-
     if (baseSatLayer) {
         map.removeLayer(baseSatLayer);
     }
 
+    // NASA GIBS MODIS Terra True Color Tile Layer
     baseSatLayer = L.tileLayer(
-        `https://mesonet.agron.iastate.edu/cache/tile.py/1.0.0/goes-east-vis-1km-${timeFormatted}/{z}/{x}/{y}.png`,
+        `https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/MODIS_Terra_SurfaceReflectance_Bands143/default/${dateVal}/GoogleMapsCompatible_Level9/{z}/{y}/{x}.jpg`,
         {
-            tms: true,             // Flips Y-axis coordinates for IEM's TMS service
-            maxNativeZoom: 8,      // Highest native detail level IEM satellite tiles provide
-            maxZoom: 19,           // Stretches native tiles up to zoom level 19
-            attribution: 'Satellite &copy; <a href="https://mesonet.agron.iastate.edu/">Iowa State University IEM</a>',
+            attribution: 'Imagery &copy; <a href="https://earthdata.nasa.gov/gibs">NASA GIBS</a>',
+            bounds: [[-85.05112877980659, -180], [85.05112877980659, 180]],
+            minZoom: 1,
+            maxNativeZoom: 9, // Fetches maximum available resolution tiles from NASA (Level 9)
+            maxZoom: 19,       // Rescales/stretches level 9 tiles visually up to zoom level 19
             zIndex: 2
         }
     ).addTo(map);
