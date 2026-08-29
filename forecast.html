@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Iowa Satellite Dashboard</title>
-    <!-- Leaflet CSS & JS for Interactive Map -->
+    <!-- Leaflet CSS & JS (Free, Open-Source, No API Key Required) -->
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <style>
@@ -21,7 +21,7 @@
             width: 100%;
             max-width: 900px;
             height: 500px;
-            margin: 20px auto;
+            margin: 20px auto 10px auto;
             background: #1e1e1e;
             padding: 10px;
             border-radius: 8px;
@@ -34,11 +34,55 @@
             border-radius: 6px;
         }
 
-        .btn-controls {
+        .btn-controls, .timeline-controls {
             display: flex;
             justify-content: center;
-            gap: 10px;
-            margin-bottom: 10px;
+            align-items: center;
+            gap: 15px;
+            margin-bottom: 15px;
+            max-width: 900px;
+            margin-left: auto;
+            margin-right: auto;
+        }
+
+        .timeline-controls {
+            background: #1e1e1e;
+            padding: 15px;
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+            flex-wrap: wrap;
+        }
+
+        .control-group {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        label {
+            font-size: 14px;
+            color: #ccc;
+        }
+
+        input[type="date"] {
+            background: #2a2a2a;
+            color: #fff;
+            border: 1px solid #444;
+            padding: 6px 10px;
+            border-radius: 4px;
+            font-family: inherit;
+        }
+
+        input[type="range"] {
+            width: 250px;
+            accent-color: #00a8cc;
+            cursor: pointer;
+        }
+
+        .time-display {
+            font-weight: bold;
+            color: #00a8cc;
+            min-width: 90px;
         }
 
         button {
@@ -62,35 +106,40 @@
     <button onclick="resetMapView()">Center on Iowa</button>
 </div>
 
+<!-- Timeline & Date Slider Controls -->
+<div class="timeline-controls">
+    <div class="control-group">
+        <label for="dateInput">Date:</label>
+        <input type="date" id="dateInput" onchange="updateSatelliteLayer()">
+    </div>
+
+    <div class="control-group">
+        <label for="timeSlider">Time (UTC):</label>
+        <input type="range" id="timeSlider" min="0" max="1435" step="5" value="720" oninput="updateTimeDisplay()" onchange="updateSatelliteLayer()">
+        <span id="timeDisplay" class="time-display">12:00 UTC</span>
+    </div>
+</div>
+
 <div class="map-container">
     <div id="map"></div>
 </div>
 
 <script>
 let map;
+let satLayer = null;
 
 function initMap() {
-    // Coordinates for the center of Iowa
     const iowaCoords = [41.8780, -93.0977];
 
-    // Initialize Leaflet Map centered on Iowa
     map = L.map('map').setView(iowaCoords, 7);
 
-    // Dark-themed base tile layer
-    L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
-        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
-        subdomains: 'abcd',
+    // OpenStreetMap Base Tile Layer
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
         maxZoom: 19
     }).addTo(map);
 
-    // IEM GOES-East Visible Satellite Overlay
-    L.tileLayer('https://mesonet.agron.iastate.edu/cache/tile.py/1.0.0/goes-east-vis-1km/{z}/{x}/{y}.png', {
-        attribution: 'Satellite Imagery courtesy of <a href="https://mesonet.agron.iastate.edu/">IEM / Iowa State University</a>',
-        maxZoom: 19,
-        opacity: 0.75
-    }).addTo(map);
-
-    // Key Iowa Cities Markers
+    // Key Iowa City Markers
     const cities = [
         { name: "Des Moines", lat: 41.5868, lon: -93.6250, temp: "78°F", wind: "12 mph" },
         { name: "Cedar Rapids", lat: 41.9779, lon: -91.6656, temp: "75°F", wind: "10 mph" },
@@ -104,6 +153,48 @@ function initMap() {
             .addTo(map)
             .bindPopup(`<b>${city.name}</b><br>Temp: ${city.temp}<br>Wind: ${city.wind}`);
     });
+
+    // Default to today's date
+    const today = new Date().toISOString().split('T')[0];
+    document.getElementById('dateInput').value = today;
+
+    updateSatelliteLayer();
+}
+
+// Convert slider minutes value to HH:MM format
+function getFormattedTime() {
+    const minutes = parseInt(document.getElementById('timeSlider').value, 10);
+    const hrs = Math.floor(minutes / 60).toString().padStart(2, '0');
+    const mins = (minutes % 60).toString().padStart(2, '0');
+    return { hrs, mins, formatted: `${hrs}:${mins}` };
+}
+
+function updateTimeDisplay() {
+    const time = getFormattedTime();
+    document.getElementById('timeDisplay').innerText = `${time.formatted} UTC`;
+}
+
+// Dynamically fetch and update the satellite tile layer according to date & time input
+function updateSatelliteLayer() {
+    const dateVal = document.getElementById('dateInput').value;
+    if (!dateVal) return;
+
+    const time = getFormattedTime();
+    const dateClean = dateVal.replace(/-/g, ''); // Format YYYYMMDD
+    const timestamp = `${dateClean}${time.hrs}${time.mins}`; // Format YYYYMMDDHHMM
+
+    // Construct IEM time-stamped tile endpoint URL
+    const tileUrl = `https://mesonet.agron.iastate.edu/cache/tile.py/1.0.0/goes-east-vis-1km-${timestamp}/{z}/{x}/{y}.png`;
+
+    if (satLayer) {
+        map.removeLayer(satLayer);
+    }
+
+    satLayer = L.tileLayer(tileUrl, {
+        attribution: 'Satellite Imagery courtesy of <a href="https://mesonet.agron.iastate.edu/">IEM / Iowa State University</a>',
+        maxZoom: 19,
+        opacity: 0.6
+    }).addTo(map);
 }
 
 function resetMapView() {
