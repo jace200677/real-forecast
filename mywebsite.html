@@ -499,34 +499,68 @@ let targetZoneOrPoint = null;
 let currentSearchState = null;
 let uploadedFiles = [];
 async function verifyDeviceAccess() {
-    let currentDevice = "UNKNOWN-DEVICE";
-    
-    try {
-        // Fetch public IP and reverse DNS / hostname mapping from an IP service
-        const response = await fetch('https://ipapi.co/json/');
-        const data = await response.json();
-        
-        // Use hostname or network identifier provided by the IP/network lookup
-        currentDevice = data.hostname || "UNKNOWN-DEVICE";
-    } catch (error) {
-        console.error("Failed to resolve device name from IP:", error);
-    }
-    
-    alert("Current Device / IP Identifier: " + currentDevice);
-
     const broadcastBtn = document.getElementById("broadcast-alert-btn");
     if (!broadcastBtn) return;
 
+    let currentDevice = window.localStorage.getItem("DEVICE_NAME") || "";
+
+    // If not already saved in local storage, attempt to detect local network identity via WebRTC
+    if (!currentDevice) {
+        try {
+            const localIP = await getLocalIPAddress();
+            
+            // Map detected local IP/network address to your computer names
+            const localIpMap = {
+                "192.168.1.50": "JACES-MOBILE-PC",
+                "192.168.1.51": "JACES-PC"
+            };
+
+            currentDevice = localIpMap[localIP] || "";
+            if (currentDevice) {
+                window.localStorage.setItem("DEVICE_NAME", currentDevice);
+            }
+        } catch (e) {
+            console.log("Local IP detection restricted by browser environment.");
+        }
+    }
+
+    // Only shows if this exact device matches your authorized list
     if (ALLOWED_DEVICES.includes(currentDevice)) {
         broadcastBtn.style.display = "block";
         broadcastBtn.style.visibility = "visible";
-        broadcastBtn.removeAttribute("hidden");
     } else {
         broadcastBtn.style.display = "none";
         broadcastBtn.style.visibility = "hidden";
-        broadcastBtn.setAttribute("hidden", "true");
-        broadcastBtn.remove();
+        broadcastBtn.remove(); // Strips it entirely for other users
     }
+}
+
+// Helper utility to extract local network IP addresses using WebRTC internal APIs
+function getLocalIPAddress() {
+    return new Promise((resolve, reject) => {
+        const ips = [];
+        const RTCPeerConnection = window.RTCPeerConnection || window.webkitRTCPeerConnection;
+        if (!RTCPeerConnection) {
+            reject("WebRTC not supported");
+            return;
+        }
+        const pc = new RTCPeerConnection({ iceServers: [] });
+        pc.createDataChannel("");
+        pc.createOffer().then(offer => pc.setLocalDescription(offer)).catch(() => {});
+        
+        pc.onicecandidate = (event) => {
+            if (!event || !event.candidate) return;
+            const parts = event.candidate.candidate.split(" ");
+            const ip = parts[4];
+            if (ip && !ips.includes(ip) && (ip.startsWith("192.168.") || ip.startsWith("10.") || ip.startsWith("172."))) {
+                ips.push(ip);
+                resolve(ip);
+            }
+        };
+        setTimeout(() => {
+            if (ips.length === 0) reject("Timeout finding local IP");
+        }, 1000);
+    });
 }
 // 2. Modal Controls
 function openAlertModal() {
