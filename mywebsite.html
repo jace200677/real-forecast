@@ -499,21 +499,18 @@ let targetZoneOrPoint = null;
 let currentSearchState = null;
 let uploadedFiles = [];
 function verifyDeviceAccess() {
-    // Alternative approach: checking URL parameters first, falling back to localStorage
     const urlParams = new URLSearchParams(window.location.search);
     const currentDevice = urlParams.get("device") || window.localStorage.getItem("DEVICE_NAME") || "UNKNOWN-DEVICE";
     
-    // Optional popup confirmation for debugging
-    // alert("Current Device: " + currentDevice);
+    // Displays the detected device name in a popup
+    alert("Current Device: " + currentDevice);
 
     const broadcastBtn = document.getElementById("broadcast-alert-btn");
     if (!broadcastBtn) return;
 
     if (ALLOWED_DEVICES.includes(currentDevice)) {
-        // Show broadcast control for authorized administrative hardware
         broadcastBtn.style.display = "block";
     } else {
-        // Broadcast stays hidden; user retains access to coordinate-based alert viewing
         broadcastBtn.style.display = "none";
     }
 }
