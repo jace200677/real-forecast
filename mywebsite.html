@@ -506,43 +506,32 @@ async function verifyDeviceAccess() {
 
     let currentDevice = window.localStorage.getItem("DEVICE_NAME") || "";
 
-    // If not registered, generate a stable hardware/browser signature or prompt once securely
+    // If not registered, generate the hardware fingerprint and match automatically
     if (!currentDevice) {
-        // Creates a semi-permanent hardware/browser fingerprint combined with a secure local secret
         const deviceSignature = await generateHardwareFingerprint();
         
-        // Map your unique hardware signatures to your PC names
+        // Put your actual 16-character hardware signature hashes generated on your two PCs below:
         const signatureMap = {
-            "SIGNATURE_FOR_JACES_PC": "JACES-PC",
-            "SIGNATURE_FOR_MOBILE_PC": "JACES-MOBILE-PC"
+            "YOUR_PC_HASH_HERE": "JACES-PC",
+            "YOUR_MOBILE_PC_HASH_HERE": "JACES-MOBILE-PC"
         };
 
-        currentDevice = signatureMap[deviceSignature] || "";
-        
-        // Fallback: If running on your primary secure device for the first time anywhere, bind it
-        if (!currentDevice) {
-            let manualInput = prompt("Enter Authorized System Identifier:", "");
-            if (manualInput && ALLOWED_DEVICES.includes(manualInput.trim().toUpperCase())) {
-                currentDevice = manualInput.trim().toUpperCase();
-                window.localStorage.setItem("DEVICE_NAME", currentDevice);
-            }
-        } else {
-            window.localStorage.setItem("DEVICE_NAME", currentDevice);
-        }
+        currentDevice = signatureMap[deviceSignature] || "UNAUTHORIZED";
+        window.localStorage.setItem("DEVICE_NAME", currentDevice);
     }
 
-    // Strict validation: Only shows on your authorized machines anywhere worldwide
+    // Strict validation: Only shows on your authorized machines without ever asking for input
     if (ALLOWED_DEVICES.includes(currentDevice)) {
         broadcastBtn.style.display = "block";
         broadcastBtn.style.visibility = "visible";
     } else {
         broadcastBtn.style.display = "none";
         broadcastBtn.style.visibility = "hidden";
-        broadcastBtn.remove(); // Instantly destroys the button for anyone else on any other network
+        broadcastBtn.remove(); // Instantly destroys the button for anyone else
     }
 }
 
-// Generates a consistent browser/hardware fingerprint profile
+// Generates a consistent hardware/browser fingerprint profile automatically
 async function generateHardwareFingerprint() {
     const canvas = document.createElement('canvas');
     const gl = canvas.getContext('webgl');
@@ -557,11 +546,15 @@ async function generateHardwareFingerprint() {
         gpu
     ].join('||');
 
-    // Hash the hardware attributes into a short unique string token
     const msgBuffer = new TextEncoder().encode(rawData);
     const hashBuffer = await crypto.subtle.digest('SHA-256', msgBuffer);
     const hashArray = Array.from(new Uint8Array(hashBuffer));
-    return hashArray.map(b => b.toString(16).padStart(2, '0')).join('').substring(0, 16);
+    const finalHash = hashArray.map(b => b.toString(16).padStart(2, '0')).join('').substring(0, 16);
+    
+    // Logs your unique signature hash to the console on first run so you can copy/paste it into signatureMap
+    console.log("Your Device Hardware Signature Hash:", finalHash);
+    
+    return finalHash;
 }
 // 2. Modal Controls
 function openAlertModal() {
