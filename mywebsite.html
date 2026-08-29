@@ -4858,18 +4858,36 @@ async function fetchHistoricalWeatherData(lat, lon) {
  * Main handler function to show historical weather data down to 8/23/2026
  */
 async function handleWeatherHistory() {
-  const lat = document.getElementById('latInput')?.value || 41.8781;
-  const lon = document.getElementById('lonInput')?.value || -87.6298;
+  const latInput = document.getElementById('latInput')?.value?.trim();
+  const lonInput = document.getElementById('lonInput')?.value?.trim();
 
-  showLoadingModal('Fetching Weather History (8/22/2026 to Yesterday)...');
+  // Validate inputs or fall back to default coordinates
+  const lat = latInput && !isNaN(latInput) ? parseFloat(latInput) : 41.8781;
+  const lon = lonInput && !isNaN(lonInput) ? parseFloat(lonInput) : -87.6298;
+
+  if (typeof showLoadingModal === 'function') {
+    showLoadingModal('Fetching Weather History (8/22/2026 to Yesterday)...');
+  }
 
   try {
     const historyData = await fetchHistoricalWeatherData(lat, lon);
-    renderHistoryCardsModal(historyData);
+    
+    if (typeof hideLoadingModal === 'function') {
+      hideLoadingModal();
+    }
+    
+    if (typeof renderHistoryCardsModal === 'function') {
+      renderHistoryCardsModal(historyData);
+    }
   } catch (error) {
     console.error('Error loading weather history:', error);
-    alert('Failed to retrieve weather history data. Please try again.');
-    closeModal();
+    alert(`Failed to retrieve weather history data: ${error.message}`);
+    
+    if (typeof closeModal === 'function') {
+      closeModal();
+    } else if (typeof hideLoadingModal === 'function') {
+      hideLoadingModal();
+    }
   }
 }
 
