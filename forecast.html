@@ -133,9 +133,15 @@ function initMap() {
 
     map = L.map('map').setView(iowaCoords, 7);
 
-    // OpenStreetMap Base Tile Layer
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+    // Esri World Imagery Base Tile Layer (Free Satellite Map, No API Key Required)
+    L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+        attribution: 'Tiles &copy; Esri &mdash; Source: Esri, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-EGP, and the GIS User Community',
+        maxZoom: 19
+    }).addTo(map);
+
+    // Reference Labels & Boundaries Overlay
+    L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}', {
+        attribution: '',
         maxZoom: 19
     }).addTo(map);
 
@@ -174,7 +180,7 @@ function updateTimeDisplay() {
     document.getElementById('timeDisplay').innerText = `${time.formatted} UTC`;
 }
 
-// Dynamically fetch and update the satellite tile layer according to date & time input
+// Dynamically fetch and update the GOES-East satellite overlay layer
 function updateSatelliteLayer() {
     const dateVal = document.getElementById('dateInput').value;
     if (!dateVal) return;
@@ -183,7 +189,6 @@ function updateSatelliteLayer() {
     const dateClean = dateVal.replace(/-/g, ''); // Format YYYYMMDD
     const timestamp = `${dateClean}${time.hrs}${time.mins}`; // Format YYYYMMDDHHMM
 
-    // Construct IEM time-stamped tile endpoint URL
     const tileUrl = `https://mesonet.agron.iastate.edu/cache/tile.py/1.0.0/goes-east-vis-1km-${timestamp}/{z}/{x}/{y}.png`;
 
     if (satLayer) {
@@ -191,7 +196,7 @@ function updateSatelliteLayer() {
     }
 
     satLayer = L.tileLayer(tileUrl, {
-        attribution: 'Satellite Imagery courtesy of <a href="https://mesonet.agron.iastate.edu/">IEM / Iowa State University</a>',
+        attribution: 'GOES Imagery courtesy of <a href="https://mesonet.agron.iastate.edu/">IEM / Iowa State University</a>',
         maxZoom: 19,
         opacity: 0.6
     }).addTo(map);
