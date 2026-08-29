@@ -3,9 +3,10 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Forecast Dashboard</title>
-    <!-- Chart.js Library -->
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <title>Iowa Forecast Dashboard</title>
+    <!-- Leaflet CSS & JS for Interactive Map -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <style>
         body {
             background-color: #121212;
@@ -15,37 +16,22 @@
             padding: 20px;
         }
 
-        .chart-container {
+        .map-container {
             position: relative;
             width: 100%;
             max-width: 900px;
-            height: 400px;
+            height: 500px;
             margin: 20px auto;
             background: #1e1e1e;
-            padding: 15px;
+            padding: 10px;
             border-radius: 8px;
             box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
         }
 
-        .modal {
-            display: none;
-            position: fixed;
-            top: 0;
-            left: 0;
+        #map {
             width: 100%;
             height: 100%;
-            background: rgba(0, 0, 0, 0.7);
-            justify-content: center;
-            align-items: center;
-        }
-
-        .modal-content {
-            background: #1e1e1e;
-            padding: 20px;
-            border-radius: 8px;
-            color: #fff;
-            text-align: center;
-            min-width: 250px;
+            border-radius: 6px;
         }
 
         .btn-controls {
@@ -73,185 +59,54 @@
 <body>
 
 <div class="btn-controls">
-    <button onclick="renderSampleChart('temp')">Temperature (°F)</button>
-    <button onclick="renderSampleChart('wind')">Wind Speed (mph)</button>
-    <button onclick="toggleModal(true)">Show Confidence Modal</button>
+    <button onclick="resetMapView()">Center on Iowa</button>
 </div>
 
-<div class="chart-container">
-    <canvas id="forecastChart"></canvas>
-</div>
-
-<!-- Live Confidence Display Modal -->
-<div id="chartModal" class="modal">
-    <div class="modal-content">
-        <h3>Live Forecast Confidence</h3>
-        <p id="liveConfidence">Calculating...</p>
-        <button onclick="toggleModal(false)">Close</button>
-    </div>
+<div class="map-container">
+    <div id="map"></div>
 </div>
 
 <script>
-// Global variables
-let chartInstance = null;
+let map;
 
-// Helper: Converts HEX color strings to RGBA format for Chart.js gradient fills
-function hexToRgba(hex, alpha = 1) {
-    if (!hex || typeof hex !== 'string') return `rgba(0, 168, 204, ${alpha})`;
-    let c = hex.replace('#', '');
-    if (c.length === 3) c = c.split('').map(x => x + x).join('');
-    const num = parseInt(c, 16);
-    return `rgba(${(num >> 16) & 255}, ${(num >> 8) & 255}, ${num & 255}, ${alpha})`;
-}
+function initMap() {
+    // Coordinates for the center of Iowa
+    const iowaCoords = [41.8780, -93.0977];
 
-// Live confidence monitor update target
-function updateLiveConfidenceDisplay() {
-    const confidenceElem = document.getElementById("liveConfidence");
-    if (confidenceElem) {
-        const timeString = new Date().toLocaleTimeString();
-        confidenceElem.textContent = `High Confidence (Updated at ${timeString})`;
-    }
-}
+    // Initialize Leaflet Map centered on Iowa
+    map = L.map('map').setView(iowaCoords, 7);
 
-// Controls modal visibility
-function toggleModal(show) {
-    const modal = document.getElementById("chartModal");
-    if (modal) {
-        modal.style.display = show ? "flex" : "none";
-        if (show) updateLiveConfidenceDisplay();
-    }
-}
+    // Dark-themed tile layer matching original UI
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
+        subdomains: 'abcd',
+        maxZoom: 19
+    }).addTo(map);
 
-// Main Chart Rendering Function
-function renderForecastChart(labels, values, segmentColors, labelName, metric) {
-    const ctx = document.getElementById("forecastChart").getContext("2d");
+    // Key Iowa Cities Markers
+    const cities = [
+        { name: "Des Moines", lat: 41.5868, lon: -93.6250, temp: "78°F", wind: "12 mph" },
+        { name: "Cedar Rapids", lat: 41.9779, lon: -91.6656, temp: "75°F", wind: "10 mph" },
+        { name: "Davenport", lat: 41.5236, lon: -90.5776, temp: "76°F", wind: "14 mph" },
+        { name: "Sioux City", lat: 42.4999, lon: -96.4003, temp: "81°F", wind: "18 mph" },
+        { name: "Iowa City", lat: 41.6611, lon: -91.5302, temp: "77°F", wind: "11 mph" }
+    ];
 
-    if (chartInstance) {
-        chartInstance.destroy();
-    }
-
-    // Determine Y-axis limits dynamically based on metric and dataset limits
-    let yMin = Math.floor(Math.min(...values) - 5);
-    let yMax = Math.ceil(Math.max(...values) + 5);
-    if (metric !== 'temp') {
-        yMin = 0;
-        yMax = Math.max(yMax, 30);
-    }
-
-    // Generate smooth gradient fills for the active graph metric line
-    const primaryColor = segmentColors[0] || "#00a8cc";
-    const gradient = ctx.createLinearGradient(0, 0, 0, 300);
-    gradient.addColorStop(0, hexToRgba(primaryColor, 0.4));
-    gradient.addColorStop(1, hexToRgba(primaryColor, 0.0));
-
-    chartInstance = new Chart(ctx, {
-        type: 'line',
-        data: {
-            labels: labels,
-            datasets: [{
-                label: labelName,
-                data: values,
-                borderColor: primaryColor,
-                borderWidth: 2.5,
-                fill: true,
-                backgroundColor: gradient,
-                tension: 0.35,
-                pointRadius: 0,
-                pointHoverRadius: 6,
-                pointHoverBackgroundColor: "#ffffff",
-                pointHoverBorderColor: primaryColor,
-                pointHoverBorderWidth: 2,
-                segment: {
-                    borderColor: ctx => segmentColors[ctx.p0DataIndex] || primaryColor
-                }
-            }]
-        },
-        options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            interaction: {
-                mode: 'index',
-                intersect: false
-            },
-            plugins: {
-                legend: {
-                    display: true,
-                    labels: {
-                        color: '#f0f0f0',
-                        font: { size: 12, family: "'Segoe UI', sans-serif" }
-                    }
-                },
-                tooltip: {
-                    backgroundColor: 'rgba(20, 20, 20, 0.9)',
-                    titleColor: '#00a8cc',
-                    bodyColor: '#fff',
-                    borderColor: '#333',
-                    borderWidth: 1,
-                    padding: 10,
-                    displayColors: false,
-                    callbacks: {
-                        label: function(context) {
-                            const unit = metric === 'temp' ? '°F' : ' mph';
-                            return `${context.dataset.label}: ${context.parsed.y}${unit}`;
-                        }
-                    }
-                }
-            },
-            scales: {
-                x: {
-                    grid: { color: 'rgba(255, 255, 255, 0.05)' },
-                    ticks: {
-                        color: '#aaa',
-                        maxTicksLimit: 12,
-                        font: { size: 11 }
-                    }
-                },
-                y: {
-                    min: yMin,
-                    max: yMax,
-                    grid: { color: 'rgba(255, 255, 255, 0.08)' },
-                    ticks: {
-                        color: '#aaa',
-                        font: { size: 11 },
-                        callback: function(value) {
-                            return value + (metric === 'temp' ? '°' : ' mph');
-                        }
-                    }
-                }
-            }
-        }
+    cities.forEach(city => {
+        L.marker([city.lat, city.lon])
+            .addTo(map)
+            .bindPopup(`<b>${city.name}</b><br>Temp: ${city.temp}<br>Wind: ${city.wind}`);
     });
 }
 
-// Sample Data Trigger for Demonstration
-function renderSampleChart(metric) {
-    const labels = ["12 AM", "3 AM", "6 AM", "9 AM", "12 PM", "3 PM", "6 PM", "9 PM"];
-    let values, colors, labelName;
-
-    if (metric === 'temp') {
-        values = [62, 58, 55, 68, 75, 80, 77, 69];
-        colors = ["#00a8cc", "#00a8cc", "#00a8cc", "#ffaa00", "#ffaa00", "#ff5500", "#ffaa00", "#00a8cc"];
-        labelName = "Temperature Forecast";
-    } else {
-        values = [5, 4, 7, 12, 18, 22, 15, 8];
-        colors = ["#4caf50", "#4caf50", "#4caf50", "#ffeb3b", "#ff9800", "#f44336", "#ff9800", "#4caf50"];
-        labelName = "Wind Speed Forecast";
+function resetMapView() {
+    if (map) {
+        map.setView([41.8780, -93.0977], 7);
     }
-
-    renderForecastChart(labels, values, colors, labelName, metric);
 }
 
-// Global live clock interval update for confidence display modal
-setInterval(() => {
-    const modal = document.getElementById("chartModal");
-    if (modal && modal.style.display !== "none" && modal.style.display !== "") {
-        updateLiveConfidenceDisplay();
-    }
-}, 1000);
-
-// Initialize with default chart
 window.onload = () => {
-    renderSampleChart('temp');
+    initMap();
 };
 </script>
 </body>
