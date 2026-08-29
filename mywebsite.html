@@ -3889,14 +3889,13 @@ document.getElementById("weatherMapModalBtn")?.addEventListener("click", () => {
   openWeatherMapModal(selectedDayCard, currentMode, selectedDayIndex);
 });
 function getSelectedDayCardDate(canvas, activeX, item, mode, prevItem, nextItem) {
-    // 1. Check history modal input/card state first if history mode is active
+    // 1. Check history modal input/card state first if history mode is active, or extract from item
     const historyModalEl = document.getElementById('historyModal');
     const isHistoryModalOpen = historyModalEl && historyModalEl.style.display !== 'none';
     
     if (isHistoryModalOpen) {
         const historyDateInput = historyModalEl.querySelector('input[type="date"], input.history-date, #historyDate, [name="historyDate"], #historyDateDisplay, .selected-history-date');
         if (historyDateInput && historyDateInput.value) {
-            // Convert standard yyyy-mm-dd input value to mm/dd/yyyy format if needed, or return directly
             const rawVal = historyDateInput.value;
             if (rawVal.includes('-')) {
                 const parts = rawVal.split('-');
@@ -3920,7 +3919,17 @@ function getSelectedDayCardDate(canvas, activeX, item, mode, prevItem, nextItem)
         }
     }
 
-    // 2. Resolve base reference date from canvas dataset or fallback to live current time
+    // 2. Fall back to item properties for historical items (e.g. item.date, item.dateStr)
+    if (item) {
+        if (typeof item.date === 'string' && item.date.trim() !== '') {
+            return { dateStr: item.date };
+        }
+        if (typeof item.dateStr === 'string' && item.dateStr.trim() !== '') {
+            return { dateStr: item.dateStr };
+        }
+    }
+
+    // 3. Resolve base reference date from canvas dataset or fallback to live current time
     let baseDate = new Date();
     if (canvas && canvas.dataset && canvas.dataset.baseDate) {
         const parsedDatasetDate = new Date(canvas.dataset.baseDate);
@@ -3944,7 +3953,7 @@ function getSelectedDayCardDate(canvas, activeX, item, mode, prevItem, nextItem)
         return `${defM}/${defD}/${defY}`;
     };
 
-    // 3. Check explicit item properties first (Ensures data passed from the active graph/timeline takes precedence)
+    // 4. Check explicit item properties further (Ensures data passed from the active graph/timeline takes precedence)
     if (item) {
         const isTodayLabel = (item.day && ['today', 'now'].includes(item.day.toLowerCase().trim())) || item.dayIndex === 0;
         
@@ -3952,18 +3961,12 @@ function getSelectedDayCardDate(canvas, activeX, item, mode, prevItem, nextItem)
             return { dateStr: getDefaultTodayStr() };
         }
 
-        if (typeof item.dateStr === 'string' && item.dateStr.trim() !== '') {
-            return { dateStr: item.dateStr };
-        }
-        if (typeof item.date === 'string' && item.date.trim() !== '') {
-            return { dateStr: item.date };
-        }
         if (item.formattedDate) {
             return { dateStr: item.formattedDate };
         }
     }
 
-    // 4. Check active DOM cards (UI-driven date selection)
+    // 5. Check active DOM cards (UI-driven date selection)
     const activeCard = document.querySelector('.day-card.active, .forecast-day-card.active, .day-tab.active, [data-selected="true"]');
     if (activeCard) {
         const cardText = activeCard.innerText || activeCard.getAttribute('data-date') || activeCard.getAttribute('title');
@@ -3975,7 +3978,7 @@ function getSelectedDayCardDate(canvas, activeX, item, mode, prevItem, nextItem)
         }
     }
 
-    // 5. Check modal header title or graph DOM elements (Including dynamic map tile elements)
+    // 6. Check modal header title or graph DOM elements (Including dynamic map tile elements)
     const graphHeaderSelectors = [
         '#graphModalTitle', '.modal-title', '.graph-header', '.chart-title',
         '.graph-modal-date', '.map-tile-date', '.radar-timestamp',
@@ -3993,7 +3996,7 @@ function getSelectedDayCardDate(canvas, activeX, item, mode, prevItem, nextItem)
         }
     }
     
-    // 6. If forecast index or offset is provided on the item object (e.g. item.dayIndex)
+    // 7. If forecast index or offset is provided on the item object (e.g. item.dayIndex)
     if (item && typeof item.dayIndex === 'number') {
         const targetDate = new Date(baseDate.getTime());
         targetDate.setDate(baseDate.getDate() + item.dayIndex);
@@ -4007,7 +4010,7 @@ function getSelectedDayCardDate(canvas, activeX, item, mode, prevItem, nextItem)
         return { dateStr: `${m}/${d}/${y}` };
     }
 
-    // 7. Fallback: If item.day matches a known weekday or label relative to today, parse accordingly
+    // 8. Fallback: If item.day matches a known weekday or label relative to today, parse accordingly
     const daysOfWeek = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
     if (item && typeof item.day === 'string') {
         const lowerDay = item.day.toLowerCase().trim();
