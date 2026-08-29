@@ -4829,37 +4829,111 @@ async function handleWeatherHistory() {
 /**
  * Fetches historical grid observations from 2026-08-22 up to 1 day before current date
  */
-async function fetchHistoricalWeatherData(lat, lon) {
-  const pointRes = await fetch(`https://api.weather.gov/points/${lat},${lon}`);
-  if (!pointRes.ok) throw new Error('Failed to resolve location coordinates');
-  const pointData = await pointRes.json();
-  const { gridId, gridX, gridY } = pointData.properties;
+function calculateForecastDayCardMetrics(observations, targetDateStr) {
+  // 1. Filter observations for the requested calendar date in UTC/ISO
+  const dayObs = observations.filter(obs => {
+    if (!obs.properties || !obs.properties.timestamp) return false;
+    return obs.properties.timestamp.startsWith(targetDateStr);
+  });
 
-  // Set cutoff: Start at 2026-08-22, End strictly yesterday (1 day before today)
-  const startDate = '2026-08-22';
-  const yesterday = new Date();
-  yesterday.setDate(yesterday.getDate() - 1);
-  const endDate = yesterday.toISOString().split('T')[0];
+  if (!dayObs.length) {
+    return {
+      date: targetDateStr,
+      highTempF: null,
+      lowTempF: null,
+      maxWindMph: null,
+      maxGustMph: null,
+      avgPressureHpa: null,
+      avgHumidityPct: null,
+      maxUvIndex: null,
+      totalPrecipMm: null,
+      dominantCondition: 'No Data'
+    };
+  }
 
-  const startIso = `${startDate}T00:00:00Z`;
-  const endIso = `${endDate}T23:59:59Z`;
+  // Helper functions for unit conversions
+  const cToF = (c) => (c !== null && c !== undefined) ? Math.round((c * 9 / 5) + 32) : null;
+  const msToMph = (ms) => (ms !== null && ms !== undefined) ? Math.round(ms * 2.23694) : null;
+  const paToHpa = (pa) => (pa !== null && pa !== undefined) ? Math.round(pa / 100) : null;
 
-  const historyRes = await fetch(
-    `https://api.weather.gov/gridpoints/${gridId}/${gridX},${gridY}/stations`
-  );
-  if (!historyRes.ok) throw new Error('Failed to fetch observation stations');
-  const stationsData = await historyRes.json();
-  const stationId = stationsData.features[0]?.properties?.stationIdentifier;
+  // Extract arrays of values filtering out null/undefined entries
+  const tempsF = dayObs
+    .map(o => cToF(o.properties.temperature?.value))
+    .filter(v => v !== null);
 
-  if (!stationId) throw new Error('No weather stations found near location');
+  const windsMph = dayObs
+    .map(o => msToMph(o.properties.windSpeed?.value))
+    .filter(v => v !== null);
 
-  const obsRes = await fetch(
-    `https://api.weather.gov/stations/${stationId}/observations?start=${startIso}&end=${endIso}`
-  );
-  if (!obsRes.ok) throw new Error('Failed to fetch observation data');
-  const obsData = await obsRes.json();
+  const gustsMph = dayObs
+    .map(o => msToMph(o.properties.windGust?.value))
+    .filter(v => v !== null);
 
-  return parseHistoryObservations(obsData.features, startDate, endDate);
+  const pressuresHpa = dayObs
+    .map(o => paToHpa(o.properties.barometricPressure?.value))
+    .filter(v => v !== null);
+
+  const humiditiesPct = dayObs
+    .map(o => o.properties.relativeHumidity?.value)
+    .filter(v => v !== null);
+
+  const uvs = dayObs
+    .map(o => o.properties.uvIndex?.value)
+    .filter(v => v !== null);
+
+  const precipsMm = dayObs
+    .map(o => o.properties.precipitationLastHour?.value)
+    .filter(v => v !== null);
+
+  // Extract text weather descriptions to aggregate dominant condition
+  const conditions = dayObs
+    .map(o => o.properties.textDescription)
+    .filter(v => Boolean(v));
+
+  // Determine most frequent weather description
+  const conditionCounts = {};
+  let dominantCondition = 'Clear';
+  let maxCount = 0;
+
+  conditions.forEach(cond => {
+    conditionCounts[cond] = (conditionCounts[cond] || 0) + 1;
+    if (conditionCounts[cond] > maxCount) {
+      maxCount = conditionCounts[cond];
+      dominantCondition = cond;
+    }
+  });
+
+  // Calculate high/low, peak wind, and averages
+  const highTempF = tempsF.length ? Math.max(...tempsF) : null;
+  const lowTempF = tempsF.length ? Math.min(...tempsF) : null;
+  const maxWindMph = windsMph.length ? Math.max(...windsMph) : 0;
+  const maxGustMph = gustsMph.length ? Math.max(...gustsMph) : maxWindMph;
+
+  const avgPressureHpa = pressuresHpa.length
+    ? Math.round(pressuresHpa.reduce((a, b) => a + b, 0) / pressuresHpa.length)
+    : null;
+
+  const avgHumidityPct = humiditiesPct.length
+    ? Math.round(humiditiesPct.reduce((a, b) => a + b, 0) / humiditiesPct.length)
+    : null;
+
+  const maxUvIndex = uvs.length ? Math.max(...uvs) : 0;
+  const totalPrecipMm = precipsMm.length
+    ? Number(precipsMm.reduce((a, b) => a + b, 0).toFixed(2))
+    : 0;
+
+  return {
+    date: targetDateStr,
+    highTempF,
+    lowTempF,
+    maxWindMph,
+    maxGustMph,
+    avgPressureHpa,
+    avgHumidityPct,
+    maxUvIndex,
+    totalPrecipMm,
+    dominantCondition
+  };
 }
 
 /**
