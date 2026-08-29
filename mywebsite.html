@@ -5009,7 +5009,11 @@ function calculateForecastDayCardMetrics(observations, targetDateStr) {
 function parseHistoryObservations(observations, startDateCutoff, endDateCutoff) {
   const dailyMap = {};
 
-  observations.forEach((obs) => {
+  // Safeguard: Ensure observations is a valid array before iteration
+  const safeObservations = Array.isArray(observations) ? observations : [];
+
+  safeObservations.forEach((obs) => {
+    if (!obs || !obs.properties) return;
     const props = obs.properties;
     if (!props.timestamp) return;
     
@@ -5031,19 +5035,19 @@ function parseHistoryObservations(observations, startDateCutoff, endDateCutoff) 
     }
 
     let tempF = null;
-    if (props.temperature?.value !== null) {
+    if (props.temperature?.value !== null && props.temperature?.value !== undefined) {
       tempF = (props.temperature.value * 9) / 5 + 32;
       dailyMap[dateKey].temps.push(tempF);
     }
 
     let windMph = 0;
-    if (props.windSpeed?.value !== null) {
+    if (props.windSpeed?.value !== null && props.windSpeed?.value !== undefined) {
       windMph = props.windSpeed.value * 0.621371;
       dailyMap[dateKey].winds.push(windMph);
     }
 
     let gustMph = 0;
-    if (props.windGust?.value !== null) {
+    if (props.windGust?.value !== null && props.windGust?.value !== undefined) {
       gustMph = props.windGust.value * 0.621371;
       dailyMap[dateKey].gusts.push(gustMph);
     }
@@ -5064,7 +5068,7 @@ function parseHistoryObservations(observations, startDateCutoff, endDateCutoff) 
     };
   });
 
-  const graphOverrides = getGraphOverrideEvents();
+  const graphOverrides = typeof getGraphOverrideEvents === 'function' ? getGraphOverrideEvents() : {};
 
   return Object.values(dailyMap)
     .sort((a, b) => b.date.localeCompare(a.date))
@@ -5084,7 +5088,7 @@ function parseHistoryObservations(observations, startDateCutoff, endDateCutoff) 
       });
 
       let record = {
-        date: formatDateDisplay(day.date),
+        date: typeof formatDateDisplay === 'function' ? formatDateDisplay(day.date) : day.date,
         rawDate: day.date,
         highTemp: maxTemp,
         lowTemp: minTemp,
@@ -5095,12 +5099,14 @@ function parseHistoryObservations(observations, startDateCutoff, endDateCutoff) 
         isOverridden: false
       };
 
-      // Apply graph overrides
-      record = mergeGraphOverrides(record, graphOverrides[day.date]);
+      // Apply graph overrides if helper function exists
+      if (typeof mergeGraphOverrides === 'function') {
+        record = mergeGraphOverrides(record, graphOverrides[day.date]);
+      }
 
-      // Calculate base metrics
-      record.dos = calculateDOS(record.wind, record.condition);
-      record.wis = calculateWIS(record.lowTemp, record.wind, record.condition);
+      // Calculate base metrics safely
+      record.dos = typeof calculateDOS === 'function' ? calculateDOS(record.wind, record.condition) : 5;
+      record.wis = typeof calculateWIS === 'function' ? calculateWIS(record.lowTemp, record.wind, record.condition) : 0;
 
       // Apply card metrics overrides if present for this date
       if (graphOverrides[day.date]?.cardMetrics) {
