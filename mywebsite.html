@@ -2222,12 +2222,21 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
 
     const activeTargetMap = (typeof window !== "undefined" && window._radarState && window._radarState.map) ? window._radarState.map : (typeof map !== "undefined" ? map : null);
     
-    // Resolve location defaults with unified lon/lng fallback
-    const mapCenter = activeTargetMap && typeof activeTargetMap.getCenter === 'function' ? activeTargetMap.getCenter() : null;
+    // Resolve location defaults with persistent fixed anchor to prevent pattern drift during map panning/zooming
     const currentGlobalPoint = (typeof targetZoneOrPoint !== 'undefined' && targetZoneOrPoint) ? targetZoneOrPoint : (window._targetZoneOrPoint || null);
-    
-    const centerLat = mapCenter ? mapCenter.lat : (currentGlobalPoint && (currentGlobalPoint.lat !== undefined) ? parseFloat(currentGlobalPoint.lat) : 45.0);
-    const centerLon = mapCenter ? mapCenter.lng : (currentGlobalPoint && (currentGlobalPoint.lon !== undefined || currentGlobalPoint.lng !== undefined) ? parseFloat(currentGlobalPoint.lon ?? currentGlobalPoint.lng) : -93.0);
+    const stateCenter = window._radarState?.center || window._radarState?.location;
+
+    if (!window._fixedRadarCenter && activeTargetMap && typeof activeTargetMap.getCenter === 'function') {
+        window._fixedRadarCenter = activeTargetMap.getCenter();
+    }
+
+    const centerLat = currentGlobalPoint && (currentGlobalPoint.lat !== undefined) ? parseFloat(currentGlobalPoint.lat) : 
+                     (stateCenter && (stateCenter.lat !== undefined) ? parseFloat(stateCenter.lat) : 
+                     (window._fixedRadarCenter ? window._fixedRadarCenter.lat : 45.0));
+
+    const centerLon = currentGlobalPoint && (currentGlobalPoint.lon !== undefined || currentGlobalPoint.lng !== undefined) ? parseFloat(currentGlobalPoint.lon ?? currentGlobalPoint.lng) : 
+                     (stateCenter && (stateCenter.lon !== undefined || stateCenter.lng !== undefined) ? parseFloat(stateCenter.lon ?? stateCenter.lng) : 
+                     (window._fixedRadarCenter ? window._fixedRadarCenter.lng : -93.0));
 
     // Resolve target timezone hierarchy
     const targetTimezone = item?.timezone || item?.tz || 
@@ -2285,14 +2294,15 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
     const exactDaysOut = safeNum(item?.exactDaysOut ?? item?.daysOut) ?? 0;
     const baseConfidence = safeNum(item?.confidenceFactor ?? item?.confidence ?? window._radarState?.confidenceFactor) ?? 1.0;
 
-    // 1. Days Out Decay Factor
+    // 1. Days Out Decay Factor (exponential confidence degradation for future days)
     const daysOutFactor = Math.max(0.25, Math.pow(0.91, exactDaysOut));
 
-    // 2. Time of Day Decay & Diurnal Instability Factor
-    const timeOfDayRatio = hoveredMinute / 1439;
-    const diurnalPeakUncertainty = Math.sin(Math.PI * timeOfDayRatio) * 0.12;
+    // 2. Time of Day Decay & Diurnal Instability Factor (higher variance across 24h & peak afternoon hours)
+    const timeOfDayRatio = hoveredMinute / 1439; // Range 0.0 to 1.0 over 24h
+    const diurnalPeakUncertainty = Math.sin(Math.PI * timeOfDayRatio) * 0.12; // Peak uncertainty around mid-day/afternoon
     const timeOfDayFactor = Math.max(0.5, 1.0 - (timeOfDayRatio * 0.15) - diurnalPeakUncertainty);
 
+    // Combined dynamic confidence factor
     const dynamicConfidenceFactor = +(baseConfidence * daysOutFactor * timeOfDayFactor).toFixed(3);
 
     // --- ACTIVE DAY CARD DATE & METRICS RESOLUTION ---
@@ -2406,7 +2416,7 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
             dateNum,
             targetObj,
             gridPeriods,
-            dynamicConfidenceFactor,
+            dynamicConfidenceFactor, // Dynamic confidence factor passed here
             exactDaysOut,
             dosScore,
             dayIdx
@@ -2772,10 +2782,12 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
         }
     }
 
+    // Calculates dynamic values across map coordinates relative to fixed anchor center
     const getLocalValueAtCoordinates = (lat, lon, baseVal, modeType) => {
         if (baseVal === null || baseVal === undefined) return baseVal;
         const mType = (modeType || "").toLowerCase();
 
+        // Calculate spatial delta relative to fixed center point location
         const dLat = (lat !== undefined && lat !== null) ? (lat - centerLat) : 0;
         const dLon = (lon !== undefined && lon !== null) ? (lon - centerLon) : 0;
 
@@ -2841,36 +2853,36 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
 
         if (mType.includes('wind') || mType.includes('gust')) {
             return interpolateStops(val, [
-                { threshold: 0,  color: 'rgba(160, 205, 230, 0.60)' },
-                { threshold: 6,  color: 'rgba(75, 165, 195, 0.65)' },
-                { threshold: 10, color: 'rgba(35, 135, 125, 0.65)' },
-                { threshold: 20, color: 'rgba(25, 115, 45, 0.70)' },
-                { threshold: 35, color: 'rgba(215, 185, 50, 0.70)' },
-                { threshold: 45, color: 'rgba(230, 135, 70, 0.75)' },
-                { threshold: 70, color: 'rgba(185, 60, 65, 0.80)' }
+                { threshold: 0,  color: 'rgba(160, 205, 230, 0.60)' }, // Light Ice Blue
+                { threshold: 6,  color: 'rgba(75, 165, 195, 0.65)' },  // Ocean Blue
+                { threshold: 10, color: 'rgba(35, 135, 125, 0.65)' },  // Teal
+                { threshold: 20, color: 'rgba(25, 115, 45, 0.70)' },   // Deep Green
+                { threshold: 35, color: 'rgba(215, 185, 50, 0.70)' },  // Warm Yellow
+                { threshold: 45, color: 'rgba(230, 135, 70, 0.75)' },  // Orange
+                { threshold: 70, color: 'rgba(185, 60, 65, 0.80)' }    // Crimson Red
             ], 0);
         }
 
         if (mType === 'dos') {
             return interpolateStops(val, [
-                { threshold: 0,   color: 'rgba(34, 197, 94, 0.75)' },
-                { threshold: 30,  color: 'rgba(132, 204, 22, 0.70)' },
-                { threshold: 50,  color: 'rgba(249, 115, 22, 0.65)' },
-                { threshold: 80,  color: 'rgba(239, 68, 68, 0.70)' },
-                { threshold: 120, color: 'rgba(153, 27, 27, 0.80)' },
-                { threshold: 150, color: 'rgba(147, 51, 234, 0.85)' }
+                { threshold: 0,   color: 'rgba(34, 197, 94, 0.75)' },   // Green
+                { threshold: 30,  color: 'rgba(132, 204, 22, 0.70)' },  // Bright Green
+                { threshold: 50,  color: 'rgba(249, 115, 22, 0.65)' },  // Orange
+                { threshold: 80,  color: 'rgba(239, 68, 68, 0.70)' },   // Bright Red
+                { threshold: 120, color: 'rgba(153, 27, 27, 0.80)' },   // Dark Red
+                { threshold: 150, color: 'rgba(147, 51, 234, 0.85)' }   // Purple
             ], 50);
         }
 
         if (['temp', 'temperature', 'feelslike', 'feels_like'].includes(mType)) {
             return interpolateStops(val, [
-                { threshold: -5,  color: 'rgba(98, 85, 205, 0.75)' },
-                { threshold: 15,  color: 'rgba(115, 130, 230, 0.70)' },
-                { threshold: 30,  color: 'rgba(72, 160, 185, 0.65)' },
-                { threshold: 50,  color: 'rgba(45, 155, 110, 0.60)' },
-                { threshold: 70,  color: 'rgba(155, 195, 60, 0.62)' },
-                { threshold: 85,  color: 'rgba(235, 140, 25, 0.70)' },
-                { threshold: 100, color: 'rgba(185, 15, 15, 0.80)' }
+                { threshold: -5,  color: 'rgba(98, 85, 205, 0.75)' },  // Deep Purple
+                { threshold: 15,  color: 'rgba(115, 130, 230, 0.70)' }, // Soft Blue
+                { threshold: 30,  color: 'rgba(72, 160, 185, 0.65)' },  // Teal
+                { threshold: 50,  color: 'rgba(45, 155, 110, 0.60)' },  // Green
+                { threshold: 70,  color: 'rgba(155, 195, 60, 0.62)' },  // Yellow-Green
+                { threshold: 85,  color: 'rgba(235, 140, 25, 0.70)' },  // Amber/Orange
+                { threshold: 100, color: 'rgba(185, 15, 15, 0.80)' }   // Deep Red
             ], 50);
         }
 
@@ -2915,7 +2927,6 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
         return 'rgba(56, 189, 248, 0.35)';
     };
 
-    // --- GRID LAYER CLASS WITH DYNAMIC WEATHER SHIFT & GEOGRAPHICALLY ANCHORED GRID LINES ---
     const RadarGridLayerClass = L.GridLayer.extend({
         createTile: function(coords) {
             const tile = document.createElement('canvas');
@@ -2927,21 +2938,9 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
             const mapObj = this._map;
             const stepSize = 32;
 
-            // Weather dynamic displacement vector (shifts grid on timeline/value changes)
-            const weatherValueFactor = (baseResolvedValue !== null && baseResolvedValue !== undefined) ? baseResolvedValue : 0;
-            const minutePhase = (hoveredMinute / 1439) * Math.PI * 2;
-            const weatherShiftX = Math.round(Math.sin(minutePhase + weatherValueFactor * 0.1) * 8);
-            const weatherShiftY = Math.round(Math.cos(minutePhase + weatherValueFactor * 0.1) * 8);
-
             for (let px = 0; px < tile.width; px += stepSize) {
                 for (let py = 0; py < tile.height; py += stepSize) {
-                    // Global world pixel coordinate anchors grid to geographic map space
-                    const worldPx = coords.x * size.x + px;
-                    const worldPy = coords.y * size.y + py;
-
-                    // Unproject using weather-shifted world points
-                    const subPoint = L.point(worldPx + weatherShiftX, worldPy + weatherShiftY);
-                    
+                    const subPoint = coords.scaleBy(size).add(L.point(px, py));
                     let tileLat = centerLat;
                     let tileLon = centerLon;
 
@@ -2952,15 +2951,13 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
                     }
 
                     const localValue = getLocalValueAtCoordinates(tileLat, tileLon, baseResolvedValue, effectiveSubMode);
-                    
-                    // 1. Fill Grid Cell
                     ctx.fillStyle = getDynamicColor(localValue, effectiveSubMode);
                     ctx.fillRect(px, py, stepSize, stepSize);
 
-                    // 2. Render Weather Grid Line Overlay
-                    ctx.strokeStyle = 'rgba(255, 255, 255, 0.22)';
+                    // Render grid square borders so value cells are explicitly framed
+                    ctx.strokeStyle = 'rgba(255, 255, 255, 0.15)';
                     ctx.lineWidth = 1;
-                    ctx.strokeRect(px + 0.5, py + 0.5, stepSize, stepSize);
+                    ctx.strokeRect(px, py, stepSize, stepSize);
                 }
             }
             
@@ -3031,6 +3028,7 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
                 .openOn(mapObj);
         };
 
+        // Clean up previous event handlers
         if (mapObj._radarInteractHandler) {
             mapObj.off('mousemove click tap', mapObj._radarInteractHandler);
         }
@@ -3038,9 +3036,11 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
             mapObj.off('mouseout', mapObj._radarMouseOutHandler);
         }
 
+        // Bind mousemove for desktop/laptop hover tracking alongside click and tap
         mapObj._radarInteractHandler = (e) => updateTooltipPosition(e);
         mapObj.on('mousemove click tap', mapObj._radarInteractHandler);
 
+        // Hide tooltip on mouseout
         mapObj._radarMouseOutHandler = () => {
             if (mapObj._radarTooltip) {
                 mapObj.closeTooltip(mapObj._radarTooltip);
