@@ -2633,13 +2633,17 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
         return Math.round(smoothStep(resolvedPrecip, (resolvedPrecip + nextPrecip) / 2, (m - 900) / 539));
     };
 
+    // Smoothly handles array interpolation including overnight roll-over transitions across 11:59 PM (minute 1439) into early morning
     const getValFromHourlyArray = (arr, minute, key = null) => {
         if (!Array.isArray(arr) || arr.length === 0) return null;
         const normMin = Math.max(0, Math.min(1439, minute));
-        const step = 1439 / Math.max(1, arr.length - 1);
+        
+        // Map 24h continuous scale with boundary handling for continuous midnight playback
+        const totalPoints = arr.length;
+        const step = 1440 / Math.max(1, totalPoints);
         const floatIdx = normMin / step;
         const idx0 = Math.floor(floatIdx);
-        const idx1 = Math.min(arr.length - 1, Math.ceil(floatIdx));
+        const idx1 = (idx0 + 1) % totalPoints; // Wrap smooth index across 11:59 PM boundary
         const t = floatIdx - idx0;
 
         const getNumVal = (entry) => {
@@ -4914,7 +4918,6 @@ function drawForecastCanvasGraph(item, mode, canvas, activeX = null, prevItem = 
         return `#${((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1)}`;
     };
 
-    // Apple Weather Color Standards
     const appleTempColor = (t) => {
         if (typeof getAppleTempColor === "function") return getAppleTempColor(t);
         if (t <= 0) return "#B6A2D4";
@@ -4965,15 +4968,6 @@ function drawForecastCanvasGraph(item, mode, canvas, activeX = null, prevItem = 
     const effectiveNextItem = resolveNextItem();
 
     const getPreviousDayLowestTemp = () => {
-        if (item.dateStr === "8/24/2026" || item.dateStr === "08/24/2026") {
-            const prev = effectivePrevItem;
-            if (prev && Array.isArray(prev.overrideEvents) && prev.overrideEvents.length > 0) {
-                const eventTemps = prev.overrideEvents.filter(e => e.temp !== undefined).map(e => e.temp);
-                if (eventTemps.length > 0) return Math.min(...eventTemps);
-            }
-            return 48;
-        }
-
         const prev = effectivePrevItem;
         if (prev) {
             if (Array.isArray(prev.tempRange) && prev.tempRange.length > 0) return Math.min(...prev.tempRange);
@@ -4982,10 +4976,7 @@ function drawForecastCanvasGraph(item, mode, canvas, activeX = null, prevItem = 
             if (prev.tempMin !== undefined) return prev.tempMin;
             if (prev.tempLow !== undefined) return prev.tempLow;
         }
-
-        if (item.yesterdayTempLow !== undefined) return item.yesterdayTempLow;
-        if (item.yesterdayLow !== undefined) return item.yesterdayLow;
-        return item.tempLow;
+        return item.yesterdayLow !== undefined ? item.yesterdayLow : item.tempLow;
     };
 
     const getNextDayLowestTemp = () => {
@@ -4997,10 +4988,7 @@ function drawForecastCanvasGraph(item, mode, canvas, activeX = null, prevItem = 
             if (next.tempMin !== undefined) return next.tempMin;
             if (next.tempLow !== undefined) return next.tempLow;
         }
-
-        if (item.tomorrowTempLow !== undefined) return item.tomorrowTempLow;
-        if (item.tomorrowLow !== undefined) return item.tomorrowLow;
-        return item.tempLow;
+        return item.tomorrowLow !== undefined ? item.tomorrowLow : item.tempLow;
     };
 
     const morningLow = getPreviousDayLowestTemp();
@@ -5011,7 +4999,6 @@ function drawForecastCanvasGraph(item, mode, canvas, activeX = null, prevItem = 
     const prevHigh = (effectivePrevItem && effectivePrevItem.tempHigh !== undefined) 
         ? effectivePrevItem.tempHigh : (item.yesterdayTempHigh !== undefined ? item.yesterdayTempHigh : item.tempHigh);
 
-    // Calculate boundary transitions at Midnight Start (12:00 AM / m=0) and Midnight End (11:59 PM / m=1439)
     let midnightStartTemp = Math.round((prevHigh + morningLow) / 2);
     if (effectivePrevItem && Array.isArray(effectivePrevItem.overrideEvents) && effectivePrevItem.overrideEvents.length > 0) {
         const prevEvents = [...effectivePrevItem.overrideEvents].sort((a, b) => a.minute - b.minute);
@@ -5028,8 +5015,13 @@ function drawForecastCanvasGraph(item, mode, canvas, activeX = null, prevItem = 
 
     const isWinterInversion = item.isWinterInversion || (item.tempHigh < morningLow);
 
-    // Continuous Diurnal Curves across 12 AM (m=0) to 11:59 PM (m=1439)
+    // Diurnal curve computations with fallback protection for recorded history
     const getDiurnalTemp = (m) => {
+        // If it's today and we have recorded historical observation arrays/events for past hours, anchor to them directly
+        if (isToday && m <= currentMinutes && Array.isArray(item.historicalHourly) && item.historicalHourly[m]) {
+            return item.historicalHourly[m];
+        }
+
         if (isWinterInversion) {
             const tStart = Math.round((prevHigh + todayHigh) / 2);
             if (m <= 360) return Math.round(smoothStep(tStart, todayHigh, m / 360));
@@ -5043,11 +5035,19 @@ function drawForecastCanvasGraph(item, mode, canvas, activeX = null, prevItem = 
     };
 
     const peakMin = 15 * 60;
-    const getDiurnalFeelsLike = (m) => getDiurnalTemp(m) + (item.feelsLikeOffset || 0);
+    const getDiurnalFeelsLike = (m) => {
+        if (isToday && m <= currentMinutes && Array.isArray(item.historicalFeelsLike) && item.historicalFeelsLike[m]) {
+            return item.historicalFeelsLike[m];
+        }
+        return getDiurnalTemp(m) + (item.feelsLikeOffset || 0);
+    };
 
     const prevWind = (effectivePrevItem && effectivePrevItem.windMph !== undefined) ? effectivePrevItem.windMph : item.windMph;
     const nextWind = (effectiveNextItem && effectiveNextItem.windMph !== undefined) ? effectiveNextItem.windMph : item.windMph;
     const getDiurnalWind = (m) => {
+        if (isToday && m <= currentMinutes && Array.isArray(item.historicalWind) && item.historicalWind[m]) {
+            return item.historicalWind[m];
+        }
         const baseWind = (m <= 360) ? smoothStep((prevWind + item.windMph) / 2, item.windMph, m / 360) :
                          (m <= 900) ? item.windMph :
                          smoothStep(item.windMph, (item.windMph + nextWind) / 2, (m - 900) / 539);
@@ -5058,6 +5058,9 @@ function drawForecastCanvasGraph(item, mode, canvas, activeX = null, prevItem = 
     const prevGust = (effectivePrevItem && effectivePrevItem.gustMph !== undefined) ? effectivePrevItem.gustMph : item.gustMph;
     const nextGust = (effectiveNextItem && effectiveNextItem.gustMph !== undefined) ? effectiveNextItem.gustMph : item.gustMph;
     const getDiurnalGust = (m) => {
+        if (isToday && m <= currentMinutes && Array.isArray(item.historicalGust) && item.historicalGust[m]) {
+            return item.historicalGust[m];
+        }
         const baseGust = (m <= 360) ? smoothStep((prevGust + item.gustMph) / 2, item.gustMph, m / 360) :
                          (m <= 900) ? item.gustMph :
                          smoothStep(item.gustMph, (item.gustMph + nextGust) / 2, (m - 900) / 539);
@@ -5068,6 +5071,9 @@ function drawForecastCanvasGraph(item, mode, canvas, activeX = null, prevItem = 
     const prevDos = (effectivePrevItem && effectivePrevItem.score !== undefined) ? effectivePrevItem.score : item.score;
     const nextDos = (effectiveNextItem && effectiveNextItem.score !== undefined) ? effectiveNextItem.score : item.score;
     const getDiurnalDos = (m) => {
+        if (isToday && m <= currentMinutes && Array.isArray(item.historicalDos) && item.historicalDos[m]) {
+            return item.historicalDos[m];
+        }
         const baseScore = (m <= 360) ? smoothStep((prevDos + item.score) / 2, item.score, m / 360) :
                           (m <= 900) ? item.score :
                           smoothStep(item.score, (item.score + nextDos) / 2, (m - 900) / 539);
@@ -5078,6 +5084,9 @@ function drawForecastCanvasGraph(item, mode, canvas, activeX = null, prevItem = 
     const prevPressure = (effectivePrevItem && effectivePrevItem.pressure !== undefined) ? effectivePrevItem.pressure : (item.pressure || 29.92);
     const nextPressure = (effectiveNextItem && effectiveNextItem.pressure !== undefined) ? effectiveNextItem.pressure : (item.pressure || 29.92);
     const getDiurnalPressure = (m) => {
+        if (isToday && m <= currentMinutes && Array.isArray(item.historicalPressure) && item.historicalPressure[m]) {
+            return item.historicalPressure[m];
+        }
         const baseP = (m <= 360) ? smoothStep((prevPressure + (item.pressure || 29.92)) / 2, item.pressure || 29.92, m / 360) :
                       (m <= 900) ? (item.pressure || 29.92) :
                       smoothStep(item.pressure || 29.92, ((item.pressure || 29.92) + nextPressure) / 2, (m - 900) / 539);
@@ -5088,6 +5097,9 @@ function drawForecastCanvasGraph(item, mode, canvas, activeX = null, prevItem = 
     const prevHumidity = (effectivePrevItem && effectivePrevItem.humidity !== undefined) ? effectivePrevItem.humidity : (item.humidity || 50);
     const nextHumidity = (effectiveNextItem && effectiveNextItem.humidity !== undefined) ? effectiveNextItem.humidity : (item.humidity || 50);
     const getDiurnalHumidity = (m) => {
+        if (isToday && m <= currentMinutes && Array.isArray(item.historicalHumidity) && item.historicalHumidity[m]) {
+            return item.historicalHumidity[m];
+        }
         const baseHum = (m <= 360) ? smoothStep((prevHumidity + (item.humidity || 50)) / 2, item.humidity || 50, m / 360) :
                         (m <= 900) ? (item.humidity || 50) :
                         smoothStep(item.humidity || 50, ((item.humidity || 50) + nextHumidity) / 2, (m - 900) / 539);
@@ -5096,6 +5108,9 @@ function drawForecastCanvasGraph(item, mode, canvas, activeX = null, prevItem = 
     };
 
     const getDiurnalUv = (m) => {
+        if (isToday && m <= currentMinutes && Array.isArray(item.historicalUv) && item.historicalUv[m]) {
+            return item.historicalUv[m];
+        }
         const maxUv = item.uvIndex || 0;
         if (m < 360 || m > 1200) return 0;
         const rad = ((m - 360) / 840) * Math.PI;
@@ -5105,6 +5120,9 @@ function drawForecastCanvasGraph(item, mode, canvas, activeX = null, prevItem = 
     const prevPrecip = (effectivePrevItem && effectivePrevItem.precipChance !== undefined) ? effectivePrevItem.precipChance : (item.precipChance || 0);
     const nextPrecip = (effectiveNextItem && effectiveNextItem.precipChance !== undefined) ? effectiveNextItem.precipChance : (item.precipChance || 0);
     const getDiurnalPrecip = (m) => {
+        if (isToday && m <= currentMinutes && Array.isArray(item.historicalPrecip) && item.historicalPrecip[m]) {
+            return item.historicalPrecip[m];
+        }
         if (m <= 360) return Math.round(smoothStep((prevPrecip + (item.precipChance || 0)) / 2, item.precipChance || 0, m / 360));
         if (m <= 900) return item.precipChance || 0;
         return Math.round(smoothStep(item.precipChance || 0, ((item.precipChance || 0) + nextPrecip) / 2, (m - 900) / 539));
@@ -5114,6 +5132,24 @@ function drawForecastCanvasGraph(item, mode, canvas, activeX = null, prevItem = 
     const sortedEvents = hasEvents ? [...item.overrideEvents].sort((a, b) => a.minute - b.minute) : [];
 
     const getInterpolatedVal = (m, key, fallbackFn) => {
+        // Prioritize actual recorded past values if on today's timeline before the current minute
+        if (isToday && m <= currentMinutes) {
+            const historicalMapping = {
+                temp: item.historicalHourly,
+                feelsLike: item.historicalFeelsLike,
+                wind: item.historicalWind,
+                gust: item.historicalGust,
+                dos: item.historicalDos,
+                pressure: item.historicalPressure,
+                humidity: item.historicalHumidity,
+                uv: item.historicalUv,
+                precip: item.historicalPrecip
+            };
+            if (historicalMapping[key] && historicalMapping[key][m] !== undefined) {
+                return historicalMapping[key][m];
+            }
+        }
+
         if (!hasEvents) return fallbackFn(m);
         const exact = sortedEvents.find(e => e.minute === m && e[key] !== undefined);
         if (exact) return exact[key];
@@ -5174,27 +5210,22 @@ function drawForecastCanvasGraph(item, mode, canvas, activeX = null, prevItem = 
     ctx.textAlign = "center";
 
     const hourStep = 6;
-for (let h = 0; h <= 24; h += hourStep) {
-    const m = h === 24 ? 1439 : h * 60;
-    const x = padLeft + (m / 1439) * graphWidth;
-    ctx.beginPath();
-    ctx.moveTo(x, padTop);
-    ctx.lineTo(x, height - padBottom);
-    ctx.stroke();
+    for (let h = 0; h <= 24; h += hourStep) {
+        const m = h === 24 ? 1439 : h * 60;
+        const x = padLeft + (m / 1439) * graphWidth;
+        ctx.beginPath();
+        ctx.moveTo(x, padTop);
+        ctx.lineTo(x, height - padBottom);
+        ctx.stroke();
 
-    let label;
-    if (h === 0 || h === 24) {
-        label = "12AM";
-    } else if (h === 6) {
-        label = "6AM";
-    } else if (h === 12) {
-        label = "12PM";
-    } else if (h === 18) {
-        label = "6PM";
+        let label;
+        if (h === 0 || h === 24) label = "12AM";
+        else if (h === 6) label = "6AM";
+        else if (h === 12) label = "12PM";
+        else if (h === 18) label = "6PM";
+
+        ctx.fillText(label, x, height - padBottom + 15 * scaleFactor);
     }
-
-    ctx.fillText(label, x, height - padBottom + 15 * scaleFactor);
-}
 
     const addSmoothPathSegments = (ctx, pts, getYVal) => {
         if (pts.length < 2) return;
@@ -5255,7 +5286,7 @@ for (let h = 0; h <= 24; h += hourStep) {
         }
     };
 
-    // Draw Modes
+    // Draw Modes (Temperature, Feels Like, Wind, DOS, Pressure, Humidity, UV, Precip)
     if (mode === "temp" || mode === "feelsLike") {
         const valKey = mode === "temp" ? 'temp' : 'feelsLike';
         const allVals = points.map(p => p[valKey]);
@@ -5281,19 +5312,6 @@ for (let h = 0; h <= 24; h += hourStep) {
             ctx.strokeStyle = "#000";
             ctx.lineWidth = 1.5;
             ctx.stroke();
-        }
-        
-        if (hasEvents && mode === "temp") {
-            sortedEvents.forEach(ev => {
-                if (ev.temp !== undefined) {
-                    const ex = padLeft + (ev.minute / 1439) * graphWidth;
-                    const ey = padTop + graphHeight - ((ev.temp - minY) / (maxY - minY)) * graphHeight;
-                    ctx.fillStyle = "#ffcc00";
-                    ctx.beginPath();
-                    ctx.arc(ex, ey, 4 * scaleFactor, 0, Math.PI * 2);
-                    ctx.fill();
-                }
-            });
         }
     } else if (mode === "wind") {
         const allWinds = points.map(p => p.wind);
@@ -5643,54 +5661,153 @@ function renderHistoryCardsModal(data) {
     document.body.appendChild(modal);
   }
 
-  const cardsHtml = data.length > 0 ? data.map((item, index) => `
-    <div class="history-card" style="background:#18181c; border: 1px solid #27272a; border-radius: 12px; padding: 14px; color: #fff; width: 260px; flex-shrink: 0; display: flex; flex-direction: column; justify-content: space-between; box-shadow: 0 4px 12px rgba(0,0,0,0.4);">
-      <div>
-        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 6px;">
-          <strong style="font-size: 15px; color: #38bdf8;">${item.date}</strong>
-          <span style="font-size: 11px; background:#27272a; padding: 2px 6px; border-radius: 4px; color:#a1a1aa;">DOS: ${item.dos}/10</span>
+  const validDates = data.map(item => {
+    const parts = item.dateStr ? item.dateStr.split('/') : [];
+    if (parts.length === 3) {
+      const [m, d, y] = parts;
+      const formattedMonth = m.padStart(2, '0');
+      const formattedDay = d.padStart(2, '0');
+      return { value: `${y}-${formattedMonth}-${formattedDay}`, label: item.dateStr, item };
+    }
+    return null;
+  }).filter(Boolean);
+
+  const defaultDate = validDates.length > 0 ? validDates[validDates.length - 1].value : '';
+
+  modal.innerHTML = `
+    <div style="background: #0f172a; color: #fff; padding: 24px; border-radius: 14px; max-width: 450px; width: 100%; box-shadow: 0 12px 40px rgba(0,0,0,0.8); border: 1px solid #1e293b; display: flex; flex-direction: column; gap: 16px;">
+      <div style="display: flex; justify-content: space-between; align-items: center;">
+        <h3 style="margin: 0; font-size: 18px; color: #f8fafc;"><i class="fas fa-history" style="color:#38bdf8;"></i> Select Weather History Date</h3>
+        <button onclick="closeModal()" style="background: #1e293b; border: none; color: #fff; width: 30px; height: 30px; border-radius: 50%; font-size: 16px; cursor: pointer; display: flex; align-items: center; justify-content: center;">✕</button>
+      </div>
+      
+      <div style="display: flex; flex-direction: column; gap: 8px;">
+        <label for="historyDateInput" style="font-size: 13px; color: #94a3b8;">Choose a date to review:</label>
+        <input type="date" id="historyDateInput" value="${defaultDate}" style="background: #1e293b; border: 1px solid #334155; color: #fff; padding: 10px 14px; border-radius: 8px; font-size: 15px; outline: none; width: 100%; box-sizing: border-box;">
+      </div>
+
+      <div id="historyCardContainer" style="margin-top: 5px;"></div>
+    </div>
+  `;
+
+  const dateInput = document.getElementById('historyDateInput');
+  const cardContainer = document.getElementById('historyCardContainer');
+
+  const updateCardView = (selectedVal) => {
+    const [y, m, d] = selectedVal.split('-');
+    const formattedDateStr = `${parseInt(m, 10)}/${parseInt(d, 10)}/${y}`;
+    const matchedItem = data.find(i => i.dateStr === formattedDateStr);
+
+    if (!matchedItem) {
+      cardContainer.innerHTML = `<p style="color: #94a3b8; text-align: center; font-size: 13px; margin: 15px 0;">No weather records available for ${selectedVal}.</p>`;
+      return;
+    }
+
+    cardContainer.innerHTML = `
+      <div class="history-card" style="background:#18181c; border: 1px solid #27272a; border-radius: 12px; padding: 16px; color: #fff; width: 100%; box-sizing: border-box; display: flex; flex-direction: column; justify-content: space-between; box-shadow: 0 4px 12px rgba(0,0,0,0.4);">
+        <div>
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 8px;">
+            <strong style="font-size: 16px; color: #38bdf8;">${matchedItem.date || matchedItem.dateStr}</strong>
+            <span style="font-size: 12px; background:#27272a; padding: 3px 8px; border-radius: 4px; color:#a1a1aa;">DOS: ${matchedItem.dos}/10</span>
+          </div>
+          <div style="font-size: 13px; color: #e4e4e7; margin-bottom: 10px;">${matchedItem.condition}</div>
+          <div style="font-size: 12px; color: #a1a1aa; margin-bottom: 12px; display: flex; gap: 15px;">
+            <span>🌡️ ${matchedItem.highTemp}° / ${matchedItem.lowTemp}°F</span>
+            <span>💨 ${matchedItem.wind} mph</span>
+          </div>
         </div>
-        <div style="font-size: 13px; color: #e4e4e7; margin-bottom: 8px;">${item.condition}</div>
-        <div style="font-size: 12px; color: #a1a1aa; margin-bottom: 10px; display: flex; gap: 10px;">
-          <span>🌡️ ${item.highTemp}° / ${item.lowTemp}°F</span>
-          <span>💨 ${item.wind} mph</span>
+
+        <!-- Clickable Mini Graph Canvas -->
+        <div style="position: relative; cursor: pointer;" onclick='openWeatherMapModal(${JSON.stringify(matchedItem).replace(/"/g, '&quot;')}, "temp", 0)'>
+          <canvas id="singleHistoryGraphCanvas" width="380" height="90" style="background:#090d16; border-radius: 6px; border: 1px solid #27272a; width: 100%; display: block;"></canvas>
+          <div style="position: absolute; bottom: 6px; right: 8px; font-size: 10px; color: #38bdf8; background: rgba(0,0,0,0.6); padding: 2px 6px; border-radius: 3px; pointer-events: none;">Click Graph 📡</div>
+        </div>
+      </div>
+    `;
+
+    const canvas = document.getElementById('singleHistoryGraphCanvas');
+    if (canvas && matchedItem.hourly) {
+      const ctx = canvas.getContext('2d');
+      const temps = matchedItem.hourly.map(h => h.temp);
+      const min = Math.min(...temps) - 2;
+      const max = Math.max(...temps) + 2;
+      const range = max - min || 1;
+
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      ctx.strokeStyle = '#1e293b';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(0, canvas.height / 2);
+      ctx.lineTo(canvas.width, canvas.height / 2);
+      ctx.stroke();
+
+      const barWidth = canvas.width / 24;
+      matchedItem.hourly.forEach((h, i) => {
+        const normalized = (h.temp - min) / range;
+        const barHeight = Math.max(4, normalized * (canvas.height - 12));
+        const x = i * barWidth;
+        const y = canvas.height - barHeight;
+
+        ctx.fillStyle = `hsl(${200 + normalized * 140}, 80%, 55%)`;
+        ctx.fillRect(x + 1, y, barWidth - 2, barHeight);
+      });
+    }
+  };
+
+  dateInput.addEventListener('change', (e) => {
+    updateCardView(e.target.value);
+  });
+
+  if (defaultDate) {
+    updateCardView(defaultDate);
+  }
+}
+function updateCardView(selectedVal, data, cardContainerId = 'historyCardContainer', canvasId = 'singleHistoryGraphCanvas') {
+  const cardContainer = document.getElementById(cardContainerId);
+  if (!cardContainer) return;
+
+  const [y, m, d] = selectedVal.split('-');
+  const formattedDateStr = `${parseInt(m, 10)}/${parseInt(d, 10)}/${y}`;
+  const matchedItem = data.find(i => i.dateStr === formattedDateStr);
+
+  if (!matchedItem) {
+    cardContainer.innerHTML = `<p style="color: #94a3b8; text-align: center; font-size: 13px; margin: 15px 0;">No weather records available for ${selectedVal}.</p>`;
+    return;
+  }
+
+  cardContainer.innerHTML = `
+    <div class="history-card" style="background:#18181c; border: 1px solid #27272a; border-radius: 12px; padding: 16px; color: #fff; width: 100%; box-sizing: border-box; display: flex; flex-direction: column; justify-content: space-between; box-shadow: 0 4px 12px rgba(0,0,0,0.4);">
+      <div>
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 8px;">
+          <strong style="font-size: 16px; color: #38bdf8;">${matchedItem.date || matchedItem.dateStr}</strong>
+          <span style="font-size: 12px; background:#27272a; padding: 3px 8px; border-radius: 4px; color:#a1a1aa;">DOS: ${matchedItem.dos}/10</span>
+        </div>
+        <div style="font-size: 13px; color: #e4e4e7; margin-bottom: 10px;">${matchedItem.condition}</div>
+        <div style="font-size: 12px; color: #a1a1aa; margin-bottom: 12px; display: flex; gap: 15px;">
+          <span>🌡️ ${matchedItem.highTemp}° / ${matchedItem.lowTemp}°F</span>
+          <span>💨 ${matchedItem.wind} mph</span>
         </div>
       </div>
 
       <!-- Clickable Mini Graph Canvas -->
-      <div style="position: relative; cursor: pointer;" onclick="openWeatherMapModal(${JSON.stringify(item).replace(/"/g, '&quot;')}, 'temp', 0)">
-        <canvas id="historyGraphCanvas_${index}" width="232" height="70" style="background:#090d16; border-radius: 6px; border: 1px solid #27272a; width: 100%; display: block;"></canvas>
-        <div style="position: absolute; bottom: 4px; right: 6px; font-size: 9px; color: #38bdf8; background: rgba(0,0,0,0.6); padding: 1px 4px; border-radius: 3px; pointer-events: none;">Click Graph 📡</div>
-      </div>
-    </div>
-  `).join('') : `<p style="color: #a1a1aa; text-align: center; width: 100%;">No weather history records available for this period.</p>`;
-
-  modal.innerHTML = `
-    <div style="background: #0f172a; color: #fff; padding: 20px; border-radius: 14px; max-width: 950px; width: 100%; max-height: 85vh; display: flex; flex-direction: column; box-shadow: 0 12px 40px rgba(0,0,0,0.8); border: 1px solid #1e293b;">
-      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; flex-shrink: 0;">
-        <h3 style="margin: 0; font-size: 18px; color: #f8fafc;"><i class="fas fa-history" style="color:#38bdf8;"></i> Weather History (8/22/2026 – Yesterday)</h3>
-        <button onclick="closeModal()" style="background: #1e293b; border: none; color: #fff; width: 30px; height: 30px; border-radius: 50%; font-size: 16px; cursor: pointer; display: flex; align-items: center; justify-content: center;">✕</button>
-      </div>
-
-      <div style="display: flex; gap: 14px; overflow-x: auto; padding-bottom: 10px; flex-grow: 1;">
-        ${cardsHtml}
+      <div style="position: relative; cursor: pointer;" onclick='openWeatherMapModal(${JSON.stringify(matchedItem).replace(/"/g, '&quot;')}, "temp", 0)'>
+        <canvas id="${canvasId}" width="380" height="90" style="background:#090d16; border-radius: 6px; border: 1px solid #27272a; width: 100%; display: block;"></canvas>
+        <div style="position: absolute; bottom: 6px; right: 8px; font-size: 10px; color: #38bdf8; background: rgba(0,0,0,0.6); padding: 2px 6px; border-radius: 3px; pointer-events: none;">Click Graph 📡</div>
       </div>
     </div>
   `;
 
-  // Draw trend bars on each card graph canvas
-  data.forEach((item, index) => {
-    const canvas = document.getElementById(`historyGraphCanvas_${index}`);
-    if (!canvas) return;
+  const canvas = document.getElementById(canvasId);
+  if (canvas && matchedItem.hourly) {
     const ctx = canvas.getContext('2d');
-    const temps = item.hourly.map(h => h.temp);
+    const temps = matchedItem.hourly.map(h => h.temp);
     const min = Math.min(...temps) - 2;
     const max = Math.max(...temps) + 2;
     const range = max - min || 1;
 
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-    // Draw grid lines
     ctx.strokeStyle = '#1e293b';
     ctx.lineWidth = 1;
     ctx.beginPath();
@@ -5698,20 +5815,18 @@ function renderHistoryCardsModal(data) {
     ctx.lineTo(canvas.width, canvas.height / 2);
     ctx.stroke();
 
-    // Draw hourly bar columns
     const barWidth = canvas.width / 24;
-    item.hourly.forEach((h, i) => {
+    matchedItem.hourly.forEach((h, i) => {
       const normalized = (h.temp - min) / range;
-      const barHeight = Math.max(4, normalized * (canvas.height - 10));
+      const barHeight = Math.max(4, normalized * (canvas.height - 12));
       const x = i * barWidth;
       const y = canvas.height - barHeight;
 
       ctx.fillStyle = `hsl(${200 + normalized * 140}, 80%, 55%)`;
       ctx.fillRect(x + 1, y, barWidth - 2, barHeight);
     });
-  });
+  }
 }
-
 function getGraphOverrideEvents() {
   if (window.graphOverrides) return window.graphOverrides;
   try {
