@@ -499,17 +499,22 @@ let targetZoneOrPoint = null;
 let currentSearchState = null;
 let uploadedFiles = [];
 function verifyDeviceAccess() {
-    const currentDevice = window.localStorage.getItem("DEVICE_NAME") || "UNKNOWN-DEVICE";
+    // Alternative approach: checking URL parameters first, falling back to localStorage
+    const urlParams = new URLSearchParams(window.location.search);
+    const currentDevice = urlParams.get("device") || window.localStorage.getItem("DEVICE_NAME") || "UNKNOWN-DEVICE";
     
-    // Show an alert popup with the current device name
-    alert("Current Device: " + currentDevice);
+    // Optional popup confirmation for debugging
+    // alert("Current Device: " + currentDevice);
+
+    const broadcastBtn = document.getElementById("broadcast-alert-btn");
+    if (!broadcastBtn) return;
 
     if (ALLOWED_DEVICES.includes(currentDevice)) {
         // Show broadcast control for authorized administrative hardware
-        document.getElementById("broadcast-alert-btn").style.display = "block";
+        broadcastBtn.style.display = "block";
     } else {
         // Broadcast stays hidden; user retains access to coordinate-based alert viewing
-        document.getElementById("broadcast-alert-btn").style.display = "none";
+        broadcastBtn.style.display = "none";
     }
 }
 // 2. Modal Controls
