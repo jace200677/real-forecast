@@ -440,38 +440,41 @@
         <i class="icon-map"></i> View Area Alerts
     </button>
 </div>
-
-<!-- Map and Form Modal (For Broadcasters) -->
-<div id="alert-modal" class="modal-overlay" style="display: none;">
-    <div class="modal-container">
-        <div class="map-section">
-            <div id="geofence-map" style="width: 100%; height: 400px;"></div>
-            <p class="map-instruction">Click on the map to draw the NWS-style impact polygon.</p>
+<!-- Fixed Alert Metadata Container with solid background and proper z-index -->
+<div id="alert-metadata-container" style="background: rgba(15, 23, 42, 0.95); padding: 16px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.1); color: #fff; position: relative; z-index: 1000; box-shadow: 0 10px 25px rgba(0,0,0,0.5); max-width: 100%; margin-top: 10px;">
+    <div style="font-size: 14px; font-weight: bold; margin-bottom: 8px; color: #ff4444;">Click on the map to draw the NWS-style impact polygon.</div>
+    <div style="font-size: 16px; font-weight: bold; margin-bottom: 12px; border-bottom: 1px solid rgba(255,255,255,0.2); padding-bottom: 4px;">Alert Metadata</div>
+    
+    <div style="display: flex; flex-wrap: wrap; gap: 12px; align-items: center;">
+        <div>
+            <label style="display: block; font-size: 12px; margin-bottom: 4px;">Title:</label>
+            <input type="text" placeholder="e.g., Severe Weather Warning" style="padding: 6px; border-radius: 4px; border: 1px solid #ccc; background: #fff; color: #000;" />
         </div>
-        
-        <div class="form-section">
-            <h3>Alert Metadata</h3>
-            <label>Title:</label>
-            <input type="text" id="alert-title" placeholder="e.g., Severe Weather Warning">
-            
-            <label>Description:</label>
-            <textarea id="alert-desc" placeholder="Enter emergency details and safety steps..."></textarea>
-            
-            <label>Start Time:</label>
-            <input type="datetime-local" id="alert-start">
-            
-            <label>End Time:</label>
-            <input type="datetime-local" id="alert-end">
-            
-            <label>Severity & Category:</label>
-            <select id="alert-severity">
-                <option value="Extreme">Extreme</option>
-                <option value="Severe">Severe</option>
-                <option value="Moderate">Moderate</option>
+        <div>
+            <label style="display: block; font-size: 12px; margin-bottom: 4px;">Description:</label>
+            <input type="text" placeholder="details and safety info" style="padding: 6px; border-radius: 4px; border: 1px solid #ccc; background: #fff; color: #000;" />
+        </div>
+        <div>
+            <label style="display: block; font-size: 12px; margin-bottom: 4px;">Start Time:</label>
+            <input type="datetime-local" style="padding: 5px; border-radius: 4px; border: 1px solid #ccc; background: #fff; color: #000;" />
+        </div>
+        <div>
+            <label style="display: block; font-size: 12px; margin-bottom: 4px;">End Time:</label>
+            <input type="datetime-local" style="padding: 5px; border-radius: 4px; border: 1px solid #ccc; background: #fff; color: #000;" />
+        </div>
+        <div>
+            <label style="display: block; font-size: 12px; margin-bottom: 4px;">Severity & Category:</label>
+            <select style="padding: 6px; border-radius: 4px; border: 1px solid #ccc; background: #fff; color: #000;">
+                <option>Extreme</option>
+                <option>Severe</option>
+                <option>Moderate</option>
+                <option>Minor</option>
             </select>
-            <button type="button" id="cancel-alert-btn" onclick="cancelAlertBroadcast()">Cancel Alert</button>
-            <button onclick="submitAlertBroadcast()">Publish & Push Alert</button>
-            <button onclick="closeAlertModal()">Cancel</button>
+        </div>
+        <div style="display: flex; gap: 6px; margin-top: 18px;">
+            <button style="padding: 6px 12px; background: #d9534f; color: white; border: none; border-radius: 4px; cursor: pointer;">Cancel Alert</button>
+            <button style="padding: 6px 12px; background: #5cb85c; color: white; border: none; border-radius: 4px; cursor: pointer;">Publish & Push Alert</button>
+            <button style="padding: 6px 12px; background: #f0ad4e; color: white; border: none; border-radius: 4px; cursor: pointer;">Cancel</button>
         </div>
     </div>
 </div>
@@ -492,6 +495,7 @@
         </div>
     </div>
 </div>
+
 <script>
 const ALLOWED_DEVICES = ["JACES-MOBILE-PC", "JACES-PC"];
 const IS_LIVE_ON_YOUTUBE = false; 
