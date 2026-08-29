@@ -107,7 +107,7 @@
     <button onclick="resetMapView()">Center on Iowa</button>
 </div>
 
-<!-- Timeline & Date Slider Controls -->
+<!-- Timeline & Date Controls -->
 <div class="timeline-controls">
     <div class="control-group">
         <label for="dateInput">Date:</label>
@@ -125,6 +125,29 @@
     <div id="map"></div>
 </div>
 
+<!-- AI Assistant Widget (No API Key Required) -->
+<div id="ai-chat-widget" style="position: fixed; bottom: 20px; right: 20px; z-index: 9999; font-family: 'Segoe UI', sans-serif;">
+    <button id="ai-chat-toggle" onclick="toggleChat()" style="background: #00a8cc; color: white; border: none; padding: 12px 18px; border-radius: 25px; cursor: pointer; font-weight: bold; box-shadow: 0 4px 10px rgba(0,0,0,0.5);">
+        💬 Satellite Assistant
+    </button>
+
+    <div id="ai-chat-box" style="display: none; width: 320px; height: 400px; background: #1e1e1e; border: 1px solid #333; border-radius: 10px; flex-direction: column; overflow: hidden; box-shadow: 0 8px 24px rgba(0,0,0,0.6); margin-bottom: 10px;">
+        <div style="background: #2a2a2a; padding: 12px; font-weight: bold; color: #00a8cc; border-bottom: 1px solid #333; display: flex; justify-content: space-between; align-items: center;">
+            <span>🤖 Local Assistant</span>
+            <span onclick="toggleChat()" style="cursor: pointer; color: #aaa;">✕</span>
+        </div>
+        <div id="ai-messages" style="flex: 1; padding: 12px; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; font-size: 13px;">
+            <div style="background: #2a2a2a; padding: 8px 12px; border-radius: 6px; color: #ddd; max-width: 85%; align-self: flex-start;">
+                Hi! Ask me about Iowa cities, coordinates, satellite zoom levels, or date controls.
+            </div>
+        </div>
+        <div style="display: flex; padding: 8px; background: #141414; border-top: 1px solid #333;">
+            <input type="text" id="ai-input" placeholder="Type a message..." style="flex: 1; background: #2a2a2a; border: 1px solid #444; color: white; padding: 6px 10px; border-radius: 4px; font-size: 13px;" onkeypress="if(event.key==='Enter') sendLocalAIMessage()">
+            <button onclick="sendLocalAIMessage()" style="margin-left: 6px; padding: 6px 12px; background: #00a8cc; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 13px;">Send</button>
+        </div>
+    </div>
+</div>
+
 <script>
 let map;
 let baseSatLayer = null;
@@ -138,12 +161,11 @@ function initMap() {
         maxZoom: 19
     });
 
-    // Dark Street Tile Layer (CartoDB Dark Matter)
+    // Dark Street Overlay Base Layer
     L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
-        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/">CARTO</a>',
+        attribution: '&copy; OpenStreetMap &copy; CARTO',
         subdomains: 'abcd',
         maxZoom: 19,
-        maxNativeZoom: 19,
         zIndex: 1
     }).addTo(map);
 
@@ -162,7 +184,6 @@ function initMap() {
             .bindPopup(`<b>${city.name}</b><br>Temp: ${city.temp}<br>Wind: ${city.wind}`);
     });
 
-    // Default to today's date
     const today = new Date().toISOString().split('T')[0];
     document.getElementById('dateInput').value = today;
 
@@ -181,30 +202,16 @@ function updateTimeDisplay() {
     document.getElementById('timeDisplay').innerText = `${time.formatted} UTC`;
 }
 
+// Esri World Imagery (No API key required, house-level zoom, cloud-free imagery)
 function updateAllLayers() {
-    const dateVal = document.getElementById('dateInput').value;
-    if (!dateVal) return;
-
-    const time = getFormattedTime();
-    
-    // Round minutes down to the nearest 5-minute interval (GOES scan frequency)
-    const roundedMins = (Math.floor(parseInt(time.mins, 10) / 5) * 5).toString().padStart(2, '0');
-    
-    // Format timestamp as YYYY-MM-DDTHH:MM:00Z for IEM WMS
-    const timeFormatted = `${dateVal}T${time.hrs}:${roundedMins}:00Z`;
-
     if (baseSatLayer) {
         map.removeLayer(baseSatLayer);
     }
 
-    baseSatLayer = L.tileLayer.wms('https://mesonet.agron.iastate.edu/cgi-bin/wms/goes/conus_vis.cgi', {
-        layers: 'conus_vis',
-        format: 'image/png',
-        transparent: true,
-        version: '1.1.1',
-        TIME: timeFormatted,
-        attribution: 'Satellite &copy; <a href="https://mesonet.agron.iastate.edu/">Iowa State University IEM</a>',
+    baseSatLayer = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+        attribution: 'Tiles &copy; Esri, USGS, NOAA',
         maxZoom: 19,
+        maxNativeZoom: 19,
         zIndex: 2
     }).addTo(map);
 }
@@ -213,6 +220,51 @@ function resetMapView() {
     if (map) {
         map.setView([41.8780, -93.0977], 7);
     }
+}
+
+// Offline AI Assistant Logic
+function toggleChat() {
+    const chatBox = document.getElementById('ai-chat-box');
+    chatBox.style.display = chatBox.style.display === 'none' ? 'flex' : 'none';
+}
+
+function sendLocalAIMessage() {
+    const input = document.getElementById('ai-input');
+    const messages = document.getElementById('ai-messages');
+    const query = input.value.trim();
+    if (!query) return;
+
+    // Add User Message
+    const userDiv = document.createElement('div');
+    userDiv.style.cssText = 'background: #00a8cc; padding: 8px 12px; border-radius: 6px; color: white; max-width: 85%; align-self: flex-end;';
+    userDiv.innerText = query;
+    messages.appendChild(userDiv);
+    input.value = '';
+
+    // Generate response locally without API call
+    let reply = "I can help with dashboard questions, Iowa location coordinates, or satellite zoom levels.";
+    const q = query.toLowerCase();
+
+    if (q.includes("des moines")) {
+        reply = "Des Moines is located at coordinates [41.5868, -93.6250].";
+    } else if (q.includes("zoom") || q.includes("house")) {
+        reply = "The map uses Esri World Imagery, allowing clear house-level zoom up to zoom level 19.";
+    } else if (q.includes("api") || q.includes("key")) {
+        reply = "This dashboard runs completely free using public Esri tile endpoints without any API keys.";
+    } else if (q.includes("reset") || q.includes("center")) {
+        reply = "Click 'Center on Iowa' to return the map view to [41.8780, -93.0977].";
+    }
+
+    const botDiv = document.createElement('div');
+    botDiv.style.cssText = 'background: #2a2a2a; padding: 8px 12px; border-radius: 6px; color: #ddd; max-width: 85%; align-self: flex-start;';
+    botDiv.innerText = reply;
+    
+    setTimeout(() => {
+        messages.appendChild(botDiv);
+        messages.scrollTop = messages.scrollHeight;
+    }, 300);
+
+    messages.scrollTop = messages.scrollHeight;
 }
 
 window.onload = () => {
