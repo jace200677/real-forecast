@@ -5236,8 +5236,7 @@ function renderHistoryCardsModal(data) {
     updateCardView(defaultDate, data);
   }
 }
-
-// Function: Update card contents and refresh chart values seamlessly
+// Function: Update card contents seamlessly without rendering a chart
 function updateCardView(targetDateStr, data) {
   const container = document.getElementById('historyCardContainer');
   if (!container) return;
@@ -5267,7 +5266,7 @@ function updateCardView(targetDateStr, data) {
     return typeof rawDate === 'string' && rawDate.startsWith(isoTarget);
   });
 
-  // Calculate calculated card & graph metrics
+  // Calculate card metrics safely
   const metrics = calculateForecastDayCardMetrics(
     selectedDayObs.length ? selectedDayObs : rawArray,
     isoTarget
@@ -5285,12 +5284,8 @@ function updateCardView(targetDateStr, data) {
       </div>
     </div>
   `;
-
-  // Plot new metrics to chart automatically
-  if (typeof renderHistoryChart === 'function') {
-    renderHistoryChart(metrics);
-  }
 }
+
 function openForecastGraphModal(item, fullForecast = [], itemIndex = -1) {
     let modal = document.getElementById("forecastGraphModal");
     if (!modal) {
