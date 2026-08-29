@@ -5034,15 +5034,25 @@ function updateCardView(selectedVal, data, cardContainerId = 'historyCardContain
 
   const [y, m, d] = selectedVal.split('-');
   const selectedDateObj = new Date(parseInt(y, 10), parseInt(m, 10) - 1, parseInt(d, 10));
-  const cutoffDateObj = new Date(2026, 7, 23, 0, 0, 0); // August 23, 2026 local midnight
+  const cutoffDateObj = new Date(2026, 7, 23, 0, 0, 0);
 
-  const formattedDateStr = `${parseInt(m, 10)}/${parseInt(d, 10)}/${y}`;
-  const overrideItem = data.find(i => i.dateStr === formattedDateStr);
+  // Pad single digits to ensure flexible matching (e.g., handles both 8/5/2026 and 08/05/2026)
+  const mNum = parseInt(m, 10);
+  const dNum = parseInt(d, 10);
+  const formattedDateStr = `${mNum}/${dNum}/${y}`;
+  const paddedDateStr = `${String(mNum).padStart(2, '0')}/${String(dNum).padStart(2, '0')}/${y}`;
+
+  const overrideItem = data.find(i => 
+    i.dateStr === formattedDateStr || 
+    i.dateStr === paddedDateStr || 
+    i.date === formattedDateStr || 
+    i.date === paddedDateStr
+  );
 
   let matchedItem;
 
   if (selectedDateObj < cutoffDateObj) {
-    matchedItem = overrideItem && overrideItem.isNoaaSource ? overrideItem : {
+    matchedItem = overrideItem && overrideItem.isNoaaSource ? overrideItem : (overrideItem || {
       dateStr: formattedDateStr,
       date: formattedDateStr,
       dos: Math.floor(Math.random() * 4) + 6,
@@ -5053,7 +5063,7 @@ function updateCardView(selectedVal, data, cardContainerId = 'historyCardContain
       hourly: Array.from({ length: 24 }, (_, i) => ({
         temp: Math.round(52 + 14 * Math.sin((i - 6) / 24 * Math.PI * 2))
       }))
-    };
+    });
   } else {
     matchedItem = overrideItem || {
       dateStr: formattedDateStr,
@@ -5069,6 +5079,14 @@ function updateCardView(selectedVal, data, cardContainerId = 'historyCardContain
     };
   }
 
+  // Normalize hourly array keys across schemas
+  const rawHourly = matchedItem.hourly || matchedItem.hours || matchedItem.hourlyData || [];
+  const normalizedHourly = rawHourly.map(h => ({
+    ...h,
+    temp: typeof h === 'number' ? h : (h.temp ?? h.temperature ?? h.t ?? h.tempF ?? 0)
+  }));
+  matchedItem.hourly = normalizedHourly;
+
   cardContainer.innerHTML = `
     <div class="history-card" style="background:#18181c; border: 1px solid #27272a; border-radius: 12px; padding: 16px; color: #fff; width: 100%; box-sizing: border-box; display: flex; flex-direction: column; justify-content: space-between; box-shadow: 0 4px 12px rgba(0,0,0,0.4);">
       <div>
@@ -5083,21 +5101,24 @@ function updateCardView(selectedVal, data, cardContainerId = 'historyCardContain
         </div>
       </div>
 
-      <!-- Clickable Forecast Graph Modal Trigger -->
       <div style="position: relative; cursor: pointer;" onclick='openForecastGraphModal(${JSON.stringify(matchedItem).replace(/'/g, "&#39;")})'>
-        <canvas id="${canvasId}" width="380" height="90" style="background:#090d16; border-radius: 6px; border: 1px solid #27272a; width: 100%; display: block;"></canvas>
+        <canvas id="${canvasId}" style="background:#090d16; border-radius: 6px; border: 1px solid #27272a; width: 100%; height: 90px; display: block;"></canvas>
         <div style="position: absolute; bottom: 6px; right: 8px; font-size: 10px; color: #38bdf8; background: rgba(0,0,0,0.6); padding: 2px 6px; border-radius: 3px; pointer-events: none;">Open Forecast Graph 📈</div>
       </div>
     </div>
   `;
 
   const canvas = document.getElementById(canvasId);
-  if (canvas && matchedItem.hourly) {
+  if (canvas && matchedItem.hourly.length > 0) {
+    const rect = canvas.getBoundingClientRect();
+    canvas.width = rect.width || 380;
+    canvas.height = rect.height || 90;
+
     const ctx = canvas.getContext('2d');
     const temps = matchedItem.hourly.map(h => h.temp);
-    const min = Math.min(...temps) - 2;
-    const max = Math.max(...temps) + 2;
-    const range = max - min || 1;
+    const min = Math.min(...temps);
+    const max = Math.max(...temps);
+    const range = (max - min) || 1;
 
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
@@ -5108,15 +5129,15 @@ function updateCardView(selectedVal, data, cardContainerId = 'historyCardContain
     ctx.lineTo(canvas.width, canvas.height / 2);
     ctx.stroke();
 
-    const barWidth = canvas.width / 24;
+    const barWidth = canvas.width / matchedItem.hourly.length;
     matchedItem.hourly.forEach((h, i) => {
       const normalized = (h.temp - min) / range;
-      const barHeight = Math.max(4, normalized * (canvas.height - 12));
+      const barHeight = Math.max(4, normalized * (canvas.height - 16));
       const x = i * barWidth;
-      const y = canvas.height - barHeight;
+      const y = canvas.height - barHeight - 4;
 
       ctx.fillStyle = `hsl(${200 + normalized * 140}, 80%, 55%)`;
-      ctx.fillRect(x + 1, y, barWidth - 2, barHeight);
+      ctx.fillRect(x + 1, y, Math.max(1, barWidth - 2), barHeight);
     });
   }
 }
