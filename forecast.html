@@ -181,28 +181,25 @@ function updateTimeDisplay() {
     document.getElementById('timeDisplay').innerText = `${time.formatted} UTC`;
 }
 
-// Dynamically updates base satellite imagery by date and time
 function updateAllLayers() {
     const dateVal = document.getElementById('dateInput').value;
     if (!dateVal) return;
 
     const time = getFormattedTime();
     
-    // Construct ISO timestamp formatted for IEM (YYYY-MM-DDTHH:MM:00Z)
-    const timeISO = `${dateVal}T${time.hrs}:${time.mins}:00Z`;
+    // Format timestamp without seconds/Z suffix to match IEM CGI expectation (YYYY-MM-DDTHH:MM)
+    const timeFormatted = `${dateVal}T${time.hrs}:${time.mins}`;
 
     if (baseSatLayer) {
         map.removeLayer(baseSatLayer);
     }
 
-    // Iowa State University IEM Satellite Layer Endpoint
-    const iowaStateUrl = `https://mesonet.agron.iastate.edu/cgi-bin/wms/goes/conus_vis.cgi?service=WMS&request=GetMap&version=1.1.1&layers=conus_vis&format=image/png&transparent=true&time=${timeISO}&width=256&height=256&srs=EPSG:3857&bbox={bbox-epsg-3857}`;
-
     baseSatLayer = L.tileLayer.wms('https://mesonet.agron.iastate.edu/cgi-bin/wms/goes/conus_vis.cgi', {
         layers: 'conus_vis',
         format: 'image/png',
         transparent: true,
-        time: timeISO,
+        time: timeFormatted,
+        crs: L.CRS.EPSG3857,
         attribution: 'Satellite &copy; <a href="https://mesonet.agron.iastate.edu/">Iowa State University IEM</a>',
         maxZoom: 19,
         zIndex: 2
