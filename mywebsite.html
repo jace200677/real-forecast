@@ -5088,11 +5088,31 @@ function updateCardView(selectedVal, data, cardContainerId = 'historyCardContain
       }))
     });
   } else {
-    // Dates from 8/23/2026 up to Yesterday: Apply specific event overrides
+    // Dates from 8/23/2026 up to Yesterday
     if (overrideItem) {
-      matchedItem = { ...overrideItem, condition: overrideItem.condition || "Interpolated Archive Record" };
+      // Respect explicit override properties directly instead of letting fallback logic overwrite them
+      const highTemp = overrideItem.highTemp ?? overrideItem.tempHigh ?? 70;
+      const lowTemp = overrideItem.lowTemp ?? overrideItem.tempLow ?? 50;
+      const baseTemp = (highTemp + lowTemp) / 2;
+      const baseWind = overrideItem.wind ?? overrideItem.windSpeed ?? overrideItem.w ?? 10;
+      const dosScore = overrideItem.dos ?? overrideItem.projectedScore ?? 5;
+
+      matchedItem = {
+        ...overrideItem,
+        dateStr: formattedDateStr,
+        date: formattedDateStr,
+        condition: overrideItem.condition || "Archive Event Record",
+        highTemp: highTemp,
+        lowTemp: lowTemp,
+        wind: baseWind,
+        dos: dosScore > 10 ? Math.min(10, Math.max(0, Math.round(dosScore / 10))) : dosScore,
+        hourly: overrideItem.hourly || overrideItem.hours || overrideItem.hourlyData || Array.from({ length: 24 }, (_, i) => ({
+          temp: Math.round(baseTemp + ((highTemp - lowTemp) / 2 || 10) * Math.sin((i - 6) / 24 * Math.PI * 2)),
+          wind: Math.max(1, Math.round(baseWind + 3 * Math.sin(i / 12 * Math.PI)))
+        }))
+      };
     } else {
-      // Fetch metrics via calculateForecastDayCardMetrics or fallback to calculateForecastDayMetrics
+      // Calculate day metrics via helper functions if no explicit override is provided
       let metrics = {};
       if (typeof calculateForecastDayCardMetrics === 'function') {
         metrics = calculateForecastDayCardMetrics(yNum, mNum, dNum, null, [], 1, 1, 5, 0) || {};
