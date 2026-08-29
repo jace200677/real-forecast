@@ -186,17 +186,25 @@ function updateAllLayers() {
     const dateVal = document.getElementById('dateInput').value;
     if (!dateVal) return;
 
-    // Preserved NASA GIBS URL string passing dynamic zoom level matrix
-    const nasaTileUrl = `https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/MODIS_Terra_CorrectedReflectance_TrueColor/default/${dateVal}/GoogleMapsCompatible_Level9/{z}/{y}/{x}.jpg`;
+    const time = getFormattedTime();
+    
+    // Construct ISO timestamp formatted for IEM (YYYY-MM-DDTHH:MM:00Z)
+    const timeISO = `${dateVal}T${time.hrs}:${time.mins}:00Z`;
 
     if (baseSatLayer) {
         map.removeLayer(baseSatLayer);
     }
 
-    baseSatLayer = L.tileLayer(nasaTileUrl, {
-        attribution: 'Base Satellite &copy; <a href="https://gibs.earthdata.nasa.gov/">NASA GIBS</a>',
+    // Iowa State University IEM Satellite Layer Endpoint
+    const iowaStateUrl = `https://mesonet.agron.iastate.edu/cgi-bin/wms/goes/conus_vis.cgi?service=WMS&request=GetMap&version=1.1.1&layers=conus_vis&format=image/png&transparent=true&time=${timeISO}&width=256&height=256&srs=EPSG:3857&bbox={bbox-epsg-3857}`;
+
+    baseSatLayer = L.tileLayer.wms('https://mesonet.agron.iastate.edu/cgi-bin/wms/goes/conus_vis.cgi', {
+        layers: 'conus_vis',
+        format: 'image/png',
+        transparent: true,
+        time: timeISO,
+        attribution: 'Satellite &copy; <a href="https://mesonet.agron.iastate.edu/">Iowa State University IEM</a>',
         maxZoom: 19,
-        maxNativeZoom: 9, // Requests higher native resolution tiles up to zoom 9, then scales up seamlessly
         zIndex: 2
     }).addTo(map);
 }
