@@ -4854,25 +4854,28 @@ async function fetchHistoricalWeatherData(lat, lon) {
  * Main handler function to show historical weather data down to 8/23/2026
  */
 async function handleWeatherHistory() {
-  const latInput = document.getElementById('latInput')?.value?.trim();
-  const lonInput = document.getElementById('lonInput')?.value?.trim();
+  const latValue = document.getElementById('latInput')?.value?.trim();
+  const lonValue = document.getElementById('lonInput')?.value?.trim();
 
-  // Validate coordinates or default to Chicago, IL
-  const lat = latInput && !isNaN(latInput) ? parseFloat(latInput) : 41.8781;
-  const lon = lonInput && !isNaN(lonInput) ? parseFloat(lonInput) : -87.6298;
+  // Strict check ensuring non-empty string before testing numeric value
+  const lat = latValue !== '' && !isNaN(Number(latValue)) ? parseFloat(latValue) : 41.8781;
+  const lon = lonValue !== '' && !isNaN(Number(lonValue)) ? parseFloat(lonValue) : -87.6298;
 
   if (typeof showLoadingModal === 'function') {
     showLoadingModal('Fetching Weather History (8/22/2026 to Yesterday)...');
   }
 
   try {
+    if (typeof fetchHistoricalWeatherData !== 'function') {
+      throw new Error('fetchHistoricalWeatherData function is not defined.');
+    }
+
     const historyData = await fetchHistoricalWeatherData(lat, lon);
     
     if (typeof hideLoadingModal === 'function') {
       hideLoadingModal();
     }
     
-    // Safely resolve the array from various response formats, falling back to an empty array
     let recordsArray = [];
     if (Array.isArray(historyData)) {
       recordsArray = historyData;
