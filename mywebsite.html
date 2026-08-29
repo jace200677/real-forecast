@@ -594,31 +594,46 @@ let drawnItems;
 let drawControl;
 
 function initPolygonMap() {
-    // Prevent re-initializing the map container if it already exists
     if (geofenceMap) {
         geofenceMap.invalidateSize();
         return;
     }
 
-    // 1. Initialize the Leaflet map centered on a default view (e.g., Tower, MN or US center)
+    // 1. Initialize the Leaflet map
     geofenceMap = L.map('geofence-map').setView([47.8083, -92.2773], 10);
 
-    // 2. Add OpenStreetMap tile layer
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    // 2. Define Base Tile Layers (Street View and Satellite View)
+    const streetLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
         maxZoom: 19,
         attribution: '&copy; OpenStreetMap contributors'
-    }).addTo(geofenceMap);
+    });
 
-    // 3. Initialize FeatureGroup to store editable drawn polygons
+    // High-resolution Esri World Imagery Satellite Layer
+    const satelliteLayer = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+        maxZoom: 19,
+        attribution: 'Tiles &copy; Esri &mdash; Source: Esri, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-EGP, and the GIS User Community'
+    });
+
+    // Set Satellite as the default starting layer so it shows immediately
+    satelliteLayer.addTo(geofenceMap);
+
+    // 3. Add Layer Control box to toggle between Satellite and Street view in top-left
+    const baseMaps = {
+        "Satellite (Esri)": satelliteLayer,
+        "Street Map (OSM)": streetLayer
+    };
+    L.control.layers(baseMaps).addTo(geofenceMap);
+
+    // 4. Initialize FeatureGroup to store editable drawn polygons
     drawnItems = new L.FeatureGroup();
     geofenceMap.addLayer(drawnItems);
 
-    // 4. Configure Leaflet.Draw toolbar controls for NWS-style polygon creation
+    // 5. Configure Leaflet.Draw toolbar controls for NWS-style polygon creation
     const drawPluginOptions = {
         position: 'topright',
         draw: {
             polygon: {
-                allowIntersection: false, // Prevents self-intersecting warning shapes
+                allowIntersection: false,
                 drawError: {
                     color: '#e1e100',
                     message: '<strong>Error:</strong> Polygon edges cannot cross!'
@@ -628,7 +643,6 @@ function initPolygonMap() {
                     weight: 3
                 }
             },
-            // Disable unwanted drawing tools to focus purely on impact polygons
             polyline: false,
             circle: false,
             rectangle: true,
@@ -644,29 +658,14 @@ function initPolygonMap() {
     drawControl = new L.Control.Draw(drawPluginOptions);
     geofenceMap.addControl(drawControl);
 
-    // 5. Event listener when a new polygon/shape is created
+    // 6. Event listener when a new polygon/shape is created
     geofenceMap.on(L.Draw.Event.CREATED, function (e) {
-        // Clear previous shapes if you only want a single active polygon per alert
         drawnItems.clearLayers();
-        
         const layer = e.layer;
         drawnItems.addLayer(layer);
     });
 }
 
-// Utility function called during payload submission to extract coordinate points
-function getDrawnPolygonCoordinates() {
-    let coordinates = [];
-    
-    drawnItems.eachLayer(function (layer) {
-        if (layer instanceof L.Polygon || layer instanceof L.Rectangle) {
-            const latLngs = layer.getLatLngs()[0]; // Get outer ring coordinates
-            coordinates = latLngs.map(pt => [pt.lat, pt.lng]);
-        }
-    });
-
-    return coordinates;
-}
 // 3. Payload Dispatch & Persistence (Saves to backend DB for all users)
 function submitAlertBroadcast() {
     const payload = {
