@@ -5225,6 +5225,7 @@ function drawForecastCanvasGraph(item, mode, canvas, activeX = null, prevItem = 
     const sortedEvents = hasEvents ? [...item.overrideEvents].sort((a, b) => a.minute - b.minute) : [];
 
     const getInterpolatedVal = (m, key, fallbackFn) => {
+        // Fallback or explicit check to let history source evaluate via diurnal or hourly array correctly
         if (isHistorySource && Array.isArray(item.hourly) && item.hourly.length === 24) {
             return fallbackFn(m);
         }
@@ -5528,20 +5529,18 @@ function drawForecastCanvasGraph(item, mode, canvas, activeX = null, prevItem = 
         const dotX = targetPoint.x;
         const dotY = getYFn(targetPoint);
 
-        // Outer black ring (10 px size -> radius 5)
         ctx.fillStyle = "#000000";
         ctx.beginPath();
         ctx.arc(dotX, dotY, 5, 0, Math.PI * 2);
         ctx.fill();
 
-        // Inner white ring (8 px size -> radius 4)
         ctx.fillStyle = "#ffffff";
         ctx.beginPath();
         ctx.arc(dotX, dotY, 4, 0, Math.PI * 2);
         ctx.fill();
     }
 
-    // Tooltip & Interactive Point Rendering on Hover / Drag (enabled for history/past dates as well)
+    // Tooltip & Interactive Point Rendering on Hover / Drag
     if (activeX !== null && activeX >= padLeft && activeX <= width - padRight && getYFn) {
         const clampedX = Math.max(padLeft, Math.min(width - padRight, activeX));
         const ratio = (clampedX - padLeft) / graphWidth;
@@ -5566,25 +5565,14 @@ function drawForecastCanvasGraph(item, mode, canvas, activeX = null, prevItem = 
         const dotX = targetPoint.x;
         const dotY = getYFn(targetPoint);
 
-        if (isDragging) {
-            // Larger drag dot (10 px size -> radius 5)
-            ctx.fillStyle = "#ffffff";
-            ctx.beginPath();
-            ctx.arc(dotX, dotY, 5, 0, Math.PI * 2);
-            ctx.fill();
-            ctx.strokeStyle = "#000000";
-            ctx.lineWidth = 1.5;
-            ctx.stroke();
-        } else {
-            // Default hover dot
-            ctx.fillStyle = "#ffffff";
-            ctx.beginPath();
-            ctx.arc(dotX, dotY, 3.5, 0, Math.PI * 2);
-            ctx.fill();
-            ctx.strokeStyle = "#000000";
-            ctx.lineWidth = 1.5;
-            ctx.stroke();
-        }
+        // Standardized look for hover/drag (no plus sign overlay, uniform standard circle indicator)
+        ctx.fillStyle = "#ffffff";
+        ctx.beginPath();
+        ctx.arc(dotX, dotY, isDragging ? 5 : 3.5, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.strokeStyle = "#000000";
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
 
         const hTemp = getInterpolatedTemp(hoveredMinute);
         const nearbyEvent = hasEvents ? sortedEvents.find(e => Math.abs(e.minute - hoveredMinute) <= 20 && e.label) : null;
