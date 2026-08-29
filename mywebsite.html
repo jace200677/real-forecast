@@ -5337,17 +5337,15 @@ function drawForecastCanvasGraph(item, mode, canvas, activeX = null, prevItem = 
 
     ctx.clearRect(0, 0, width, height);
 
-    // 1. Standardize date extraction via getSelectedDayCardDate helper
+    // 1. Date extraction & normalization
     let selectedDateInfo = { dateStr: '' };
     if (typeof getSelectedDayCardDate === 'function') {
         selectedDateInfo = getSelectedDayCardDate(canvas, activeX, item, mode, prevItem, nextItem) || { dateStr: '' };
     }
     
-    // Ensure item has dateStr attached for downstream functions
     const resolvedDateStr = selectedDateInfo.dateStr || item.dateStr || item.date || '';
     item.dateStr = resolvedDateStr;
 
-    // 2. Helper to extract numeric date components from standard M/D/YYYY format
     const parseStandardDate = (str) => {
         if (!str) return null;
         const match = str.match(/(\d{1,2})\/(\d{1,2})\/(\d{2,4})/);
@@ -5357,6 +5355,18 @@ function drawForecastCanvasGraph(item, mode, canvas, activeX = null, prevItem = 
             return { month: parseInt(match[1], 10), day: parseInt(match[2], 10), year: yr };
         }
         return null;
+    };
+
+    const normalizeDateStr = (str) => {
+        if (!str) return '';
+        const match = str.match(/\b\d{1,2}\/\d{1,2}\/\d{2,4}\b/) || str.match(/\b\d{4}-\d{2}-\d{2}\b/);
+        if (!match) return str.trim();
+        const dStr = match[0];
+        if (dStr.includes('/')) {
+            const [m, d, y] = dStr.split('/');
+            return `${parseInt(m, 10)}/${parseInt(d, 10)}/${y.length === 2 ? '20' + y : y}`;
+        }
+        return dStr;
     };
 
     const titleEl = document.getElementById("graphModalTitle");
@@ -5392,7 +5402,6 @@ function drawForecastCanvasGraph(item, mode, canvas, activeX = null, prevItem = 
     const parsedItemDate = parseStandardDate(resolvedDateStr);
     const isToday = parsedItemDate && (parsedItemDate.month === cdtMonth && parsedItemDate.day === cdtDay && parsedItemDate.year === cdtYear);
 
-    // Check if date falls in override range
     const isOverrideRange = (dateStr) => {
         const parsed = parseStandardDate(dateStr);
         if (!parsed) return false;
@@ -5406,11 +5415,9 @@ function drawForecastCanvasGraph(item, mode, canvas, activeX = null, prevItem = 
         return itemNum > cutoffNum && itemNum <= yesterdayNum;
     };
 
-    // Check history modal state
     const historyModalEl = document.getElementById('historyModal');
     let isHistorySource = item.isNoaaSource || (item.condition && item.condition.includes("NOAA")) || (historyModalEl && historyModalEl.style.display !== 'none');
 
-    // Dynamically retrieve searched lat/lon
     const resolveCoordinates = () => {
         if (isHistorySource && historyModalEl) {
             const histLat = historyModalEl.dataset.lat || (historyModalEl.querySelector('.search-input') && historyModalEl.querySelector('.search-input').dataset.lat);
@@ -5429,7 +5436,6 @@ function drawForecastCanvasGraph(item, mode, canvas, activeX = null, prevItem = 
     if (activeCoords.lat !== null && item.lat === undefined) item.lat = activeCoords.lat;
     if (activeCoords.lon !== null && item.lon === undefined) item.lon = activeCoords.lon;
 
-    // Automatically flag past dates relative to current CDT date
     if (!isToday && parsedItemDate) {
         const itemDateNum = parsedItemDate.year * 10000 + parsedItemDate.month * 100 + parsedItemDate.day;
         const currentDateNum = cdtYear * 10000 + cdtMonth * 100 + cdtDay;
@@ -5437,6 +5443,127 @@ function drawForecastCanvasGraph(item, mode, canvas, activeX = null, prevItem = 
             isHistorySource = true;
         }
     }
+
+    // Global Dataset sources (mirroring createRadarGridLayer)
+    const globalDataSources = [
+        typeof window !== 'undefined' ? window.historyData : null,
+        typeof window !== 'undefined' ? window._historyData : null,
+        typeof window !== 'undefined' ? window.noaaArchiveData : null,
+        typeof forecastData !== "undefined" ? forecastData : null,
+        typeof window !== 'undefined' ? window._radarState?.dataset : null,
+        typeof window !== 'undefined' ? window._radarState?.chartData : null,
+        typeof window !== 'undefined' ? window.currentWeatherData?.daily : null,
+        typeof window !== 'undefined' ? window.currentWeatherData?.forecast : null,
+        typeof window !== 'undefined' ? window.chartData : null
+    ].filter(Boolean);
+
+    // Dynamic historical source data resolver
+    const getHistoricalSourceData = (item, propName, fallbackVal = 0) => {
+        const historyDateInput = historyModalEl 
+            ? historyModalEl.querySelector('input[type="date"], input.history-date, #historyDate, [name="historyDate"], #historyDateDisplay, .selected-history-date') 
+            : null;
+        
+        let extractedDate = historyDateInput && historyDateInput.value ? historyDateInput.value : null;
+        
+        if (!extractedDate && historyModalEl) {
+            extractedDate = historyModalEl.dataset.date || historyModalEl.getAttribute('data-date');
+        }
+        if (!extractedDate) {
+            const activeHistoryCard = document.querySelector('.history-card.active, .history-row.active, [data-history-active="true"]');
+            if (activeHistoryCard) {
+                extractedDate = activeHistoryCard.dataset.date || activeHistoryCard.dataset.dateStr || activeHistoryCard.getAttribute('data-date');
+            }
+        }
+
+        extractedDate = extractedDate || item.dateStr || item.date || item.timestamp;
+
+        // Fallback global source lookup by normalized date
+        const normTarget = normalizeDateStr(extractedDate);
+        let matchedGlobalItem = null;
+        for (const dataArr of globalDataSources) {
+            if (Array.isArray(dataArr)) {
+                matchedGlobalItem = dataArr.find(d => normalizeDateStr(d.dateStr || d.date || d.rawDate) === normTarget);
+                if (matchedGlobalItem) break;
+            }
+        }
+
+        const sourceItem = matchedGlobalItem ? { ...matchedGlobalItem, ...item } : item;
+
+        if (activeCoords && activeCoords.lat !== null && activeCoords.lon !== null) {
+            const coordKey = `${activeCoords.lat},${activeCoords.lon}`;
+            if (sourceItem.historyByDate && extractedDate && sourceItem.historyByDate[extractedDate]) {
+                const dateData = sourceItem.historyByDate[extractedDate];
+                if (dateData.coordsData && dateData.coordsData[coordKey] && dateData.coordsData[coordKey][propName] !== undefined) {
+                    return dateData.coordsData[coordKey][propName];
+                }
+            }
+            if (sourceItem.coordsData && sourceItem.coordsData[coordKey] && sourceItem.coordsData[coordKey][propName] !== undefined) {
+                return sourceItem.coordsData[coordKey][propName];
+            }
+            if (sourceItem.hourlyByCoords && sourceItem.hourlyByCoords[coordKey] && propName === 'hourly') {
+                return sourceItem.hourlyByCoords[coordKey];
+            }
+        }
+
+        if (extractedDate && sourceItem.historyByDate && sourceItem.historyByDate[extractedDate]) {
+            const dateObj = sourceItem.historyByDate[extractedDate];
+            if (dateObj[propName] !== undefined) return dateObj[propName];
+        }
+
+        if (propName === 'hourly') {
+            const arr = sourceItem.hourly || sourceItem.hourlyData || sourceItem.chartData || window._radarState?.hourly || window.chartData;
+            if (Array.isArray(arr)) return arr;
+        }
+
+        if (isOverrideRange(extractedDate) && sourceItem.overrideValues && sourceItem.overrideValues[propName] !== undefined) {
+            return sourceItem.overrideValues[propName];
+        }
+
+        if (sourceItem.isNoaaSource && sourceItem.noaaValues && sourceItem.noaaValues[propName] !== undefined) {
+            return sourceItem.noaaValues[propName];
+        }
+
+        return sourceItem[propName] !== undefined ? sourceItem[propName] : fallbackVal;
+    };
+
+    const smoothStep = (v0, v1, t) => {
+        const factor = 0.5 * (1 - Math.cos(Math.max(0, Math.min(1, t)) * Math.PI));
+        return v0 + (v1 - v0) * factor;
+    };
+
+    // Smooth hourly interpolation helper for arbitrary array lengths
+    const getValFromHourlyArray = (arr, minute, key = null) => {
+        if (!Array.isArray(arr) || arr.length === 0) return null;
+        const normMin = Math.max(0, Math.min(1439, minute));
+        const totalPoints = arr.length;
+        const step = 1440 / Math.max(1, totalPoints);
+        const floatIdx = normMin / step;
+        const idx0 = Math.floor(floatIdx);
+        const idx1 = Math.min(totalPoints - 1, idx0 + 1);
+        const t = floatIdx - idx0;
+
+        const getNumVal = (entry) => {
+            if (entry === null || entry === undefined) return null;
+            if (typeof entry === 'number') return entry;
+            if (typeof entry === 'object') {
+                if (key && entry[key] !== undefined) return parseFloat(entry[key]);
+                const candidates = [entry.temp, entry.feelsLike, entry.wind, entry.gust, entry.dos, entry.score, entry.pressure, entry.humidity, entry.uv, entry.precip, entry.v, entry.val, entry.y];
+                for (const c of candidates) {
+                    if (c !== undefined && !isNaN(parseFloat(c))) return parseFloat(c);
+                }
+            }
+            return isNaN(parseFloat(entry)) ? null : parseFloat(entry);
+        };
+
+        const val0 = getNumVal(arr[idx0]);
+        const val1 = getNumVal(arr[idx1]);
+
+        if (val0 === null && val1 === null) return null;
+        if (val0 === null) return val1;
+        if (val1 === null) return val0;
+
+        return smoothStep(val0, val1, t);
+    };
 
     const scaleFactor = Math.min(width / 650, 1.5);
     const padLeft = Math.round(45 * scaleFactor);
@@ -5446,11 +5573,6 @@ function drawForecastCanvasGraph(item, mode, canvas, activeX = null, prevItem = 
 
     const graphWidth = width - padLeft - padRight;
     const graphHeight = height - padTop - padBottom;
-
-    const smoothStep = (v0, v1, t) => {
-        const factor = 0.5 * (1 - Math.cos(Math.max(0, Math.min(1, t)) * Math.PI));
-        return v0 + (v1 - v0) * factor;
-    };
 
     const lerpColor = (color1, color2, factor) => {
         const c1 = parseInt(color1.replace('#', ''), 16);
@@ -5496,18 +5618,24 @@ function drawForecastCanvasGraph(item, mode, canvas, activeX = null, prevItem = 
 
     const resolvePreviousItem = () => {
         if (prevItem) return prevItem;
-        if (typeof forecastData !== "undefined" && Array.isArray(forecastData)) {
-            const idx = forecastData.findIndex(d => d.dateStr === item.dateStr);
-            if (idx > 0) return forecastData[idx - 1];
+        const normTarget = normalizeDateStr(resolvedDateStr);
+        for (const dataArr of globalDataSources) {
+            if (Array.isArray(dataArr)) {
+                const idx = dataArr.findIndex(d => normalizeDateStr(d.dateStr || d.date || d.rawDate) === normTarget);
+                if (idx > 0) return dataArr[idx - 1];
+            }
         }
         return item.yesterdayItem || item.prevDay || null;
     };
 
     const resolveNextItem = () => {
         if (nextItem) return nextItem;
-        if (typeof forecastData !== "undefined" && Array.isArray(forecastData)) {
-            const idx = forecastData.findIndex(d => d.dateStr === item.dateStr);
-            if (idx >= 0 && idx < forecastData.length - 1) return forecastData[idx + 1];
+        const normTarget = normalizeDateStr(resolvedDateStr);
+        for (const dataArr of globalDataSources) {
+            if (Array.isArray(dataArr)) {
+                const idx = dataArr.findIndex(d => normalizeDateStr(d.dateStr || d.date || d.rawDate) === normTarget);
+                if (idx >= 0 && idx < dataArr.length - 1) return dataArr[idx + 1];
+            }
         }
         return item.tomorrowItem || item.nextDay || null;
     };
@@ -5548,109 +5676,16 @@ function drawForecastCanvasGraph(item, mode, canvas, activeX = null, prevItem = 
         ? effectivePrevItem.highTemp : ((effectivePrevItem && effectivePrevItem.tempHigh !== undefined) ? effectivePrevItem.tempHigh : (item.yesterdayTempHigh !== undefined ? item.yesterdayTempHigh : todayHigh));
 
     let midnightStartTemp = Math.round((prevHigh + morningLow) / 2);
-    if (effectivePrevItem && Array.isArray(effectivePrevItem.overrideEvents) && effectivePrevItem.overrideEvents.length > 0) {
-        const prevEvents = [...effectivePrevItem.overrideEvents].sort((a, b) => a.minute - b.minute);
-        const lastEv = [...prevEvents].reverse().find(e => e.temp !== undefined);
-        if (lastEv) midnightStartTemp = lastEv.temp;
-    }
-
     let midnightEndTemp = Math.round((todayHigh + tomorrowLow) / 2);
-    if (effectiveNextItem && Array.isArray(effectiveNextItem.overrideEvents) && effectiveNextItem.overrideEvents.length > 0) {
-        const nextEvents = [...effectiveNextItem.overrideEvents].sort((a, b) => a.minute - b.minute);
-        const firstEv = nextEvents.find(e => e.temp !== undefined);
-        if (firstEv) midnightEndTemp = firstEv.temp;
-    }
 
     const isWinterInversion = item.isWinterInversion || (todayHigh < morningLow);
-
-    // Enhanced historical data resolver utilizing historyDateInput
-    const getHistoricalSourceData = (item, propName, fallbackVal = 0) => {
-        // 1. Resolve active date from history input element or fallback references
-        const historyDateInput = historyModalEl 
-            ? historyModalEl.querySelector('input[type="date"], input.history-date, #historyDate, [name="historyDate"], #historyDateDisplay, .selected-history-date') 
-            : null;
-        
-        let extractedDate = historyDateInput && historyDateInput.value ? historyDateInput.value : null;
-        
-        if (!extractedDate && historyModalEl) {
-            extractedDate = historyModalEl.dataset.date || historyModalEl.getAttribute('data-date');
-        }
-        if (!extractedDate) {
-            const activeHistoryCard = document.querySelector('.history-card.active, .history-row.active, [data-history-active="true"]');
-            if (activeHistoryCard) {
-                extractedDate = activeHistoryCard.dataset.date || activeHistoryCard.dataset.dateStr || activeHistoryCard.getAttribute('data-date');
-            }
-        }
-
-        extractedDate = extractedDate || item.dateStr || item.date || item.timestamp;
-
-        // 2. Resolve coordinate key if present
-        if (activeCoords && activeCoords.lat !== null && activeCoords.lon !== null) {
-            const coordKey = `${activeCoords.lat},${activeCoords.lon}`;
-            
-            // Check coordinate + date specific lookup maps if available
-            if (item.historyByDate && extractedDate && item.historyByDate[extractedDate]) {
-                const dateData = item.historyByDate[extractedDate];
-                if (dateData.coordsData && dateData.coordsData[coordKey] && dateData.coordsData[coordKey][propName] !== undefined) {
-                    return dateData.coordsData[coordKey][propName];
-                }
-            }
-            if (item.coordsData && item.coordsData[coordKey] && item.coordsData[coordKey][propName] !== undefined) {
-                return item.coordsData[coordKey][propName];
-            }
-            if (item.hourlyByCoords && item.hourlyByCoords[coordKey] && propName === 'hourly') {
-                return item.hourlyByCoords[coordKey];
-            }
-        }
-
-        // 3. Direct date map lookup on item (e.g., item.historyByDate['2026-08-28'])
-        if (extractedDate && item.historyByDate && item.historyByDate[extractedDate]) {
-            const dateObj = item.historyByDate[extractedDate];
-            if (dateObj[propName] !== undefined) return dateObj[propName];
-        }
-
-        // 4. Fallback to override range or source-specific objects
-        if (isOverrideRange(extractedDate)) {
-            if (item.overrideValues && item.overrideValues[propName] !== undefined) {
-                return item.overrideValues[propName];
-            }
-        }
-
-        if (!extractedDate) {
-            if (item.noaaValues && item.noaaValues[propName] !== undefined) return item.noaaValues[propName];
-            return item[propName] !== undefined ? item[propName] : fallbackVal;
-        }
-
-        if (item.isNoaaSource && item.noaaValues && item.noaaValues[propName] !== undefined) {
-            return item.noaaValues[propName];
-        }
-
-        const itemDate = new Date(extractedDate);
-        const cutoffDate = new Date('2026-08-23T00:00:00');
-
-        if (!isNaN(itemDate.getTime()) && itemDate >= cutoffDate) {
-            if (item.overrideValues && item.overrideValues[propName] !== undefined) {
-                return item.overrideValues[propName];
-            }
-        }
-        
-        if (item.noaaValues && item.noaaValues[propName] !== undefined) {
-            return item.noaaValues[propName];
-        }
-        
-        return item[propName] !== undefined ? item[propName] : fallbackVal;
-    };
 
     const getDiurnalTemp = (m) => {
         if (isHistorySource) {
             const hourlySource = getHistoricalSourceData(item, 'hourly', null);
-            if (Array.isArray(hourlySource) && hourlySource.length === 24) {
-                const hourIdx = Math.min(23, Math.floor(m / 60));
-                const nextHourIdx = Math.min(23, hourIdx + 1);
-                const tFraction = (m % 60) / 60;
-                const currentHVal = hourlySource[hourIdx].temp;
-                const nextHVal = hourlySource[nextHourIdx].temp;
-                return Math.round(currentHVal + (nextHVal - currentHVal) * tFraction);
+            if (Array.isArray(hourlySource) && hourlySource.length > 0) {
+                const interpolatedVal = getValFromHourlyArray(hourlySource, m, 'temp');
+                if (interpolatedVal !== null) return Math.round(interpolatedVal);
             }
         }
 
@@ -5674,13 +5709,9 @@ function drawForecastCanvasGraph(item, mode, canvas, activeX = null, prevItem = 
     const getDiurnalFeelsLike = (m) => {
         if (isHistorySource) {
             const hourlySource = getHistoricalSourceData(item, 'hourly', null);
-            if (Array.isArray(hourlySource) && hourlySource.length === 24) {
-                const hourIdx = Math.min(23, Math.floor(m / 60));
-                const nextHourIdx = Math.min(23, hourIdx + 1);
-                const tFraction = (m % 60) / 60;
-                const currentHVal = hourlySource[hourIdx].feelsLike !== undefined ? hourlySource[hourIdx].feelsLike : hourlySource[hourIdx].temp;
-                const nextHVal = hourlySource[nextHourIdx].feelsLike !== undefined ? hourlySource[nextHourIdx].feelsLike : hourlySource[nextHourIdx].temp;
-                return Math.round(currentHVal + (nextHVal - currentHVal) * tFraction);
+            if (Array.isArray(hourlySource) && hourlySource.length > 0) {
+                const interpolatedVal = getValFromHourlyArray(hourlySource, m, 'feelsLike');
+                if (interpolatedVal !== null) return Math.round(interpolatedVal);
             }
         }
         if (isToday && m <= currentMinutes && Array.isArray(item.historicalFeelsLike) && item.historicalFeelsLike[m]) {
@@ -5696,13 +5727,9 @@ function drawForecastCanvasGraph(item, mode, canvas, activeX = null, prevItem = 
     const getDiurnalWind = (m) => {
         if (isHistorySource) {
             const hourlySource = getHistoricalSourceData(item, 'hourly', null);
-            if (Array.isArray(hourlySource) && hourlySource.length === 24) {
-                const hourIdx = Math.min(23, Math.floor(m / 60));
-                const nextHourIdx = Math.min(23, hourIdx + 1);
-                const tFraction = (m % 60) / 60;
-                const currentHVal = hourlySource[hourIdx].wind !== undefined ? hourlySource[hourIdx].wind : (hourlySource[hourIdx].windMph || baseWindVal);
-                const nextHVal = hourlySource[nextHourIdx].wind !== undefined ? hourlySource[nextHourIdx].wind : (hourlySource[nextHourIdx].windMph || baseWindVal);
-                return Math.round(currentHVal + (nextHVal - currentHVal) * tFraction);
+            if (Array.isArray(hourlySource) && hourlySource.length > 0) {
+                const interpolatedVal = getValFromHourlyArray(hourlySource, m, 'wind');
+                if (interpolatedVal !== null) return Math.round(interpolatedVal);
             }
         }
         if (isToday && m <= currentMinutes && Array.isArray(item.historicalWind) && item.historicalWind[m]) {
@@ -5722,13 +5749,9 @@ function drawForecastCanvasGraph(item, mode, canvas, activeX = null, prevItem = 
     const getDiurnalGust = (m) => {
         if (isHistorySource) {
             const hourlySource = getHistoricalSourceData(item, 'hourly', null);
-            if (Array.isArray(hourlySource) && hourlySource.length === 24) {
-                const hourIdx = Math.min(23, Math.floor(m / 60));
-                const nextHourIdx = Math.min(23, hourIdx + 1);
-                const tFraction = (m % 60) / 60;
-                const currentHVal = hourlySource[hourIdx].gust !== undefined ? hourlySource[hourIdx].gust : (hourlySource[hourIdx].gustMph || baseGustVal);
-                const nextHVal = hourlySource[nextHourIdx].gust !== undefined ? hourlySource[nextHourIdx].gust : (hourlySource[nextHourIdx].gustMph || baseGustVal);
-                return Math.round(currentHVal + (nextHVal - currentHVal) * tFraction);
+            if (Array.isArray(hourlySource) && hourlySource.length > 0) {
+                const interpolatedVal = getValFromHourlyArray(hourlySource, m, 'gust');
+                if (interpolatedVal !== null) return Math.round(interpolatedVal);
             }
         }
         if (isToday && m <= currentMinutes && Array.isArray(item.historicalGust) && item.historicalGust[m]) {
@@ -5748,13 +5771,9 @@ function drawForecastCanvasGraph(item, mode, canvas, activeX = null, prevItem = 
     const getDiurnalDos = (m) => {
         if (isHistorySource) {
             const hourlySource = getHistoricalSourceData(item, 'hourly', null);
-            if (Array.isArray(hourlySource) && hourlySource.length === 24) {
-                const hourIdx = Math.min(23, Math.floor(m / 60));
-                const nextHourIdx = Math.min(23, hourIdx + 1);
-                const tFraction = (m % 60) / 60;
-                const currentHVal = hourlySource[hourIdx].dos !== undefined ? hourlySource[hourIdx].dos : (hourlySource[hourIdx].score || baseDosVal);
-                const nextHVal = hourlySource[nextHourIdx].dos !== undefined ? hourlySource[nextHourIdx].dos : (hourlySource[nextHourIdx].score || baseDosVal);
-                return Math.round(currentHVal + (nextHVal - currentHVal) * tFraction);
+            if (Array.isArray(hourlySource) && hourlySource.length > 0) {
+                const interpolatedVal = getValFromHourlyArray(hourlySource, m, 'dos');
+                if (interpolatedVal !== null) return Math.round(interpolatedVal);
             }
         }
         if (isToday && m <= currentMinutes && Array.isArray(item.historicalDos) && item.historicalDos[m]) {
@@ -5772,13 +5791,9 @@ function drawForecastCanvasGraph(item, mode, canvas, activeX = null, prevItem = 
     const getDiurnalPressure = (m) => {
         if (isHistorySource) {
             const hourlySource = getHistoricalSourceData(item, 'hourly', null);
-            if (Array.isArray(hourlySource) && hourlySource.length === 24) {
-                const hourIdx = Math.min(23, Math.floor(m / 60));
-                const nextHourIdx = Math.min(23, hourIdx + 1);
-                const tFraction = (m % 60) / 60;
-                const currentHVal = hourlySource[hourIdx].pressure !== undefined ? hourlySource[hourIdx].pressure : (item.pressure || 29.92);
-                const nextHVal = hourlySource[nextHourIdx].pressure !== undefined ? hourlySource[nextHourIdx].pressure : (item.pressure || 29.92);
-                return +(currentHVal + (nextHVal - currentHVal) * tFraction).toFixed(2);
+            if (Array.isArray(hourlySource) && hourlySource.length > 0) {
+                const interpolatedVal = getValFromHourlyArray(hourlySource, m, 'pressure');
+                if (interpolatedVal !== null) return +interpolatedVal.toFixed(2);
             }
         }
         if (isToday && m <= currentMinutes && Array.isArray(item.historicalPressure) && item.historicalPressure[m]) {
@@ -5796,13 +5811,9 @@ function drawForecastCanvasGraph(item, mode, canvas, activeX = null, prevItem = 
     const getDiurnalHumidity = (m) => {
         if (isHistorySource) {
             const hourlySource = getHistoricalSourceData(item, 'hourly', null);
-            if (Array.isArray(hourlySource) && hourlySource.length === 24) {
-                const hourIdx = Math.min(23, Math.floor(m / 60));
-                const nextHourIdx = Math.min(23, hourIdx + 1);
-                const tFraction = (m % 60) / 60;
-                const currentHVal = hourlySource[hourIdx].humidity !== undefined ? hourlySource[hourIdx].humidity : (item.humidity || 50);
-                const nextHVal = hourlySource[nextHourIdx].humidity !== undefined ? hourlySource[nextHourIdx].humidity : (item.humidity || 50);
-                return Math.round(currentHVal + (nextHVal - currentHVal) * tFraction);
+            if (Array.isArray(hourlySource) && hourlySource.length > 0) {
+                const interpolatedVal = getValFromHourlyArray(hourlySource, m, 'humidity');
+                if (interpolatedVal !== null) return Math.round(interpolatedVal);
             }
         }
         if (isToday && m <= currentMinutes && Array.isArray(item.historicalHumidity) && item.historicalHumidity[m]) {
@@ -5818,13 +5829,9 @@ function drawForecastCanvasGraph(item, mode, canvas, activeX = null, prevItem = 
     const getDiurnalUv = (m) => {
         if (isHistorySource) {
             const hourlySource = getHistoricalSourceData(item, 'hourly', null);
-            if (Array.isArray(hourlySource) && hourlySource.length === 24) {
-                const hourIdx = Math.min(23, Math.floor(m / 60));
-                const nextHourIdx = Math.min(23, hourIdx + 1);
-                const tFraction = (m % 60) / 60;
-                const currentHVal = hourlySource[hourIdx].uv !== undefined ? hourlySource[hourIdx].uv : (hourlySource[hourIdx].uvIndex || 0);
-                const nextHVal = hourlySource[nextHourIdx].uv !== undefined ? hourlySource[nextHourIdx].uv : (hourlySource[nextHourIdx].uvIndex || 0);
-                return +(currentHVal + (nextHVal - currentHVal) * tFraction).toFixed(1);
+            if (Array.isArray(hourlySource) && hourlySource.length > 0) {
+                const interpolatedVal = getValFromHourlyArray(hourlySource, m, 'uv');
+                if (interpolatedVal !== null) return +interpolatedVal.toFixed(1);
             }
         }
         if (isToday && m <= currentMinutes && Array.isArray(item.historicalUv) && item.historicalUv[m]) {
@@ -5841,13 +5848,9 @@ function drawForecastCanvasGraph(item, mode, canvas, activeX = null, prevItem = 
     const getDiurnalPrecip = (m) => {
         if (isHistorySource) {
             const hourlySource = getHistoricalSourceData(item, 'hourly', null);
-            if (Array.isArray(hourlySource) && hourlySource.length === 24) {
-                const hourIdx = Math.min(23, Math.floor(m / 60));
-                const nextHourIdx = Math.min(23, hourIdx + 1);
-                const tFraction = (m % 60) / 60;
-                const currentHVal = hourlySource[hourIdx].precip !== undefined ? hourlySource[hourIdx].precip : (hourlySource[hourIdx].precipChance || 0);
-                const nextHVal = hourlySource[nextHourIdx].precip !== undefined ? hourlySource[nextHourIdx].precip : (hourlySource[nextHourIdx].precipChance || 0);
-                return Math.round(currentHVal + (nextHVal - currentHVal) * tFraction);
+            if (Array.isArray(hourlySource) && hourlySource.length > 0) {
+                const interpolatedVal = getValFromHourlyArray(hourlySource, m, 'precip');
+                if (interpolatedVal !== null) return Math.round(interpolatedVal);
             }
         }
         if (isToday && m <= currentMinutes && Array.isArray(item.historicalPrecip) && item.historicalPrecip[m]) {
@@ -5863,7 +5866,7 @@ function drawForecastCanvasGraph(item, mode, canvas, activeX = null, prevItem = 
 
     const getInterpolatedVal = (m, key, fallbackFn) => {
         const historicalHourly = getHistoricalSourceData(item, 'hourly', null);
-        if (isHistorySource && Array.isArray(historicalHourly) && historicalHourly.length === 24) {
+        if (isHistorySource && Array.isArray(historicalHourly) && historicalHourly.length > 0) {
             return fallbackFn(m);
         }
 
@@ -6021,12 +6024,8 @@ function drawForecastCanvasGraph(item, mode, canvas, activeX = null, prevItem = 
                 ctx.setLineDash([]);
             };
 
-            if (pastPts.length >= 2) {
-                renderPath(pastPts, activeStyle, true);
-            }
-            if (futurePts.length >= 2) {
-                renderPath(futurePts, activeStyle, false);
-            }
+            if (pastPts.length >= 2) renderPath(pastPts, activeStyle, true);
+            if (futurePts.length >= 2) renderPath(futurePts, activeStyle, false);
         } else if (isHistorySource) {
             if (pts.length >= 2) {
                 if (fillUnder) {
@@ -6088,7 +6087,6 @@ function drawForecastCanvasGraph(item, mode, canvas, activeX = null, prevItem = 
 
         drawSegmentedLine(points, fillGrad, 3, getYFn, true);
     } else if (mode === "wind") {
-        const allWinds = points.map(p => p.wind);
         const allGusts = points.map(p => p.gust);
         const maxSpeed = Math.max(10, Math.max(...allGusts) + 5);
         getYFn = (p) => padTop + graphHeight - ((p.wind - 0) / maxSpeed) * graphHeight;
@@ -6138,18 +6136,13 @@ function drawForecastCanvasGraph(item, mode, canvas, activeX = null, prevItem = 
         drawSegmentedLine(points, uvGrad, 3, getYFn, true);
     } else if (mode === "precip") {
         const barWidth = (graphWidth / points.length) * 0.9;
-        getYFn = (p) => {
-            const barH = (p.precip / 100) * graphHeight;
-            return padTop + graphHeight - barH;
-        };
+        getYFn = (p) => padTop + graphHeight - (p.precip / 100) * graphHeight;
         points.forEach((p) => {
             if (p.precip > 0) {
                 const barH = (p.precip / 100) * graphHeight;
                 const yPos = padTop + graphHeight - barH;
-                
                 const precipColor = lerpColor("#80D0FF", "#0055FF", p.precip / 100);
                 ctx.globalAlpha = 0.85;
-                
                 ctx.fillStyle = precipColor;
                 if (typeof ctx.roundRect === "function") {
                     ctx.beginPath();
