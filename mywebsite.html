@@ -3954,12 +3954,6 @@ function initTimezoneSyncedRadarModal(mapModalElement, forecastItem, defaultMode
       zoomControl: true,
       attributionControl: false
     }).setView([lat, lon], 12);
-
-    // High-resolution Satellite Basemap
-    L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
-      maxZoom: 19,
-      attribution: 'Tiles &copy; Esri'
-    }).addTo(window._radarState.map);
   } else {
     window._radarState.map.setView([lat, lon], 12);
     setTimeout(() => window._radarState.map.invalidateSize(), 100);
@@ -4007,55 +4001,36 @@ function initTimezoneSyncedRadarModal(mapModalElement, forecastItem, defaultMode
   const currentMinuteOfDay = (now.getHours() * 60) + now.getMinutes();
   const timelineSlider = document.getElementById("radarTimeSlider");
 
-  // Dynamic satellite layer manager with cache-busting & forced Leaflet redraw
+  // Dynamic cloud-free satellite imagery layer manager
   const updateSatelliteOverlay = (minuteOffset = 0) => {
-    const timestamp = Date.now();
-    let satTileUrl = '';
+    const cloudFreeSatUrl = 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}';
 
-    if (isToday) {
-      // 1-minute real-time GOES Mesoscale WMS feed with timestamp cache-buster
-      satTileUrl = `https://mesonet.agron.iastate.edu/cgi-bin/wms/goes/vis006.cgi?_cb=${timestamp}`;
-    } else if (isPast) {
-      // Archived past date satellite feed
-      satTileUrl = `https://mesonet.agron.iastate.edu/cgi-bin/wms/goes/vis006.cgi?date=${activeIsoDate}&min=${minuteOffset}&_cb=${timestamp}`;
-    } else if (isFuture) {
-      // Future dates use today's operational satellite feed with animation offset
-      satTileUrl = `https://mesonet.agron.iastate.edu/cgi-bin/wms/goes/vis006.cgi?_cb=${timestamp}`;
-    }
-
-    // Reuse existing layer parameters if available, or create new layer
-    if (window._radarState.satelliteLayer) {
-      window._radarState.satelliteLayer.setUrl(satTileUrl);
-      window._radarState.satelliteLayer.redraw();
-    } else {
-      window._radarState.satelliteLayer = L.tileLayer.wms(satTileUrl, {
-        layers: 'vis006',
-        format: 'image/png',
-        transparent: true,
-        opacity: 0.7,
-        maxZoom: 19
+    // Reuse existing satellite layer or construct standard Leaflet tile layer
+    if (!window._radarState.satelliteLayer) {
+      window._radarState.satelliteLayer = L.tileLayer(cloudFreeSatUrl, {
+        maxZoom: 19,
+        opacity: 1.0,
+        attribution: 'Tiles &copy; Esri'
       }).addTo(window._radarState.map);
     }
 
+    // Keep weather canvas redraw synced to time slider
     if (typeof renderRadarLayerAtMinute === 'function') {
       renderRadarLayerAtMinute(minuteOffset);
     }
   };
 
-  // Configure timeline slider and 1-second live Satellite loop execution
+  // Configure timeline slider and 1-second refresh loop execution
   if (isToday) {
-    // Put timeline slider on current local minute ONLY on opening/init
     if (timelineSlider) {
       timelineSlider.max = 1439;
       timelineSlider.value = currentMinuteOfDay;
     }
 
-    // Refresh 1-minute live satellite updates only if the user is currently at/near real-time
     window._radarState.liveRefreshInterval = setInterval(() => {
       const activeVal = timelineSlider ? parseInt(timelineSlider.value, 10) : currentMinuteOfDay;
       const liveNowMinute = (new Date().getHours() * 60) + new Date().getMinutes();
 
-      // Only refresh tiles live if slider is actively positioned near current minute
       if (activeVal >= liveNowMinute - 2) {
         updateSatelliteOverlay(activeVal);
       }
@@ -4064,7 +4039,6 @@ function initTimezoneSyncedRadarModal(mapModalElement, forecastItem, defaultMode
   } else if (isPast) {
     if (timelineSlider) timelineSlider.value = 0;
 
-    // Animate past satellite imagery frames every 1 second
     window._radarState.liveRefreshInterval = setInterval(() => {
       if (timelineSlider) {
         let currentVal = parseInt(timelineSlider.value, 10) + 10;
@@ -4077,7 +4051,6 @@ function initTimezoneSyncedRadarModal(mapModalElement, forecastItem, defaultMode
   } else if (isFuture) {
     if (timelineSlider) timelineSlider.value = 0;
 
-    // Run 1-second animation loop for future projections
     window._radarState.liveRefreshInterval = setInterval(() => {
       if (timelineSlider) {
         let currentVal = parseInt(timelineSlider.value, 10) + 15;
