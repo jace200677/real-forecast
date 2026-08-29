@@ -5236,8 +5236,8 @@ function renderHistoryCardsModal(data) {
     updateCardView(defaultDate, data);
   }
 }
-// Function: Update card contents seamlessly without rendering a chart
-function updateCardView(targetDateStr, data) {
+// Function: Update card contents seamlessly using calculateForecastDayMetrics & calculateForecastDayCardMetrics
+function updateCardView(targetDateStr, data, targetZoneOrPoint = null, gridPeriods = []) {
   const container = document.getElementById('historyCardContainer');
   if (!container) return;
 
@@ -5249,6 +5249,17 @@ function updateCardView(targetDateStr, data) {
       isoTarget = `${parts[2]}-${parts[0].padStart(2, '0')}-${parts[1].padStart(2, '0')}`;
     }
   }
+
+  // Parse YYYY-MM-DD parts to extract inputs for calculateForecastDayMetrics
+  const dateParts = typeof isoTarget === 'string' ? isoTarget.split('-') : [];
+  const forecastYear = (dateParts[0] && !isNaN(dateParts[0])) ? parseInt(dateParts[0], 10) : 2026;
+  const forecastMonth = (dateParts[1] && !isNaN(dateParts[1])) ? parseInt(dateParts[1], 10) : 8;
+  const dateNum = (dateParts[2] && !isNaN(dateParts[2])) ? parseInt(dateParts[2], 10) : 29;
+
+  // Retrieve algorithmic baseline metrics directly from calculateForecastDayMetrics
+  const forecastDayMetrics = (typeof calculateForecastDayMetrics === 'function')
+    ? calculateForecastDayMetrics(forecastYear, forecastMonth, dateNum, targetZoneOrPoint, gridPeriods)
+    : { tempHigh: null, tempLow: null, windMph: 0, gustMph: 0, weatherSummary: 'Clear' };
 
   const rawArray = Array.isArray(data) ? data : [];
 
@@ -5266,26 +5277,35 @@ function updateCardView(targetDateStr, data) {
     return typeof rawDate === 'string' && rawDate.startsWith(isoTarget);
   });
 
-  // Calculate card metrics safely
+  // Calculate card metrics with raw observations, falling back internally to forecastDayMetrics
   const metrics = calculateForecastDayCardMetrics(
     selectedDayObs.length ? selectedDayObs : rawArray,
-    isoTarget
+    isoTarget,
+    targetZoneOrPoint,
+    gridPeriods
   );
 
-  // Render HTML summary card inside container
+  // Render HTML summary card using observation metrics with direct fallback to calculateForecastDayMetrics values
+  const displayHigh = metrics.highTempF ?? forecastDayMetrics.tempHigh;
+  const displayLow = metrics.lowTempF ?? forecastDayMetrics.tempLow;
+  const displayWind = metrics.maxWindMph ?? forecastDayMetrics.windMph;
+  const displayGust = metrics.maxGustMph ?? forecastDayMetrics.gustMph;
+  const displayCondition = metrics.dominantCondition && metrics.dominantCondition !== 'No Data'
+    ? metrics.dominantCondition
+    : (forecastDayMetrics.weatherSummary || 'Clear');
+
   container.innerHTML = `
     <div style="background: #1e293b; padding: 16px; border-radius: 10px; border: 1px solid #334155;">
-      <h4 style="margin: 0 0 10px 0; color: #38bdf8; font-size: 16px;">${metrics.date} (${metrics.dominantCondition || 'Clear'})</h4>
+      <h4 style="margin: 0 0 10px 0; color: #38bdf8; font-size: 16px;">${metrics.date || isoTarget} (${displayCondition})</h4>
       <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; font-size: 14px;">
-        <div>High: <strong>${metrics.highTempF !== null ? metrics.highTempF + '°F' : 'N/A'}</strong></div>
-        <div>Low: <strong>${metrics.lowTempF !== null ? metrics.lowTempF + '°F' : 'N/A'}</strong></div>
-        <div>Wind: <strong>${metrics.maxWindMph !== null ? metrics.maxWindMph + ' mph' : 'N/A'}</strong></div>
-        <div>Gust: <strong>${metrics.maxGustMph !== null ? metrics.maxGustMph + ' mph' : 'N/A'}</strong></div>
+        <div>High: <strong>${displayHigh !== null ? displayHigh + '°F' : 'N/A'}</strong></div>
+        <div>Low: <strong>${displayLow !== null ? displayLow + '°F' : 'N/A'}</strong></div>
+        <div>Wind: <strong>${displayWind !== null ? displayWind + ' mph' : 'N/A'}</strong></div>
+        <div>Gust: <strong>${displayGust !== null ? displayGust + ' mph' : 'N/A'}</strong></div>
       </div>
     </div>
   `;
 }
-
 function openForecastGraphModal(item, fullForecast = [], itemIndex = -1) {
     let modal = document.getElementById("forecastGraphModal");
     if (!modal) {
