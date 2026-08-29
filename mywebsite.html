@@ -2941,29 +2941,46 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
     };
 
     if (activeTargetMap) {
-    attachMapInteractionHandlers(activeTargetMap, activeGridLayer._meta);
+    // Safely attach map interaction handlers
+    if (typeof attachMapInteractionHandlers === 'function' && activeGridLayer?._meta) {
+        attachMapInteractionHandlers(activeTargetMap, activeGridLayer._meta);
+    }
 
     // Extract current timeline minute offset if slider exists
     const timelineSlider = document.getElementById("radarTimeSlider");
-    const currentMin = timelineSlider ? parseInt(timelineSlider.value, 10) : 0;
+    const currentMin = timelineSlider && !isNaN(parseInt(timelineSlider.value, 10)) 
+        ? parseInt(timelineSlider.value, 10) 
+        : 0;
 
-    // Default Cloud-Free Basemap URL (Esri World Imagery)
-    const cloudFreeBasemapUrl = 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}';
+    // Available Tile URLs
+    const DEFAULT_CLOUD_FREE_URL = 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}';
+    const NOAA_STAR_TILE_URL = 'https://www.star.nesdis.noaa.gov/GOES/tile_service.php?z={z}&x={x}&y={y}';
 
-    // Use dynamic satellite overlay loader for NOAA STAR NESDIS updates
+    // Store configured default satellite URL globally for reference
+    window._defaultSatelliteUrl = DEFAULT_CLOUD_FREE_URL;
+
+    // Use dynamic satellite overlay loader for NOAA STAR NESDIS updates if available
     if (typeof updateSatelliteOverlay === 'function') {
-        updateSatelliteOverlay(currentMin);
-    } else {
-        // Fallback: Cloud-free ground aerial basemap
-        if (!window.satelliteLayer) {
-            window.satelliteLayer = L.tileLayer(cloudFreeBasemapUrl, {
-                attribution: 'Tiles &copy; Esri &mdash; Source: Esri, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-EGP',
-                maxZoom: 19
-            });
-        } else {
-            window.satelliteLayer.setUrl(cloudFreeBasemapUrl);
+        try {
+            updateSatelliteOverlay(currentMin);
+        } catch (err) {
+            console.warn("updateSatelliteOverlay failed, using cloud-free basemap fallback:", err);
         }
+    } 
 
+    // Fallback/Default: Cloud-free aerial basemap layer
+    if (!window.satelliteLayer) {
+        window.satelliteLayer = L.tileLayer(DEFAULT_CLOUD_FREE_URL, {
+            attribution: 'Tiles &copy; Esri &mdash; Source: Esri, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-EGP',
+            maxZoom: 19
+        });
+    } else if (typeof window.satelliteLayer.setUrl === 'function' && !window._radarState?.satelliteLayer) {
+        // Ensure default URL is active if layer already exists
+        window.satelliteLayer.setUrl(DEFAULT_CLOUD_FREE_URL);
+    }
+
+    // Safely attach fallback layer if not already present on map
+    if (activeTargetMap && typeof activeTargetMap.hasLayer === 'function') {
         if (!activeTargetMap.hasLayer(window.satelliteLayer)) {
             window.satelliteLayer.addTo(activeTargetMap);
         }
