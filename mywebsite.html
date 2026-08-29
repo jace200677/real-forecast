@@ -2843,37 +2843,39 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
         };
 
         if (mType.includes('wind') || mType.includes('gust')) {
-            return interpolateStops(val, [
-                { threshold: 0,  color: 'rgba(115, 130, 205, 0.50)' },
-                { threshold: 10, color: 'rgba(65, 195, 185, 0.55)' },
-                { threshold: 20, color: 'rgba(55, 170, 95, 0.60)' },
-                { threshold: 30, color: 'rgba(195, 205, 55, 0.65)' },
-                { threshold: 45, color: 'rgba(235, 155, 45, 0.70)' },
-                { threshold: 60, color: 'rgba(200, 45, 55, 0.75)' }
-            ], 0);
-        } 
+    return interpolateStops(val, [
+        { threshold: 0,  color: 'rgba(160, 205, 230, 0.60)' }, // Light Ice Blue
+        { threshold: 6,  color: 'rgba(75, 165, 195, 0.65)' },  // Ocean Blue
+        { threshold: 10, color: 'rgba(35, 135, 125, 0.65)' },  // Teal
+        { threshold: 20, color: 'rgba(25, 115, 45, 0.70)' },   // Deep Green
+        { threshold: 35, color: 'rgba(215, 185, 50, 0.70)' },  // Warm Yellow
+        { threshold: 45, color: 'rgba(230, 135, 70, 0.75)' },  // Orange
+        { threshold: 70, color: 'rgba(185, 60, 65, 0.80)' }    // Crimson Red
+    ], 0);
+}
 
         if (mType === 'dos') {
-            return interpolateStops(val, [
-                { threshold: 0,   color: 'rgba(168, 85, 247, 0.75)' },
-                { threshold: 30,  color: 'rgba(234, 88, 12, 0.65)' },
-                { threshold: 60,  color: 'rgba(161, 98, 7, 0.55)' },
-                { threshold: 80,  color: 'rgba(101, 163, 13, 0.45)' },
-                { threshold: 100, color: 'rgba(34, 197, 94, 0.35)' }
-            ], 50);
-        }
+    return interpolateStops(val, [
+        { threshold: 0,   color: 'rgba(180, 105, 45, 0.80)' },  // Warm Brown
+        { threshold: 30,  color: 'rgba(155, 140, 50, 0.70)' },  // Olive Green
+        { threshold: 50,  color: 'rgba(45, 165, 135, 0.65)' },  // Teal / Sea Green
+        { threshold: 80,  color: 'rgba(45, 135, 175, 0.65)' },  // Cerulean Blue
+        { threshold: 90,  color: 'rgba(50, 100, 170, 0.75)' },  // Royal Blue
+        { threshold: 100, color: 'rgba(45, 55, 110, 0.85)' }   // Dark Navy / Indigo
+    ], 50);
+}
 
         if (['temp', 'temperature', 'feelslike', 'feels_like'].includes(mType)) {
-            return interpolateStops(val, [
-                { threshold: -10, color: 'rgba(125, 110, 210, 0.75)' },
-                { threshold: 15,  color: 'rgba(105, 155, 220, 0.70)' },
-                { threshold: 32,  color: 'rgba(85, 190, 205, 0.65)' },
-                { threshold: 55,  color: 'rgba(65, 165, 115, 0.60)' },
-                { threshold: 75,  color: 'rgba(105, 195, 75, 0.62)' },
-                { threshold: 90,  color: 'rgba(235, 185, 45, 0.68)' },
-                { threshold: 105, color: 'rgba(205, 45, 45, 0.75)' }
-            ], 60);
-        }
+    return interpolateStops(val, [
+        { threshold: -5,  color: 'rgba(98, 85, 205, 0.75)' },  // Deep Purple
+        { threshold: 15,  color: 'rgba(115, 130, 230, 0.70)' }, // Soft Blue
+        { threshold: 30,  color: 'rgba(72, 160, 185, 0.65)' },  // Teal
+        { threshold: 50,  color: 'rgba(45, 155, 110, 0.60)' },  // Green
+        { threshold: 70,  color: 'rgba(155, 195, 60, 0.62)' },  // Yellow-Green
+        { threshold: 85,  color: 'rgba(235, 140, 25, 0.70)' },  // Amber/Orange
+        { threshold: 100, color: 'rgba(185, 15, 15, 0.80)' }   // Deep Red
+    ], 50);
+}
 
         if (['precip', 'rain', 'chance'].includes(mType)) {
             return interpolateStops(val, [
