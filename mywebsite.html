@@ -4900,9 +4900,6 @@ async function handleWeatherHistory() {
   }
 }
 
-/**
- * Fetches historical grid observations from 2026-08-22 up to 1 day before current date
- */
 function calculateForecastDayCardMetrics(observations, targetDateStr, targetZoneOrPoint = null, gridPeriods = []) {
   let obsArray = [];
   if (Array.isArray(observations)) {
@@ -4915,11 +4912,18 @@ function calculateForecastDayCardMetrics(observations, targetDateStr, targetZone
     obsArray = observations.records;
   }
 
-  // Parse targetDateStr (YYYY-MM-DD) for calculateForecastDayMetrics call
-  const dateParts = targetDateStr ? targetDateStr.split('-') : [];
-  const forecastYear = dateParts[0] ? parseInt(dateParts[0], 10) : 2026;
-  const forecastMonth = dateParts[1] ? parseInt(dateParts[1], 10) : 8;
-  const dateNum = dateParts[2] ? parseInt(dateParts[2], 10) : 29;
+  // Safe string coercion for targetDateStr
+  const safeDateStr = (typeof targetDateStr === 'string') 
+    ? targetDateStr 
+    : (targetDateStr instanceof Date && !isNaN(targetDateStr)) 
+      ? targetDateStr.toISOString().split('T')[0] 
+      : String(targetDateStr || '');
+
+  // Parse safeDateStr (YYYY-MM-DD) safely without crashing
+  const dateParts = safeDateStr ? safeDateStr.split('-') : [];
+  const forecastYear = (dateParts[0] && !isNaN(dateParts[0])) ? parseInt(dateParts[0], 10) : 2026;
+  const forecastMonth = (dateParts[1] && !isNaN(dateParts[1])) ? parseInt(dateParts[1], 10) : 8;
+  const dateNum = (dateParts[2] && !isNaN(dateParts[2])) ? parseInt(dateParts[2], 10) : 29;
 
   // Retrieve algorithmic baseline metrics from calculateForecastDayMetrics
   const fallbackMetrics = (typeof calculateForecastDayMetrics === 'function')
@@ -4930,13 +4934,13 @@ function calculateForecastDayCardMetrics(observations, targetDateStr, targetZone
   const dayObs = obsArray.filter(obs => {
     if (!obs || typeof obs !== 'object') return false;
     const timestamp = obs.properties?.timestamp || obs.timestamp;
-    return typeof timestamp === 'string' && timestamp.startsWith(targetDateStr);
+    return typeof timestamp === 'string' && safeDateStr !== '' && timestamp.startsWith(safeDateStr);
   });
 
   // If no raw observations found, return values sourced from calculateForecastDayMetrics
   if (!dayObs.length) {
     return {
-      date: targetDateStr,
+      date: safeDateStr,
       highTempF: fallbackMetrics.tempHigh,
       lowTempF: fallbackMetrics.tempLow,
       maxWindMph: fallbackMetrics.windMph,
@@ -5022,7 +5026,7 @@ function calculateForecastDayCardMetrics(observations, targetDateStr, targetZone
     : 0;
 
   return {
-    date: targetDateStr,
+    date: safeDateStr,
     highTempF,
     lowTempF,
     maxWindMph,
