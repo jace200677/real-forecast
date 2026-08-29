@@ -506,32 +506,49 @@ async function verifyDeviceAccess() {
 
     let currentDevice = window.localStorage.getItem("DEVICE_NAME") || "";
 
-    // If not registered, generate the hardware fingerprint and match automatically
+    // If not registered yet on this browser profile
     if (!currentDevice) {
         const deviceSignature = await generateHardwareFingerprint();
         
-        // Put your actual 16-character hardware signature hashes generated on your two PCs below:
         const signatureMap = {
             "YOUR_PC_HASH_HERE": "JACES-PC",
             "YOUR_MOBILE_PC_HASH_HERE": "JACES-MOBILE-PC"
         };
 
-        currentDevice = signatureMap[deviceSignature] || "UNAUTHORIZED";
+        // Automatically attempts to match your hardware signature
+        currentDevice = signatureMap[deviceSignature];
+
+        // HIDDEN ADMIN OVERRIDE: Public users get marked unauthorized instantly with NO prompt.
+        // Only you can trigger the secure login box by typing a secret keyword in the prompt.
+        if (!currentDevice) {
+            let secretAccessCode = prompt("System Access Verification:", ""); // Leave blank or type wrong = instant exit for public
+            
+            if (secretAccessCode === "JACES_ADMIN_2026") { // Change this secret phrase to whatever you want
+                let chosenName = prompt("Select Device Name to Register (JACES-PC or JACES-MOBILE-PC):", "JACES-PC");
+                if (chosenName && ALLOWED_DEVICES.includes(chosenName.trim().toUpperCase())) {
+                    currentDevice = chosenName.trim().toUpperCase();
+                } else {
+                    currentDevice = "UNAUTHORIZED";
+                }
+            } else {
+                currentDevice = "UNAUTHORIZED"; // Silent fail for any public user
+            }
+        }
+
         window.localStorage.setItem("DEVICE_NAME", currentDevice);
     }
 
-    // Strict validation: Only shows on your authorized machines without ever asking for input
+    // Strict validation: Only displays the button if it matches your designated machines
     if (ALLOWED_DEVICES.includes(currentDevice)) {
         broadcastBtn.style.display = "block";
         broadcastBtn.style.visibility = "visible";
     } else {
         broadcastBtn.style.display = "none";
         broadcastBtn.style.visibility = "hidden";
-        broadcastBtn.remove(); // Instantly destroys the button for anyone else
+        broadcastBtn.remove(); // Instantly destroys the button for anyone else visiting the site
     }
 }
 
-// Generates a consistent hardware/browser fingerprint profile automatically
 async function generateHardwareFingerprint() {
     const canvas = document.createElement('canvas');
     const gl = canvas.getContext('webgl');
@@ -551,9 +568,7 @@ async function generateHardwareFingerprint() {
     const hashArray = Array.from(new Uint8Array(hashBuffer));
     const finalHash = hashArray.map(b => b.toString(16).padStart(2, '0')).join('').substring(0, 16);
     
-    // Logs your unique signature hash to the console on first run so you can copy/paste it into signatureMap
     console.log("Your Device Hardware Signature Hash:", finalHash);
-    
     return finalHash;
 }
 // 2. Modal Controls
