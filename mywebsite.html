@@ -577,12 +577,23 @@ async function generateHardwareFingerprint() {
 }
 // 2. Modal Controls
 function openAlertModal() {
-    document.getElementById("alert-modal").style.display = "flex";
-    initPolygonMap(); 
+    const modal = document.getElementById("alert-modal");
+    if (!modal) return;
+    
+    // Ensure display uses flex layout for proper centering/alignment
+    modal.style.display = "flex";
+    
+    // Initialize or refresh the Leaflet satellite map sizing after it becomes visible
+    if (typeof initPolygonMap === "function") {
+        initPolygonMap();
+    }
 }
 
 function closeAlertModal() {
-    document.getElementById("alert-modal").style.display = "none";
+    const modal = document.getElementById("alert-modal");
+    if (!modal) return;
+    
+    modal.style.display = "none";
 }
 
 function openViewAlertsModal() {
