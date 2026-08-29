@@ -5028,223 +5028,203 @@ function renderHistoryCardsModal(data) {
   }
 }
 
-function updateCardView(selectedVal, data, cardContainerId = 'historyCardContainer', canvasId = 'singleHistoryGraphCanvas', mode = 'temp') {
-  const cardContainer = document.getElementById(cardContainerId);
-  if (!cardContainer) return;
+function openForecastGraphModal(item, fullForecast = [], itemIndex = -1) {
+    let modal = document.getElementById("forecastGraphModal");
+    if (!modal) {
+        modal = document.createElement("div");
+        modal.id = "forecastGraphModal";
+        modal.style.cssText = "position:fixed;top:0;left:0;width:100vw;height:100vh;background:rgba(0,0,0,0.85);z-index:9999;display:flex;align-items:center;justify-content:center;padding:10px;";
+        modal.innerHTML = `
+            <div style="background:#1e1e24;border-radius:12px;padding:16px;width:100%;max-width:750px;color:#fff;position:relative;box-shadow:0 8px 32px rgba(0,0,0,0.5);">
+                <button id="closeGraphModalBtn" style="position:absolute;top:12px;right:12px;background:none;border:none;color:#fff;font-size:24px;cursor:pointer;padding:5px;">✕</button>
+                <div style="display:flex;gap:10px;align-items:center;margin-bottom:12px;flex-wrap:wrap;padding-right:30px;">
+                    <h3 id="graphModalTitle" style="margin:0;font-size:clamp(14px, 4vw, 18px);">Forecast Graph</h3>
+                    <select id="graphTypeSelect" style="background:#2b2b36;color:#fff;border:1px solid #444;padding:6px 10px;border-radius:6px;cursor:pointer;font-size:13px;">
+                        <option value="temp">Temperature</option>
+                        <option value="feelsLike">Feels Like Temp</option>
+                        <option value="wind">Wind & Gusts</option>
+                        <option value="dos">DOS Score</option>
+                        <option value="pressure">Pressure</option>
+                        <option value="humidity">Humidity</option>
+                        <option value="uv">UV Index</option>
+                        <option value="precip">Precipitation Chance</option>
+                    </select>
+                    <button class="traffic-btn" onclick="openTrafficMapModal()">🚦 Traffic Road Map</button>
+                    <button id="weatherMapModalBtn" class="weather-map-btn" style="background:#38bdf8;color:#0f172a;border:none;padding:6px 12px;border-radius:6px;font-weight:600;font-size:13px;cursor:pointer;display:inline-flex;align-items:center;gap:6px;">
+                        📡 Weather Radar Map
+                    </button>
+                </div>
 
-  // 1. Resolve date targets & enforce historical upper bound (strictly capped at Yesterday)
-  const [y, m, d] = selectedVal.split('-');
-  const selectedDateObj = new Date(parseInt(y, 10), parseInt(m, 10) - 1, parseInt(d, 10));
-  
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-
-  const yesterday = new Date(today);
-  yesterday.setDate(yesterday.getDate() - 1);
-
-  // Hard Cap: If a user selects today or a future date, block rendering
-  if (selectedDateObj >= today) {
-    cardContainer.innerHTML = `
-      <div class="history-card" style="background:#18181c; border: 1px solid #ef4444; border-radius: 12px; padding: 16px; color: #fff; width: 100%; box-sizing: border-box; text-align: center;">
-        <strong style="font-size: 15px; color: #ef4444;">⚠️ Historical View Limited</strong>
-        <p style="font-size: 13px; color: #a1a1aa; margin: 8px 0 0 0;">Historical records are only available up to yesterday (${yesterday.toLocaleDateString()}). Please select a past date.</p>
-      </div>
-    `;
-    return;
-  }
-
-  const cutoffDateObj = new Date(2026, 7, 23, 0, 0, 0); // August 23, 2026
-
-  // Pad single digits to ensure flexible matching
-  const mNum = parseInt(m, 10);
-  const dNum = parseInt(d, 10);
-  const yNum = parseInt(y, 10);
-  const formattedDateStr = `${mNum}/${dNum}/${y}`;
-  const paddedDateStr = `${String(mNum).padStart(2, '0')}/${String(dNum).padStart(2, '0')}/${y}`;
-
-  // 1.5 Check Radar Modal or Global Store Sources first
-  let radarSourceItem = null;
-  const globalRadarStore = window.radarModalData || window.activeRadarItem || window.radarCache;
-  
-  if (globalRadarStore) {
-    if (Array.isArray(globalRadarStore)) {
-      radarSourceItem = globalRadarStore.find(i => 
-        i.dateStr === formattedDateStr || i.dateStr === paddedDateStr || 
-        i.date === formattedDateStr || i.date === paddedDateStr
-      );
-    } else if (typeof globalRadarStore === 'object') {
-      const targetKeyMatch = globalRadarStore.dateStr === formattedDateStr || 
-                            globalRadarStore.dateStr === paddedDateStr || 
-                            globalRadarStore.date === formattedDateStr || 
-                            globalRadarStore.date === paddedDateStr;
-      if (targetKeyMatch || globalRadarStore.isRadarActive) {
-        radarSourceItem = globalRadarStore;
-      }
-    }
-  }
-
-  // Fallback or combine with standard payload array
-  const sourceList = Array.isArray(data) ? data : (window.historyDataPayload || []);
-  const overrideItem = radarSourceItem || sourceList.find(i => 
-    i.dateStr === formattedDateStr || 
-    i.dateStr === paddedDateStr || 
-    i.date === formattedDateStr || 
-    i.date === paddedDateStr
-  );
-
-  let matchedItem;
-
-  // 2. Classify strictly past date range source rules
-  if (selectedDateObj < cutoffDateObj) {
-    // Strictly NOAA Historical Archive (Before 8/23/2026)
-    matchedItem = overrideItem && overrideItem.isNoaaSource ? overrideItem : (overrideItem || {
-      dateStr: formattedDateStr,
-      date: formattedDateStr,
-      dos: Math.floor(Math.random() * 4) + 6,
-      condition: "NOAA Historical Archive Record",
-      highTemp: Math.floor(Math.random() * 25) + 60,
-      lowTemp: Math.floor(Math.random() * 15 + 40),
-      wind: Math.floor(Math.random() * 12) + 4,
-      hourly: Array.from({ length: 24 }, (_, i) => ({
-        temp: Math.round(52 + 14 * Math.sin((i - 6) / 24 * Math.PI * 2)),
-        wind: Math.round(8 + 5 * Math.cos(i / 24 * Math.PI * 2))
-      }))
-    });
-  } else {
-    // Dates from 8/23/2026 up to Yesterday
-    if (overrideItem) {
-      const highTemp = overrideItem.highTemp ?? overrideItem.tempHigh ?? 70;
-      const lowTemp = overrideItem.lowTemp ?? overrideItem.tempLow ?? 50;
-      const baseTemp = (highTemp + lowTemp) / 2;
-      const baseWind = overrideItem.wind ?? overrideItem.windSpeed ?? overrideItem.w ?? 10;
-      const dosScore = overrideItem.dos ?? overrideItem.projectedScore ?? 5;
-
-      matchedItem = {
-        ...overrideItem,
-        dateStr: formattedDateStr,
-        date: formattedDateStr,
-        condition: overrideItem.condition || "Radar / Archive Event Record",
-        highTemp: highTemp,
-        lowTemp: lowTemp,
-        wind: baseWind,
-        dos: dosScore > 10 ? Math.min(10, Math.max(0, Math.round(dosScore / 10))) : dosScore,
-        hourly: overrideItem.hourly || overrideItem.hours || overrideItem.hourlyData || Array.from({ length: 24 }, (_, i) => ({
-          temp: Math.round(baseTemp + ((highTemp - lowTemp) / 2 || 10) * Math.sin((i - 6) / 24 * Math.PI * 2)),
-          wind: Math.max(1, Math.round(baseWind + 3 * Math.sin(i / 12 * Math.PI)))
-        }))
-      };
-    } else {
-      // Calculate day metrics via helper functions if no override or radar entry is found
-      let metrics = {};
-      if (typeof calculateForecastDayCardMetrics === 'function') {
-        metrics = calculateForecastDayCardMetrics(yNum, mNum, dNum, null, [], 1, 1, 5, 0) || {};
-      } else if (typeof calculateForecastDayMetrics === 'function') {
-        metrics = calculateForecastDayMetrics(yNum, mNum, dNum, null, [], 1, 1, 5, 0) || {};
-      }
-
-      const highTemp = metrics.tempHigh ?? metrics.highTemp ?? 70;
-      const lowTemp = metrics.tempLow ?? metrics.lowTemp ?? 50;
-      const baseTemp = (highTemp + lowTemp) / 2;
-      const baseWind = metrics.windMph ?? metrics.wind ?? 10;
-      
-      const rawScore = metrics.projectedScore ?? metrics.dos;
-      const dosScore = rawScore !== undefined 
-        ? (rawScore > 10 ? Math.min(10, Math.max(0, Math.round(rawScore / 10))) : rawScore) 
-        : 5;
-
-      matchedItem = {
-        dateStr: formattedDateStr,
-        date: formattedDateStr,
-        isInterpolated: true,
-        dos: dosScore,
-        condition: metrics.weatherSummary || metrics.condition || "Interpolated Weather Record",
-        highTemp: highTemp,
-        lowTemp: lowTemp,
-        wind: baseWind,
-        hourly: Array.from({ length: 24 }, (_, i) => ({
-          temp: Math.round(baseTemp + ((highTemp - lowTemp) / 2 || 10) * Math.sin((i - 6) / 24 * Math.PI * 2)),
-          wind: Math.max(1, Math.round(baseWind + 3 * Math.sin(i / 12 * Math.PI)))
-        }))
-      };
-    }
-  }
-
-  // 3. Normalize wind & temperature properties across varied payload schemas
-  matchedItem.wind = matchedItem.wind ?? matchedItem.windSpeed ?? matchedItem.w ?? 0;
-
-  const rawHourly = matchedItem.hourly || matchedItem.hours || matchedItem.hourlyData || [];
-  const normalizedHourly = rawHourly.map(h => {
-    if (typeof h === 'number') {
-      return { temp: h, wind: matchedItem.wind };
-    }
-    return {
-      ...h,
-      temp: h.temp ?? h.temperature ?? h.t ?? h.tempF ?? 0,
-      wind: h.wind ?? h.windSpeed ?? h.w ?? h.gust ?? matchedItem.wind
-    };
-  });
-  matchedItem.hourly = normalizedHourly;
-
-  // 4. Render HTML template
-  cardContainer.innerHTML = `
-    <div class="history-card" style="background:#18181c; border: 1px solid #27272a; border-radius: 12px; padding: 16px; color: #fff; width: 100%; box-sizing: border-box; display: flex; flex-direction: column; justify-content: space-between; box-shadow: 0 4px 12px rgba(0,0,0,0.4);">
-      <div>
-        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 8px;">
-          <strong style="font-size: 16px; color: #38bdf8;">${matchedItem.date || matchedItem.dateStr}</strong>
-          <span style="font-size: 12px; background:#27272a; padding: 3px 8px; border-radius: 4px; color:#a1a1aa;">DOS: ${matchedItem.dos}/10</span>
-        </div>
-        <div style="font-size: 13px; color: #e4e4e7; margin-bottom: 10px;">${matchedItem.condition}</div>
-        <div style="font-size: 12px; color: #a1a1aa; margin-bottom: 12px; display: flex; gap: 15px;">
-          <span>🌡️ ${matchedItem.highTemp}° / ${matchedItem.lowTemp}°F</span>
-          <span>💨 ${matchedItem.wind} mph</span>
-        </div>
-      </div>
-
-      <div style="position: relative; cursor: pointer;" onclick='openForecastGraphModal(${JSON.stringify(matchedItem).replace(/'/g, "&#39;")})'>
-        <canvas id="${canvasId}" style="background:#090d16; border-radius: 6px; border: 1px solid #27272a; width: 100%; height: 90px; display: block;"></canvas>
-        <div style="position: absolute; bottom: 6px; right: 8px; font-size: 10px; color: #38bdf8; background: rgba(0,0,0,0.6); padding: 2px 6px; border-radius: 3px; pointer-events: none;">Open Historical Graph 📈</div>
-      </div>
-    </div>
-  `;
-
-  // 5. Draw Canvas Graph based on mode ('temp' or 'wind')
-  const canvas = document.getElementById(canvasId);
-  if (canvas && matchedItem.hourly.length > 0) {
-    const rect = canvas.getBoundingClientRect();
-    canvas.width = rect.width || 380;
-    canvas.height = rect.height || 90;
-
-    const ctx = canvas.getContext('2d');
-    
-    const values = matchedItem.hourly.map(h => mode === 'wind' ? h.wind : h.temp);
-    const min = Math.min(...values);
-    const max = Math.max(...values);
-    const range = (max - min) || 1;
-
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-    ctx.strokeStyle = '#1e293b';
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    ctx.moveTo(0, canvas.height / 2);
-    ctx.lineTo(canvas.width, canvas.height / 2);
-    ctx.stroke();
-
-    const barWidth = canvas.width / matchedItem.hourly.length;
-    matchedItem.hourly.forEach((h, i) => {
-      const val = mode === 'wind' ? h.wind : h.temp;
-      const normalized = (val - min) / range;
-      const barHeight = Math.max(4, normalized * (canvas.height - 16));
-      const x = i * barWidth;
-      const y = canvas.height - barHeight - 4;
-
-      ctx.fillStyle = mode === 'wind' 
-        ? `hsl(${160 + normalized * 40}, 85%, 50%)`
-        : `hsl(${200 + normalized * 140}, 80%, 55%)`;
+                <div style="width:100%;aspect-ratio:2/1;min-height:220px;max-height:350px;">
+                    <canvas id="forecastGraphCanvas" style="width:100%;height:100%;background:#121216;border-radius:8px;cursor:none;touch-action:none;display:block;"></canvas>
+                </div>
+            </div>
+        `;
+        document.body.appendChild(modal);
         
-      ctx.fillRect(x + 1, y, Math.max(1, barWidth - 2), barHeight);
-    });
-  }
+        const canvas = document.getElementById("forecastGraphCanvas");
+        document.getElementById("closeGraphModalBtn").addEventListener("click", () => {
+            modal.style.display = "none";
+            modal.dragX = null;
+        });
+
+        document.getElementById("graphTypeSelect").addEventListener("change", (e) => {
+            if (modal.currentItem && canvas) {
+                drawForecastCanvasGraph(modal.currentItem, e.target.value, canvas, modal.dragX, modal.prevItem, modal.nextItem);
+            }
+        });
+        
+        // Attach click handler for Weather Map Modal Button
+        document.getElementById("weatherMapModalBtn")?.addEventListener("click", async () => {
+            const currentMode = document.getElementById("graphTypeSelect")?.value || "temp";
+            
+            // Query history modal element and target date input directly
+            const historyModalEl = document.getElementById('historyModal');
+            const historyDateInput = historyModalEl ? historyModalEl.querySelector('input[type="date"], input.history-date, #historyDate, [name="historyDate"]') : null;
+
+            // 1. Identify active selected day card/tab element from UI
+            const dayElements = document.querySelectorAll('.day-tab, .forecast-day-card, .day-card'); 
+            let selectedDayIndex = itemIndex >= 0 ? itemIndex : 0;
+            
+            dayElements.forEach((el, index) => {
+                if (
+                    el.classList.contains('active') || 
+                    el.classList.contains('selected') || 
+                    el.getAttribute('aria-selected') === 'true' ||
+                    el.dataset.selected === 'true'
+                ) {
+                    selectedDayIndex = index;
+                }
+            });
+
+            // 2. Explicitly determine if item, input context, or app mode is historical
+            const isHistoricalItem = !!(
+                historyDateInput?.value ||
+                (historyModalEl && historyModalEl.style.display !== 'none') ||
+                item?.isHistorical || 
+                window._radarState?.isHistorical || 
+                window.isHistoricalMode || 
+                item?.history || 
+                item?.historical
+            );
+
+            // 3. Resolve root dataset prioritizing historical data sources when in historical mode
+            const rootData = isHistoricalItem
+                ? (window.historicalWeatherData || window.weatherHistory || window.pastWeatherData || item || {})
+                : (window._radarState?.currentItem || window.currentWeatherData || (fullForecast && fullForecast.length > 0 ? fullForecast : null) || item || {});
+
+            // 4. Helper to extract forecast or historical arrays across schema variations
+            const extractDaysArray = (data) => {
+                if (!data) return [];
+                if (Array.isArray(data)) return data;
+                return data.history || data.historical || data.past || 
+                       data.daily || data.forecast || data.days || 
+                       data.weekly || data.list || data.timeline || 
+                       data.archive || data.data || [];
+            };
+
+            let daysArray = extractDaysArray(rootData);
+
+            if (daysArray.length === 0 && rootData && typeof rootData === 'object') {
+                for (const key of Object.keys(rootData)) {
+                    if (rootData[key] && typeof rootData[key] === 'object') {
+                        const nested = extractDaysArray(rootData[key]);
+                        if (nested.length > 0) {
+                            daysArray = nested;
+                            break;
+                        }
+                    }
+                }
+            }
+
+            // Fallback API fetch if no local historical dataset exists
+            if (daysArray.length === 0 && isHistoricalItem && typeof fetchHistoricalData === 'function') {
+                try {
+                    const selectedDate = historyDateInput?.value || null;
+                    const fetchedHistory = await fetchHistoricalData(selectedDate);
+                    daysArray = extractDaysArray(fetchedHistory);
+                } catch (err) {
+                    console.error("Failed to load historical weather data:", err);
+                }
+            }
+
+            // 5. Extract target selected day card object
+            const selectedDayCard = daysArray[selectedDayIndex] || daysArray[0] || item || rootData;
+
+            // Preserve parent metadata & explicit historical state flag
+            if (selectedDayCard && typeof rootData === 'object') {
+                selectedDayCard.lat = selectedDayCard.lat ?? rootData.lat ?? rootData.latitude ?? item?.lat;
+                selectedDayCard.lon = selectedDayCard.lon ?? rootData.lon ?? rootData.longitude ?? item?.lon;
+                selectedDayCard.timezone = selectedDayCard.timezone ?? rootData.timezone ?? rootData.tz ?? item?.timezone;
+                selectedDayCard.days = daysArray;
+                selectedDayCard.isHistorical = isHistoricalItem;
+                if (historyDateInput?.value) {
+                    selectedDayCard.selectedDate = historyDateInput.value;
+                }
+            }
+
+            // 6. Extract/Sync exact values from radar modal if available before passing to openWeatherMapModal
+            const radarActiveStore = window._radarState?.currentItem || window.radarModalData || window.activeRadarItem;
+            const finalTargetItem = radarActiveStore ? { ...selectedDayCard, ...radarActiveStore } : selectedDayCard;
+
+            // 7. Open radar modal targeting the isolated selected day card with fully extracted/synced values
+            if (typeof openWeatherMapModal === 'function') {
+                openWeatherMapModal(finalTargetItem, currentMode, selectedDayIndex);
+            }
+        });
+        
+        const updateScrubber = (clientX) => {
+            const rect = canvas.getBoundingClientRect();
+            const x = (clientX - rect.left) * (canvas.width / rect.width);
+            modal.dragX = x;
+            const currentMode = document.getElementById("graphTypeSelect").value || "temp";
+            drawForecastCanvasGraph(modal.currentItem, currentMode, canvas, modal.dragX, modal.prevItem, modal.nextItem);
+        };
+        const clearScrubber = () => {
+            modal.dragX = null;
+            const currentMode = document.getElementById("graphTypeSelect").value || "temp";
+            drawForecastCanvasGraph(modal.currentItem, currentMode, canvas, null, modal.prevItem, modal.nextItem);
+        };
+        
+        canvas.addEventListener("mousemove", (e) => updateScrubber(e.clientX));
+        canvas.addEventListener("mouseleave", clearScrubber);
+        canvas.addEventListener("touchstart", (e) => {
+            if (e.touches.length > 0) { e.preventDefault(); updateScrubber(e.touches[0].clientX); }
+        }, { passive: false });
+        canvas.addEventListener("touchmove", (e) => {
+            if (e.touches.length > 0) { e.preventDefault(); updateScrubber(e.touches[0].clientX); }
+        }, { passive: false });
+        canvas.addEventListener("touchend", clearScrubber);
+        canvas.addEventListener("touchcancel", clearScrubber);
+    }
+
+    // Resolve active item directly from radar modal state or global store if available, falling back to item parameter
+    const activeItem = window._radarState?.currentItem || window.radarModalData || window.activeRadarItem || item;
+
+    // Normalize item hourly schema if historical or radar data uses 'hours', 'history', or nested hourly structure
+    if (activeItem && typeof activeItem === 'object') {
+        activeItem.hourly = activeItem.hourly || activeItem.hours || activeItem.hourlyData || activeItem.history || activeItem.timeline || [];
+    }
+
+    modal.currentItem = activeItem;
+    modal.prevItem = (fullForecast && itemIndex > 0) ? fullForecast[itemIndex - 1] : null;
+    modal.nextItem = (fullForecast && itemIndex >= 0 && itemIndex < fullForecast.length - 1) ? fullForecast[itemIndex + 1] : null;
+    modal.dragX = null;
+    modal.style.display = "flex";
+    
+    const currentMode = document.getElementById("graphTypeSelect").value || "temp";
+    const modalCanvas = document.getElementById("forecastGraphCanvas");
+    
+    if (typeof updateTrafficButtonState === "function") {
+        updateTrafficButtonState();
+    }
+    
+    setTimeout(() => {
+        const rect = modalCanvas.getBoundingClientRect();
+        modalCanvas.width = rect.width * (window.devicePixelRatio || 1);
+        modalCanvas.height = rect.height * (window.devicePixelRatio || 1);
+        drawForecastCanvasGraph(activeItem, currentMode, modalCanvas, null, modal.prevItem, modal.nextItem);
+    }, 50);
 }
 function getGraphOverrideEvents() {
   if (window.graphOverrides) return window.graphOverrides;
