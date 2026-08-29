@@ -1943,147 +1943,6 @@ function updateDashboard() {
     }
 }
 function openForecastGraphModal(item, fullForecast = [], itemIndex = -1) {
-    // Helper: Standardizes historical & forecast schemas (handles columnar arrays & key aliases)
-    const normalizeItemData = (targetItem) => {
-        if (!targetItem || typeof targetItem !== 'object') return targetItem;
-
-        let rawHourly = targetItem.hourly || targetItem.hours || targetItem.hourlyData || 
-                        targetItem.history || targetItem.timeline || targetItem.data || [];
-                        
-        let normalizedHourly = [];
-
-        // 1. Handle Columnar Formats (e.g., Open-Meteo: { time: [...], temperature_2m: [...] })
-        if (rawHourly && !Array.isArray(rawHourly) && typeof rawHourly === 'object') {
-            const times = rawHourly.time || rawHourly.datetime || [];
-            const temps = rawHourly.temperature_2m || rawHourly.temp || rawHourly.temperature || [];
-            const feels = rawHourly.apparent_temperature || rawHourly.feels_like || rawHourly.feelsLike || [];
-            const winds = rawHourly.wind_speed_10m || rawHourly.windspeed_10m || rawHourly.wind_speed || rawHourly.wind || [];
-            const gusts = rawHourly.wind_gusts_10m || rawHourly.windgusts_10m || rawHourly.wind_gust || rawHourly.gust || [];
-            const pressures = rawHourly.surface_pressure || rawHourly.pressure_msl || rawHourly.pressure || [];
-            const humidities = rawHourly.relative_humidity_2m || rawHourly.relativehumidity_2m || rawHourly.humidity || [];
-            const uvs = rawHourly.uv_index || rawHourly.uv || [];
-            const precips = rawHourly.precipitation_probability || rawHourly.precipitation || rawHourly.precip || rawHourly.pop || [];
-            const dosScores = rawHourly.dos || rawHourly.dos_score || rawHourly.dosScore || [];
-
-            const len = Math.max(times.length, temps.length);
-            for (let i = 0; i < len; i++) {
-                normalizedHourly.push({
-                    time: times[i],
-                    temp: temps[i] ?? null,
-                    feelsLike: feels[i] ?? temps[i] ?? null,
-                    wind: winds[i] ?? 0,
-                    gust: gusts[i] ?? winds[i] ?? 0,
-                    pressure: pressures[i] ?? null,
-                    humidity: humidities[i] ?? null,
-                    uv: uvs[i] ?? 0,
-                    precip: precips[i] ?? 0,
-                    dos: dosScores[i] ?? 0
-                });
-            }
-        } 
-        // 2. Handle Object Arrays (e.g., Visual Crossing / OpenWeather)
-        else if (Array.isArray(rawHourly)) {
-            normalizedHourly = rawHourly.map(h => {
-                if (typeof h !== 'object' || !h) return h;
-                const tempVal = h.temp ?? h.temperature ?? h.temp_2m ?? h.temperature_2m ?? h.temp_c ?? h.temp_f;
-                const feelsVal = h.feelsLike ?? h.feelslike ?? h.feels_like ?? h.apparent_temperature ?? h.apparent_temp ?? tempVal;
-                const windVal = h.wind ?? h.windSpeed ?? h.wind_speed ?? h.windspeed_10m ?? 0;
-                const gustVal = h.gust ?? h.wind_gust ?? h.wind_gusts_10m ?? windVal;
-                const pressVal = h.pressure ?? h.surface_pressure ?? h.pressure_msl ?? h.barometer;
-                const humVal = h.humidity ?? h.relative_humidity ?? h.relativehumidity_2m ?? h.rh;
-                const uvVal = h.uv ?? h.uv_index ?? h.uvIndex ?? 0;
-                const precipVal = h.precip ?? h.precipitation ?? h.pop ?? h.precip_chance ?? h.precipitation_probability ?? 0;
-                const dosVal = h.dos ?? h.dosScore ?? h.dos_score ?? 0;
-
-                return {
-                    ...h,
-                    temp: tempVal,
-                    feelsLike: feelsVal,
-                    wind: windVal,
-                    gust: gustVal,
-                    pressure: pressVal,
-                    humidity: humVal,
-                    uv: uvVal,
-                    precip: precipVal,
-                    dos: dosVal
-                };
-            });
-        }
-
-        targetItem.hourly = normalizedHourly;
-
-        // 3. Compute explicit High/Low bounds across all hourly layers
-        if (normalizedHourly.length > 0) {
-            const validTemps = normalizedHourly.map(h => h.temp).filter(v => typeof v === 'number' && !isNaN(v));
-            const validFeels = normalizedHourly.map(h => h.feelsLike).filter(v => typeof v === 'number' && !isNaN(v));
-            const validWinds = normalizedHourly.map(h => h.wind).filter(v => typeof v === 'number' && !isNaN(v));
-            const validPress = normalizedHourly.map(h => h.pressure).filter(v => typeof v === 'number' && !isNaN(v));
-            const validHumid = normalizedHourly.map(h => h.humidity).filter(v => typeof v === 'number' && !isNaN(v));
-            const validUv    = normalizedHourly.map(h => h.uv).filter(v => typeof v === 'number' && !isNaN(v));
-            const validPrecip= normalizedHourly.map(h => h.precip).filter(v => typeof v === 'number' && !isNaN(v));
-
-            if (validTemps.length) {
-                targetItem.tempMin = Math.min(...validTemps);
-                targetItem.tempMax = Math.max(...validTemps);
-            }
-            if (validFeels.length) {
-                targetItem.feelsMin = Math.min(...validFeels);
-                targetItem.feelsMax = Math.max(...validFeels);
-            }
-            if (validWinds.length) {
-                targetItem.windMax = Math.max(...validWinds);
-            }
-            if (validPress.length) {
-                targetItem.pressureMin = Math.min(...validPress);
-                targetItem.pressureMax = Math.max(...validPress);
-            }
-            if (validHumid.length) {
-                targetItem.humidityMin = Math.min(...validHumid);
-                targetItem.humidityMax = Math.max(...validHumid);
-            }
-            if (validUv.length) {
-                targetItem.uvMax = Math.max(...validUv);
-            }
-            if (validPrecip.length) {
-                targetItem.precipMax = Math.max(...validPrecip);
-            }
-        }
-
-        return targetItem;
-    };
-
-    // Determine mode state and resolve global historical datasets if fullForecast is missing
-    const isHistoricalItem = !!(
-        item?.isHistorical || 
-        window._radarState?.isHistorical || 
-        window.isHistoricalMode || 
-        item?.history || 
-        item?.historical
-    );
-
-    const resolvedForecastList = (fullForecast && fullForecast.length > 0)
-        ? fullForecast
-        : (isHistoricalItem 
-            ? (window.historicalWeatherData?.days || window.historicalWeatherData || window.weatherHistory || window.pastWeatherData || [])
-            : (window.currentWeatherData?.daily || window.currentWeatherData?.forecast || [])
-          );
-
-    const effectiveList = Array.isArray(resolvedForecastList) ? resolvedForecastList : [];
-
-    let resolvedIndex = itemIndex;
-    if (resolvedIndex < 0 && item && effectiveList.length > 0) {
-        resolvedIndex = effectiveList.findIndex(day => day === item || day.datetime === item.datetime || day.date === item.date);
-        if (resolvedIndex < 0) resolvedIndex = 0;
-    }
-
-    // Standardize current, previous, and next items for complete boundary graphs
-    const normalizedItem = normalizeItemData(item);
-    const rawPrevItem = (effectiveList && resolvedIndex > 0) ? effectiveList[resolvedIndex - 1] : null;
-    const rawNextItem = (effectiveList && resolvedIndex >= 0 && resolvedIndex < effectiveList.length - 1) ? effectiveList[resolvedIndex + 1] : null;
-
-    const normalizedPrevItem = rawPrevItem ? normalizeItemData(rawPrevItem) : null;
-    const normalizedNextItem = rawNextItem ? normalizeItemData(rawNextItem) : null;
-
     let modal = document.getElementById("forecastGraphModal");
     if (!modal) {
         modal = document.createElement("div");
@@ -2129,10 +1988,13 @@ function openForecastGraphModal(item, fullForecast = [], itemIndex = -1) {
             }
         });
         
+        // Attach click handler for Weather Map Modal Button
         document.getElementById("weatherMapModalBtn")?.addEventListener("click", async () => {
             const currentMode = document.getElementById("graphTypeSelect")?.value || "temp";
+            
+            // 1. Identify active selected day card/tab element from UI
             const dayElements = document.querySelectorAll('.day-tab, .forecast-day-card, .day-card'); 
-            let selectedDayIndex = resolvedIndex >= 0 ? resolvedIndex : 0;
+            let selectedDayIndex = itemIndex >= 0 ? itemIndex : 0;
             
             dayElements.forEach((el, index) => {
                 if (
@@ -2145,16 +2007,67 @@ function openForecastGraphModal(item, fullForecast = [], itemIndex = -1) {
                 }
             });
 
-            const selectedDayCard = effectiveList[selectedDayIndex] || normalizedItem;
+            // 2. Explicitly determine if item or app mode is historical
+            const isHistoricalItem = !!(
+                item?.isHistorical || 
+                window._radarState?.isHistorical || 
+                window.isHistoricalMode || 
+                item?.history || 
+                item?.historical
+            );
 
-            if (selectedDayCard && typeof selectedDayCard === 'object') {
-                selectedDayCard.lat = selectedDayCard.lat ?? normalizedItem?.lat ?? window.currentWeatherData?.lat;
-                selectedDayCard.lon = selectedDayCard.lon ?? normalizedItem?.lon ?? window.currentWeatherData?.lon;
-                selectedDayCard.timezone = selectedDayCard.timezone ?? normalizedItem?.timezone;
-                selectedDayCard.days = effectiveList;
+            // 3. Resolve root dataset prioritizing historical data sources when in historical mode
+            const rootData = isHistoricalItem
+                ? (window.historicalWeatherData || window.weatherHistory || window.pastWeatherData || item || {})
+                : (window._radarState?.currentItem || window.currentWeatherData || (fullForecast && fullForecast.length > 0 ? fullForecast : null) || item || {});
+
+            // 4. Helper to extract forecast or historical arrays across schema variations
+            const extractDaysArray = (data) => {
+                if (!data) return [];
+                if (Array.isArray(data)) return data;
+                return data.history || data.historical || data.past || 
+                       data.daily || data.forecast || data.days || 
+                       data.weekly || data.list || data.timeline || 
+                       data.archive || data.data || [];
+            };
+
+            let daysArray = extractDaysArray(rootData);
+
+            if (daysArray.length === 0 && rootData && typeof rootData === 'object') {
+                for (const key of Object.keys(rootData)) {
+                    if (rootData[key] && typeof rootData[key] === 'object') {
+                        const nested = extractDaysArray(rootData[key]);
+                        if (nested.length > 0) {
+                            daysArray = nested;
+                            break;
+                        }
+                    }
+                }
+            }
+
+            // Fallback API fetch if no local historical dataset exists
+            if (daysArray.length === 0 && isHistoricalItem && typeof fetchHistoricalData === 'function') {
+                try {
+                    const fetchedHistory = await fetchHistoricalData();
+                    daysArray = extractDaysArray(fetchedHistory);
+                } catch (err) {
+                    console.error("Failed to load historical weather data:", err);
+                }
+            }
+
+            // 5. Extract target selected day card object
+            const selectedDayCard = daysArray[selectedDayIndex] || daysArray[0] || item || rootData;
+
+            // Preserve parent metadata & explicit historical state flag
+            if (selectedDayCard && typeof rootData === 'object') {
+                selectedDayCard.lat = selectedDayCard.lat ?? rootData.lat ?? rootData.latitude ?? item?.lat;
+                selectedDayCard.lon = selectedDayCard.lon ?? rootData.lon ?? rootData.longitude ?? item?.lon;
+                selectedDayCard.timezone = selectedDayCard.timezone ?? rootData.timezone ?? rootData.tz ?? item?.timezone;
+                selectedDayCard.days = daysArray;
                 selectedDayCard.isHistorical = isHistoricalItem;
             }
 
+            // 6. Open radar modal targeting the isolated selected day card
             openWeatherMapModal(selectedDayCard, currentMode, selectedDayIndex);
         });
         
@@ -2183,9 +2096,14 @@ function openForecastGraphModal(item, fullForecast = [], itemIndex = -1) {
         canvas.addEventListener("touchcancel", clearScrubber);
     }
     
-    modal.currentItem = normalizedItem;
-    modal.prevItem = normalizedPrevItem;
-    modal.nextItem = normalizedNextItem;
+    // Normalize item hourly schema if historical data uses 'hours' or 'history'
+    if (item && typeof item === 'object') {
+        item.hourly = item.hourly || item.hours || item.hourlyData || item.history || item.timeline || [];
+    }
+
+    modal.currentItem = item;
+    modal.prevItem = (fullForecast && itemIndex > 0) ? fullForecast[itemIndex - 1] : null;
+    modal.nextItem = (fullForecast && itemIndex >= 0 && itemIndex < fullForecast.length - 1) ? fullForecast[itemIndex + 1] : null;
     modal.dragX = null;
     modal.style.display = "flex";
     
@@ -2200,7 +2118,7 @@ function openForecastGraphModal(item, fullForecast = [], itemIndex = -1) {
         const rect = modalCanvas.getBoundingClientRect();
         modalCanvas.width = rect.width * (window.devicePixelRatio || 1);
         modalCanvas.height = rect.height * (window.devicePixelRatio || 1);
-        drawForecastCanvasGraph(normalizedItem, currentMode, modalCanvas, null, normalizedPrevItem, normalizedNextItem);
+        drawForecastCanvasGraph(item, currentMode, modalCanvas, null, modal.prevItem, modal.nextItem);
     }, 50);
 }
 // Global radar state initialization
