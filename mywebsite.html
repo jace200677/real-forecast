@@ -5062,7 +5062,30 @@ function updateCardView(selectedVal, data, cardContainerId = 'historyCardContain
   const formattedDateStr = `${mNum}/${dNum}/${y}`;
   const paddedDateStr = `${String(mNum).padStart(2, '0')}/${String(dNum).padStart(2, '0')}/${y}`;
 
-  const overrideItem = data.find(i => 
+  // 1.5 Check Radar Modal or Global Store Sources first
+  let radarSourceItem = null;
+  const globalRadarStore = window.radarModalData || window.activeRadarItem || window.radarCache;
+  
+  if (globalRadarStore) {
+    if (Array.isArray(globalRadarStore)) {
+      radarSourceItem = globalRadarStore.find(i => 
+        i.dateStr === formattedDateStr || i.dateStr === paddedDateStr || 
+        i.date === formattedDateStr || i.date === paddedDateStr
+      );
+    } else if (typeof globalRadarStore === 'object') {
+      const targetKeyMatch = globalRadarStore.dateStr === formattedDateStr || 
+                            globalRadarStore.dateStr === paddedDateStr || 
+                            globalRadarStore.date === formattedDateStr || 
+                            globalRadarStore.date === paddedDateStr;
+      if (targetKeyMatch || globalRadarStore.isRadarActive) {
+        radarSourceItem = globalRadarStore;
+      }
+    }
+  }
+
+  // Fallback or combine with standard payload array
+  const sourceList = Array.isArray(data) ? data : (window.historyDataPayload || []);
+  const overrideItem = radarSourceItem || sourceList.find(i => 
     i.dateStr === formattedDateStr || 
     i.dateStr === paddedDateStr || 
     i.date === formattedDateStr || 
@@ -5090,7 +5113,6 @@ function updateCardView(selectedVal, data, cardContainerId = 'historyCardContain
   } else {
     // Dates from 8/23/2026 up to Yesterday
     if (overrideItem) {
-      // Respect explicit override properties directly instead of letting fallback logic overwrite them
       const highTemp = overrideItem.highTemp ?? overrideItem.tempHigh ?? 70;
       const lowTemp = overrideItem.lowTemp ?? overrideItem.tempLow ?? 50;
       const baseTemp = (highTemp + lowTemp) / 2;
@@ -5101,7 +5123,7 @@ function updateCardView(selectedVal, data, cardContainerId = 'historyCardContain
         ...overrideItem,
         dateStr: formattedDateStr,
         date: formattedDateStr,
-        condition: overrideItem.condition || "Archive Event Record",
+        condition: overrideItem.condition || "Radar / Archive Event Record",
         highTemp: highTemp,
         lowTemp: lowTemp,
         wind: baseWind,
@@ -5112,7 +5134,7 @@ function updateCardView(selectedVal, data, cardContainerId = 'historyCardContain
         }))
       };
     } else {
-      // Calculate day metrics via helper functions if no explicit override is provided
+      // Calculate day metrics via helper functions if no override or radar entry is found
       let metrics = {};
       if (typeof calculateForecastDayCardMetrics === 'function') {
         metrics = calculateForecastDayCardMetrics(yNum, mNum, dNum, null, [], 1, 1, 5, 0) || {};
