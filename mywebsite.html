@@ -4888,6 +4888,417 @@ function getTempRangeGradientCss(tempLow, tempHigh) {
     return `linear-gradient(90deg, ${gradientStops.join(", ")})`;
 }
 
+
+   
+function updateTrafficButtonState(baseDateOverride = null) {
+    const btn = document.querySelector('.traffic-btn');
+    if (!btn) return;
+
+    // Use selected date card override if provided, otherwise fallback to current system time
+    const now = baseDateOverride ? new Date(baseDateOverride) : new Date();
+
+    const blackoutStart = new Date('2026-08-25T09:00:00');
+    const invisibleStart = new Date('2026-08-25T10:00:00');
+    const blackoutEnd = new Date('2026-08-26T14:00:00');
+
+    // New invisible date window starting on August 24, 2026 (indefinite or single-point check)
+    const extraInvisibleStart = new Date('2026-08-24T00:00:00');
+
+    // Reset default classes/attributes first
+    btn.disabled = false;
+    btn.classList.remove('is-disabled', 'is-invisible');
+    btn.setAttribute('onclick', 'openTrafficMapModal()');
+
+    if ((now >= invisibleStart && now < blackoutEnd) || (now < extraInvisibleStart)) {
+        // Invisible state 
+        btn.disabled = true;
+        btn.classList.add('is-invisible');
+        btn.removeAttribute('onclick');
+    } else if (now >= blackoutStart && now < invisibleStart) {
+        // Greyed out and disabled state 
+        btn.disabled = true;
+        btn.classList.add('is-disabled');
+        btn.removeAttribute('onclick');
+    }
+}
+/**
+ * Main handler function to show historical weather data down to 8/23/2026
+ */
+async function handleWeatherHistory() {
+  const lat = document.getElementById('latInput')?.value || 41.8781;
+  const lon = document.getElementById('lonInput')?.value || -87.6298;
+
+  showLoadingModal('Fetching Weather History (8/22/2026 to Yesterday)...');
+
+  try {
+    const historyData = await fetchHistoricalWeatherData(lat, lon);
+    renderHistoryCardsModal(historyData);
+  } catch (error) {
+    console.error('Error loading weather history:', error);
+    alert('Failed to retrieve weather history data. Please try again.');
+    closeModal();
+  }
+}
+
+/**
+ * Fetches historical grid observations from 2026-08-22 up to 1 day before current date
+ */
+async function fetchHistoricalWeatherData(lat, lon) {
+  const pointRes = await fetch(`https://api.weather.gov/points/${lat},${lon}`);
+  if (!pointRes.ok) throw new Error('Failed to resolve location coordinates');
+  const pointData = await pointRes.json();
+  const { gridId, gridX, gridY } = pointData.properties;
+
+  // Set cutoff: Start at 2026-08-22, End strictly yesterday (1 day before today)
+  const startDate = '2026-08-22';
+  const yesterday = new Date();
+  yesterday.setDate(yesterday.getDate() - 1);
+  const endDate = yesterday.toISOString().split('T')[0];
+
+  const startIso = `${startDate}T00:00:00Z`;
+  const endIso = `${endDate}T23:59:59Z`;
+
+  const historyRes = await fetch(
+    `https://api.weather.gov/gridpoints/${gridId}/${gridX},${gridY}/stations`
+  );
+  if (!historyRes.ok) throw new Error('Failed to fetch observation stations');
+  const stationsData = await historyRes.json();
+  const stationId = stationsData.features[0]?.properties?.stationIdentifier;
+
+  if (!stationId) throw new Error('No weather stations found near location');
+
+  const obsRes = await fetch(
+    `https://api.weather.gov/stations/${stationId}/observations?start=${startIso}&end=${endIso}`
+  );
+  if (!obsRes.ok) throw new Error('Failed to fetch observation data');
+  const obsData = await obsRes.json();
+
+  return parseHistoryObservations(obsData.features, startDate, endDate);
+}
+
+/**
+ * Parses observations into daily records with hourly dataset arrays for mini graphs
+ */
+function parseHistoryObservations(observations, startDateCutoff, endDateCutoff) {
+  const dailyMap = {};
+
+  observations.forEach((obs) => {
+    const props = obs.properties;
+    if (!props.timestamp) return;
+    
+    const [dateKey, timePart] = props.timestamp.split('T');
+    const hour = parseInt(timePart.split(':')[0], 10);
+
+    // Strictly enforce date bounds (8/22/2026 to Yesterday)
+    if (dateKey < startDateCutoff || dateKey > endDateCutoff) return;
+
+    if (!dailyMap[dateKey]) {
+      dailyMap[dateKey] = {
+        date: dateKey,
+        temps: [],
+        winds: [],
+        gusts: [],
+        conditions: [],
+        hourly: Array.from({ length: 24 }, (_, i) => ({ hour: i, temp: null, speed: 0, gust: 0 }))
+      };
+    }
+
+    let tempF = null;
+    if (props.temperature?.value !== null) {
+      tempF = (props.temperature.value * 9) / 5 + 32;
+      dailyMap[dateKey].temps.push(tempF);
+    }
+
+    let windMph = 0;
+    if (props.windSpeed?.value !== null) {
+      windMph = props.windSpeed.value * 0.621371;
+      dailyMap[dateKey].winds.push(windMph);
+    }
+
+    let gustMph = 0;
+    if (props.windGust?.value !== null) {
+      gustMph = props.windGust.value * 0.621371;
+      dailyMap[dateKey].gusts.push(gustMph);
+    }
+
+    if (props.textDescription) {
+      dailyMap[dateKey].conditions.push(props.textDescription);
+    }
+
+    // Populate hourly breakdown slot
+    dailyMap[dateKey].hourly[hour] = {
+      hour: hour,
+      temp: tempF !== null ? Math.round(tempF) : 50,
+      value: tempF !== null ? Math.round(tempF) : 50,
+      speed: Math.round(windMph),
+      gust: Math.round(gustMph),
+      dos: 5,
+      precip: 0
+    };
+  });
+
+  const graphOverrides = getGraphOverrideEvents();
+
+  return Object.values(dailyMap)
+    .sort((a, b) => b.date.localeCompare(a.date))
+    .map((day) => {
+      let maxTemp = day.temps.length ? Math.round(Math.max(...day.temps)) : 70;
+      let minTemp = day.temps.length ? Math.round(Math.min(...day.temps)) : 50;
+      let maxWind = day.winds.length ? Math.round(Math.max(...day.winds)) : 0;
+      let maxGust = day.gusts.length ? Math.round(Math.max(...day.gusts)) : 0;
+      let condition = day.conditions[0] || 'Clear';
+
+      // Interpolate missing hourly temps for fluid mini-graph display
+      let lastKnownTemp = minTemp;
+      day.hourly.forEach(h => {
+        if (h.temp === null) h.temp = lastKnownTemp;
+        else lastKnownTemp = h.temp;
+        h.value = h.temp;
+      });
+
+      let record = {
+        date: formatDateDisplay(day.date),
+        rawDate: day.date,
+        highTemp: maxTemp,
+        lowTemp: minTemp,
+        wind: maxWind,
+        gust: maxGust,
+        condition: condition,
+        hourly: day.hourly,
+        isOverridden: false
+      };
+
+      record = mergeGraphOverrides(record, graphOverrides[day.date]);
+      record.dos = calculateDOS(record.wind, record.condition);
+      record.wis = calculateWIS(record.lowTemp, record.wind, record.condition);
+
+      return record;
+    });
+}
+
+/**
+ * Renders history modal displaying cards with clickable hourly trend graph canvases
+ */
+function renderHistoryCardsModal(data) {
+  let modal = document.getElementById('historyModal');
+  if (!modal) {
+    modal = document.createElement('div');
+    modal.id = 'historyModal';
+    modal.style.cssText = `
+      position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+      background: rgba(0,0,0,0.85); display: flex; align-items: center;
+      justify-content: center; z-index: 9999; box-sizing: border-box; padding: 15px;
+    `;
+    document.body.appendChild(modal);
+  }
+
+  const minAllowedDate = '2005-07-07';
+  
+  // Calculate yesterday's date using local time to restrict the max limit properly
+  const now = new Date();
+  now.setDate(now.getDate() - 1);
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, '0');
+  const day = String(now.getDate()).padStart(2, '0');
+  const yesterdayStr = `${year}-${month}-${day}`;
+
+  const validDates = data.map(item => {
+    const parts = item.dateStr ? item.dateStr.split('/') : [];
+    if (parts.length === 3) {
+      const [m, d, y] = parts;
+      const formattedMonth = m.padStart(2, '0');
+      const formattedDay = d.padStart(2, '0');
+      return { value: `${y}-${formattedMonth}-${formattedDay}`, label: item.dateStr, item };
+    }
+    return null;
+  }).filter(Boolean);
+
+  const defaultDate = validDates.length > 0 ? validDates[validDates.length - 1].value : yesterdayStr;
+
+  modal.innerHTML = `
+    <div style="background: #0f172a; color: #fff; padding: 24px; border-radius: 14px; max-width: 450px; width: 100%; box-shadow: 0 12px 40px rgba(0,0,0,0.8); border: 1px solid #1e293b; display: flex; flex-direction: column; gap: 16px;">
+      <div style="display: flex; justify-content: space-between; align-items: center;">
+        <h3 style="margin: 0; font-size: 18px; color: #f8fafc;"><i class="fas fa-history" style="color:#38bdf8;"></i> NOAA Weather History</h3>
+        <button onclick="closeModal()" style="background: #1e293b; border: none; color: #fff; width: 30px; height: 30px; border-radius: 50%; font-size: 16px; cursor: pointer; display: flex; align-items: center; justify-content: center;">✕</button>
+      </div>
+      
+      <div style="display: flex; flex-direction: column; gap: 8px;">
+        <label for="historyDateInput" style="font-size: 13px; color: #94a3b8;">Choose date (from July 7, 2005 onward):</label>
+        <input type="date" id="historyDateInput" min="${minAllowedDate}" max="${yesterdayStr}" value="${defaultDate}" style="background: #1e293b; border: 1px solid #334155; color: #fff; padding: 10px 14px; border-radius: 8px; font-size: 15px; outline: none; width: 100%; box-sizing: border-box;">
+      </div>
+
+      <div id="historyCardContainer" style="margin-top: 5px;"></div>
+    </div>
+  `;
+
+  const dateInput = document.getElementById('historyDateInput');
+
+  dateInput.addEventListener('change', (e) => {
+    updateCardView(e.target.value, data);
+  });
+
+  if (defaultDate) {
+    updateCardView(defaultDate, data);
+  }
+}
+
+function updateCardView(selectedVal, data, cardContainerId = 'historyCardContainer', canvasId = 'singleHistoryGraphCanvas') {
+  const cardContainer = document.getElementById(cardContainerId);
+  if (!cardContainer) return;
+
+  const [y, m, d] = selectedVal.split('-');
+  const selectedDateObj = new Date(parseInt(y, 10), parseInt(m, 10) - 1, parseInt(d, 10));
+  const cutoffDateObj = new Date(2026, 7, 23, 0, 0, 0); // August 23, 2026 local midnight
+
+  const formattedDateStr = `${parseInt(m, 10)}/${parseInt(d, 10)}/${y}`;
+  const overrideItem = data.find(i => i.dateStr === formattedDateStr);
+
+  let matchedItem;
+
+  if (selectedDateObj < cutoffDateObj) {
+    matchedItem = overrideItem && overrideItem.isNoaaSource ? overrideItem : {
+      dateStr: formattedDateStr,
+      date: formattedDateStr,
+      dos: Math.floor(Math.random() * 4) + 6,
+      condition: "NOAA Historical Archive Record",
+      highTemp: Math.floor(Math.random() * 25) + 60,
+      lowTemp: Math.floor(Math.random() * 15 + 40),
+      wind: Math.floor(Math.random() * 12) + 4,
+      hourly: Array.from({ length: 24 }, (_, i) => ({
+        temp: Math.round(52 + 14 * Math.sin((i - 6) / 24 * Math.PI * 2))
+      }))
+    };
+  } else {
+    matchedItem = overrideItem || {
+      dateStr: formattedDateStr,
+      date: formattedDateStr,
+      dos: Math.floor(Math.random() * 5) + 5,
+      condition: "NOAA Forecast / Archive Record",
+      highTemp: Math.floor(Math.random() * 30) + 55,
+      lowTemp: Math.floor(Math.random() * 20 + 35),
+      wind: Math.floor(Math.random() * 15) + 5,
+      hourly: Array.from({ length: 24 }, (_, i) => ({
+        temp: Math.round(50 + 15 * Math.sin((i - 6) / 24 * Math.PI * 2))
+      }))
+    };
+  }
+
+  cardContainer.innerHTML = `
+    <div class="history-card" style="background:#18181c; border: 1px solid #27272a; border-radius: 12px; padding: 16px; color: #fff; width: 100%; box-sizing: border-box; display: flex; flex-direction: column; justify-content: space-between; box-shadow: 0 4px 12px rgba(0,0,0,0.4);">
+      <div>
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 8px;">
+          <strong style="font-size: 16px; color: #38bdf8;">${matchedItem.date || matchedItem.dateStr}</strong>
+          <span style="font-size: 12px; background:#27272a; padding: 3px 8px; border-radius: 4px; color:#a1a1aa;">DOS: ${matchedItem.dos}/10</span>
+        </div>
+        <div style="font-size: 13px; color: #e4e4e7; margin-bottom: 10px;">${matchedItem.condition}</div>
+        <div style="font-size: 12px; color: #a1a1aa; margin-bottom: 12px; display: flex; gap: 15px;">
+          <span>🌡️ ${matchedItem.highTemp}° / ${matchedItem.lowTemp}°F</span>
+          <span>💨 ${matchedItem.wind} mph</span>
+        </div>
+      </div>
+
+      <!-- Clickable Forecast Graph Modal Trigger -->
+      <div style="position: relative; cursor: pointer;" onclick='openForecastGraphModal(${JSON.stringify(matchedItem).replace(/'/g, "&#39;")})'>
+        <canvas id="${canvasId}" width="380" height="90" style="background:#090d16; border-radius: 6px; border: 1px solid #27272a; width: 100%; display: block;"></canvas>
+        <div style="position: absolute; bottom: 6px; right: 8px; font-size: 10px; color: #38bdf8; background: rgba(0,0,0,0.6); padding: 2px 6px; border-radius: 3px; pointer-events: none;">Open Forecast Graph 📈</div>
+      </div>
+    </div>
+  `;
+
+  const canvas = document.getElementById(canvasId);
+  if (canvas && matchedItem.hourly) {
+    const ctx = canvas.getContext('2d');
+    const temps = matchedItem.hourly.map(h => h.temp);
+    const min = Math.min(...temps) - 2;
+    const max = Math.max(...temps) + 2;
+    const range = max - min || 1;
+
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    ctx.strokeStyle = '#1e293b';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(0, canvas.height / 2);
+    ctx.lineTo(canvas.width, canvas.height / 2);
+    ctx.stroke();
+
+    const barWidth = canvas.width / 24;
+    matchedItem.hourly.forEach((h, i) => {
+      const normalized = (h.temp - min) / range;
+      const barHeight = Math.max(4, normalized * (canvas.height - 12));
+      const x = i * barWidth;
+      const y = canvas.height - barHeight;
+
+      ctx.fillStyle = `hsl(${200 + normalized * 140}, 80%, 55%)`;
+      ctx.fillRect(x + 1, y, barWidth - 2, barHeight);
+    });
+  }
+}
+function getGraphOverrideEvents() {
+  if (window.graphOverrides) return window.graphOverrides;
+  try {
+    return JSON.parse(localStorage.getItem('weatherGraphOverrides')) || {};
+  } catch (e) {
+    return {};
+  }
+}
+
+function mergeGraphOverrides(record, override) {
+  if (!override) return record;
+  return {
+    ...record,
+    highTemp: override.highTemp !== undefined ? override.highTemp : record.highTemp,
+    lowTemp: override.lowTemp !== undefined ? override.lowTemp : record.lowTemp,
+    wind: override.wind !== undefined ? override.wind : record.wind,
+    gust: override.gust !== undefined ? override.gust : record.gust,
+    condition: override.condition !== undefined ? override.condition : record.condition,
+    isOverridden: true
+  };
+}
+
+function formatDateDisplay(dateStr) {
+  const [year, month, day] = dateStr.split('-');
+  return `${parseInt(month)}/${parseInt(day)}/${year}`;
+}
+
+function calculateDOS(wind, condition) {
+  let score = 10;
+  if (wind > 35) score -= 4;
+  else if (wind > 20) score -= 2;
+  const text = condition.toLowerCase();
+  if (text.includes('snow') || text.includes('ice')) score -= 5;
+  else if (text.includes('rain')) score -= 2;
+  return Math.max(1, score);
+}
+
+function calculateWIS(minTemp, wind, condition) {
+  let score = 1;
+  const text = condition.toLowerCase();
+  if (typeof minTemp === 'number' && minTemp < 32) score += 3;
+  if (wind > 25) score += 2;
+  if (text.includes('snow')) score += 3;
+  return Math.min(10, score);
+}
+
+function showLoadingModal(message) {
+  let modal = document.getElementById('historyModal');
+  if (!modal) {
+    modal = document.createElement('div');
+    modal.id = 'historyModal';
+    modal.style.cssText = `
+      position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+      background: rgba(0,0,0,0.85); display: flex; align-items: center;
+      justify-content: center; z-index: 9999;
+    `;
+    document.body.appendChild(modal);
+  }
+  modal.innerHTML = `
+    <div style="background: #1e293b; color: #fff; padding: 30px; border-radius: 10px; text-align: center;">
+      <i class="fas fa-spinner fa-spin fa-2x" style="color: #38bdf8; margin-bottom: 10px;"></i>
+      <p style="margin: 0; font-family: system-ui;">${message}</p>
+    </div>
+  `;
+}
 function drawForecastCanvasGraph(item, mode, canvas, activeX = null, prevItem = null, nextItem = null, isDragging = false) {
     if (!canvas) return;
     const ctx = canvas.getContext("2d");
@@ -4927,6 +5338,21 @@ function drawForecastCanvasGraph(item, mode, canvas, activeX = null, prevItem = 
     const currentMinutes = cdtHour * 60 + cdtMinute;
     const dateParts = item.dateStr ? item.dateStr.split('/').map(n => parseInt(n, 10)) : [];
     const isToday = dateParts.length === 3 && (dateParts[0] === cdtMonth && dateParts[1] === cdtDay && dateParts[2] === cdtYear);
+
+    // Check if date falls in the window after 08/22/2026 up to yesterday (1 day before today) for overrides
+    const isOverrideRange = (dateStr) => {
+        if (!dateStr) return false;
+        const parts = dateStr.split('/').map(n => parseInt(n, 10));
+        if (parts.length !== 3) return false;
+        
+        const itemNum = parts[2] * 10000 + parts[0] * 100 + parts[1];
+        const cutoffNum = 20260822; // 08/22/2026
+        
+        const yesterdayDate = new Date(cdtYear, cdtMonth - 1, cdtDay - 1);
+        const yesterdayNum = yesterdayDate.getFullYear() * 10000 + (yesterdayDate.getMonth() + 1) * 100 + yesterdayDate.getDate();
+        
+        return itemNum > cutoffNum && itemNum <= yesterdayNum;
+    };
 
     // Check if this item originated from the History Modal or is a past date
     let isHistorySource = item.isNoaaSource || (item.condition && item.condition.includes("NOAA")) || (document.getElementById('historyModal') && document.getElementById('historyModal').style.display !== 'none');
@@ -5065,9 +5491,13 @@ function drawForecastCanvasGraph(item, mode, canvas, activeX = null, prevItem = 
 
     const isWinterInversion = item.isWinterInversion || (todayHigh < morningLow);
 
-    // Updated historical data source handler using the synchronized grid/card extraction patterns
-    // Updated historical data source handler using the synchronized grid/card extraction patterns
     const getHistoricalSourceData = (item, propName, fallbackVal = 0) => {
+        if (isOverrideRange(item.dateStr || item.date)) {
+            if (item.overrideValues && item.overrideValues[propName] !== undefined) {
+                return item.overrideValues[propName];
+            }
+        }
+
         const historyModalEl = document.getElementById('historyModal');
         const historyDateInput = historyModalEl ? historyModalEl.querySelector('input[type="date"], input.history-date, #historyDate, [name="historyDate"], #historyDateDisplay, .selected-history-date') : null;
         
@@ -5088,7 +5518,6 @@ function drawForecastCanvasGraph(item, mode, canvas, activeX = null, prevItem = 
             return item[propName] !== undefined ? item[propName] : fallbackVal;
         }
 
-        // If the item itself explicitly carries its own NOAA/historical source payload, prioritize it
         if (item.isNoaaSource && item.noaaValues && item.noaaValues[propName] !== undefined) {
             return item.noaaValues[propName];
         }
@@ -5716,417 +6145,6 @@ function drawForecastCanvasGraph(item, mode, canvas, activeX = null, prevItem = 
         ctx.fillText(tooltipText, boxX + 8, 20 * scaleFactor);
     }
 }
-   
-function updateTrafficButtonState(baseDateOverride = null) {
-    const btn = document.querySelector('.traffic-btn');
-    if (!btn) return;
-
-    // Use selected date card override if provided, otherwise fallback to current system time
-    const now = baseDateOverride ? new Date(baseDateOverride) : new Date();
-
-    const blackoutStart = new Date('2026-08-25T09:00:00');
-    const invisibleStart = new Date('2026-08-25T10:00:00');
-    const blackoutEnd = new Date('2026-08-26T14:00:00');
-
-    // New invisible date window starting on August 24, 2026 (indefinite or single-point check)
-    const extraInvisibleStart = new Date('2026-08-24T00:00:00');
-
-    // Reset default classes/attributes first
-    btn.disabled = false;
-    btn.classList.remove('is-disabled', 'is-invisible');
-    btn.setAttribute('onclick', 'openTrafficMapModal()');
-
-    if ((now >= invisibleStart && now < blackoutEnd) || (now < extraInvisibleStart)) {
-        // Invisible state 
-        btn.disabled = true;
-        btn.classList.add('is-invisible');
-        btn.removeAttribute('onclick');
-    } else if (now >= blackoutStart && now < invisibleStart) {
-        // Greyed out and disabled state 
-        btn.disabled = true;
-        btn.classList.add('is-disabled');
-        btn.removeAttribute('onclick');
-    }
-}
-/**
- * Main handler function to show historical weather data down to 8/23/2026
- */
-async function handleWeatherHistory() {
-  const lat = document.getElementById('latInput')?.value || 41.8781;
-  const lon = document.getElementById('lonInput')?.value || -87.6298;
-
-  showLoadingModal('Fetching Weather History (8/22/2026 to Yesterday)...');
-
-  try {
-    const historyData = await fetchHistoricalWeatherData(lat, lon);
-    renderHistoryCardsModal(historyData);
-  } catch (error) {
-    console.error('Error loading weather history:', error);
-    alert('Failed to retrieve weather history data. Please try again.');
-    closeModal();
-  }
-}
-
-/**
- * Fetches historical grid observations from 2026-08-22 up to 1 day before current date
- */
-async function fetchHistoricalWeatherData(lat, lon) {
-  const pointRes = await fetch(`https://api.weather.gov/points/${lat},${lon}`);
-  if (!pointRes.ok) throw new Error('Failed to resolve location coordinates');
-  const pointData = await pointRes.json();
-  const { gridId, gridX, gridY } = pointData.properties;
-
-  // Set cutoff: Start at 2026-08-22, End strictly yesterday (1 day before today)
-  const startDate = '2026-08-22';
-  const yesterday = new Date();
-  yesterday.setDate(yesterday.getDate() - 1);
-  const endDate = yesterday.toISOString().split('T')[0];
-
-  const startIso = `${startDate}T00:00:00Z`;
-  const endIso = `${endDate}T23:59:59Z`;
-
-  const historyRes = await fetch(
-    `https://api.weather.gov/gridpoints/${gridId}/${gridX},${gridY}/stations`
-  );
-  if (!historyRes.ok) throw new Error('Failed to fetch observation stations');
-  const stationsData = await historyRes.json();
-  const stationId = stationsData.features[0]?.properties?.stationIdentifier;
-
-  if (!stationId) throw new Error('No weather stations found near location');
-
-  const obsRes = await fetch(
-    `https://api.weather.gov/stations/${stationId}/observations?start=${startIso}&end=${endIso}`
-  );
-  if (!obsRes.ok) throw new Error('Failed to fetch observation data');
-  const obsData = await obsRes.json();
-
-  return parseHistoryObservations(obsData.features, startDate, endDate);
-}
-
-/**
- * Parses observations into daily records with hourly dataset arrays for mini graphs
- */
-function parseHistoryObservations(observations, startDateCutoff, endDateCutoff) {
-  const dailyMap = {};
-
-  observations.forEach((obs) => {
-    const props = obs.properties;
-    if (!props.timestamp) return;
-    
-    const [dateKey, timePart] = props.timestamp.split('T');
-    const hour = parseInt(timePart.split(':')[0], 10);
-
-    // Strictly enforce date bounds (8/22/2026 to Yesterday)
-    if (dateKey < startDateCutoff || dateKey > endDateCutoff) return;
-
-    if (!dailyMap[dateKey]) {
-      dailyMap[dateKey] = {
-        date: dateKey,
-        temps: [],
-        winds: [],
-        gusts: [],
-        conditions: [],
-        hourly: Array.from({ length: 24 }, (_, i) => ({ hour: i, temp: null, speed: 0, gust: 0 }))
-      };
-    }
-
-    let tempF = null;
-    if (props.temperature?.value !== null) {
-      tempF = (props.temperature.value * 9) / 5 + 32;
-      dailyMap[dateKey].temps.push(tempF);
-    }
-
-    let windMph = 0;
-    if (props.windSpeed?.value !== null) {
-      windMph = props.windSpeed.value * 0.621371;
-      dailyMap[dateKey].winds.push(windMph);
-    }
-
-    let gustMph = 0;
-    if (props.windGust?.value !== null) {
-      gustMph = props.windGust.value * 0.621371;
-      dailyMap[dateKey].gusts.push(gustMph);
-    }
-
-    if (props.textDescription) {
-      dailyMap[dateKey].conditions.push(props.textDescription);
-    }
-
-    // Populate hourly breakdown slot
-    dailyMap[dateKey].hourly[hour] = {
-      hour: hour,
-      temp: tempF !== null ? Math.round(tempF) : 50,
-      value: tempF !== null ? Math.round(tempF) : 50,
-      speed: Math.round(windMph),
-      gust: Math.round(gustMph),
-      dos: 5,
-      precip: 0
-    };
-  });
-
-  const graphOverrides = getGraphOverrideEvents();
-
-  return Object.values(dailyMap)
-    .sort((a, b) => b.date.localeCompare(a.date))
-    .map((day) => {
-      let maxTemp = day.temps.length ? Math.round(Math.max(...day.temps)) : 70;
-      let minTemp = day.temps.length ? Math.round(Math.min(...day.temps)) : 50;
-      let maxWind = day.winds.length ? Math.round(Math.max(...day.winds)) : 0;
-      let maxGust = day.gusts.length ? Math.round(Math.max(...day.gusts)) : 0;
-      let condition = day.conditions[0] || 'Clear';
-
-      // Interpolate missing hourly temps for fluid mini-graph display
-      let lastKnownTemp = minTemp;
-      day.hourly.forEach(h => {
-        if (h.temp === null) h.temp = lastKnownTemp;
-        else lastKnownTemp = h.temp;
-        h.value = h.temp;
-      });
-
-      let record = {
-        date: formatDateDisplay(day.date),
-        rawDate: day.date,
-        highTemp: maxTemp,
-        lowTemp: minTemp,
-        wind: maxWind,
-        gust: maxGust,
-        condition: condition,
-        hourly: day.hourly,
-        isOverridden: false
-      };
-
-      record = mergeGraphOverrides(record, graphOverrides[day.date]);
-      record.dos = calculateDOS(record.wind, record.condition);
-      record.wis = calculateWIS(record.lowTemp, record.wind, record.condition);
-
-      return record;
-    });
-}
-
-/**
- * Renders history modal displaying cards with clickable hourly trend graph canvases
- */
-function renderHistoryCardsModal(data) {
-  let modal = document.getElementById('historyModal');
-  if (!modal) {
-    modal = document.createElement('div');
-    modal.id = 'historyModal';
-    modal.style.cssText = `
-      position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-      background: rgba(0,0,0,0.85); display: flex; align-items: center;
-      justify-content: center; z-index: 9999; box-sizing: border-box; padding: 15px;
-    `;
-    document.body.appendChild(modal);
-  }
-
-  const minAllowedDate = '2005-07-07';
-  
-  // Calculate yesterday's date using local time to restrict the max limit properly
-  const now = new Date();
-  now.setDate(now.getDate() - 1);
-  const year = now.getFullYear();
-  const month = String(now.getMonth() + 1).padStart(2, '0');
-  const day = String(now.getDate()).padStart(2, '0');
-  const yesterdayStr = `${year}-${month}-${day}`;
-
-  const validDates = data.map(item => {
-    const parts = item.dateStr ? item.dateStr.split('/') : [];
-    if (parts.length === 3) {
-      const [m, d, y] = parts;
-      const formattedMonth = m.padStart(2, '0');
-      const formattedDay = d.padStart(2, '0');
-      return { value: `${y}-${formattedMonth}-${formattedDay}`, label: item.dateStr, item };
-    }
-    return null;
-  }).filter(Boolean);
-
-  const defaultDate = validDates.length > 0 ? validDates[validDates.length - 1].value : yesterdayStr;
-
-  modal.innerHTML = `
-    <div style="background: #0f172a; color: #fff; padding: 24px; border-radius: 14px; max-width: 450px; width: 100%; box-shadow: 0 12px 40px rgba(0,0,0,0.8); border: 1px solid #1e293b; display: flex; flex-direction: column; gap: 16px;">
-      <div style="display: flex; justify-content: space-between; align-items: center;">
-        <h3 style="margin: 0; font-size: 18px; color: #f8fafc;"><i class="fas fa-history" style="color:#38bdf8;"></i> NOAA Weather History</h3>
-        <button onclick="closeModal()" style="background: #1e293b; border: none; color: #fff; width: 30px; height: 30px; border-radius: 50%; font-size: 16px; cursor: pointer; display: flex; align-items: center; justify-content: center;">✕</button>
-      </div>
-      
-      <div style="display: flex; flex-direction: column; gap: 8px;">
-        <label for="historyDateInput" style="font-size: 13px; color: #94a3b8;">Choose date (from July 7, 2005 onward):</label>
-        <input type="date" id="historyDateInput" min="${minAllowedDate}" max="${yesterdayStr}" value="${defaultDate}" style="background: #1e293b; border: 1px solid #334155; color: #fff; padding: 10px 14px; border-radius: 8px; font-size: 15px; outline: none; width: 100%; box-sizing: border-box;">
-      </div>
-
-      <div id="historyCardContainer" style="margin-top: 5px;"></div>
-    </div>
-  `;
-
-  const dateInput = document.getElementById('historyDateInput');
-
-  dateInput.addEventListener('change', (e) => {
-    updateCardView(e.target.value, data);
-  });
-
-  if (defaultDate) {
-    updateCardView(defaultDate, data);
-  }
-}
-
-function updateCardView(selectedVal, data, cardContainerId = 'historyCardContainer', canvasId = 'singleHistoryGraphCanvas') {
-  const cardContainer = document.getElementById(cardContainerId);
-  if (!cardContainer) return;
-
-  const [y, m, d] = selectedVal.split('-');
-  const selectedDateObj = new Date(parseInt(y, 10), parseInt(m, 10) - 1, parseInt(d, 10));
-  const cutoffDateObj = new Date(2026, 7, 23, 0, 0, 0); // August 23, 2026 local midnight
-
-  const formattedDateStr = `${parseInt(m, 10)}/${parseInt(d, 10)}/${y}`;
-  const overrideItem = data.find(i => i.dateStr === formattedDateStr);
-
-  let matchedItem;
-
-  if (selectedDateObj < cutoffDateObj) {
-    matchedItem = overrideItem && overrideItem.isNoaaSource ? overrideItem : {
-      dateStr: formattedDateStr,
-      date: formattedDateStr,
-      dos: Math.floor(Math.random() * 4) + 6,
-      condition: "NOAA Historical Archive Record",
-      highTemp: Math.floor(Math.random() * 25) + 60,
-      lowTemp: Math.floor(Math.random() * 15 + 40),
-      wind: Math.floor(Math.random() * 12) + 4,
-      hourly: Array.from({ length: 24 }, (_, i) => ({
-        temp: Math.round(52 + 14 * Math.sin((i - 6) / 24 * Math.PI * 2))
-      }))
-    };
-  } else {
-    matchedItem = overrideItem || {
-      dateStr: formattedDateStr,
-      date: formattedDateStr,
-      dos: Math.floor(Math.random() * 5) + 5,
-      condition: "NOAA Forecast / Archive Record",
-      highTemp: Math.floor(Math.random() * 30) + 55,
-      lowTemp: Math.floor(Math.random() * 20 + 35),
-      wind: Math.floor(Math.random() * 15) + 5,
-      hourly: Array.from({ length: 24 }, (_, i) => ({
-        temp: Math.round(50 + 15 * Math.sin((i - 6) / 24 * Math.PI * 2))
-      }))
-    };
-  }
-
-  cardContainer.innerHTML = `
-    <div class="history-card" style="background:#18181c; border: 1px solid #27272a; border-radius: 12px; padding: 16px; color: #fff; width: 100%; box-sizing: border-box; display: flex; flex-direction: column; justify-content: space-between; box-shadow: 0 4px 12px rgba(0,0,0,0.4);">
-      <div>
-        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 8px;">
-          <strong style="font-size: 16px; color: #38bdf8;">${matchedItem.date || matchedItem.dateStr}</strong>
-          <span style="font-size: 12px; background:#27272a; padding: 3px 8px; border-radius: 4px; color:#a1a1aa;">DOS: ${matchedItem.dos}/10</span>
-        </div>
-        <div style="font-size: 13px; color: #e4e4e7; margin-bottom: 10px;">${matchedItem.condition}</div>
-        <div style="font-size: 12px; color: #a1a1aa; margin-bottom: 12px; display: flex; gap: 15px;">
-          <span>🌡️ ${matchedItem.highTemp}° / ${matchedItem.lowTemp}°F</span>
-          <span>💨 ${matchedItem.wind} mph</span>
-        </div>
-      </div>
-
-      <!-- Clickable Forecast Graph Modal Trigger -->
-      <div style="position: relative; cursor: pointer;" onclick='openForecastGraphModal(${JSON.stringify(matchedItem).replace(/'/g, "&#39;")})'>
-        <canvas id="${canvasId}" width="380" height="90" style="background:#090d16; border-radius: 6px; border: 1px solid #27272a; width: 100%; display: block;"></canvas>
-        <div style="position: absolute; bottom: 6px; right: 8px; font-size: 10px; color: #38bdf8; background: rgba(0,0,0,0.6); padding: 2px 6px; border-radius: 3px; pointer-events: none;">Open Forecast Graph 📈</div>
-      </div>
-    </div>
-  `;
-
-  const canvas = document.getElementById(canvasId);
-  if (canvas && matchedItem.hourly) {
-    const ctx = canvas.getContext('2d');
-    const temps = matchedItem.hourly.map(h => h.temp);
-    const min = Math.min(...temps) - 2;
-    const max = Math.max(...temps) + 2;
-    const range = max - min || 1;
-
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-    ctx.strokeStyle = '#1e293b';
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    ctx.moveTo(0, canvas.height / 2);
-    ctx.lineTo(canvas.width, canvas.height / 2);
-    ctx.stroke();
-
-    const barWidth = canvas.width / 24;
-    matchedItem.hourly.forEach((h, i) => {
-      const normalized = (h.temp - min) / range;
-      const barHeight = Math.max(4, normalized * (canvas.height - 12));
-      const x = i * barWidth;
-      const y = canvas.height - barHeight;
-
-      ctx.fillStyle = `hsl(${200 + normalized * 140}, 80%, 55%)`;
-      ctx.fillRect(x + 1, y, barWidth - 2, barHeight);
-    });
-  }
-}
-function getGraphOverrideEvents() {
-  if (window.graphOverrides) return window.graphOverrides;
-  try {
-    return JSON.parse(localStorage.getItem('weatherGraphOverrides')) || {};
-  } catch (e) {
-    return {};
-  }
-}
-
-function mergeGraphOverrides(record, override) {
-  if (!override) return record;
-  return {
-    ...record,
-    highTemp: override.highTemp !== undefined ? override.highTemp : record.highTemp,
-    lowTemp: override.lowTemp !== undefined ? override.lowTemp : record.lowTemp,
-    wind: override.wind !== undefined ? override.wind : record.wind,
-    gust: override.gust !== undefined ? override.gust : record.gust,
-    condition: override.condition !== undefined ? override.condition : record.condition,
-    isOverridden: true
-  };
-}
-
-function formatDateDisplay(dateStr) {
-  const [year, month, day] = dateStr.split('-');
-  return `${parseInt(month)}/${parseInt(day)}/${year}`;
-}
-
-function calculateDOS(wind, condition) {
-  let score = 10;
-  if (wind > 35) score -= 4;
-  else if (wind > 20) score -= 2;
-  const text = condition.toLowerCase();
-  if (text.includes('snow') || text.includes('ice')) score -= 5;
-  else if (text.includes('rain')) score -= 2;
-  return Math.max(1, score);
-}
-
-function calculateWIS(minTemp, wind, condition) {
-  let score = 1;
-  const text = condition.toLowerCase();
-  if (typeof minTemp === 'number' && minTemp < 32) score += 3;
-  if (wind > 25) score += 2;
-  if (text.includes('snow')) score += 3;
-  return Math.min(10, score);
-}
-
-function showLoadingModal(message) {
-  let modal = document.getElementById('historyModal');
-  if (!modal) {
-    modal = document.createElement('div');
-    modal.id = 'historyModal';
-    modal.style.cssText = `
-      position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-      background: rgba(0,0,0,0.85); display: flex; align-items: center;
-      justify-content: center; z-index: 9999;
-    `;
-    document.body.appendChild(modal);
-  }
-  modal.innerHTML = `
-    <div style="background: #1e293b; color: #fff; padding: 30px; border-radius: 10px; text-align: center;">
-      <i class="fas fa-spinner fa-spin fa-2x" style="color: #38bdf8; margin-bottom: 10px;"></i>
-      <p style="margin: 0; font-family: system-ui;">${message}</p>
-    </div>
-  `;
-}
-
 function closeModal() {
   const modal = document.getElementById('historyModal');
   if (modal) modal.remove();
