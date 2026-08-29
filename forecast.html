@@ -135,7 +135,7 @@ function initMap() {
     map = L.map('map', {
         center: iowaCoords,
         zoom: 7,
-        maxZoom: 19 // Increased map limit to permit house-level zooming
+        maxZoom: 19
     });
 
     // Dark Street Tile Layer (CartoDB Dark Matter - No API Key required)
@@ -166,11 +166,6 @@ function initMap() {
     const today = new Date().toISOString().split('T')[0];
     document.getElementById('dateInput').value = today;
 
-    // Trigger update on zoom level changes to request full matrix resolution dynamically
-    map.on('zoomend', () => {
-        updateAllLayers();
-    });
-
     updateAllLayers();
 }
 
@@ -192,21 +187,18 @@ function updateAllLayers() {
     const dateVal = document.getElementById('dateInput').value;
     if (!dateVal) return;
 
-    // 1. Time-aware Base Satellite Layer (NASA GIBS MODIS Terra True Color URL - preserved exactly)
+    // Base Satellite Layer (NASA GIBS MODIS Terra True Color URL - preserved exactly)
     const nasaTileUrl = `https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/MODIS_Terra_CorrectedReflectance_TrueColor/default/${dateVal}/GoogleMapsCompatible_Level9/{z}/{y}/{x}.jpg`;
-
-    // Dynamic resolution adjustment based on zoom depth without changing the URL
-    const currentZoom = map ? map.getZoom() : 7;
-    const currentNativeZoom = Math.min(currentZoom, 9);
 
     if (baseSatLayer) {
         map.removeLayer(baseSatLayer);
     }
 
+    // Static maxNativeZoom: 9 lets Leaflet manage tile requests and overzooms natively
     baseSatLayer = L.tileLayer(nasaTileUrl, {
         attribution: 'Base Satellite &copy; <a href="https://gibs.earthdata.nasa.gov/">NASA GIBS</a>',
-        maxZoom: 19,                    // Allows zooming in up to level 19
-        maxNativeZoom: currentNativeZoom, // Dynamically scales native zoom up to level 9 crispness
+        maxZoom: 19,
+        maxNativeZoom: 9,
         zIndex: 2
     }).addTo(map);
 }
