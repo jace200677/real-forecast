@@ -200,27 +200,27 @@ function updateAllLayers() {
 
     const time = getFormattedTime();
     
-    // Round minutes down to 5-minute interval
+    // Round minutes down to nearest 5-minute interval
     const roundedMins = (Math.floor(parseInt(time.mins, 10) / 5) * 5).toString().padStart(2, '0');
     
-    // Format ISO string with UTC 'Z' timezone suffix expected by IEM MapServer
-    const timeFormatted = `${dateVal}T${time.hrs}:${roundedMins}:00Z`;
+    // Format timestamp as YYYYMMDDHHMM (e.g., 202608291800)
+    const formattedDate = dateVal.replace(/-/g, '');
+    const timeFormatted = `${formattedDate}${time.hrs}${roundedMins}`;
 
     if (baseSatLayer) {
         map.removeLayer(baseSatLayer);
     }
 
-    baseSatLayer = L.tileLayer.wms('https://mesonet.agron.iastate.edu/cgi-bin/wms/goes/conus_vis.cgi', {
-        layers: 'conus_vis',
-        format: 'image/png',
-        transparent: true,
-        version: '1.1.1',
-        TIME: timeFormatted,
-        attribution: 'Satellite &copy; <a href="https://mesonet.agron.iastate.edu/">Iowa State University IEM</a>',
-        maxNativeZoom: 8,  // Prevents requesting non-existent tiles from IEM above level 8
-        maxZoom: 19,        // Allows Leaflet to upscale tiles all the way to zoom level 19
-        zIndex: 2
-    }).addTo(map);
+    baseSatLayer = L.tileLayer(
+        `https://mesonet.agron.iastate.edu/cache/tile.py/1.0.0/goes-east-vis-1km-${timeFormatted}/{z}/{x}/{y}.png`,
+        {
+            tms: true,             // Flips Y-axis coordinates for IEM's TMS service
+            maxNativeZoom: 8,      // Highest native detail level IEM satellite tiles provide
+            maxZoom: 19,           // Stretches native tiles up to zoom level 19
+            attribution: 'Satellite &copy; <a href="https://mesonet.agron.iastate.edu/">Iowa State University IEM</a>',
+            zIndex: 2
+        }
+    ).addTo(map);
 }
 
 function resetMapView() {
