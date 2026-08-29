@@ -2281,6 +2281,21 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
         }
     }
 
+    // --- DYNAMIC CONFIDENCE FACTOR RESOLUTION ---
+    const exactDaysOut = safeNum(item?.exactDaysOut ?? item?.daysOut) ?? 0;
+    const baseConfidence = safeNum(item?.confidenceFactor ?? item?.confidence ?? window._radarState?.confidenceFactor) ?? 1.0;
+
+    // 1. Days Out Decay Factor (exponential confidence degradation for future days)
+    const daysOutFactor = Math.max(0.25, Math.pow(0.91, exactDaysOut));
+
+    // 2. Time of Day Decay & Diurnal Instability Factor (higher variance across 24h & peak afternoon hours)
+    const timeOfDayRatio = hoveredMinute / 1439; // Range 0.0 to 1.0 over 24h
+    const diurnalPeakUncertainty = Math.sin(Math.PI * timeOfDayRatio) * 0.12; // Peak uncertainty around mid-day/afternoon
+    const timeOfDayFactor = Math.max(0.5, 1.0 - (timeOfDayRatio * 0.15) - diurnalPeakUncertainty);
+
+    // Combined dynamic confidence factor
+    const dynamicConfidenceFactor = +(baseConfidence * daysOutFactor * timeOfDayFactor).toFixed(3);
+
     // --- ACTIVE DAY CARD DATE & METRICS RESOLUTION ---
     let extractedDate = null;
     let cardMetrics = {};
@@ -2383,8 +2398,6 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
 
         const targetObj = currentGlobalPoint || { lat: centerLat, lon: centerLon };
         const gridPeriods = item?.gridPeriods || item?.periods || window._radarState?.gridPeriods || null;
-        const confidenceFactor = item?.confidenceFactor ?? item?.confidence ?? window._radarState?.confidenceFactor ?? 0.8;
-        const exactDaysOut = item?.exactDaysOut ?? item?.daysOut ?? 0;
         const dosScore = cardMetrics.score ?? item?.score ?? item?.dos ?? 5;
         const dayIdx = item?.i ?? item?.index ?? 0;
 
@@ -2394,7 +2407,7 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
             dateNum,
             targetObj,
             gridPeriods,
-            confidenceFactor,
+            dynamicConfidenceFactor, // Dynamic confidence factor passed here
             exactDaysOut,
             dosScore,
             dayIdx
@@ -2951,6 +2964,10 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
         mode: effectiveSubMode,
         timezone: targetTimezone,
         tzAbbr: tzAbbr,
+        daysOut: exactDaysOut,
+        confidenceFactor: dynamicConfidenceFactor,
+        daysOutFactor: +daysOutFactor.toFixed(3),
+        timeOfDayFactor: +timeOfDayFactor.toFixed(3),
         getLocalValue: getLocalValueAtCoordinates
     };
 
@@ -2979,11 +2996,13 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
             else if (layerData.mode === 'pressure') localLabel = `${localVal} inHg`;
             else if (layerData.mode === 'uv') localLabel = `UV Index: ${localVal}`;
 
+            const confPct = Math.round((layerData.confidenceFactor ?? 1) * 100);
+
             const tooltipContent = `
                 <div style="font-family: sans-serif; font-size: 12px; padding: 3px 6px; text-align: center;">
                     <strong>${localLabel}</strong><br/>
                     <small style="opacity: 0.8;">${layerData.timeStr} (${layerData.dateStr})</small><br/>
-                    <small style="opacity: 0.65; font-size: 10px;">${e.latlng.lat.toFixed(2)}°, ${e.latlng.lng.toFixed(2)}°</small>
+                    <small style="opacity: 0.65; font-size: 10px;">${e.latlng.lat.toFixed(2)}°, ${e.latlng.lng.toFixed(2)}° | Conf: ${confPct}%</small>
                 </div>
             `;
 
