@@ -2941,53 +2941,49 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
     };
 
     if (activeTargetMap) {
-    // Safely attach map interaction handlers
-    if (typeof attachMapInteractionHandlers === 'function' && activeGridLayer?._meta) {
-        attachMapInteractionHandlers(activeTargetMap, activeGridLayer._meta);
-    }
+    attachMapInteractionHandlers(activeTargetMap, activeGridLayer._meta);
 
-    // Extract current timeline minute offset if slider exists
-    const timelineSlider = document.getElementById("radarTimeSlider");
-    const currentMin = timelineSlider && !isNaN(parseInt(timelineSlider.value, 10)) 
-        ? parseInt(timelineSlider.value, 10) 
-        : 0;
+    const cloudFreeUrl = 'https://tiles.maps.eox.at/wmts/1.0.0/s2cloudless-2020_3857/default/GoogleMapsCompatible/{z}/{y}/{x}.jpg';
+    const fallbackArcGISUrl = 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}';
 
-    // Available Tile URLs
-    const DEFAULT_CLOUD_FREE_URL = 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}';
-    const NOAA_STAR_TILE_URL = 'https://www.star.nesdis.noaa.gov/GOES/tile_service.php?z={z}&x={x}&y={y}';
-
-    // Store configured default satellite URL globally for reference
-    window._defaultSatelliteUrl = DEFAULT_CLOUD_FREE_URL;
-
-    // Use dynamic satellite overlay loader for NOAA STAR NESDIS updates if available
-    if (typeof updateSatelliteOverlay === 'function') {
-        try {
-            updateSatelliteOverlay(currentMin);
-        } catch (err) {
-            console.warn("updateSatelliteOverlay failed, using cloud-free basemap fallback:", err);
+    // Helper function to handle tile updates without blocking the main thread
+    function updateSatelliteLayer(map, targetUrl, attribution) {
+        if (window.satelliteLayer && map.hasLayer(window.satelliteLayer)) {
+            map.removeLayer(window.satelliteLayer);
         }
-    } 
 
-    // Fallback/Default: Cloud-free aerial basemap layer
-    if (!window.satelliteLayer) {
-        window.satelliteLayer = L.tileLayer(DEFAULT_CLOUD_FREE_URL, {
-            attribution: 'Tiles &copy; Esri &mdash; Source: Esri, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-EGP',
-            maxZoom: 19
+        window.satelliteLayer = L.tileLayer(targetUrl, {
+            attribution: attribution,
+            maxZoom: 19,
+            updateWhenIdle: true, // Prevents UI freezes during rapid time slider movements
+            keepBuffer: 2          // Smooths panning/zooming without heavy memory overhead
         });
-    } else if (typeof window.satelliteLayer.setUrl === 'function' && !window._radarState?.satelliteLayer) {
-        // Ensure default URL is active if layer already exists
-        window.satelliteLayer.setUrl(DEFAULT_CLOUD_FREE_URL);
+
+        // Fallback safely on error without infinite recursion
+        let hasFallenBack = false;
+        window.satelliteLayer.on('tileerror', function () {
+            if (!hasFallenBack && targetUrl !== fallbackArcGISUrl) {
+                hasFallenBack = true;
+                updateSatelliteLayer(
+                    map, 
+                    fallbackArcGISUrl, 
+                    'Tiles &copy; Esri &mdash; Source: Esri, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-EGP'
+                );
+            }
+        });
+
+        window.satelliteLayer.addTo(map);
     }
 
-    // Safely attach fallback layer if not already present on map
-    if (activeTargetMap && typeof activeTargetMap.hasLayer === 'function') {
-        if (!activeTargetMap.hasLayer(window.satelliteLayer)) {
-            window.satelliteLayer.addTo(activeTargetMap);
-        }
-    }
+    // Initialize or force-refresh layer on active date card / time slider change
+    updateSatelliteLayer(
+        activeTargetMap, 
+        cloudFreeUrl, 
+        '&copy; <a href="https://s2maps.eu">Sentinel-2 cloudless</a> by <a href="https://eox.at">EOX IT Services GmbH</a>'
+    );
 }
 
-    return activeGridLayer;
+   r eturn activeGridLayer;
 }
 function calculateForecastDayMetrics(forecastYear, forecastMonth, dateNum, targetZoneOrPoint, gridPeriods, confidenceFactor, exactDaysOut, dos, i) {
     let tempHigh, tempLow, projectedScore, streamChance, windMph, gustMph, weatherSummary;
