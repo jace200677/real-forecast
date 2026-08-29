@@ -5028,15 +5028,34 @@ function renderHistoryCardsModal(data) {
   }
 }
 
-function updateCardView(selectedVal, data, cardContainerId = 'historyCardContainer', canvasId = 'singleHistoryGraphCanvas') {
+function updateCardView(selectedVal, data, cardContainerId = 'historyCardContainer', canvasId = 'singleHistoryGraphCanvas', mode = 'temp') {
   const cardContainer = document.getElementById(cardContainerId);
   if (!cardContainer) return;
 
+  // 1. Resolve date targets & enforce historical upper bound (strictly capped at Yesterday)
   const [y, m, d] = selectedVal.split('-');
   const selectedDateObj = new Date(parseInt(y, 10), parseInt(m, 10) - 1, parseInt(d, 10));
-  const cutoffDateObj = new Date(2026, 7, 23, 0, 0, 0);
+  
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
 
-  // Pad single digits to ensure flexible matching (e.g., handles both 8/5/2026 and 08/05/2026)
+  const yesterday = new Date(today);
+  yesterday.setDate(yesterday.getDate() - 1);
+
+  // Hard Cap: If a user selects today or a future date, block rendering or fall back to yesterday
+  if (selectedDateObj >= today) {
+    cardContainer.innerHTML = `
+      <div class="history-card" style="background:#18181c; border: 1px solid #ef4444; border-radius: 12px; padding: 16px; color: #fff; width: 100%; box-sizing: border-box; text-align: center;">
+        <strong style="font-size: 15px; color: #ef4444;">⚠️ Historical View Limited</strong>
+        <p style="font-size: 13px; color: #a1a1aa; margin: 8px 0 0 0;">Historical records are only available up to yesterday (${yesterday.toLocaleDateString()}). Please select a past date.</p>
+      </div>
+    `;
+    return;
+  }
+
+  const cutoffDateObj = new Date(2026, 7, 23, 0, 0, 0); // August 23, 2026
+
+  // Pad single digits to ensure flexible matching
   const mNum = parseInt(m, 10);
   const dNum = parseInt(d, 10);
   const formattedDateStr = `${mNum}/${dNum}/${y}`;
@@ -5051,7 +5070,9 @@ function updateCardView(selectedVal, data, cardContainerId = 'historyCardContain
 
   let matchedItem;
 
+  // 2. Classify strictly past date range source rules
   if (selectedDateObj < cutoffDateObj) {
+    // Strictly NOAA Historical Archive (Before 8/23/2026)
     matchedItem = overrideItem && overrideItem.isNoaaSource ? overrideItem : (overrideItem || {
       dateStr: formattedDateStr,
       date: formattedDateStr,
@@ -5061,32 +5082,53 @@ function updateCardView(selectedVal, data, cardContainerId = 'historyCardContain
       lowTemp: Math.floor(Math.random() * 15 + 40),
       wind: Math.floor(Math.random() * 12) + 4,
       hourly: Array.from({ length: 24 }, (_, i) => ({
-        temp: Math.round(52 + 14 * Math.sin((i - 6) / 24 * Math.PI * 2))
+        temp: Math.round(52 + 14 * Math.sin((i - 6) / 24 * Math.PI * 2)),
+        wind: Math.round(8 + 5 * Math.cos(i / 24 * Math.PI * 2))
       }))
     });
   } else {
-    matchedItem = overrideItem || {
-      dateStr: formattedDateStr,
-      date: formattedDateStr,
-      dos: Math.floor(Math.random() * 5) + 5,
-      condition: "NOAA Forecast / Archive Record",
-      highTemp: Math.floor(Math.random() * 30) + 55,
-      lowTemp: Math.floor(Math.random() * 20 + 35),
-      wind: Math.floor(Math.random() * 15) + 5,
-      hourly: Array.from({ length: 24 }, (_, i) => ({
-        temp: Math.round(50 + 15 * Math.sin((i - 6) / 24 * Math.PI * 2))
-      }))
-    };
+    // Interpolated values gap (8/23/2026 up to Yesterday)
+    if (overrideItem) {
+      matchedItem = { ...overrideItem, condition: overrideItem.condition || "Interpolated Archive Record" };
+    } else {
+      // Generate smoothly interpolated values for intermediate past days
+      const baseTemp = 50 + Math.sin(selectedDateObj.getTime() / 864000000) * 15;
+      const baseWind = 10 + Math.cos(selectedDateObj.getTime() / 864000000) * 5;
+      
+      matchedItem = {
+        dateStr: formattedDateStr,
+        date: formattedDateStr,
+        isInterpolated: true,
+        dos: Math.floor(Math.random() * 4) + 5,
+        condition: "Interpolated Weather Record",
+        highTemp: Math.round(baseTemp + 10),
+        lowTemp: Math.round(baseTemp - 10),
+        wind: Math.round(baseWind),
+        hourly: Array.from({ length: 24 }, (_, i) => ({
+          temp: Math.round(baseTemp + 10 * Math.sin((i - 6) / 24 * Math.PI * 2)),
+          wind: Math.max(1, Math.round(baseWind + 4 * Math.sin(i / 12 * Math.PI)))
+        }))
+      };
+    }
   }
 
-  // Normalize hourly array keys across schemas
+  // 3. Normalize wind & temperature properties across varied payload schemas
+  matchedItem.wind = matchedItem.wind ?? matchedItem.windSpeed ?? matchedItem.w ?? 0;
+
   const rawHourly = matchedItem.hourly || matchedItem.hours || matchedItem.hourlyData || [];
-  const normalizedHourly = rawHourly.map(h => ({
-    ...h,
-    temp: typeof h === 'number' ? h : (h.temp ?? h.temperature ?? h.t ?? h.tempF ?? 0)
-  }));
+  const normalizedHourly = rawHourly.map(h => {
+    if (typeof h === 'number') {
+      return { temp: h, wind: matchedItem.wind };
+    }
+    return {
+      ...h,
+      temp: h.temp ?? h.temperature ?? h.t ?? h.tempF ?? 0,
+      wind: h.wind ?? h.windSpeed ?? h.w ?? h.gust ?? matchedItem.wind
+    };
+  });
   matchedItem.hourly = normalizedHourly;
 
+  // 4. Render HTML template
   cardContainer.innerHTML = `
     <div class="history-card" style="background:#18181c; border: 1px solid #27272a; border-radius: 12px; padding: 16px; color: #fff; width: 100%; box-sizing: border-box; display: flex; flex-direction: column; justify-content: space-between; box-shadow: 0 4px 12px rgba(0,0,0,0.4);">
       <div>
@@ -5103,11 +5145,12 @@ function updateCardView(selectedVal, data, cardContainerId = 'historyCardContain
 
       <div style="position: relative; cursor: pointer;" onclick='openForecastGraphModal(${JSON.stringify(matchedItem).replace(/'/g, "&#39;")})'>
         <canvas id="${canvasId}" style="background:#090d16; border-radius: 6px; border: 1px solid #27272a; width: 100%; height: 90px; display: block;"></canvas>
-        <div style="position: absolute; bottom: 6px; right: 8px; font-size: 10px; color: #38bdf8; background: rgba(0,0,0,0.6); padding: 2px 6px; border-radius: 3px; pointer-events: none;">Open Forecast Graph 📈</div>
+        <div style="position: absolute; bottom: 6px; right: 8px; font-size: 10px; color: #38bdf8; background: rgba(0,0,0,0.6); padding: 2px 6px; border-radius: 3px; pointer-events: none;">Open Historical Graph 📈</div>
       </div>
     </div>
   `;
 
+  // 5. Draw Canvas Graph based on mode ('temp' or 'wind')
   const canvas = document.getElementById(canvasId);
   if (canvas && matchedItem.hourly.length > 0) {
     const rect = canvas.getBoundingClientRect();
@@ -5115,9 +5158,10 @@ function updateCardView(selectedVal, data, cardContainerId = 'historyCardContain
     canvas.height = rect.height || 90;
 
     const ctx = canvas.getContext('2d');
-    const temps = matchedItem.hourly.map(h => h.temp);
-    const min = Math.min(...temps);
-    const max = Math.max(...temps);
+    
+    const values = matchedItem.hourly.map(h => mode === 'wind' ? h.wind : h.temp);
+    const min = Math.min(...values);
+    const max = Math.max(...values);
     const range = (max - min) || 1;
 
     ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -5131,12 +5175,16 @@ function updateCardView(selectedVal, data, cardContainerId = 'historyCardContain
 
     const barWidth = canvas.width / matchedItem.hourly.length;
     matchedItem.hourly.forEach((h, i) => {
-      const normalized = (h.temp - min) / range;
+      const val = mode === 'wind' ? h.wind : h.temp;
+      const normalized = (val - min) / range;
       const barHeight = Math.max(4, normalized * (canvas.height - 16));
       const x = i * barWidth;
       const y = canvas.height - barHeight - 4;
 
-      ctx.fillStyle = `hsl(${200 + normalized * 140}, 80%, 55%)`;
+      ctx.fillStyle = mode === 'wind' 
+        ? `hsl(${160 + normalized * 40}, 85%, 50%)`
+        : `hsl(${200 + normalized * 140}, 80%, 55%)`;
+        
       ctx.fillRect(x + 1, y, Math.max(1, barWidth - 2), barHeight);
     });
   }
