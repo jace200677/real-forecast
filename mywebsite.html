@@ -943,8 +943,17 @@ async function buildForecast() {
     const today = new Date(now);
     today.setHours(0, 0, 0, 0);
     
+    const cutoffDate = new Date('2026-08-23T00:00:00');
+    
     const daysOfWeek = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
     const dosForecast = [];
+
+    const hasOverrideData = (y, m, d) => {
+        if (typeof checkDateOverride === 'function') {
+            return checkDateOverride(y, m, d);
+        }
+        return (y === 2026 && ((m === 8 && d >= 23 && d <= 31) || (m === 9 && d >= 1 && d <= 5)));
+    };
 
     for (let i = 0; i < 7; i++) {
         const forecastDate = new Date();
@@ -994,7 +1003,25 @@ async function buildForecast() {
                 gustMph = windMph + Math.round(windMph * 0.4) + 5;
             }
         }
-        if (forecastYear === 2026 && forecastMonth === 8 && dateNum === 23) {
+
+        const isBeforeCutoff = forecastDate < cutoffDate;
+        const isHistoricalWindow = forecastDate >= cutoffDate && forecastDate < today;
+
+        if (isBeforeCutoff) {
+            // Strictly NOAA values for dates prior to 8/23/2026
+            const trendMultiplier = 1 + (Math.sin(i * 0.8) * 0.2 * (1 / confidenceFactor));
+            projectedScore = Math.min(Math.max(Math.round(dos * trendMultiplier), 2), 150);
+            streamChance = Math.min(Math.round(((projectedScore / 90) * 100) * confidenceFactor), 85);
+            if (streamChance < 5) streamChance = 0;
+
+        } else if (isHistoricalWindow && !hasOverrideData(forecastYear, forecastMonth, dateNum)) {
+            // 8/23/2026 to yesterday with no override present: fall back to NOAA values
+            const trendMultiplier = 1 + (Math.sin(i * 0.8) * 0.2 * (1 / confidenceFactor));
+            projectedScore = Math.min(Math.max(Math.round(dos * trendMultiplier), 2), 150);
+            streamChance = Math.min(Math.round(((projectedScore / 90) * 100) * confidenceFactor), 85);
+            if (streamChance < 5) streamChance = 0;
+
+        } else if (forecastYear === 2026 && forecastMonth === 8 && dateNum === 23) {
             const lat = targetZoneOrPoint ? parseFloat(targetZoneOrPoint.lat) : 45.0;
             const lon = targetZoneOrPoint ? parseFloat(targetZoneOrPoint.lon) : -93.0;
 
@@ -1214,7 +1241,7 @@ async function buildForecast() {
 
             const latOffset = (lat - 45.0) * 2.5;
             const lonOffset = (lon + 93.0) * 1.8;
-           const latOffset1 = (lat - 45.0) * 0.5;
+            const latOffset1 = (lat - 45.0) * 0.5;
             const varianceAmplitude = exactDaysOut * 1.5 * (1 - confidenceFactor); 
             const swingFactor = Math.sin(exactDaysOut * 1.2);
 
@@ -1263,7 +1290,7 @@ async function buildForecast() {
             else weatherSummary = "Cloudy, T-Storms & Windy";
 
         } 
-            else if (forecastYear === 2026 && forecastMonth === 8 && dateNum === 29) {
+        else if (forecastYear === 2026 && forecastMonth === 8 && dateNum === 29) {
             const lat = targetZoneOrPoint ? parseFloat(targetZoneOrPoint.lat) : 45.0;
             const lon = targetZoneOrPoint ? parseFloat(targetZoneOrPoint.lon) : -93.0;
             const locationName = typeof targetZoneOrPoint !== 'undefined' && targetZoneOrPoint && targetZoneOrPoint.name ? targetZoneOrPoint.name.toLowerCase() : "";
@@ -1599,7 +1626,7 @@ async function buildForecast() {
             else weatherSummary = "Cloudy, T-Storms";
 
         }
-         else if (forecastYear === 2026 && forecastMonth === 9 && dateNum === 5) {
+        else if (forecastYear === 2026 && forecastMonth === 9 && dateNum === 5) {
             const lat = targetZoneOrPoint ? parseFloat(targetZoneOrPoint.lat) : 45.0;
             const lon = targetZoneOrPoint ? parseFloat(targetZoneOrPoint.lon) : -93.0;
             const locationName = typeof targetZoneOrPoint !== 'undefined' && targetZoneOrPoint && targetZoneOrPoint.name ? targetZoneOrPoint.name.toLowerCase() : "";
