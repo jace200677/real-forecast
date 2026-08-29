@@ -194,11 +194,11 @@ function updateAllLayers() {
         map.removeLayer(baseSatLayer);
     }
 
-    // Static maxNativeZoom: 9 lets Leaflet manage tile requests and overzooms natively
+    // Setting maxNativeZoom to 19 tells Leaflet to fetch crisp, native zoom tiles for every zoom level
     baseSatLayer = L.tileLayer(nasaTileUrl, {
         attribution: 'Base Satellite &copy; <a href="https://gibs.earthdata.nasa.gov/">NASA GIBS</a>',
         maxZoom: 19,
-        maxNativeZoom: 9,
+        maxNativeZoom: 19,
         zIndex: 2
     }).addTo(map);
 }
