@@ -4861,7 +4861,6 @@ async function handleWeatherHistory() {
   const latInput = document.getElementById('latInput')?.value?.trim();
   const lonInput = document.getElementById('lonInput')?.value?.trim();
 
-  // Validate inputs or fall back to default coordinates
   const lat = latInput && !isNaN(latInput) ? parseFloat(latInput) : 41.8781;
   const lon = lonInput && !isNaN(lonInput) ? parseFloat(lonInput) : -87.6298;
 
@@ -4876,8 +4875,9 @@ async function handleWeatherHistory() {
       hideLoadingModal();
     }
     
+    // Pass the parsed records array instead of the wrapper object
     if (typeof renderHistoryCardsModal === 'function') {
-      renderHistoryCardsModal(historyData);
+      renderHistoryCardsModal(historyData.records || []);
     }
   } catch (error) {
     console.error('Error loading weather history:', error);
