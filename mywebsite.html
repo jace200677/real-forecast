@@ -4854,7 +4854,7 @@ function getTempRangeGradientCss(tempLow, tempHigh) {
     return `linear-gradient(90deg, ${gradientStops.join(", ")})`;
 }
 
-function drawForecastCanvasGraph(item, mode, canvas, activeX = null, prevItem = null, nextItem = null) {
+function drawForecastCanvasGraph(item, mode, canvas, activeX = null, prevItem = null, nextItem = null, isDragging = false) {
     if (!canvas) return;
     const ctx = canvas.getContext("2d");
     const width = canvas.width;
@@ -4894,8 +4894,17 @@ function drawForecastCanvasGraph(item, mode, canvas, activeX = null, prevItem = 
     const dateParts = item.dateStr ? item.dateStr.split('/').map(n => parseInt(n, 10)) : [];
     const isToday = dateParts.length === 3 && (dateParts[0] === cdtMonth && dateParts[1] === cdtDay && dateParts[2] === cdtYear);
 
-    // Check if this item originated from the History Modal (NOAA Archive/History data)
-    const isHistorySource = item.isNoaaSource || (item.condition && item.condition.includes("NOAA")) || (document.getElementById('historyModal') && document.getElementById('historyModal').style.display !== 'none');
+    // Check if this item originated from the History Modal or is a past date
+    let isHistorySource = item.isNoaaSource || (item.condition && item.condition.includes("NOAA")) || (document.getElementById('historyModal') && document.getElementById('historyModal').style.display !== 'none');
+
+    // Automatically flag past dates relative to current CDT date (before today)
+    if (!isToday && dateParts.length === 3) {
+        const itemDateNum = dateParts[2] * 10000 + dateParts[0] * 100 + dateParts[1];
+        const currentDateNum = cdtYear * 10000 + cdtMonth * 100 + cdtDay;
+        if (itemDateNum < currentDateNum) {
+            isHistorySource = true;
+        }
+    }
 
     const scaleFactor = Math.min(width / 650, 1.5);
     const padLeft = Math.round(45 * scaleFactor);
@@ -5333,39 +5342,90 @@ function drawForecastCanvasGraph(item, mode, canvas, activeX = null, prevItem = 
     };
 
     const drawSegmentedLine = (pts, activeStyle, lineWidth, getYVal, fillUnder = false) => {
-        const renderPath = (segmentPts, style, isDashed) => {
-            if (segmentPts.length < 2) return;
-            
-            if (fillUnder) {
-                ctx.beginPath();
-                ctx.moveTo(segmentPts[0].x, height - padBottom);
-                ctx.lineTo(segmentPts[0].x, getYVal(segmentPts[0]));
-                addSmoothPathSegments(ctx, segmentPts, getYVal);
-                ctx.lineTo(segmentPts[segmentPts.length - 1].x, height - padBottom);
-                ctx.closePath();
+        if (isToday) {
+            // Split into past (dotted) and future (solid) segments around currentMinutes
+            const pastPts = pts.filter(p => p.minute <= currentMinutes);
+            const futurePts = pts.filter(p => p.minute >= currentMinutes);
+
+            const renderPath = (segmentPts, style, isDashed) => {
+                if (segmentPts.length < 2) return;
                 
-                ctx.fillStyle = style;
-                ctx.globalAlpha = 0.15;
-                ctx.fill();
-                ctx.globalAlpha = 1.0;
+                if (fillUnder && !isDashed) {
+                    ctx.beginPath();
+                    ctx.moveTo(segmentPts[0].x, height - padBottom);
+                    ctx.lineTo(segmentPts[0].x, getYVal(segmentPts[0]));
+                    addSmoothPathSegments(ctx, segmentPts, getYVal);
+                    ctx.lineTo(segmentPts[segmentPts.length - 1].x, height - padBottom);
+                    ctx.closePath();
+                    
+                    ctx.fillStyle = style;
+                    ctx.globalAlpha = 0.15;
+                    ctx.fill();
+                    ctx.globalAlpha = 1.0;
+                }
+
+                ctx.beginPath();
+                ctx.setLineDash(isDashed ? [4, 4] : []);
+                ctx.strokeStyle = style;
+                ctx.lineWidth = lineWidth + 2 * scaleFactor;
+                
+                ctx.moveTo(segmentPts[0].x, getYVal(segmentPts[0]));
+                addSmoothPathSegments(ctx, segmentPts, getYVal);
+                
+                ctx.stroke();
+                ctx.setLineDash([]);
+            };
+
+            if (pastPts.length >= 2) {
+                renderPath(pastPts, activeStyle, true);
             }
-
-            ctx.beginPath();
-            ctx.setLineDash(isDashed ? [4, 4] : []);
-            ctx.strokeStyle = style;
-            ctx.lineWidth = lineWidth + 2 * scaleFactor;
-            
-            ctx.moveTo(segmentPts[0].x, getYVal(segmentPts[0]));
-            addSmoothPathSegments(ctx, segmentPts, getYVal);
-            
-            ctx.stroke();
-            ctx.setLineDash([]);
-        };
-
-        if ((isToday && !isHistorySource) || isHistorySource) {
-            renderPath(pts, activeStyle, true);
+            if (futurePts.length >= 2) {
+                renderPath(futurePts, activeStyle, false);
+            }
+        } else if (isHistorySource) {
+            if (pts.length >= 2) {
+                if (fillUnder) {
+                    ctx.beginPath();
+                    ctx.moveTo(pts[0].x, height - padBottom);
+                    ctx.lineTo(pts[0].x, getYVal(pts[0]));
+                    addSmoothPathSegments(ctx, pts, getYVal);
+                    ctx.lineTo(pts[pts.length - 1].x, height - padBottom);
+                    ctx.closePath();
+                    ctx.fillStyle = activeStyle;
+                    ctx.globalAlpha = 0.15;
+                    ctx.fill();
+                    ctx.globalAlpha = 1.0;
+                }
+                ctx.beginPath();
+                ctx.setLineDash([4, 4]);
+                ctx.strokeStyle = activeStyle;
+                ctx.lineWidth = lineWidth + 2 * scaleFactor;
+                ctx.moveTo(pts[0].x, getYVal(pts[0]));
+                addSmoothPathSegments(ctx, pts, getYVal);
+                ctx.stroke();
+                ctx.setLineDash([]);
+            }
         } else {
-            renderPath(pts, activeStyle, false);
+            if (pts.length >= 2) {
+                if (fillUnder) {
+                    ctx.beginPath();
+                    ctx.moveTo(pts[0].x, height - padBottom);
+                    ctx.lineTo(pts[0].x, getYVal(pts[0]));
+                    addSmoothPathSegments(ctx, pts, getYVal);
+                    ctx.lineTo(pts[pts.length - 1].x, height - padBottom);
+                    ctx.closePath();
+                    ctx.fillStyle = activeStyle;
+                    ctx.globalAlpha = 0.15;
+                    ctx.fill();
+                    ctx.globalAlpha = 1.0;
+                }
+                ctx.beginPath();
+                ctx.strokeStyle = activeStyle;
+                ctx.lineWidth = lineWidth + 2 * scaleFactor;
+                ctx.moveTo(pts[0].x, getYVal(pts[0]));
+                addSmoothPathSegments(ctx, pts, getYVal);
+                ctx.stroke();
+            }
         }
     };
 
@@ -5459,13 +5519,34 @@ function drawForecastCanvasGraph(item, mode, canvas, activeX = null, prevItem = 
         });
     }
 
-    // Tooltip rendering on Hover with point locked exactly onto the line/graph
-    if (activeX !== null && activeX >= padLeft && activeX <= width - padRight && getYFn) {
+    // Default indicator for "Today" when not hovering/dragging
+    if (isToday && activeX === null && getYFn) {
+        const currentPtMinute = Math.min(1439, Math.max(0, currentMinutes));
+        const exactMatchIndex = Math.min(points.length - 1, Math.max(0, Math.round(currentPtMinute / 15)));
+        const targetPoint = points[exactMatchIndex] || points[0];
+
+        const dotX = targetPoint.x;
+        const dotY = getYFn(targetPoint);
+
+        // Outer black ring (10 px size -> radius 5)
+        ctx.fillStyle = "#000000";
+        ctx.beginPath();
+        ctx.arc(dotX, dotY, 5, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Inner white ring (8 px size -> radius 4)
+        ctx.fillStyle = "#ffffff";
+        ctx.beginPath();
+        ctx.arc(dotX, dotY, 4, 0, Math.PI * 2);
+        ctx.fill();
+    }
+
+    // Tooltip & Interactive Point Rendering on Hover / Drag (skipped if history/past date)
+    if (!isHistorySource && activeX !== null && activeX >= padLeft && activeX <= width - padRight && getYFn) {
         const clampedX = Math.max(padLeft, Math.min(width - padRight, activeX));
         const ratio = (clampedX - padLeft) / graphWidth;
         const hoveredMinute = Math.round(ratio * 1439);
 
-        // Find nearest point data sample or interpolate precisely for smooth tracking
         const exactMatchIndex = Math.min(points.length - 1, Math.max(0, Math.round(hoveredMinute / 15)));
         const targetPoint = points[exactMatchIndex] || points[0];
         
@@ -5482,17 +5563,28 @@ function drawForecastCanvasGraph(item, mode, canvas, activeX = null, prevItem = 
         ctx.stroke();
         ctx.setLineDash([]);
 
-        // Draw dot strictly on the curve/graph line
         const dotX = targetPoint.x;
         const dotY = getYFn(targetPoint);
 
-        ctx.fillStyle = "#ffffff";
-        ctx.beginPath();
-        ctx.arc(dotX, dotY, 3.5, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.strokeStyle = "#000000";
-        ctx.lineWidth = 1.5;
-        ctx.stroke();
+        if (isDragging) {
+            // Larger drag dot (10 px size -> radius 5)
+            ctx.fillStyle = "#ffffff";
+            ctx.beginPath();
+            ctx.arc(dotX, dotY, 5, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.strokeStyle = "#000000";
+            ctx.lineWidth = 1.5;
+            ctx.stroke();
+        } else {
+            // Default hover dot
+            ctx.fillStyle = "#ffffff";
+            ctx.beginPath();
+            ctx.arc(dotX, dotY, 3.5, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.strokeStyle = "#000000";
+            ctx.lineWidth = 1.5;
+            ctx.stroke();
+        }
 
         const hTemp = getInterpolatedTemp(hoveredMinute);
         const nearbyEvent = hasEvents ? sortedEvents.find(e => Math.abs(e.minute - hoveredMinute) <= 20 && e.label) : null;
