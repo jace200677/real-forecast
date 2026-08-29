@@ -2940,52 +2940,65 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
         mapObj.on('mouseout', mapObj._radarMouseOutHandler);
     };
 
-    if (activeTargetMap) {
+   if (activeTargetMap) {
     attachMapInteractionHandlers(activeTargetMap, activeGridLayer._meta);
 
-    // 1. Retrieve Date String and Time Slider values safely
-    const dateStr = activeGridLayer._meta?.dateStr 
+    // 1. Retrieve Selected Date & Check Timeline
+    const selectedDateStr = activeGridLayer._meta?.dateStr 
         || document.getElementById('dateSelect')?.value 
         || new Date().toISOString().split('T')[0];
-        
+
+    const todayStr = new Date().toISOString().split('T')[0];
+    const isFutureDate = selectedDateStr > todayStr;
+
+    // 2. Retrieve Time Slider Value
     const timeSlider = document.getElementById('timeSlider');
     const timeSliderVal = timeSlider ? timeSlider.value : 'default';
 
-    // 2. Base Configuration Definitions
-    const ESRI_CLOUD_FREE_URL = 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}';
+    // 3. Tile Endpoint Definitions ({z}, {y}, {x} templates)
+    const ESRI_CLOUD_FREE_TILE_URL = 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}';
     const ESRI_ATTRIBUTION = 'Tiles &copy; Esri &mdash; Source: Esri, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-EGP';
 
-    // 3. Fallback / Default handling: Cloud-free Esri imagery
-    let targetSatelliteUrl = ESRI_CLOUD_FREE_URL;
+    // Iowa / DMX NOAA STAR GOES Satellite XYZ Tile Endpoint Template
+    const NOAA_DMX_XYZ_TILE_URL = 'https://mesonet.agron.iastate.edu/cache/tile.py/1.0.0/goes-east-vis-1km/{z}/{x}/{y}.png';
+
+    let targetTileUrl = ESRI_CLOUD_FREE_TILE_URL;
     let targetAttribution = ESRI_ATTRIBUTION;
 
-    // 4. If time slider is set (not default/missing), attempt NOAA STAR 1-Minute GOES Iowa imagery lookup
-    if (timeSliderVal !== 'default') {
-        // Retrieve dynamic NOAA STAR URL mapped to current time slider step/timestamp
-        const goesUrl = activeGridLayer._meta?.satelliteUrls?.[timeSliderVal] 
-            || activeGridLayer._meta?.goesSatelliteUrl;
+    // 4. Resolve Active Tile URL for Present or Historical Timestamps
+    if (!isFutureDate && timeSliderVal !== 'default') {
+        const satUrls = activeGridLayer._meta?.satelliteUrls;
+        let dynamicGoesUrl = null;
 
-        if (goesUrl) {
-            targetSatelliteUrl = goesUrl;
-            targetAttribution = `1-Minute Iowa Satellite (GOES) — NOAA STAR (${dateStr})`;
+        if (Array.isArray(satUrls)) {
+            const idx = parseInt(timeSliderVal, 10);
+            dynamicGoesUrl = satUrls[idx] || satUrls[satUrls.length - 1];
+        } else if (satUrls && typeof satUrls === 'object') {
+            dynamicGoesUrl = satUrls[timeSliderVal] || Object.values(satUrls)[0];
         }
+
+        // Use custom metadata XYZ URL, single layer URL, or standard Iowa/DMX GOES XYZ Tile server
+        targetTileUrl = dynamicGoesUrl 
+            || activeGridLayer._meta?.goesSatelliteUrl 
+            || NOAA_DMX_XYZ_TILE_URL;
+            
+        targetAttribution = `1-Minute Iowa Satellite (GOES) — NOAA STAR (${selectedDateStr})`;
     }
 
-    // 5. Non-Blocking / Non-Freezing Leaflet Tile Update
+    // 5. Non-Blocking Leaflet XYZ Tile Update
     requestAnimationFrame(() => {
         if (window.satelliteLayer) {
-            // Swap tile source in-place without rebuilding the layer to avoid UI stutter/freezing
-            if (window.satelliteLayer._url !== targetSatelliteUrl) {
-                window.satelliteLayer.setUrl(targetSatelliteUrl);
+            if (window.satelliteLayer._url !== targetTileUrl) {
+                window.satelliteLayer.setUrl(targetTileUrl, false);
+                window.satelliteLayer.redraw(); // Instantly update active tiles on slider move
             }
         } else {
-            // Instantiate standard Leaflet TileLayer with async optimizations
-            window.satelliteLayer = L.tileLayer(targetSatelliteUrl, {
+            window.satelliteLayer = L.tileLayer(targetTileUrl, {
                 attribution: targetAttribution,
                 maxZoom: 19,
-                updateWhenIdle: true,     // Delay tile requests until panning finishes to reduce main thread lag
-                updateWhenZooming: false,  // Skip rendering intermediate tiles during active zoom
-                keepBuffer: 2              // Pre-buffer surrounding tiles for smoother interaction
+                updateWhenIdle: false,     // Prevents delay during slider scrubbing
+                updateWhenZooming: false,
+                keepBuffer: 4              // Pre-buffers adjacent tiles to prevent screen flicker
             });
         }
 
