@@ -5355,7 +5355,25 @@ function drawForecastCanvasGraph(item, mode, canvas, activeX = null, prevItem = 
     };
 
     // Check if this item originated from the History Modal or is a past date
-    let isHistorySource = item.isNoaaSource || (item.condition && item.condition.includes("NOAA")) || (document.getElementById('historyModal') && document.getElementById('historyModal').style.display !== 'none');
+    const historyModalEl = document.getElementById('historyModal');
+    let isHistorySource = item.isNoaaSource || (item.condition && item.condition.includes("NOAA")) || (historyModalEl && historyModalEl.style.display !== 'none');
+
+    // Dynamically retrieve lat/lon (prioritizing history modal datasets/inputs)
+    const resolveCoordinates = () => {
+        if (isHistorySource && historyModalEl) {
+            const histLat = historyModalEl.dataset.lat || (historyModalEl.querySelector('.search-input') && historyModalEl.querySelector('.search-input').dataset.lat);
+            const histLon = historyModalEl.dataset.lon || (historyModalEl.querySelector('.search-input') && historyModalEl.querySelector('.search-input').dataset.lon);
+            if (histLat !== undefined && histLon !== undefined) {
+                return { lat: parseFloat(histLat), lon: parseFloat(histLon) };
+            }
+        }
+        return {
+            lat: item.lat !== undefined ? item.lat : (typeof currentLat !== 'undefined' ? currentLat : null),
+            lon: item.lon !== undefined ? item.lon : (typeof currentLon !== 'undefined' ? currentLon : null)
+        };
+    };
+
+    const activeCoords = resolveCoordinates();
 
     // Automatically flag past dates relative to current CDT date (before today)
     if (!isToday && dateParts.length === 3) {
@@ -5498,7 +5516,6 @@ function drawForecastCanvasGraph(item, mode, canvas, activeX = null, prevItem = 
             }
         }
 
-        const historyModalEl = document.getElementById('historyModal');
         const historyDateInput = historyModalEl ? historyModalEl.querySelector('input[type="date"], input.history-date, #historyDate, [name="historyDate"], #historyDateDisplay, .selected-history-date') : null;
         
         let extractedDate = historyDateInput && historyDateInput.value ? historyDateInput.value : null;
