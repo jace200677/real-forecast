@@ -510,8 +510,13 @@ function verifyDeviceAccess() {
 
     if (ALLOWED_DEVICES.includes(currentDevice)) {
         broadcastBtn.style.display = "block";
+        broadcastBtn.style.visibility = "visible";
+        broadcastBtn.removeAttribute("hidden");
     } else {
         broadcastBtn.style.display = "none";
+        broadcastBtn.style.visibility = "hidden";
+        broadcastBtn.setAttribute("hidden", "true");
+        broadcastBtn.remove(); // Completely strips the button from the DOM for non-authorized users
     }
 }
 // 2. Modal Controls
