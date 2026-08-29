@@ -4807,6 +4807,53 @@ function updateTrafficButtonState(baseDateOverride = null) {
         btn.removeAttribute('onclick');
     }
 }
+async function fetchHistoricalWeatherData(lat, lon) {
+  // Fetch NWS grid point metadata
+  const pointRes = await fetch(`https://api.weather.gov/points/${lat},${lon}`);
+  if (!pointRes.ok) throw new Error('Failed to resolve location coordinates');
+  const pointData = await pointRes.json();
+  const { gridId, gridX, gridY } = pointData.properties;
+
+  // Set cutoff: Start at 2026-08-22, End strictly yesterday (1 day before today)
+  const startDate = '2026-08-22';
+  const yesterday = new Date();
+  yesterday.setDate(yesterday.getDate() - 1);
+  const endDate = yesterday.toISOString().split('T')[0];
+
+  const startIso = `${startDate}T00:00:00Z`;
+  const endIso = `${endDate}T23:59:59Z`;
+
+  // Fetch nearby weather stations
+  const historyRes = await fetch(
+    `https://api.weather.gov/gridpoints/${gridId}/${gridX},${gridY}/stations`
+  );
+  if (!historyRes.ok) throw new Error('Failed to fetch observation stations');
+  const stationsData = await historyRes.json();
+  const stationId = stationsData.features?.[0]?.properties?.stationIdentifier;
+
+  if (!stationId) throw new Error('No weather stations found near location');
+
+  // Fetch historical observations for date window
+  const obsRes = await fetch(
+    `https://api.weather.gov/stations/${stationId}/observations?start=${startIso}&end=${endIso}`
+  );
+  if (!obsRes.ok) throw new Error('Failed to fetch observation data');
+  const obsData = await obsRes.json();
+  const observations = obsData.features || [];
+
+  // Parse raw observations into daily records
+  const parsedRecords = typeof parseHistoryObservations === 'function'
+    ? parseHistoryObservations(observations, startDate, endDate)
+    : [];
+
+  return {
+    stationId: stationId,
+    startDate: startDate,
+    endDate: endDate,
+    rawObservations: observations,
+    records: parsedRecords
+  };
+}
 /**
  * Main handler function to show historical weather data down to 8/23/2026
  */
