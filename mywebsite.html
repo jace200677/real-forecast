@@ -4001,34 +4001,37 @@ function initTimezoneSyncedRadarModal(mapModalElement, forecastItem, defaultMode
   const currentMinuteOfDay = (now.getHours() * 60) + now.getMinutes();
   const timelineSlider = document.getElementById("radarTimeSlider");
 
-  // Dynamic satellite layer loader using NOAA STAR NESDIS WMS (Cloud-free Surface Map)
+  // Base WMS URL
+  const starWmsBaseUrl = 'https://www.star.nesdis.noaa.gov/wms/wms.php';
+
+  // Dynamic satellite layer updater using setParams for smooth tile refreshing
   const updateSatelliteOverlay = (minuteOffset = 0) => {
-    let starWmsUrl = '';
     const timestamp = Date.now();
-
-    if (isToday) {
-      // Today: NOAA STAR NESDIS WMS surface layer with 1-minute cache-buster timestamp
-      starWmsUrl = `https://www.star.nesdis.noaa.gov/wms/wms.php?_cb=${timestamp}`;
-    } else if (isPast) {
-      // Past: NOAA STAR WMS requesting active past ISO date and minute offset
-      starWmsUrl = `https://www.star.nesdis.noaa.gov/wms/wms.php?date=${activeIsoDate}&min=${minuteOffset}&_cb=${timestamp}`;
-    } else if (isFuture) {
-      // Future: Fallback to Today's NOAA STAR NESDIS WMS configuration
-      starWmsUrl = `https://www.star.nesdis.noaa.gov/wms/wms.php?_cb=${timestamp}`;
-    }
-
-    // Replace or instantiate Leaflet WMS layer (targeting clean terrain basemaps without clouds)
-    if (window._radarState.satelliteLayer) {
-      window._radarState.map.removeLayer(window._radarState.satelliteLayer);
-    }
-
-    window._radarState.satelliteLayer = L.tileLayer.wms(starWmsUrl, {
-      layers: 'basemap_surface', // Cloud-free surface map layer
+    let wmsParams = {
+      layers: 'basemap_surface',
       format: 'image/png',
       transparent: true,
       maxZoom: 19,
-      attribution: 'NOAA / NESDIS STAR'
-    }).addTo(window._radarState.map);
+      attribution: 'NOAA / NESDIS STAR',
+      _cb: timestamp
+    };
+
+    if (isToday) {
+      wmsParams.time = timestamp;
+    } else if (isPast) {
+      wmsParams.date = activeIsoDate;
+      wmsParams.min = minuteOffset;
+    } else if (isFuture) {
+      wmsParams.time = timestamp;
+    }
+
+    if (window._radarState.satelliteLayer) {
+      // Update parameters dynamically & redraw active tiles without destroying layer
+      window._radarState.satelliteLayer.setParams(wmsParams, false);
+      window._radarState.satelliteLayer.redraw();
+    } else {
+      window._radarState.satelliteLayer = L.tileLayer.wms(starWmsBaseUrl, wmsParams).addTo(window._radarState.map);
+    }
 
     // Canvas weather layer update
     if (typeof renderRadarLayerAtMinute === 'function') {
@@ -4036,7 +4039,7 @@ function initTimezoneSyncedRadarModal(mapModalElement, forecastItem, defaultMode
     }
   };
 
-  // Set default slider position to current minute on open (no continuous time slider updates)
+  // Set default slider position to current minute on open
   if (timelineSlider) {
     timelineSlider.max = 1439;
     timelineSlider.value = currentMinuteOfDay;
