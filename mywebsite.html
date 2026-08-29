@@ -3889,47 +3889,73 @@ document.getElementById("weatherMapModalBtn")?.addEventListener("click", () => {
   openWeatherMapModal(selectedDayCard, currentMode, selectedDayIndex);
 });
 function getSelectedDayCardDate(canvas, activeX, item, mode, prevItem, nextItem) {
-    // 1. Check history modal input/card state first if history mode is active, or extract from item
+    // Helper to normalize strings or Date objects to M/D/YYYY
+    const formatToStandardDate = (val) => {
+        if (!val) return null;
+        if (typeof val === 'string') {
+            const trimmed = val.trim();
+            // Handle standard YYYY-MM-DD
+            if (/^\d{4}-\d{1,2}-\d{1,2}/.test(trimmed)) {
+                const parts = trimmed.split('T')[0].split('-');
+                return `${parseInt(parts[1], 10)}/${parseInt(parts[2], 10)}/${parts[0]}`;
+            }
+            // Already in M/D/YYYY format
+            if (/^\d{1,2}\/\d{1,2}\/\d{2,4}$/.test(trimmed)) {
+                return trimmed;
+            }
+        }
+        const d = new Date(val);
+        if (!isNaN(d.getTime())) {
+            const cdtOptions = { timeZone: 'America/Chicago', year: 'numeric', month: 'numeric', day: 'numeric' };
+            const parts = new Intl.DateTimeFormat('en-US', cdtOptions).formatToParts(d);
+            let m = '', day = '', y = '';
+            parts.forEach(p => {
+                if (p.type === 'month') m = p.value;
+                if (p.type === 'day') day = p.value;
+                if (p.type === 'year') y = p.value;
+            });
+            return `${m}/${day}/${y}`;
+        }
+        return null;
+    };
+
+    // 1. Check history modal input/card state first
     const historyModalEl = document.getElementById('historyModal');
     const isHistoryModalOpen = historyModalEl && historyModalEl.style.display !== 'none';
     
     if (isHistoryModalOpen) {
         const historyDateInput = historyModalEl.querySelector('input[type="date"], input.history-date, #historyDate, [name="historyDate"], #historyDateDisplay, .selected-history-date');
         if (historyDateInput && historyDateInput.value) {
-            const rawVal = historyDateInput.value;
-            if (rawVal.includes('-')) {
-                const parts = rawVal.split('-');
-                if (parts.length === 3) {
-                    return { dateStr: `${parseInt(parts[1], 10)}/${parseInt(parts[2], 10)}/${parts[0]}` };
-                }
-            }
-            return { dateStr: rawVal };
+            const formatted = formatToStandardDate(historyDateInput.value);
+            if (formatted) return { dateStr: formatted };
         }
 
         const activeHistoryCard = historyModalEl.querySelector('.history-card.active, .history-row.active, [data-history-active="true"]');
         if (activeHistoryCard) {
             const histDate = activeHistoryCard.dataset.date || activeHistoryCard.dataset.dateStr || activeHistoryCard.getAttribute('data-date');
-            if (histDate) {
-                return { dateStr: histDate };
-            }
+            const formatted = formatToStandardDate(histDate);
+            if (formatted) return { dateStr: formatted };
         }
 
         if (historyModalEl.dataset && historyModalEl.dataset.date) {
-            return { dateStr: historyModalEl.dataset.date };
+            const formatted = formatToStandardDate(historyModalEl.dataset.date);
+            if (formatted) return { dateStr: formatted };
         }
     }
 
-    // 2. Fall back to item properties for historical items (e.g. item.date, item.dateStr)
+    // 2. Check item properties for historical items
     if (item) {
-        if (typeof item.date === 'string' && item.date.trim() !== '') {
-            return { dateStr: item.date };
-        }
         if (typeof item.dateStr === 'string' && item.dateStr.trim() !== '') {
-            return { dateStr: item.dateStr };
+            const formatted = formatToStandardDate(item.dateStr);
+            if (formatted) return { dateStr: formatted };
+        }
+        if (typeof item.date === 'string' && item.date.trim() !== '') {
+            const formatted = formatToStandardDate(item.date);
+            if (formatted) return { dateStr: formatted };
         }
     }
 
-    // 3. Resolve base reference date from canvas dataset or fallback to live current time
+    // 3. Resolve base reference date from canvas dataset or fallback
     let baseDate = new Date();
     if (canvas && canvas.dataset && canvas.dataset.baseDate) {
         const parsedDatasetDate = new Date(canvas.dataset.baseDate);
@@ -3938,7 +3964,6 @@ function getSelectedDayCardDate(canvas, activeX, item, mode, prevItem, nextItem)
         }
     }
 
-    // Format current base date components to ensure consistent matching across timezones
     const cdtOptions = { timeZone: 'America/Chicago', year: 'numeric', month: 'numeric', day: 'numeric', hour12: false };
     const formatter = new Intl.DateTimeFormat('en-US', cdtOptions);
     
@@ -3953,32 +3978,32 @@ function getSelectedDayCardDate(canvas, activeX, item, mode, prevItem, nextItem)
         return `${defM}/${defD}/${defY}`;
     };
 
-    // 4. Check explicit item properties further (Ensures data passed from the active graph/timeline takes precedence)
+    // 4. Check explicit item properties (labels)
     if (item) {
         const isTodayLabel = (item.day && ['today', 'now'].includes(item.day.toLowerCase().trim())) || item.dayIndex === 0;
-        
         if (isTodayLabel) {
             return { dateStr: getDefaultTodayStr() };
         }
-
         if (item.formattedDate) {
-            return { dateStr: item.formattedDate };
+            const formatted = formatToStandardDate(item.formattedDate);
+            if (formatted) return { dateStr: formatted };
         }
     }
 
-    // 5. Check active DOM cards (UI-driven date selection)
+    // 5. Check active DOM cards
     const activeCard = document.querySelector('.day-card.active, .forecast-day-card.active, .day-tab.active, [data-selected="true"]');
     if (activeCard) {
         const cardText = activeCard.innerText || activeCard.getAttribute('data-date') || activeCard.getAttribute('title');
         if (cardText) {
-            const dateMatch = cardText.match(/([A-Za-z]{3}\s*\(\d{1,2}\/\d{1,2}\/\d{4}\))|(\d{1,2}\/\d{1,2}\/\d{2,4})|([A-Za-z]{3}\s+\d{1,2})/);
+            const dateMatch = cardText.match(/(\d{1,2}\/\d{1,2}\/\d{2,4})|(\d{4}-\d{2}-\d{2})/);
             if (dateMatch) {
-                return { dateStr: dateMatch[0] };
+                const formatted = formatToStandardDate(dateMatch[0]);
+                if (formatted) return { dateStr: formatted };
             }
         }
     }
 
-    // 6. Check modal header title or graph DOM elements (Including dynamic map tile elements)
+    // 6. Check modal header title or graph DOM elements
     const graphHeaderSelectors = [
         '#graphModalTitle', '.modal-title', '.graph-header', '.chart-title',
         '.graph-modal-date', '.map-tile-date', '.radar-timestamp',
@@ -3989,63 +4014,41 @@ function getSelectedDayCardDate(canvas, activeX, item, mode, prevItem, nextItem)
         const el = document.querySelector(selector);
         if (el && el.offsetParent !== null && el.innerText.trim()) {
             const text = el.innerText.trim();
-            const dateMatch = text.match(/([A-Za-z]{3}\s*\(\d{1,2}\/\d{1,2}\/\d{4}\))|(\d{1,2}\/\d{1,2}\/\d{2,4})|([A-Za-z]{3}\s+\d{1,2})|(\d{4}-\d{2}-\d{2})/);
+            const dateMatch = text.match(/(\d{1,2}\/\d{1,2}\/\d{2,4})|(\d{4}-\d{2}-\d{2})/);
             if (dateMatch) {
-                return { dateStr: dateMatch[0] };
+                const formatted = formatToStandardDate(dateMatch[0]);
+                if (formatted) return { dateStr: formatted };
             }
         }
     }
     
-    // 7. If forecast index or offset is provided on the item object (e.g. item.dayIndex)
+    // 7. Handle dayIndex offset
     if (item && typeof item.dayIndex === 'number') {
         const targetDate = new Date(baseDate.getTime());
         targetDate.setDate(baseDate.getDate() + item.dayIndex);
-        const parts = formatter.formatToParts(targetDate);
-        let m = '', d = '', y = '';
-        parts.forEach(p => {
-            if (p.type === 'month') m = p.value;
-            if (p.type === 'day') d = p.value;
-            if (p.type === 'year') y = p.value;
-        });
-        return { dateStr: `${m}/${d}/${y}` };
+        return { dateStr: formatToStandardDate(targetDate) };
     }
 
-    // 8. Fallback: If item.day matches a known weekday or label relative to today, parse accordingly
+    // 8. Fallback to weekday parsing
     const daysOfWeek = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
     if (item && typeof item.day === 'string') {
         const lowerDay = item.day.toLowerCase().trim();
         if (lowerDay === 'today' || lowerDay === 'now') {
-            const parts = formatter.formatToParts(baseDate);
-            let m = '', d = '', y = '';
-            parts.forEach(p => {
-                if (p.type === 'month') m = p.value;
-                if (p.type === 'day') d = p.value;
-                if (p.type === 'year') y = p.value;
-            });
-            return { dateStr: `${m}/${d}/${y}` };
+            return { dateStr: getDefaultTodayStr() };
         }
         
         const dayIndexMatch = daysOfWeek.indexOf(lowerDay);
         if (dayIndexMatch !== -1) {
             const currentDayOfWeek = baseDate.getDay();
             let dayDiff = dayIndexMatch - currentDayOfWeek;
-            if (dayDiff < 0) {
-                dayDiff += 7;
-            }
+            if (dayDiff < 0) dayDiff += 7;
+            
             const targetDate = new Date(baseDate.getTime());
             targetDate.setDate(baseDate.getDate() + dayDiff);
-            const parts = formatter.formatToParts(targetDate);
-            let m = '', d = '', y = '';
-            parts.forEach(p => {
-                if (p.type === 'month') m = p.value;
-                if (p.type === 'day') d = p.value;
-                if (p.type === 'year') y = p.value;
-            });
-            return { dateStr: `${m}/${d}/${y}` };
+            return { dateStr: formatToStandardDate(targetDate) };
         }
     }
 
-    // Default safe fallback matching baseDate parts (Today)
     return { dateStr: getDefaultTodayStr() };
 }
 function initTimezoneSyncedRadarModal(mapModalElement, forecastItem, defaultMode = 'temp', dayIndex = 0) {
