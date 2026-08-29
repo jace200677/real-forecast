@@ -5031,14 +5031,37 @@ function drawForecastCanvasGraph(item, mode, canvas, activeX = null, prevItem = 
 
     const isWinterInversion = item.isWinterInversion || (todayHigh < morningLow);
 
+    // Helper to evaluate source data type based on the August 22/23, 2026 threshold
+    const getHistoricalSourceData = (item, propName, fallbackVal = 0) => {
+        const itemDate = new Date(item.date || item.timestamp);
+        const cutoffDate = new Date('2026-08-23T00:00:00'); // On or after 8/23/2026
+
+        if (itemDate >= cutoffDate) {
+            // After 8/22/2026: Check for overrides first, fallback to NOAA/standard values
+            if (item.overrideValues && item.overrideValues[propName] !== undefined) {
+                return item.overrideValues[propName];
+            }
+        }
+        
+        // Before 8/23/2026 or if no override exists, use NOAA values
+        if (item.noaaValues && item.noaaValues[propName] !== undefined) {
+            return item.noaaValues[propName];
+        }
+        
+        return item[propName] !== undefined ? item[propName] : fallbackVal;
+    };
+
     const getDiurnalTemp = (m) => {
-        if (isHistorySource && Array.isArray(item.hourly) && item.hourly.length === 24) {
-            const hourIdx = Math.min(23, Math.floor(m / 60));
-            const nextHourIdx = Math.min(23, hourIdx + 1);
-            const tFraction = (m % 60) / 60;
-            const currentHVal = item.hourly[hourIdx].temp;
-            const nextHVal = item.hourly[nextHourIdx].temp;
-            return Math.round(currentHVal + (nextHVal - currentHVal) * tFraction);
+        if (isHistorySource) {
+            const hourlySource = getHistoricalSourceData(item, 'hourly', null);
+            if (Array.isArray(hourlySource) && hourlySource.length === 24) {
+                const hourIdx = Math.min(23, Math.floor(m / 60));
+                const nextHourIdx = Math.min(23, hourIdx + 1);
+                const tFraction = (m % 60) / 60;
+                const currentHVal = hourlySource[hourIdx].temp;
+                const nextHVal = hourlySource[nextHourIdx].temp;
+                return Math.round(currentHVal + (nextHVal - currentHVal) * tFraction);
+            }
         }
 
         if (isToday && m <= currentMinutes && Array.isArray(item.historicalHourly) && item.historicalHourly[m]) {
@@ -5059,13 +5082,16 @@ function drawForecastCanvasGraph(item, mode, canvas, activeX = null, prevItem = 
 
     const peakMin = 15 * 60;
     const getDiurnalFeelsLike = (m) => {
-        if (isHistorySource && Array.isArray(item.hourly) && item.hourly.length === 24) {
-            const hourIdx = Math.min(23, Math.floor(m / 60));
-            const nextHourIdx = Math.min(23, hourIdx + 1);
-            const tFraction = (m % 60) / 60;
-            const currentHVal = item.hourly[hourIdx].feelsLike !== undefined ? item.hourly[hourIdx].feelsLike : item.hourly[hourIdx].temp;
-            const nextHVal = item.hourly[nextHourIdx].feelsLike !== undefined ? item.hourly[nextHourIdx].feelsLike : item.hourly[nextHourIdx].temp;
-            return Math.round(currentHVal + (nextHVal - currentHVal) * tFraction);
+        if (isHistorySource) {
+            const hourlySource = getHistoricalSourceData(item, 'hourly', null);
+            if (Array.isArray(hourlySource) && hourlySource.length === 24) {
+                const hourIdx = Math.min(23, Math.floor(m / 60));
+                const nextHourIdx = Math.min(23, hourIdx + 1);
+                const tFraction = (m % 60) / 60;
+                const currentHVal = hourlySource[hourIdx].feelsLike !== undefined ? hourlySource[hourIdx].feelsLike : hourlySource[hourIdx].temp;
+                const nextHVal = hourlySource[nextHourIdx].feelsLike !== undefined ? hourlySource[nextHourIdx].feelsLike : hourlySource[nextHourIdx].temp;
+                return Math.round(currentHVal + (nextHVal - currentHVal) * tFraction);
+            }
         }
         if (isToday && m <= currentMinutes && Array.isArray(item.historicalFeelsLike) && item.historicalFeelsLike[m]) {
             return item.historicalFeelsLike[m];
@@ -5078,13 +5104,16 @@ function drawForecastCanvasGraph(item, mode, canvas, activeX = null, prevItem = 
     const nextWind = (effectiveNextItem && effectiveNextItem.windMph !== undefined) ? effectiveNextItem.windMph : baseWindVal;
     
     const getDiurnalWind = (m) => {
-        if (isHistorySource && Array.isArray(item.hourly) && item.hourly.length === 24) {
-            const hourIdx = Math.min(23, Math.floor(m / 60));
-            const nextHourIdx = Math.min(23, hourIdx + 1);
-            const tFraction = (m % 60) / 60;
-            const currentHVal = item.hourly[hourIdx].wind !== undefined ? item.hourly[hourIdx].wind : (item.hourly[hourIdx].windMph || baseWindVal);
-            const nextHVal = item.hourly[nextHourIdx].wind !== undefined ? item.hourly[nextHourIdx].wind : (item.hourly[nextHourIdx].windMph || baseWindVal);
-            return Math.round(currentHVal + (nextHVal - currentHVal) * tFraction);
+        if (isHistorySource) {
+            const hourlySource = getHistoricalSourceData(item, 'hourly', null);
+            if (Array.isArray(hourlySource) && hourlySource.length === 24) {
+                const hourIdx = Math.min(23, Math.floor(m / 60));
+                const nextHourIdx = Math.min(23, hourIdx + 1);
+                const tFraction = (m % 60) / 60;
+                const currentHVal = hourlySource[hourIdx].wind !== undefined ? hourlySource[hourIdx].wind : (hourlySource[hourIdx].windMph || baseWindVal);
+                const nextHVal = hourlySource[nextHourIdx].wind !== undefined ? hourlySource[nextHourIdx].wind : (hourlySource[nextHourIdx].windMph || baseWindVal);
+                return Math.round(currentHVal + (nextHVal - currentHVal) * tFraction);
+            }
         }
         if (isToday && m <= currentMinutes && Array.isArray(item.historicalWind) && item.historicalWind[m]) {
             return item.historicalWind[m];
@@ -5101,13 +5130,16 @@ function drawForecastCanvasGraph(item, mode, canvas, activeX = null, prevItem = 
     const nextGust = (effectiveNextItem && effectiveNextItem.gustMph !== undefined) ? effectiveNextItem.gustMph : baseGustVal;
     
     const getDiurnalGust = (m) => {
-        if (isHistorySource && Array.isArray(item.hourly) && item.hourly.length === 24) {
-            const hourIdx = Math.min(23, Math.floor(m / 60));
-            const nextHourIdx = Math.min(23, hourIdx + 1);
-            const tFraction = (m % 60) / 60;
-            const currentHVal = item.hourly[hourIdx].gust !== undefined ? item.hourly[hourIdx].gust : (item.hourly[hourIdx].gustMph || baseGustVal);
-            const nextHVal = item.hourly[nextHourIdx].gust !== undefined ? item.hourly[nextHourIdx].gust : (item.hourly[nextHourIdx].gustMph || baseGustVal);
-            return Math.round(currentHVal + (nextHVal - currentHVal) * tFraction);
+        if (isHistorySource) {
+            const hourlySource = getHistoricalSourceData(item, 'hourly', null);
+            if (Array.isArray(hourlySource) && hourlySource.length === 24) {
+                const hourIdx = Math.min(23, Math.floor(m / 60));
+                const nextHourIdx = Math.min(23, hourIdx + 1);
+                const tFraction = (m % 60) / 60;
+                const currentHVal = hourlySource[hourIdx].gust !== undefined ? hourlySource[hourIdx].gust : (hourlySource[hourIdx].gustMph || baseGustVal);
+                const nextHVal = hourlySource[nextHourIdx].gust !== undefined ? hourlySource[nextHourIdx].gust : (hourlySource[nextHourIdx].gustMph || baseGustVal);
+                return Math.round(currentHVal + (nextHVal - currentHVal) * tFraction);
+            }
         }
         if (isToday && m <= currentMinutes && Array.isArray(item.historicalGust) && item.historicalGust[m]) {
             return item.historicalGust[m];
@@ -5124,13 +5156,16 @@ function drawForecastCanvasGraph(item, mode, canvas, activeX = null, prevItem = 
     const nextDos = (effectiveNextItem && (effectiveNextItem.dos !== undefined || effectiveNextItem.score !== undefined)) ? (effectiveNextItem.dos !== undefined ? effectiveNextItem.dos : effectiveNextItem.score) : baseDosVal;
     
     const getDiurnalDos = (m) => {
-        if (isHistorySource && Array.isArray(item.hourly) && item.hourly.length === 24) {
-            const hourIdx = Math.min(23, Math.floor(m / 60));
-            const nextHourIdx = Math.min(23, hourIdx + 1);
-            const tFraction = (m % 60) / 60;
-            const currentHVal = item.hourly[hourIdx].dos !== undefined ? item.hourly[hourIdx].dos : (item.hourly[hourIdx].score || baseDosVal);
-            const nextHVal = item.hourly[nextHourIdx].dos !== undefined ? item.hourly[nextHourIdx].dos : (item.hourly[nextHourIdx].score || baseDosVal);
-            return Math.round(currentHVal + (nextHVal - currentHVal) * tFraction);
+        if (isHistorySource) {
+            const hourlySource = getHistoricalSourceData(item, 'hourly', null);
+            if (Array.isArray(hourlySource) && hourlySource.length === 24) {
+                const hourIdx = Math.min(23, Math.floor(m / 60));
+                const nextHourIdx = Math.min(23, hourIdx + 1);
+                const tFraction = (m % 60) / 60;
+                const currentHVal = hourlySource[hourIdx].dos !== undefined ? hourlySource[hourIdx].dos : (hourlySource[hourIdx].score || baseDosVal);
+                const nextHVal = hourlySource[nextHourIdx].dos !== undefined ? hourlySource[nextHourIdx].dos : (hourlySource[nextHourIdx].score || baseDosVal);
+                return Math.round(currentHVal + (nextHVal - currentHVal) * tFraction);
+            }
         }
         if (isToday && m <= currentMinutes && Array.isArray(item.historicalDos) && item.historicalDos[m]) {
             return item.historicalDos[m];
@@ -5145,13 +5180,16 @@ function drawForecastCanvasGraph(item, mode, canvas, activeX = null, prevItem = 
     const prevPressure = (effectivePrevItem && effectivePrevItem.pressure !== undefined) ? effectivePrevItem.pressure : (item.pressure || 29.92);
     const nextPressure = (effectiveNextItem && effectiveNextItem.pressure !== undefined) ? effectiveNextItem.pressure : (item.pressure || 29.92);
     const getDiurnalPressure = (m) => {
-        if (isHistorySource && Array.isArray(item.hourly) && item.hourly.length === 24) {
-            const hourIdx = Math.min(23, Math.floor(m / 60));
-            const nextHourIdx = Math.min(23, hourIdx + 1);
-            const tFraction = (m % 60) / 60;
-            const currentHVal = item.hourly[hourIdx].pressure !== undefined ? item.hourly[hourIdx].pressure : (item.pressure || 29.92);
-            const nextHVal = item.hourly[nextHourIdx].pressure !== undefined ? item.hourly[nextHourIdx].pressure : (item.pressure || 29.92);
-            return +(currentHVal + (nextHVal - currentHVal) * tFraction).toFixed(2);
+        if (isHistorySource) {
+            const hourlySource = getHistoricalSourceData(item, 'hourly', null);
+            if (Array.isArray(hourlySource) && hourlySource.length === 24) {
+                const hourIdx = Math.min(23, Math.floor(m / 60));
+                const nextHourIdx = Math.min(23, hourIdx + 1);
+                const tFraction = (m % 60) / 60;
+                const currentHVal = hourlySource[hourIdx].pressure !== undefined ? hourlySource[hourIdx].pressure : (item.pressure || 29.92);
+                const nextHVal = hourlySource[nextHourIdx].pressure !== undefined ? hourlySource[nextHourIdx].pressure : (item.pressure || 29.92);
+                return +(currentHVal + (nextHVal - currentHVal) * tFraction).toFixed(2);
+            }
         }
         if (isToday && m <= currentMinutes && Array.isArray(item.historicalPressure) && item.historicalPressure[m]) {
             return item.historicalPressure[m];
@@ -5166,13 +5204,16 @@ function drawForecastCanvasGraph(item, mode, canvas, activeX = null, prevItem = 
     const prevHumidity = (effectivePrevItem && effectivePrevItem.humidity !== undefined) ? effectivePrevItem.humidity : (item.humidity || 50);
     const nextHumidity = (effectiveNextItem && effectiveNextItem.humidity !== undefined) ? effectiveNextItem.humidity : (item.humidity || 50);
     const getDiurnalHumidity = (m) => {
-        if (isHistorySource && Array.isArray(item.hourly) && item.hourly.length === 24) {
-            const hourIdx = Math.min(23, Math.floor(m / 60));
-            const nextHourIdx = Math.min(23, hourIdx + 1);
-            const tFraction = (m % 60) / 60;
-            const currentHVal = item.hourly[hourIdx].humidity !== undefined ? item.hourly[hourIdx].humidity : (item.humidity || 50);
-            const nextHVal = item.hourly[nextHourIdx].humidity !== undefined ? item.hourly[nextHourIdx].humidity : (item.humidity || 50);
-            return Math.round(currentHVal + (nextHVal - currentHVal) * tFraction);
+        if (isHistorySource) {
+            const hourlySource = getHistoricalSourceData(item, 'hourly', null);
+            if (Array.isArray(hourlySource) && hourlySource.length === 24) {
+                const hourIdx = Math.min(23, Math.floor(m / 60));
+                const nextHourIdx = Math.min(23, hourIdx + 1);
+                const tFraction = (m % 60) / 60;
+                const currentHVal = hourlySource[hourIdx].humidity !== undefined ? hourlySource[hourIdx].humidity : (item.humidity || 50);
+                const nextHVal = hourlySource[nextHourIdx].humidity !== undefined ? hourlySource[nextHourIdx].humidity : (item.humidity || 50);
+                return Math.round(currentHVal + (nextHVal - currentHVal) * tFraction);
+            }
         }
         if (isToday && m <= currentMinutes && Array.isArray(item.historicalHumidity) && item.historicalHumidity[m]) {
             return item.historicalHumidity[m];
@@ -5185,13 +5226,16 @@ function drawForecastCanvasGraph(item, mode, canvas, activeX = null, prevItem = 
     };
 
     const getDiurnalUv = (m) => {
-        if (isHistorySource && Array.isArray(item.hourly) && item.hourly.length === 24) {
-            const hourIdx = Math.min(23, Math.floor(m / 60));
-            const nextHourIdx = Math.min(23, hourIdx + 1);
-            const tFraction = (m % 60) / 60;
-            const currentHVal = item.hourly[hourIdx].uv !== undefined ? item.hourly[hourIdx].uv : (item.hourly[hourIdx].uvIndex || 0);
-            const nextHVal = item.hourly[nextHourIdx].uv !== undefined ? item.hourly[nextHourIdx].uv : (item.hourly[nextHourIdx].uvIndex || 0);
-            return +(currentHVal + (nextHVal - currentHVal) * tFraction).toFixed(1);
+        if (isHistorySource) {
+            const hourlySource = getHistoricalSourceData(item, 'hourly', null);
+            if (Array.isArray(hourlySource) && hourlySource.length === 24) {
+                const hourIdx = Math.min(23, Math.floor(m / 60));
+                const nextHourIdx = Math.min(23, hourIdx + 1);
+                const tFraction = (m % 60) / 60;
+                const currentHVal = hourlySource[hourIdx].uv !== undefined ? hourlySource[hourIdx].uv : (hourlySource[hourIdx].uvIndex || 0);
+                const nextHVal = hourlySource[nextHourIdx].uv !== undefined ? hourlySource[nextHourIdx].uv : (hourlySource[nextHourIdx].uvIndex || 0);
+                return +(currentHVal + (nextHVal - currentHVal) * tFraction).toFixed(1);
+            }
         }
         if (isToday && m <= currentMinutes && Array.isArray(item.historicalUv) && item.historicalUv[m]) {
             return item.historicalUv[m];
@@ -5205,13 +5249,16 @@ function drawForecastCanvasGraph(item, mode, canvas, activeX = null, prevItem = 
     const prevPrecip = (effectivePrevItem && effectivePrevItem.precipChance !== undefined) ? effectivePrevItem.precipChance : (item.precipChance || 0);
     const nextPrecip = (effectiveNextItem && effectiveNextItem.precipChance !== undefined) ? effectiveNextItem.precipChance : (item.precipChance || 0);
     const getDiurnalPrecip = (m) => {
-        if (isHistorySource && Array.isArray(item.hourly) && item.hourly.length === 24) {
-            const hourIdx = Math.min(23, Math.floor(m / 60));
-            const nextHourIdx = Math.min(23, hourIdx + 1);
-            const tFraction = (m % 60) / 60;
-            const currentHVal = item.hourly[hourIdx].precip !== undefined ? item.hourly[hourIdx].precip : (item.hourly[hourIdx].precipChance || 0);
-            const nextHVal = item.hourly[nextHourIdx].precip !== undefined ? item.hourly[nextHourIdx].precip : (item.hourly[nextHourIdx].precipChance || 0);
-            return Math.round(currentHVal + (nextHVal - currentHVal) * tFraction);
+        if (isHistorySource) {
+            const hourlySource = getHistoricalSourceData(item, 'hourly', null);
+            if (Array.isArray(hourlySource) && hourlySource.length === 24) {
+                const hourIdx = Math.min(23, Math.floor(m / 60));
+                const nextHourIdx = Math.min(23, hourIdx + 1);
+                const tFraction = (m % 60) / 60;
+                const currentHVal = hourlySource[hourIdx].precip !== undefined ? hourlySource[hourIdx].precip : (hourlySource[hourIdx].precipChance || 0);
+                const nextHVal = hourlySource[nextHourIdx].precip !== undefined ? hourlySource[nextHourIdx].precip : (hourlySource[nextHourIdx].precipChance || 0);
+                return Math.round(currentHVal + (nextHVal - currentHVal) * tFraction);
+            }
         }
         if (isToday && m <= currentMinutes && Array.isArray(item.historicalPrecip) && item.historicalPrecip[m]) {
             return item.historicalPrecip[m];
