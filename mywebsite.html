@@ -3940,7 +3940,7 @@ function initTimezoneSyncedRadarModal(mapModalElement, forecastItem, defaultMode
 
   window._radarState = window._radarState || {};
 
-  // Clear any existing imagery auto-refresh interval on re-initialization
+  // Clear any existing interval on re-initialization
   if (window._radarState.liveRefreshInterval) {
     clearInterval(window._radarState.liveRefreshInterval);
     window._radarState.liveRefreshInterval = null;
@@ -3953,7 +3953,7 @@ function initTimezoneSyncedRadarModal(mapModalElement, forecastItem, defaultMode
     window._radarState.map = L.map('leafletMap', {
       zoomControl: true,
       attributionControl: false
-    }).setView([lat, lon], 12); // Higher default zoom level
+    }).setView([lat, lon], 12);
 
     // High-resolution Satellite Basemap
     L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
@@ -3975,10 +3975,13 @@ function initTimezoneSyncedRadarModal(mapModalElement, forecastItem, defaultMode
     extractedDateStr = getSelectedDayCardDate(window._radarState.canvas, dayIndex, forecastItem, defaultMode, null, null, 0)?.dateStr;
   }
 
-  // Fallback to item date or today if date getter returns null
+  // Local ISO date formatting
   const now = new Date();
-  const todayIso = now.toISOString().split('T')[0];
-  
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, '0');
+  const day = String(now.getDate()).padStart(2, '0');
+  const todayIso = `${year}-${month}-${day}`;
+
   let activeIsoDate = todayIso;
   if (extractedDateStr) {
     if (extractedDateStr.includes('/')) {
@@ -3996,7 +3999,7 @@ function initTimezoneSyncedRadarModal(mapModalElement, forecastItem, defaultMode
     dateDisplay.textContent = extractedDateStr || activeIsoDate;
   }
 
-  // Determine timeline state relative to today
+  // Date context relative to today
   const isPast = activeIsoDate < todayIso;
   const isToday = activeIsoDate === todayIso;
   const isFuture = activeIsoDate > todayIso;
@@ -4004,61 +4007,64 @@ function initTimezoneSyncedRadarModal(mapModalElement, forecastItem, defaultMode
   const currentMinuteOfDay = (now.getHours() * 60) + now.getMinutes();
   const timelineSlider = document.getElementById("radarTimeSlider");
 
-  // Handle layer rendering function for GOES 1-minute live satellite vs static/archive
+  // Dynamic satellite layer manager with cache-busting & forced Leaflet redraw
   const updateSatelliteOverlay = (minuteOffset = 0) => {
-    if (window._radarState.satelliteLayer) {
-      window._radarState.map.removeLayer(window._radarState.satelliteLayer);
-    }
-
-    let satTileUrl = '';
     const timestamp = Date.now();
+    let satTileUrl = '';
 
     if (isToday) {
-      // 1-minute real-time GOES Mesoscale WMS feed
-      satTileUrl = `https://mesonet.agron.iastate.edu/cgi-bin/wms/goes/vis006.cgi?time=${timestamp}`;
+      // 1-minute real-time GOES Mesoscale WMS feed with timestamp cache-buster
+      satTileUrl = `https://mesonet.agron.iastate.edu/cgi-bin/wms/goes/vis006.cgi?_cb=${timestamp}`;
     } else if (isPast) {
-      // Past archived date satellite feed
-      satTileUrl = `https://mesonet.agron.iastate.edu/cgi-bin/wms/goes/vis006.cgi?date=${activeIsoDate}&min=${minuteOffset}`;
+      // Archived past date satellite feed
+      satTileUrl = `https://mesonet.agron.iastate.edu/cgi-bin/wms/goes/vis006.cgi?date=${activeIsoDate}&min=${minuteOffset}&_cb=${timestamp}`;
     } else if (isFuture) {
-      // Future dates default to today's latest operational imagery feed
-      satTileUrl = `https://mesonet.agron.iastate.edu/cgi-bin/wms/goes/vis006.cgi?time=${timestamp}`;
+      // Future dates use today's operational satellite feed with animation offset
+      satTileUrl = `https://mesonet.agron.iastate.edu/cgi-bin/wms/goes/vis006.cgi?_cb=${timestamp}`;
     }
 
-    window._radarState.satelliteLayer = L.tileLayer.wms(satTileUrl, {
-      layers: 'vis006',
-      format: 'image/png',
-      transparent: true,
-      opacity: 0.7,
-      maxZoom: 19
-    }).addTo(window._radarState.map);
+    // Reuse existing layer parameters if available, or create new layer
+    if (window._radarState.satelliteLayer) {
+      window._radarState.satelliteLayer.setUrl(satTileUrl);
+      window._radarState.satelliteLayer.redraw();
+    } else {
+      window._radarState.satelliteLayer = L.tileLayer.wms(satTileUrl, {
+        layers: 'vis006',
+        format: 'image/png',
+        transparent: true,
+        opacity: 0.7,
+        maxZoom: 19
+      }).addTo(window._radarState.map);
+    }
 
     if (typeof renderRadarLayerAtMinute === 'function') {
       renderRadarLayerAtMinute(minuteOffset);
     }
   };
 
-  // Configure Time Slider & Refresh Loops based on Date Context
+  // Configure timeline slider and 1-second live Satellite loop execution
   if (isToday) {
-    // Put timeline slider on current local minute on start
+    // Put timeline slider on current local minute ONLY on opening/init
     if (timelineSlider) {
       timelineSlider.max = 1439;
       timelineSlider.value = currentMinuteOfDay;
     }
-    
-    // Fetch 1-minute live satellite updates every 1 second if on current time
+
+    // Refresh 1-minute live satellite updates only if the user is currently at/near real-time
     window._radarState.liveRefreshInterval = setInterval(() => {
       const activeVal = timelineSlider ? parseInt(timelineSlider.value, 10) : currentMinuteOfDay;
       const liveNowMinute = (new Date().getHours() * 60) + new Date().getMinutes();
-      
+
+      // Only refresh tiles live if slider is actively positioned near current minute
       if (activeVal >= liveNowMinute - 2) {
-        updateSatelliteOverlay(liveNowMinute);
+        updateSatelliteOverlay(activeVal);
       }
     }, 1000);
 
   } else if (isPast) {
     if (timelineSlider) timelineSlider.value = 0;
-    
-    // Animate/fetch past imagery updates every 1 second
+
+    // Animate past satellite imagery frames every 1 second
     window._radarState.liveRefreshInterval = setInterval(() => {
       if (timelineSlider) {
         let currentVal = parseInt(timelineSlider.value, 10) + 10;
@@ -4071,7 +4077,7 @@ function initTimezoneSyncedRadarModal(mapModalElement, forecastItem, defaultMode
   } else if (isFuture) {
     if (timelineSlider) timelineSlider.value = 0;
 
-    // Run 1-second imagery refresh loop for future forecast projections
+    // Run 1-second animation loop for future projections
     window._radarState.liveRefreshInterval = setInterval(() => {
       if (timelineSlider) {
         let currentVal = parseInt(timelineSlider.value, 10) + 15;
@@ -4082,7 +4088,7 @@ function initTimezoneSyncedRadarModal(mapModalElement, forecastItem, defaultMode
     }, 1000);
   }
 
-  // Bind slider input events
+  // Bind slider controls
   if (timelineSlider) {
     timelineSlider.oninput = (e) => {
       const sliderMinute = parseInt(e.target.value, 10);
@@ -4096,47 +4102,33 @@ function initTimezoneSyncedRadarModal(mapModalElement, forecastItem, defaultMode
     updateSatelliteOverlay(currentMin);
   };
 
-  // Initial draw execution
+  // Initial layer render
   window.triggerRadarRedraw(isToday ? currentMinuteOfDay : 0);
 }
 // Dedicated method to update and swap satellite tile overlays dynamically
 function updateSatelliteOverlay(minuteOffset = 0, isToday = false, isPast = false, isFuture = false, activeIsoDate = '') {
   if (!window._radarState || !window._radarState.map) return;
 
-  // Remove existing satellite overlay layer if present
+  // Remove existing cloud layer if present
   if (window._radarState.satelliteLayer) {
     window._radarState.map.removeLayer(window._radarState.satelliteLayer);
+    window._radarState.satelliteLayer = null;
   }
 
-  let satTileUrl = '';
-  const timestamp = Date.now();
+  // Cloud-free high-resolution surface satellite layer (Esri World Imagery)
+  const cloudFreeSatUrl = 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}';
 
-  if (isToday) {
-    // 1-minute "near-live" GOES mesoscale operational feed
-    satTileUrl = `https://mesonet.agron.iastate.edu/cgi-bin/wms/goes/vis006.cgi?time=${timestamp}`;
-  } else if (isPast) {
-    // Fetch archived imagery matching active card's past date & slider minute
-    satTileUrl = `https://mesonet.agron.iastate.edu/cgi-bin/wms/goes/vis006.cgi?date=${activeIsoDate}&min=${minuteOffset}`;
-  } else if (isFuture) {
-    // Future active card defaults to today's latest operational imagery feed
-    satTileUrl = `https://mesonet.agron.iastate.edu/cgi-bin/wms/goes/vis006.cgi?time=${timestamp}`;
-  }
-
-  // Create new WMS satellite tile layer with transparency over high-res base map
-  window._radarState.satelliteLayer = L.tileLayer.wms(satTileUrl, {
-    layers: 'vis006',
-    format: 'image/png',
-    transparent: true,
-    opacity: 0.7,
-    maxZoom: 19
+  window._radarState.satelliteLayer = L.tileLayer(cloudFreeSatUrl, {
+    maxZoom: 19,
+    opacity: 1.0,
+    attribution: 'Tiles &copy; Esri'
   }).addTo(window._radarState.map);
 
-  // Redraw underlying canvas radar/weather overlay at current minute
+  // Keep radar/weather canvas rendering synced to time slider
   if (typeof renderRadarLayerAtMinute === 'function') {
     renderRadarLayerAtMinute(minuteOffset);
   }
 }
-
 function renderRadarLayerAtMinute(minute) {
   const state = window._radarState;
   if (!state || !state.map) return;
