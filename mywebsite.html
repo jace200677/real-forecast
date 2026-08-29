@@ -1943,37 +1943,59 @@ function updateDashboard() {
     }
 }
 function openForecastGraphModal(item, fullForecast = [], itemIndex = -1) {
-    // Standardizes historical payload schemas and calculates min/max bounds across all layers
-    const normalizeWeatherItem = (target) => {
-        if (!target || typeof target !== 'object') return target;
+    // Helper: Standardizes historical & forecast schemas (handles columnar arrays & key aliases)
+    const normalizeItemData = (targetItem) => {
+        if (!targetItem || typeof targetItem !== 'object') return targetItem;
 
-        // Extract raw hourly collection from any standard key variation
-        let rawHourly = target.hourly || target.hours || target.hourlyData || 
-                        target.history || target.timeline || target.data || 
-                        target.list || target.hourly_forecast || [];
+        // 1. Resolve History Input Date from Item, Global State, or UI DOM Inputs
+        const historyInputDate = targetItem.historyDate || 
+                                 targetItem.date || 
+                                 targetItem.datetime || 
+                                 targetItem.time || 
+                                 document.getElementById("historyDateInput")?.value || 
+                                 document.getElementById("historyDate")?.value || 
+                                 document.getElementById("weatherHistoryDate")?.value || 
+                                 document.getElementById("history-date")?.value || 
+                                 window.selectedHistoryDate || 
+                                 window.historyDateInput || 
+                                 null;
 
-        if (rawHourly && typeof rawHourly === 'object' && !Array.isArray(rawHourly) && rawHourly.hourly) {
-            rawHourly = rawHourly.hourly;
-        }
+        // 2. Resolve Historical Provenance ("Came From" Source / API Provider)
+        const historicalCameFrom = targetItem.cameFrom || 
+                                   targetItem.source || 
+                                   targetItem.provider || 
+                                   targetItem.origin || 
+                                   window.historicalSource || 
+                                   window.historySource || 
+                                   window._radarState?.cameFrom || 
+                                   (targetItem.isHistorical ? "historical_archive" : "forecast_api");
 
-        let hourlyArray = [];
+        targetItem.historyInputDate = historyInputDate;
+        targetItem.historyDate = historyInputDate;
+        targetItem.cameFrom = historicalCameFrom;
+        targetItem.historicalSource = historicalCameFrom;
 
-        // 1. Columnar Object Arrays (e.g. Open-Meteo: { time: [...], surface_pressure: [...] })
-        if (rawHourly && typeof rawHourly === 'object' && !Array.isArray(rawHourly)) {
-            const times = rawHourly.time || rawHourly.datetime || rawHourly.timestamps || [];
-            const temps = rawHourly.temperature_2m || rawHourly.temp || rawHourly.temperature || rawHourly.temp_c || [];
-            const feels = rawHourly.apparent_temperature || rawHourly.feels_like || rawHourly.feelsLike || rawHourly.feelslike || [];
+        let rawHourly = targetItem.hourly || targetItem.hours || targetItem.hourlyData || 
+                        targetItem.history || targetItem.timeline || targetItem.data || [];
+                        
+        let normalizedHourly = [];
+
+        // Handle Columnar Formats (e.g., Open-Meteo: { time: [...], temperature_2m: [...] })
+        if (rawHourly && !Array.isArray(rawHourly) && typeof rawHourly === 'object') {
+            const times = rawHourly.time || rawHourly.datetime || [];
+            const temps = rawHourly.temperature_2m || rawHourly.temp || rawHourly.temperature || [];
+            const feels = rawHourly.apparent_temperature || rawHourly.feels_like || rawHourly.feelsLike || [];
             const winds = rawHourly.wind_speed_10m || rawHourly.windspeed_10m || rawHourly.wind_speed || rawHourly.wind || [];
             const gusts = rawHourly.wind_gusts_10m || rawHourly.windgusts_10m || rawHourly.wind_gust || rawHourly.gust || [];
-            const pressures = rawHourly.surface_pressure || rawHourly.pressure_msl || rawHourly.pressure || rawHourly.barometer || [];
-            const humidities = rawHourly.relative_humidity_2m || rawHourly.relativehumidity_2m || rawHourly.humidity || rawHourly.rh || [];
-            const uvs = rawHourly.uv_index || rawHourly.uv || rawHourly.uvIndex || [];
-            const precips = rawHourly.precipitation_probability || rawHourly.precipitation || rawHourly.precip || rawHourly.pop || rawHourly.precip_chance || [];
+            const pressures = rawHourly.surface_pressure || rawHourly.pressure_msl || rawHourly.pressure || [];
+            const humidities = rawHourly.relative_humidity_2m || rawHourly.relativehumidity_2m || rawHourly.humidity || [];
+            const uvs = rawHourly.uv_index || rawHourly.uv || [];
+            const precips = rawHourly.precipitation_probability || rawHourly.precipitation || rawHourly.precip || rawHourly.pop || [];
             const dosScores = rawHourly.dos || rawHourly.dos_score || rawHourly.dosScore || [];
 
-            const len = Math.max(times.length, temps.length, feels.length, winds.length, pressures.length);
+            const len = Math.max(times.length, temps.length);
             for (let i = 0; i < len; i++) {
-                hourlyArray.push({
+                normalizedHourly.push({
                     time: times[i],
                     temp: temps[i] ?? null,
                     feelsLike: feels[i] ?? temps[i] ?? null,
@@ -1987,14 +2009,14 @@ function openForecastGraphModal(item, fullForecast = [], itemIndex = -1) {
                 });
             }
         } 
-        // 2. Standard Array of Hourly Objects
+        // Handle Object Arrays (e.g., Visual Crossing / OpenWeather)
         else if (Array.isArray(rawHourly)) {
-            hourlyArray = rawHourly.map(h => {
-                if (!h || typeof h !== 'object') return h;
+            normalizedHourly = rawHourly.map(h => {
+                if (typeof h !== 'object' || !h) return h;
                 const tempVal = h.temp ?? h.temperature ?? h.temp_2m ?? h.temperature_2m ?? h.temp_c ?? h.temp_f;
                 const feelsVal = h.feelsLike ?? h.feelslike ?? h.feels_like ?? h.apparent_temperature ?? h.apparent_temp ?? tempVal;
-                const windVal = h.wind ?? h.windSpeed ?? h.wind_speed ?? h.windspeed_10m ?? h.wind_speed_10m ?? 0;
-                const gustVal = h.gust ?? h.wind_gust ?? h.wind_gusts_10m ?? h.windgusts_10m ?? windVal;
+                const windVal = h.wind ?? h.windSpeed ?? h.wind_speed ?? h.windspeed_10m ?? 0;
+                const gustVal = h.gust ?? h.wind_gust ?? h.wind_gusts_10m ?? windVal;
                 const pressVal = h.pressure ?? h.surface_pressure ?? h.pressure_msl ?? h.barometer;
                 const humVal = h.humidity ?? h.relative_humidity ?? h.relativehumidity_2m ?? h.rh;
                 const uvVal = h.uv ?? h.uv_index ?? h.uvIndex ?? 0;
@@ -2003,7 +2025,6 @@ function openForecastGraphModal(item, fullForecast = [], itemIndex = -1) {
 
                 return {
                     ...h,
-                    time: h.time ?? h.datetime ?? h.timestamp ?? h.dt,
                     temp: tempVal,
                     feelsLike: feelsVal,
                     wind: windVal,
@@ -2017,71 +2038,49 @@ function openForecastGraphModal(item, fullForecast = [], itemIndex = -1) {
             });
         }
 
-        target.hourly = hourlyArray;
+        targetItem.hourly = normalizedHourly;
 
-        // 3. Explicitly compute High/Low bounds for ALL weather layers on the target object
-        if (hourlyArray.length > 0) {
-            const getValidNums = (key) => hourlyArray.map(h => h[key]).filter(v => typeof v === 'number' && !isNaN(v));
+        // Compute explicit High/Low bounds across all hourly layers
+        if (normalizedHourly.length > 0) {
+            const validTemps = normalizedHourly.map(h => h.temp).filter(v => typeof v === 'number' && !isNaN(v));
+            const validFeels = normalizedHourly.map(h => h.feelsLike).filter(v => typeof v === 'number' && !isNaN(v));
+            const validWinds = normalizedHourly.map(h => h.wind).filter(v => typeof v === 'number' && !isNaN(v));
+            const validPress = normalizedHourly.map(h => h.pressure).filter(v => typeof v === 'number' && !isNaN(v));
+            const validHumid = normalizedHourly.map(h => h.humidity).filter(v => typeof v === 'number' && !isNaN(v));
+            const validUv    = normalizedHourly.map(h => h.uv).filter(v => typeof v === 'number' && !isNaN(v));
+            const validPrecip= normalizedHourly.map(h => h.precip).filter(v => typeof v === 'number' && !isNaN(v));
 
-            const temps = getValidNums('temp');
-            const feels = getValidNums('feelsLike');
-            const winds = getValidNums('wind');
-            const gusts = getValidNums('gust');
-            const press = getValidNums('pressure');
-            const hums  = getValidNums('humidity');
-            const uvs   = getValidNums('uv');
-            const precs = getValidNums('precip');
-            const doses = getValidNums('dos');
-
-            if (temps.length) {
-                const min = Math.min(...temps), max = Math.max(...temps);
-                target.tempMin = target.minTemp = target.temperatureMin = target.temp_min = min;
-                target.tempMax = target.maxTemp = target.temperatureMax = target.temp_max = max;
+            if (validTemps.length) {
+                targetItem.tempMin = Math.min(...validTemps);
+                targetItem.tempMax = Math.max(...validTemps);
             }
-            if (feels.length) {
-                const min = Math.min(...feels), max = Math.max(...feels);
-                target.feelsMin = target.minFeels = target.feelsLikeMin = target.apparent_temperature_min = min;
-                target.feelsMax = target.maxFeels = target.feelsLikeMax = target.apparent_temperature_max = max;
+            if (validFeels.length) {
+                targetItem.feelsMin = Math.min(...validFeels);
+                targetItem.feelsMax = Math.max(...validFeels);
             }
-            if (winds.length) {
-                const min = Math.min(...winds), max = Math.max(...winds);
-                target.windMin = target.minWind = min;
-                target.windMax = target.maxWind = target.wind_speed_max = max;
+            if (validWinds.length) {
+                targetItem.windMax = Math.max(...validWinds);
             }
-            if (gusts.length) {
-                target.gustMax = target.maxGust = target.wind_gust_max = Math.max(...gusts);
+            if (validPress.length) {
+                targetItem.pressureMin = Math.min(...validPress);
+                targetItem.pressureMax = Math.max(...validPress);
             }
-            if (press.length) {
-                const min = Math.min(...press), max = Math.max(...press);
-                target.pressureMin = target.minPressure = min;
-                target.pressureMax = target.maxPressure = max;
+            if (validHumid.length) {
+                targetItem.humidityMin = Math.min(...validHumid);
+                targetItem.humidityMax = Math.max(...validHumid);
             }
-            if (hums.length) {
-                const min = Math.min(...hums), max = Math.max(...hums);
-                target.humidityMin = target.minHumidity = min;
-                target.humidityMax = target.maxHumidity = max;
+            if (validUv.length) {
+                targetItem.uvMax = Math.max(...validUv);
             }
-            if (uvs.length) {
-                const min = Math.min(...uvs), max = Math.max(...uvs);
-                target.uvMin = target.minUv = min;
-                target.uvMax = target.maxUv = target.uv_index_max = max;
-            }
-            if (precs.length) {
-                const min = Math.min(...precs), max = Math.max(...precs);
-                target.precipMin = target.minPrecip = min;
-                target.precipMax = target.maxPrecip = target.precip_max = max;
-            }
-            if (doses.length) {
-                const min = Math.min(...doses), max = Math.max(...doses);
-                target.dosMin = min;
-                target.dosMax = max;
+            if (validPrecip.length) {
+                targetItem.precipMax = Math.max(...validPrecip);
             }
         }
 
-        return target;
+        return targetItem;
     };
 
-    // Context resolution for historical and forecast data lists
+    // Determine mode state and resolve global historical datasets if fullForecast is missing
     const isHistoricalItem = !!(
         item?.isHistorical || 
         window._radarState?.isHistorical || 
@@ -2105,13 +2104,13 @@ function openForecastGraphModal(item, fullForecast = [], itemIndex = -1) {
         if (resolvedIndex < 0) resolvedIndex = 0;
     }
 
-    // Normalize target, previous, and next day objects
-    const normalizedItem = normalizeWeatherItem(item);
+    // Standardize current, previous, and next items for complete boundary graphs
+    const normalizedItem = normalizeItemData(item);
     const rawPrevItem = (effectiveList && resolvedIndex > 0) ? effectiveList[resolvedIndex - 1] : null;
     const rawNextItem = (effectiveList && resolvedIndex >= 0 && resolvedIndex < effectiveList.length - 1) ? effectiveList[resolvedIndex + 1] : null;
 
-    const normalizedPrevItem = rawPrevItem ? normalizeWeatherItem(rawPrevItem) : null;
-    const normalizedNextItem = rawNextItem ? normalizeWeatherItem(rawNextItem) : null;
+    const normalizedPrevItem = rawPrevItem ? normalizeItemData(rawPrevItem) : null;
+    const normalizedNextItem = rawNextItem ? normalizeItemData(rawNextItem) : null;
 
     let modal = document.getElementById("forecastGraphModal");
     if (!modal) {
@@ -2182,6 +2181,8 @@ function openForecastGraphModal(item, fullForecast = [], itemIndex = -1) {
                 selectedDayCard.timezone = selectedDayCard.timezone ?? normalizedItem?.timezone;
                 selectedDayCard.days = effectiveList;
                 selectedDayCard.isHistorical = isHistoricalItem;
+                selectedDayCard.historyInputDate = normalizedItem?.historyInputDate;
+                selectedDayCard.cameFrom = normalizedItem?.cameFrom;
             }
 
             openWeatherMapModal(selectedDayCard, currentMode, selectedDayIndex);
@@ -2212,6 +2213,14 @@ function openForecastGraphModal(item, fullForecast = [], itemIndex = -1) {
         canvas.addEventListener("touchcancel", clearScrubber);
     }
     
+    // Update modal title to show history input date if present
+    const modalTitleEl = document.getElementById("graphModalTitle");
+    if (modalTitleEl && normalizedItem?.historyInputDate && isHistoricalItem) {
+        modalTitleEl.textContent = `Historical Graph (${normalizedItem.historyInputDate})`;
+    } else if (modalTitleEl) {
+        modalTitleEl.textContent = "Forecast Graph";
+    }
+
     modal.currentItem = normalizedItem;
     modal.prevItem = normalizedPrevItem;
     modal.nextItem = normalizedNextItem;
