@@ -5165,9 +5165,6 @@ function parseHistoryObservations(observations, startDateCutoff, endDateCutoff) 
     });
 }
 
-/**
- * Renders history modal displaying cards with clickable hourly trend graph canvases
- */
 function renderHistoryCardsModal(data) {
   let modal = document.getElementById('historyModal');
   if (!modal) {
@@ -5191,16 +5188,25 @@ function renderHistoryCardsModal(data) {
   const day = String(now.getDate()).padStart(2, '0');
   const yesterdayStr = `${year}-${month}-${day}`;
 
-  const validDates = data.map(item => {
-    const parts = item.dateStr ? item.dateStr.split('/') : [];
-    if (parts.length === 3) {
-      const [m, d, y] = parts;
-      const formattedMonth = m.padStart(2, '0');
-      const formattedDay = d.padStart(2, '0');
-      return { value: `${y}-${formattedMonth}-${formattedDay}`, label: item.dateStr, item };
+  // Robust date standardizer to output YYYY-MM-DD
+  const toISODate = (val) => {
+    if (!val) return '';
+    if (typeof val === 'string' && val.includes('/')) {
+      const parts = val.split('/');
+      if (parts.length === 3) {
+        return `${parts[2]}-${parts[0].padStart(2, '0')}-${parts[1].padStart(2, '0')}`;
+      }
     }
-    return null;
-  }).filter(Boolean);
+    const str = (typeof val === 'string') ? val : (val?.timestamp || val?.properties?.timestamp || String(val));
+    return str.split('T')[0];
+  };
+
+  const validDates = (Array.isArray(data) ? data : [])
+    .map(item => {
+      const isoStr = toISODate(item.dateStr || item.date || item.timestamp || item.properties?.timestamp);
+      return isoStr ? { value: isoStr, label: item.dateStr || isoStr, item } : null;
+    })
+    .filter(Boolean);
 
   const defaultDate = validDates.length > 0 ? validDates[validDates.length - 1].value : yesterdayStr;
 
@@ -5231,6 +5237,60 @@ function renderHistoryCardsModal(data) {
   }
 }
 
+// Function: Update card contents and refresh chart values seamlessly
+function updateCardView(targetDateStr, data) {
+  const container = document.getElementById('historyCardContainer');
+  if (!container) return;
+
+  // Format incoming input string to standard YYYY-MM-DD
+  let isoTarget = targetDateStr;
+  if (typeof targetDateStr === 'string' && targetDateStr.includes('/')) {
+    const parts = targetDateStr.split('/');
+    if (parts.length === 3) {
+      isoTarget = `${parts[2]}-${parts[0].padStart(2, '0')}-${parts[1].padStart(2, '0')}`;
+    }
+  }
+
+  const rawArray = Array.isArray(data) ? data : [];
+
+  // Filter observations matching target date regardless of input property format
+  const selectedDayObs = rawArray.filter(obs => {
+    if (!obs) return false;
+    const rawDate = obs.dateStr || obs.date || obs.timestamp || obs.properties?.timestamp || '';
+    if (typeof rawDate === 'string' && rawDate.includes('/')) {
+      const parts = rawDate.split('/');
+      if (parts.length === 3) {
+        const iso = `${parts[2]}-${parts[0].padStart(2, '0')}-${parts[1].padStart(2, '0')}`;
+        return iso === isoTarget;
+      }
+    }
+    return typeof rawDate === 'string' && rawDate.startsWith(isoTarget);
+  });
+
+  // Calculate calculated card & graph metrics
+  const metrics = calculateForecastDayCardMetrics(
+    selectedDayObs.length ? selectedDayObs : rawArray,
+    isoTarget
+  );
+
+  // Render HTML summary card inside container
+  container.innerHTML = `
+    <div style="background: #1e293b; padding: 16px; border-radius: 10px; border: 1px solid #334155;">
+      <h4 style="margin: 0 0 10px 0; color: #38bdf8; font-size: 16px;">${metrics.date} (${metrics.dominantCondition || 'Clear'})</h4>
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; font-size: 14px;">
+        <div>High: <strong>${metrics.highTempF !== null ? metrics.highTempF + '°F' : 'N/A'}</strong></div>
+        <div>Low: <strong>${metrics.lowTempF !== null ? metrics.lowTempF + '°F' : 'N/A'}</strong></div>
+        <div>Wind: <strong>${metrics.maxWindMph !== null ? metrics.maxWindMph + ' mph' : 'N/A'}</strong></div>
+        <div>Gust: <strong>${metrics.maxGustMph !== null ? metrics.maxGustMph + ' mph' : 'N/A'}</strong></div>
+      </div>
+    </div>
+  `;
+
+  // Plot new metrics to chart automatically
+  if (typeof renderHistoryChart === 'function') {
+    renderHistoryChart(metrics);
+  }
+}
 function openForecastGraphModal(item, fullForecast = [], itemIndex = -1) {
     let modal = document.getElementById("forecastGraphModal");
     if (!modal) {
