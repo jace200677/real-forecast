@@ -2941,18 +2941,37 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
     };
 
     if (activeTargetMap) {
-        attachMapInteractionHandlers(activeTargetMap, activeGridLayer._meta);
+    attachMapInteractionHandlers(activeTargetMap, activeGridLayer._meta);
 
+    // Extract current timeline minute offset if slider exists
+    const timelineSlider = document.getElementById("radarTimeSlider");
+    const currentMin = timelineSlider ? parseInt(timelineSlider.value, 10) : 0;
+
+    // Direct NOAA STAR NESDIS Satellite Tile URL (Cloud-free / GOES live tile service)
+    const timestamp = Date.now();
+    const noaaStarUrl = `https://www.star.nesdis.noaa.gov/GOES/tile_service.php?z={z}&x={x}&y={y}&t=${timestamp}`;
+    const esriFallbackUrl = 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}';
+
+    if (typeof updateSatelliteOverlay === 'function') {
+        updateSatelliteOverlay(currentMin);
+    } else {
         if (!window.satelliteLayer) {
-            window.satelliteLayer = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
-                attribution: 'Tiles &copy; Esri &mdash; Source: Esri, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-EGP',
-                maxZoom: 19
+            // Priority: NOAA STAR NESDIS Tile URL with dynamic timestamp cache-busting
+            window.satelliteLayer = L.tileLayer(noaaStarUrl, {
+                attribution: 'Map &copy; NOAA / NESDIS STAR',
+                maxZoom: 19,
+                errorTileUrl: esriFallbackUrl // Seamless fallback if NOAA tile is missing
             });
+        } else {
+            // Update URL dynamically if layer already exists
+            window.satelliteLayer.setUrl(noaaStarUrl);
         }
+
         if (!activeTargetMap.hasLayer(window.satelliteLayer)) {
             window.satelliteLayer.addTo(activeTargetMap);
         }
     }
+}
 
     return activeGridLayer;
 }
