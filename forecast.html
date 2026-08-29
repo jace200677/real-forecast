@@ -199,17 +199,27 @@ function updateAllLayers() {
     const dateVal = document.getElementById('dateInput').value;
     if (!dateVal) return;
 
+    const time = getFormattedTime();
+    
+    // Round minutes down to the nearest 5-minute interval
+    const roundedMins = (Math.floor(parseInt(time.mins, 10) / 5) * 5).toString().padStart(2, '0');
+    
+    // Format timestamp as YYYY-MM-DDTHH:MM:00Z for IEM WMS
+    const timeFormatted = `${dateVal}T${time.hrs}:${roundedMins}:00Z`;
+
     if (baseSatLayer) {
         map.removeLayer(baseSatLayer);
     }
 
-    // Direct NASA GIBS MODIS Terra Satellite endpoint
-    const nasaUrl = `https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/MODIS_Terra_CorrectedReflectance_TrueColor/default/${dateVal}/GoogleMapsCompatible_Level9/{z}/{y}/{x}.jpg`;
-
-    baseSatLayer = L.tileLayer(nasaUrl, {
-        attribution: 'Imagery &copy; <a href="https://gibs.earthdata.nasa.gov/">NASA GIBS</a>',
-        maxZoom: 19,
-        maxNativeZoom: 9, // Upscales level 9 NASA tiles up to zoom level 19
+    baseSatLayer = L.tileLayer.wms('https://mesonet.agron.iastate.edu/cgi-bin/wms/goes/conus_vis.cgi', {
+        layers: 'conus_vis',
+        format: 'image/png',
+        transparent: true,
+        version: '1.1.1',
+        TIME: timeFormatted,
+        attribution: 'Satellite &copy; <a href="https://mesonet.agron.iastate.edu/">Iowa State University IEM</a>',
+        maxNativeZoom: 19, // Tells Leaflet to fetch raw tiles up to level 19
+        maxZoom: 19,       // Sets maximum map zoom level to 19
         zIndex: 2
     }).addTo(map);
 }
