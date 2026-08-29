@@ -3940,7 +3940,7 @@ function initTimezoneSyncedRadarModal(mapModalElement, forecastItem, defaultMode
 
   window._radarState = window._radarState || {};
 
-  // Clear any existing interval on re-initialization
+  // Clear any existing refresh interval
   if (window._radarState.liveRefreshInterval) {
     clearInterval(window._radarState.liveRefreshInterval);
     window._radarState.liveRefreshInterval = null;
@@ -3993,7 +3993,7 @@ function initTimezoneSyncedRadarModal(mapModalElement, forecastItem, defaultMode
     dateDisplay.textContent = extractedDateStr || activeIsoDate;
   }
 
-  // Date context relative to today
+  // Date context flags
   const isPast = activeIsoDate < todayIso;
   const isToday = activeIsoDate === todayIso;
   const isFuture = activeIsoDate > todayIso;
@@ -4001,67 +4001,45 @@ function initTimezoneSyncedRadarModal(mapModalElement, forecastItem, defaultMode
   const currentMinuteOfDay = (now.getHours() * 60) + now.getMinutes();
   const timelineSlider = document.getElementById("radarTimeSlider");
 
-  // Dynamic cloud-free satellite imagery layer manager
+  // Dynamic satellite layer loader (Cloud-free aerial basemap)
   const updateSatelliteOverlay = (minuteOffset = 0) => {
-    const cloudFreeSatUrl = 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}';
+    let satTileUrl = '';
+    const timestamp = Date.now();
 
-    // Reuse existing satellite layer or construct standard Leaflet tile layer
-    if (!window._radarState.satelliteLayer) {
-      window._radarState.satelliteLayer = L.tileLayer(cloudFreeSatUrl, {
+    if (isToday) {
+      // Today: Cloud-free aerial basemap (1-minute dynamic timestamp key)
+      satTileUrl = `https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}?t=${timestamp}`;
+    } else if (isPast) {
+      // Past: Fetch past archived imagery matching past date
+      satTileUrl = `https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}?date=${activeIsoDate}&min=${minuteOffset}`;
+    } else if (isFuture) {
+      // Future: Fallback to Today's URL configuration
+      satTileUrl = `https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}?t=${timestamp}`;
+    }
+
+    if (window._radarState.satelliteLayer) {
+      window._radarState.satelliteLayer.setUrl(satTileUrl);
+    } else {
+      window._radarState.satelliteLayer = L.tileLayer(satTileUrl, {
         maxZoom: 19,
         opacity: 1.0,
         attribution: 'Tiles &copy; Esri'
       }).addTo(window._radarState.map);
     }
 
-    // Keep weather canvas redraw synced to time slider
+    // Canvas weather layer update
     if (typeof renderRadarLayerAtMinute === 'function') {
       renderRadarLayerAtMinute(minuteOffset);
     }
   };
 
-  // Configure timeline slider and 1-second refresh loop execution
-  if (isToday) {
-    if (timelineSlider) {
-      timelineSlider.max = 1439;
-      timelineSlider.value = currentMinuteOfDay;
-    }
-
-    window._radarState.liveRefreshInterval = setInterval(() => {
-      const activeVal = timelineSlider ? parseInt(timelineSlider.value, 10) : currentMinuteOfDay;
-      const liveNowMinute = (new Date().getHours() * 60) + new Date().getMinutes();
-
-      if (activeVal >= liveNowMinute - 2) {
-        updateSatelliteOverlay(activeVal);
-      }
-    }, 1000);
-
-  } else if (isPast) {
-    if (timelineSlider) timelineSlider.value = 0;
-
-    window._radarState.liveRefreshInterval = setInterval(() => {
-      if (timelineSlider) {
-        let currentVal = parseInt(timelineSlider.value, 10) + 10;
-        if (currentVal > 1439) currentVal = 0;
-        timelineSlider.value = currentVal;
-        updateSatelliteOverlay(currentVal);
-      }
-    }, 1000);
-
-  } else if (isFuture) {
-    if (timelineSlider) timelineSlider.value = 0;
-
-    window._radarState.liveRefreshInterval = setInterval(() => {
-      if (timelineSlider) {
-        let currentVal = parseInt(timelineSlider.value, 10) + 15;
-        if (currentVal > 1439) currentVal = 0;
-        timelineSlider.value = currentVal;
-        updateSatelliteOverlay(currentVal);
-      }
-    }, 1000);
+  // Set default slider position to current time on open (no continuous time slider updates)
+  if (timelineSlider) {
+    timelineSlider.max = 1439;
+    timelineSlider.value = currentMinuteOfDay;
   }
 
-  // Bind slider controls
+  // Bind manual slider input events
   if (timelineSlider) {
     timelineSlider.oninput = (e) => {
       const sliderMinute = parseInt(e.target.value, 10);
@@ -4071,12 +4049,12 @@ function initTimezoneSyncedRadarModal(mapModalElement, forecastItem, defaultMode
 
   window.triggerRadarRedraw = function(forcedMin = null) {
     const slider = document.getElementById("radarTimeSlider");
-    const currentMin = forcedMin !== null ? forcedMin : (slider ? parseInt(slider.value, 10) : (isToday ? currentMinuteOfDay : 0));
+    const currentMin = forcedMin !== null ? forcedMin : (slider ? parseInt(slider.value, 10) : currentMinuteOfDay);
     updateSatelliteOverlay(currentMin);
   };
 
-  // Initial layer render
-  window.triggerRadarRedraw(isToday ? currentMinuteOfDay : 0);
+  // Initial render at current minute
+  window.triggerRadarRedraw(currentMinuteOfDay);
 }
 // Dedicated method to update and swap satellite tile overlays dynamically
 function updateSatelliteOverlay(minuteOffset = 0, isToday = false, isPast = false, isFuture = false, activeIsoDate = '') {
