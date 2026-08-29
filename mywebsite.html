@@ -4808,7 +4808,6 @@ function updateTrafficButtonState(baseDateOverride = null) {
     }
 }
 async function fetchHistoricalWeatherData(lat, lon) {
-  // Fetch NWS grid point metadata
   const pointRes = await fetch(`https://api.weather.gov/points/${lat},${lon}`);
   if (!pointRes.ok) throw new Error('Failed to resolve location coordinates');
   const pointData = await pointRes.json();
@@ -4823,7 +4822,6 @@ async function fetchHistoricalWeatherData(lat, lon) {
   const startIso = `${startDate}T00:00:00Z`;
   const endIso = `${endDate}T23:59:59Z`;
 
-  // Fetch nearby weather stations
   const historyRes = await fetch(
     `https://api.weather.gov/gridpoints/${gridId}/${gridX},${gridY}/stations`
   );
@@ -4833,18 +4831,16 @@ async function fetchHistoricalWeatherData(lat, lon) {
 
   if (!stationId) throw new Error('No weather stations found near location');
 
-  // Fetch historical observations for date window
   const obsRes = await fetch(
     `https://api.weather.gov/stations/${stationId}/observations?start=${startIso}&end=${endIso}`
   );
   if (!obsRes.ok) throw new Error('Failed to fetch observation data');
   const obsData = await obsRes.json();
-  const observations = obsData.features || [];
 
-  // Parse raw observations into daily records
-  const parsedRecords = typeof parseHistoryObservations === 'function'
-    ? parseHistoryObservations(observations, startDate, endDate)
-    : [];
+  // Fallback to empty array if features is null or undefined
+  const observations = Array.isArray(obsData.features) ? obsData.features : [];
+
+  const parsedRecords = parseHistoryObservations(observations, startDate, endDate);
 
   return {
     stationId: stationId,
