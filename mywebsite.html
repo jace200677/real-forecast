@@ -5344,9 +5344,21 @@ function drawForecastCanvasGraph(item, mode, canvas, activeX = null, prevItem = 
 
     const drawSegmentedLine = (pts, activeStyle, lineWidth, getYVal, fillUnder = false) => {
         if (isToday) {
-            // Split into past (dotted) and future (solid) segments around currentMinutes
-            const pastPts = pts.filter(p => p.minute <= currentMinutes);
-            const futurePts = pts.filter(p => p.minute >= currentMinutes);
+            // Find or interpolate the exact point at currentMinutes
+            const exactX = padLeft + (currentMinutes / 1439) * graphWidth;
+            const exactY = (() => {
+                const lower = pts.slice().reverse().find(p => p.minute <= currentMinutes) || pts[0];
+                const upper = pts.find(p => p.minute >= currentMinutes) || pts[pts.length - 1];
+                if (lower.minute === upper.minute) return getYVal(lower);
+                const t = (currentMinutes - lower.minute) / (upper.minute - lower.minute);
+                // Simple linear approximation for the exact getYVal at currentMinutes
+                return getYVal(lower) + (getYVal(upper) - getYVal(lower)) * t;
+            })();
+
+            const currentPoint = { x: exactX, minute: currentMinutes };
+
+            const pastPts = [...pts.filter(p => p.minute < currentMinutes), currentPoint];
+            const futurePts = [currentPoint, ...pts.filter(p => p.minute > currentMinutes)];
 
             const renderPath = (segmentPts, style, isDashed, applyFill) => {
                 if (segmentPts.length < 2) return;
@@ -5354,8 +5366,18 @@ function drawForecastCanvasGraph(item, mode, canvas, activeX = null, prevItem = 
                 if (fillUnder && applyFill) {
                     ctx.beginPath();
                     ctx.moveTo(segmentPts[0].x, height - padBottom);
-                    ctx.lineTo(segmentPts[0].x, getYVal(segmentPts[0]));
-                    addSmoothPathSegments(ctx, segmentPts, getYVal);
+                    ctx.lineTo(segmentPts[0].x, segmentPts[0] === currentPoint ? exactY : getYVal(segmentPts[0]));
+                    
+                    // Custom path drawing for the split segments using standard or interpolated points
+                    for (let i = 0; i < segmentPts.length - 1; i++) {
+                        const p1 = segmentPts[i];
+                        const p2 = segmentPts[i + 1];
+                        const y1 = (p1 === currentPoint) ? exactY : getYVal(p1);
+                        const y2 = (p2 === currentPoint) ? exactY : getYVal(p2);
+                        if (i === 0) ctx.moveTo(p1.x, y1);
+                        ctx.lineTo(p2.x, y2);
+                    }
+
                     ctx.lineTo(segmentPts[segmentPts.length - 1].x, height - padBottom);
                     ctx.closePath();
                     
@@ -5370,18 +5392,21 @@ function drawForecastCanvasGraph(item, mode, canvas, activeX = null, prevItem = 
                 ctx.strokeStyle = style;
                 ctx.lineWidth = lineWidth + 2 * scaleFactor;
                 
-                ctx.moveTo(segmentPts[0].x, getYVal(segmentPts[0]));
-                addSmoothPathSegments(ctx, segmentPts, getYVal);
+                segmentPts.forEach((p, idx) => {
+                    const y = (p === currentPoint) ? exactY : getYVal(p);
+                    if (idx === 0) ctx.moveTo(p.x, y);
+                    else ctx.lineTo(p.x, y);
+                });
                 
                 ctx.stroke();
                 ctx.setLineDash([]);
             };
 
             if (pastPts.length >= 2) {
-                renderPath(pastPts, activeStyle, true, true); // Enabled fillUnder for past segment
+                renderPath(pastPts, activeStyle, true, true);
             }
             if (futurePts.length >= 2) {
-                renderPath(futurePts, activeStyle, false, true); // Enabled fillUnder for future segment
+                renderPath(futurePts, activeStyle, false, true);
             }
         } else if (isHistorySource) {
             if (pts.length >= 2) {
@@ -5552,15 +5577,6 @@ function drawForecastCanvasGraph(item, mode, canvas, activeX = null, prevItem = 
         const h = Math.floor(hoveredMinute / 60);
         const m = Math.round(hoveredMinute % 60);
         const timeStr = `${h % 12 || 12}:${m < 10 ? '0' : ''}${m}${h >= 12 ? 'PM' : 'AM'}`;
-
-        ctx.strokeStyle = "rgba(255, 255, 255, 0.6)";
-        ctx.lineWidth = 1;
-        ctx.setLineDash([3, 3]);
-        ctx.beginPath();
-        ctx.moveTo(clampedX, padTop);
-        ctx.lineTo(clampedX, height - padBottom);
-        ctx.stroke();
-        ctx.setLineDash([]);
 
         const dotX = targetPoint.x;
         const dotY = getYFn(targetPoint);
