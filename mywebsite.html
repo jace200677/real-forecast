@@ -2947,24 +2947,21 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
     const timelineSlider = document.getElementById("radarTimeSlider");
     const currentMin = timelineSlider ? parseInt(timelineSlider.value, 10) : 0;
 
-    // Direct NOAA STAR NESDIS Satellite Tile URL (Cloud-free / GOES live tile service)
-    const timestamp = Date.now();
-    const noaaStarUrl = `https://www.star.nesdis.noaa.gov/GOES/tile_service.php?z={z}&x={x}&y={y}&t=${timestamp}`;
-    const esriFallbackUrl = 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}';
+    // Default Cloud-Free Basemap URL (Esri World Imagery)
+    const cloudFreeBasemapUrl = 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}';
 
+    // Use dynamic satellite overlay loader for NOAA STAR NESDIS updates
     if (typeof updateSatelliteOverlay === 'function') {
         updateSatelliteOverlay(currentMin);
     } else {
+        // Fallback: Cloud-free ground aerial basemap
         if (!window.satelliteLayer) {
-            // Priority: NOAA STAR NESDIS Tile URL with dynamic timestamp cache-busting
-            window.satelliteLayer = L.tileLayer(noaaStarUrl, {
-                attribution: 'Map &copy; NOAA / NESDIS STAR',
-                maxZoom: 19,
-                errorTileUrl: esriFallbackUrl // Seamless fallback if NOAA tile is missing
+            window.satelliteLayer = L.tileLayer(cloudFreeBasemapUrl, {
+                attribution: 'Tiles &copy; Esri &mdash; Source: Esri, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-EGP',
+                maxZoom: 19
             });
         } else {
-            // Update URL dynamically if layer already exists
-            window.satelliteLayer.setUrl(noaaStarUrl);
+            window.satelliteLayer.setUrl(cloudFreeBasemapUrl);
         }
 
         if (!activeTargetMap.hasLayer(window.satelliteLayer)) {
