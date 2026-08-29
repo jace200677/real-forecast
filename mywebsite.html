@@ -3722,33 +3722,13 @@ function openWeatherMapModal(item, mode = 'temp', selectedDayIndex = null) {
 
   mapModal.style.display = "flex";
 
- const launchRadarModal = (mapModal, item, mode, selectedDayIndex) => {
-  if (!mapModal) return;
-
-  // Cloud-free ground aerial imagery tile URL preset
-  const cloudFreeSatUrl = 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}';
-
-  const initModal = () => {
-    if (typeof initTimezoneSyncedRadarModal === 'function') {
-      initTimezoneSyncedRadarModal(mapModal, item, mode, selectedDayIndex);
-    }
-  };
-
-  // Display modal element if hidden
-  if (mapModal.style.display !== 'block') {
-    mapModal.style.display = 'block';
-  }
-
-  // Load Leaflet with the satellite preset and execute modal initialization
   if (typeof ensureLeafletLoaded === 'function') {
-    ensureLeafletLoaded(initModal, cloudFreeSatUrl);
-  } else if (window.L) {
-    initModal();
-  } else {
-    console.error('Leaflet loader (ensureLeafletLoaded) is not defined.');
-  }
-};
-  else if (typeof initTimezoneSyncedRadarModal === 'function') {
+    ensureLeafletLoaded(() => {
+      if (typeof initTimezoneSyncedRadarModal === 'function') {
+        initTimezoneSyncedRadarModal(mapModal, item, mode, selectedDayIndex);
+      }
+    });
+  } else if (typeof initTimezoneSyncedRadarModal === 'function') {
     initTimezoneSyncedRadarModal(mapModal, item, mode, selectedDayIndex);
   }
 }
