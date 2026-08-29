@@ -2222,7 +2222,7 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
 
     const activeTargetMap = (typeof window !== "undefined" && window._radarState && window._radarState.map) ? window._radarState.map : (typeof map !== "undefined" ? map : null);
     
-    // Resolve location defaults with persistent fixed anchor to prevent pattern drift during map panning/zooming
+    // Resolve location defaults with persistent fixed anchor
     const currentGlobalPoint = (typeof targetZoneOrPoint !== 'undefined' && targetZoneOrPoint) ? targetZoneOrPoint : (window._targetZoneOrPoint || null);
     const stateCenter = window._radarState?.center || window._radarState?.location;
 
@@ -2294,29 +2294,34 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
     const exactDaysOut = safeNum(item?.exactDaysOut ?? item?.daysOut) ?? 0;
     const baseConfidence = safeNum(item?.confidenceFactor ?? item?.confidence ?? window._radarState?.confidenceFactor) ?? 1.0;
 
-    // 1. Days Out Decay Factor (exponential confidence degradation for future days)
     const daysOutFactor = Math.max(0.25, Math.pow(0.91, exactDaysOut));
-
-    // 2. Time of Day Decay & Diurnal Instability Factor (higher variance across 24h & peak afternoon hours)
-    const timeOfDayRatio = hoveredMinute / 1439; // Range 0.0 to 1.0 over 24h
-    const diurnalPeakUncertainty = Math.sin(Math.PI * timeOfDayRatio) * 0.12; // Peak uncertainty around mid-day/afternoon
+    const timeOfDayRatio = hoveredMinute / 1439; 
+    const diurnalPeakUncertainty = Math.sin(Math.PI * timeOfDayRatio) * 0.12; 
     const timeOfDayFactor = Math.max(0.5, 1.0 - (timeOfDayRatio * 0.15) - diurnalPeakUncertainty);
-
-    // Combined dynamic confidence factor
     const dynamicConfidenceFactor = +(baseConfidence * daysOutFactor * timeOfDayFactor).toFixed(3);
 
-    // --- ACTIVE DAY CARD DATE & METRICS RESOLUTION ---
+    // --- CHECK HISTORY MODAL & INPUT SOURCES FIRST ---
+    const historyModalEl = document.getElementById('historyModal');
+    const historyDateInput = historyModalEl ? historyModalEl.querySelector('input[type="date"], input.history-date, #historyDate, [name="historyDate"]') : null;
+    
     let extractedDate = null;
     let cardMetrics = {};
 
-    if (typeof getSelectedDayCardDate === 'function') {
+    if (historyDateInput && historyDateInput.value) {
+        extractedDate = historyDateInput.value;
+    }
+
+    // Fallback to active history cards or general day cards if modal input is empty
+    const activeHistoryCard = document.querySelector('.history-card.active, .history-row.active, [data-history-active="true"]');
+    if (!extractedDate && activeHistoryCard) {
+        extractedDate = activeHistoryCard.dataset.date || activeHistoryCard.dataset.dateStr || activeHistoryCard.getAttribute('data-date');
+    }
+
+    if (!extractedDate && typeof getSelectedDayCardDate === 'function') {
         const dateResult = getSelectedDayCardDate(canvas, clientX, item, mode, prevItem, nextItem, forcedMinute);
         if (dateResult) {
-            if (typeof dateResult === 'string') {
-                extractedDate = dateResult;
-            } else if (typeof dateResult === 'object') {
-                extractedDate = dateResult.dateStr || dateResult.date || dateResult.formattedDate || dateResult.rawDate;
-            }
+            if (typeof dateResult === 'string') extractedDate = dateResult;
+            else if (typeof dateResult === 'object') extractedDate = dateResult.dateStr || dateResult.date || dateResult.formattedDate || dateResult.rawDate;
         }
     }
 
@@ -2325,14 +2330,10 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
     if (activeCard) {
         if (!extractedDate) {
             let activeCardDate = activeCard.dataset.date || activeCard.dataset.dateStr || activeCard.dataset.rawDate || activeCard.getAttribute('data-date');
-
             if (!activeCardDate) {
                 const dateSubEl = activeCard.querySelector('.date, .day-date, .card-date, .forecast-date, [data-date]');
-                if (dateSubEl) {
-                    activeCardDate = dateSubEl.dataset.date || dateSubEl.innerText || dateSubEl.textContent || '';
-                }
+                if (dateSubEl) activeCardDate = dateSubEl.dataset.date || dateSubEl.innerText || dateSubEl.textContent || '';
             }
-
             const cardText = activeCard.innerText || activeCard.textContent || '';
             if (!activeCardDate && cardText) {
                 const dateMatch = cardText.match(/\b(\d{1,2}\/\d{1,2}\/\d{2,4})\b|\b(\d{4}-\d{2}-\d{2})\b/);
@@ -2357,6 +2358,7 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
             return null;
         };
 
+        // If pulling from history modal, extract inputs if available
         cardMetrics = {
             score: safeNum(activeCard.dataset.score ?? activeCard.dataset.dos) ?? extractNum(['.score', '.rating', '.dos-score'], /score[:\s]+([0-9.]+)/i),
             tempHigh: safeNum(activeCard.dataset.high ?? activeCard.dataset.tempHigh ?? activeCard.dataset.max) ?? extractNum(['.high', '.temp-high', '.max-temp'], /high[:\s]+([-0-9.]+)/i),
@@ -2369,6 +2371,17 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
             precipChance: safeNum(activeCard.dataset.precip ?? activeCard.dataset.precipChance) ?? extractNum(['.precip', '.rain'], /precip[:\s]+([0-9.]+)/i),
             condition: activeCard.dataset.condition || activeCard.getAttribute('data-weather') || ''
         };
+    }
+
+    // Additional check if history modal contains active custom inputs/metrics fields
+    if (historyModalEl && historyModalEl.style.display !== 'none') {
+        const modalTempHigh = historyModalEl.querySelector('#historyTempHigh, .history-high, [name="tempHigh"]');
+        const modalTempLow = historyModalEl.querySelector('#historyTempLow, .history-low, [name="tempLow"]');
+        const modalWind = historyModalEl.querySelector('#historyWind, .history-wind, [name="wind"]');
+        
+        if (modalTempHigh && modalTempHigh.value) cardMetrics.tempHigh = safeNum(modalTempHigh.value);
+        if (modalTempLow && modalTempLow.value) cardMetrics.tempLow = safeNum(modalTempLow.value);
+        if (modalWind && modalWind.value) cardMetrics.windMph = safeNum(modalWind.value);
     }
 
     extractedDate = extractedDate || 
@@ -2416,7 +2429,7 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
             dateNum,
             targetObj,
             gridPeriods,
-            dynamicConfidenceFactor, // Dynamic confidence factor passed here
+            dynamicConfidenceFactor,
             exactDaysOut,
             dosScore,
             dayIdx
@@ -2439,14 +2452,15 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
     }
 
     const globalDataSources = [
+        window.historyData,
+        window._historyData,
+        window.noaaArchiveData,
         typeof forecastData !== "undefined" ? forecastData : null,
         window._radarState?.dataset,
         window._radarState?.chartData,
         window.currentWeatherData?.daily,
         window.currentWeatherData?.forecast,
-        window.chartData,
-        window.historyData,
-        window._historyData
+        window.chartData
     ].filter(Boolean);
 
     const normTarget = normalizeDateStr(extractedDate);
@@ -2633,17 +2647,15 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
         return Math.round(smoothStep(resolvedPrecip, (resolvedPrecip + nextPrecip) / 2, (m - 900) / 539));
     };
 
-    // Smoothly handles array interpolation including overnight roll-over transitions across 11:59 PM (minute 1439) into early morning
     const getValFromHourlyArray = (arr, minute, key = null) => {
         if (!Array.isArray(arr) || arr.length === 0) return null;
         const normMin = Math.max(0, Math.min(1439, minute));
         
-        // Map 24h continuous scale with boundary handling for continuous midnight playback
         const totalPoints = arr.length;
         const step = 1440 / Math.max(1, totalPoints);
         const floatIdx = normMin / step;
         const idx0 = Math.floor(floatIdx);
-        const idx1 = (idx0 + 1) % totalPoints; // Wrap smooth index across 11:59 PM boundary
+        const idx1 = (idx0 + 1) % totalPoints; 
         const t = floatIdx - idx0;
 
         const getNumVal = (entry) => {
@@ -2703,9 +2715,7 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
             if (Array.isArray(arr) && arr.length > 0) {
                 for (const k of keys) {
                     const chartVal = getValFromHourlyArray(arr, m, k);
-                    if (chartVal !== null) {
-                        return chartVal;
-                    }
+                    if (chartVal !== null) return chartVal;
                 }
             }
         }
@@ -2786,12 +2796,10 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
         }
     }
 
-    // Calculates dynamic values across map coordinates relative to fixed anchor center
     const getLocalValueAtCoordinates = (lat, lon, baseVal, modeType) => {
         if (baseVal === null || baseVal === undefined) return baseVal;
         const mType = (modeType || "").toLowerCase();
 
-        // Calculate spatial delta relative to fixed center point location
         const dLat = (lat !== undefined && lat !== null) ? (lat - centerLat) : 0;
         const dLon = (lon !== undefined && lon !== null) ? (lon - centerLon) : 0;
 
@@ -2857,36 +2865,36 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
 
         if (mType.includes('wind') || mType.includes('gust')) {
             return interpolateStops(val, [
-                { threshold: 0,  color: 'rgba(160, 205, 230, 0.60)' }, // Light Ice Blue
-                { threshold: 6,  color: 'rgba(75, 165, 195, 0.65)' },  // Ocean Blue
-                { threshold: 10, color: 'rgba(35, 135, 125, 0.65)' },  // Teal
-                { threshold: 20, color: 'rgba(25, 115, 45, 0.70)' },   // Deep Green
-                { threshold: 35, color: 'rgba(215, 185, 50, 0.70)' },  // Warm Yellow
-                { threshold: 45, color: 'rgba(230, 135, 70, 0.75)' },  // Orange
-                { threshold: 70, color: 'rgba(185, 60, 65, 0.80)' }    // Crimson Red
+                { threshold: 0,  color: 'rgba(160, 205, 230, 0.60)' },
+                { threshold: 6,  color: 'rgba(75, 165, 195, 0.65)' },
+                { threshold: 10, color: 'rgba(35, 135, 125, 0.65)' },
+                { threshold: 20, color: 'rgba(25, 115, 45, 0.70)' },
+                { threshold: 35, color: 'rgba(215, 185, 50, 0.70)' },
+                { threshold: 45, color: 'rgba(230, 135, 70, 0.75)' },
+                { threshold: 70, color: 'rgba(185, 60, 65, 0.80)' }
             ], 0);
         }
 
         if (mType === 'dos') {
             return interpolateStops(val, [
-                { threshold: 0,   color: 'rgba(34, 197, 94, 0.75)' },   // Green
-                { threshold: 30,  color: 'rgba(132, 204, 22, 0.70)' },  // Bright Green
-                { threshold: 50,  color: 'rgba(249, 115, 22, 0.65)' },  // Orange
-                { threshold: 80,  color: 'rgba(239, 68, 68, 0.70)' },   // Bright Red
-                { threshold: 120, color: 'rgba(153, 27, 27, 0.80)' },   // Dark Red
-                { threshold: 150, color: 'rgba(147, 51, 234, 0.85)' }   // Purple
+                { threshold: 0,   color: 'rgba(34, 197, 94, 0.75)' },
+                { threshold: 30,  color: 'rgba(132, 204, 22, 0.70)' },
+                { threshold: 50,  color: 'rgba(249, 115, 22, 0.65)' },
+                { threshold: 80,  color: 'rgba(239, 68, 68, 0.70)' },
+                { threshold: 120, color: 'rgba(153, 27, 27, 0.80)' },
+                { threshold: 150, color: 'rgba(147, 51, 234, 0.85)' }
             ], 50);
         }
 
         if (['temp', 'temperature', 'feelslike', 'feels_like'].includes(mType)) {
             return interpolateStops(val, [
-                { threshold: -5,  color: 'rgba(98, 85, 205, 0.75)' },  // Deep Purple
-                { threshold: 15,  color: 'rgba(115, 130, 230, 0.70)' }, // Soft Blue
-                { threshold: 30,  color: 'rgba(72, 160, 185, 0.65)' },  // Teal
-                { threshold: 50,  color: 'rgba(45, 155, 110, 0.60)' },  // Green
-                { threshold: 70,  color: 'rgba(155, 195, 60, 0.62)' },  // Yellow-Green
-                { threshold: 85,  color: 'rgba(235, 140, 25, 0.70)' },  // Amber/Orange
-                { threshold: 100, color: 'rgba(185, 15, 15, 0.80)' }   // Deep Red
+                { threshold: -5,  color: 'rgba(98, 85, 205, 0.75)' },
+                { threshold: 15,  color: 'rgba(115, 130, 230, 0.70)' },
+                { threshold: 30,  color: 'rgba(72, 160, 185, 0.65)' },
+                { threshold: 50,  color: 'rgba(45, 155, 110, 0.60)' },
+                { threshold: 70,  color: 'rgba(155, 195, 60, 0.62)' },
+                { threshold: 85,  color: 'rgba(235, 140, 25, 0.70)' },
+                { threshold: 100, color: 'rgba(185, 15, 15, 0.80)' }
             ], 50);
         }
 
@@ -2958,7 +2966,6 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
                     ctx.fillStyle = getDynamicColor(localValue, effectiveSubMode);
                     ctx.fillRect(px, py, stepSize, stepSize);
 
-                    // Render grid square borders so value cells are explicitly framed
                     ctx.strokeStyle = 'rgba(255, 255, 255, 0.15)';
                     ctx.lineWidth = 1;
                     ctx.strokeRect(px, py, stepSize, stepSize);
@@ -3032,7 +3039,6 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
                 .openOn(mapObj);
         };
 
-        // Clean up previous event handlers
         if (mapObj._radarInteractHandler) {
             mapObj.off('mousemove click tap', mapObj._radarInteractHandler);
         }
@@ -3040,11 +3046,9 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
             mapObj.off('mouseout', mapObj._radarMouseOutHandler);
         }
 
-        // Bind mousemove for desktop/laptop hover tracking alongside click and tap
         mapObj._radarInteractHandler = (e) => updateTooltipPosition(e);
         mapObj.on('mousemove click tap', mapObj._radarInteractHandler);
 
-        // Hide tooltip on mouseout
         mapObj._radarMouseOutHandler = () => {
             if (mapObj._radarTooltip) {
                 mapObj.closeTooltip(mapObj._radarTooltip);
