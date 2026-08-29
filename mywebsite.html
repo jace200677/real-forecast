@@ -5310,6 +5310,28 @@ function drawForecastCanvasGraph(item, mode, canvas, activeX = null, prevItem = 
 
     ctx.clearRect(0, 0, width, height);
 
+    // 1. Standardize date extraction via getSelectedDayCardDate helper
+    let selectedDateInfo = { dateStr: '' };
+    if (typeof getSelectedDayCardDate === 'function') {
+        selectedDateInfo = getSelectedDayCardDate(canvas, activeX, item, mode, prevItem, nextItem) || { dateStr: '' };
+    }
+    
+    // Ensure item has dateStr attached for downstream functions
+    const resolvedDateStr = selectedDateInfo.dateStr || item.dateStr || item.date || '';
+    item.dateStr = resolvedDateStr;
+
+    // 2. Helper to extract numeric date components from standard M/D/YYYY format
+    const parseStandardDate = (str) => {
+        if (!str) return null;
+        const match = str.match(/(\d{1,2})\/(\d{1,2})\/(\d{2,4})/);
+        if (match) {
+            let yr = parseInt(match[3], 10);
+            if (yr < 100) yr += 2000;
+            return { month: parseInt(match[1], 10), day: parseInt(match[2], 10), year: yr };
+        }
+        return null;
+    };
+
     const titleEl = document.getElementById("graphModalTitle");
     if (titleEl && canvas.id === "forecastGraphCanvas") {
         const modeTitles = {
@@ -5322,7 +5344,8 @@ function drawForecastCanvasGraph(item, mode, canvas, activeX = null, prevItem = 
             feelsLike: "Feels Like Temp",
             precip: "Precipitation Chance"
         };
-        titleEl.innerText = `${item.day || item.dateStr || ''} (${item.dateStr || ''}) - ${modeTitles[mode] || mode}`;
+        const displayDay = item.day ? `${item.day} ` : '';
+        titleEl.innerText = `${displayDay}${resolvedDateStr ? `(${resolvedDateStr})` : ''} - ${modeTitles[mode] || mode}`;
     }
 
     const now = new Date();
@@ -5339,16 +5362,15 @@ function drawForecastCanvasGraph(item, mode, canvas, activeX = null, prevItem = 
     });
 
     const currentMinutes = cdtHour * 60 + cdtMinute;
-    const dateParts = item.dateStr ? item.dateStr.split('/').map(n => parseInt(n, 10)) : [];
-    const isToday = dateParts.length === 3 && (dateParts[0] === cdtMonth && dateParts[1] === cdtDay && dateParts[2] === cdtYear);
+    const parsedItemDate = parseStandardDate(resolvedDateStr);
+    const isToday = parsedItemDate && (parsedItemDate.month === cdtMonth && parsedItemDate.day === cdtDay && parsedItemDate.year === cdtYear);
 
-    // Check if date falls in the window after 08/22/2026 up to yesterday (1 day before today) for overrides
+    // Check if date falls in override range
     const isOverrideRange = (dateStr) => {
-        if (!dateStr) return false;
-        const parts = dateStr.split('/').map(n => parseInt(n, 10));
-        if (parts.length !== 3) return false;
+        const parsed = parseStandardDate(dateStr);
+        if (!parsed) return false;
         
-        const itemNum = parts[2] * 10000 + parts[0] * 100 + parts[1];
+        const itemNum = parsed.year * 10000 + parsed.month * 100 + parsed.day;
         const cutoffNum = 20260822; // 08/22/2026
         
         const yesterdayDate = new Date(cdtYear, cdtMonth - 1, cdtDay - 1);
@@ -5357,11 +5379,11 @@ function drawForecastCanvasGraph(item, mode, canvas, activeX = null, prevItem = 
         return itemNum > cutoffNum && itemNum <= yesterdayNum;
     };
 
-    // Check if this item originated from the History Modal or is a past date
+    // Check history modal state
     const historyModalEl = document.getElementById('historyModal');
     let isHistorySource = item.isNoaaSource || (item.condition && item.condition.includes("NOAA")) || (historyModalEl && historyModalEl.style.display !== 'none');
 
-    // Dynamically retrieve lat/lon (prioritizing history modal datasets/inputs)
+    // Dynamically retrieve lat/lon
     const resolveCoordinates = () => {
         if (isHistorySource && historyModalEl) {
             const histLat = historyModalEl.dataset.lat || (historyModalEl.querySelector('.search-input') && historyModalEl.querySelector('.search-input').dataset.lat);
@@ -5378,9 +5400,9 @@ function drawForecastCanvasGraph(item, mode, canvas, activeX = null, prevItem = 
 
     const activeCoords = resolveCoordinates();
 
-    // Automatically flag past dates relative to current CDT date (before today)
-    if (!isToday && dateParts.length === 3) {
-        const itemDateNum = dateParts[2] * 10000 + dateParts[0] * 100 + dateParts[1];
+    // Automatically flag past dates relative to current CDT date
+    if (!isToday && parsedItemDate) {
+        const itemDateNum = parsedItemDate.year * 10000 + parsedItemDate.month * 100 + parsedItemDate.day;
         const currentDateNum = cdtYear * 10000 + cdtMonth * 100 + cdtDay;
         if (itemDateNum < currentDateNum) {
             isHistorySource = true;
