@@ -190,8 +190,8 @@ function updateAllLayers() {
     // Round minutes down to the nearest 5-minute interval (GOES scan frequency)
     const roundedMins = (Math.floor(parseInt(time.mins, 10) / 5) * 5).toString().padStart(2, '0');
     
-    // Format timestamp as YYYY-MM-DDTHH:MM
-    const timeFormatted = `${dateVal}T${time.hrs}:${roundedMins}`;
+    // Format timestamp as YYYY-MM-DDTHH:MM:00Z for IEM WMS
+    const timeFormatted = `${dateVal}T${time.hrs}:${roundedMins}:00Z`;
 
     if (baseSatLayer) {
         map.removeLayer(baseSatLayer);
@@ -202,9 +202,7 @@ function updateAllLayers() {
         format: 'image/png',
         transparent: true,
         version: '1.1.1',
-        srs: 'EPSG:3857',
-        time: timeFormatted,
-        uppercase: true,
+        TIME: timeFormatted,
         attribution: 'Satellite &copy; <a href="https://mesonet.agron.iastate.edu/">Iowa State University IEM</a>',
         maxZoom: 19,
         zIndex: 2
