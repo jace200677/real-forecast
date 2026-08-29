@@ -4865,6 +4865,7 @@ async function fetchHistoricalWeatherData(lat, lon) {
 /**
  * Parses observations into daily records with hourly dataset arrays for mini graphs
  */
+
 function parseHistoryObservations(observations, startDateCutoff, endDateCutoff) {
   const dailyMap = {};
 
@@ -4954,9 +4955,28 @@ function parseHistoryObservations(observations, startDateCutoff, endDateCutoff) 
         isOverridden: false
       };
 
+      // Apply graph overrides
       record = mergeGraphOverrides(record, graphOverrides[day.date]);
+
+      // Calculate base metrics
       record.dos = calculateDOS(record.wind, record.condition);
       record.wis = calculateWIS(record.lowTemp, record.wind, record.condition);
+
+      // Apply card metrics overrides if present for this date
+      if (graphOverrides[day.date]?.cardMetrics) {
+        const overrides = graphOverrides[day.date].cardMetrics;
+        record = {
+          ...record,
+          dos: overrides.dos !== undefined ? overrides.dos : record.dos,
+          wis: overrides.wis !== undefined ? overrides.wis : record.wis,
+          highTemp: overrides.highTemp !== undefined ? overrides.highTemp : record.highTemp,
+          lowTemp: overrides.lowTemp !== undefined ? overrides.lowTemp : record.lowTemp,
+          wind: overrides.wind !== undefined ? overrides.wind : record.wind,
+          gust: overrides.gust !== undefined ? overrides.gust : record.gust,
+          condition: overrides.condition || record.condition,
+          isOverridden: true
+        };
+      }
 
       return record;
     });
@@ -4988,16 +5008,13 @@ function renderHistoryCardsModal(data) {
   const day = String(now.getDate()).padStart(2, '0');
   const yesterdayStr = `${year}-${month}-${day}`;
 
-  const datasetList = Array.isArray(data) ? data : (window.historyDataPayload || []);
-
-  const validDates = datasetList.map(item => {
-    const rawStr = item.dateStr || item.date || '';
-    const parts = rawStr ? rawStr.split('/') : [];
+  const validDates = data.map(item => {
+    const parts = item.dateStr ? item.dateStr.split('/') : [];
     if (parts.length === 3) {
       const [m, d, y] = parts;
       const formattedMonth = m.padStart(2, '0');
       const formattedDay = d.padStart(2, '0');
-      return { value: `${y}-${formattedMonth}-${formattedDay}`, label: rawStr, item };
+      return { value: `${y}-${formattedMonth}-${formattedDay}`, label: item.dateStr, item };
     }
     return null;
   }).filter(Boolean);
@@ -5022,28 +5039,12 @@ function renderHistoryCardsModal(data) {
 
   const dateInput = document.getElementById('historyDateInput');
 
-  // Helper to re-evaluate and inject metrics dynamically from calculateForecastDayCardMetrics when needed
-  const handleDateChange = (val) => {
-    const [y, m, d] = val.split('-');
-    const activeLocation = window._radarState?.targetLocation || window.activeLocation || window.selectedPoint || null;
-
-    let computedMetrics = null;
-    if (typeof calculateForecastDayCardMetrics === 'function') {
-      computedMetrics = calculateForecastDayCardMetrics(parseInt(y, 10), parseInt(m, 10), parseInt(d, 10), activeLocation, [], 1, 1, 5, 0);
-    } else if (typeof calculateForecastDayMetrics === 'function') {
-      computedMetrics = calculateForecastDayMetrics(parseInt(y, 10), parseInt(m, 10), parseInt(d, 10), activeLocation, [], 1, 1, 5, 0);
-    }
-
-    // Pass dataset merged with newly evaluated metrics for seamless rendering
-    updateCardView(val, datasetList, 'historyCardContainer', 'singleHistoryGraphCanvas', 'temp', computedMetrics);
-  };
-
   dateInput.addEventListener('change', (e) => {
-    handleDateChange(e.target.value);
+    updateCardView(e.target.value, data);
   });
 
   if (defaultDate) {
-    handleDateChange(defaultDate);
+    updateCardView(defaultDate, data);
   }
 }
 
