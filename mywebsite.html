@@ -5348,10 +5348,10 @@ function drawForecastCanvasGraph(item, mode, canvas, activeX = null, prevItem = 
             const pastPts = pts.filter(p => p.minute <= currentMinutes);
             const futurePts = pts.filter(p => p.minute >= currentMinutes);
 
-            const renderPath = (segmentPts, style, isDashed) => {
+            const renderPath = (segmentPts, style, isDashed, applyFill) => {
                 if (segmentPts.length < 2) return;
                 
-                if (fillUnder && !isDashed) {
+                if (fillUnder && applyFill) {
                     ctx.beginPath();
                     ctx.moveTo(segmentPts[0].x, height - padBottom);
                     ctx.lineTo(segmentPts[0].x, getYVal(segmentPts[0]));
@@ -5378,10 +5378,10 @@ function drawForecastCanvasGraph(item, mode, canvas, activeX = null, prevItem = 
             };
 
             if (pastPts.length >= 2) {
-                renderPath(pastPts, activeStyle, true);
+                renderPath(pastPts, activeStyle, true, true); // Enabled fillUnder for past segment
             }
             if (futurePts.length >= 2) {
-                renderPath(futurePts, activeStyle, false);
+                renderPath(futurePts, activeStyle, false, true); // Enabled fillUnder for future segment
             }
         } else if (isHistorySource) {
             if (pts.length >= 2) {
