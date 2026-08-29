@@ -2959,8 +2959,9 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
     const ESRI_CLOUD_FREE_TILE_URL = 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}';
     const ESRI_ATTRIBUTION = 'Tiles &copy; Esri &mdash; Source: Esri, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-EGP';
 
-    // Iowa / DMX NOAA STAR GOES Satellite XYZ Tile Endpoint Template
-    const NOAA_DMX_XYZ_TILE_URL = 'https://mesonet.agron.iastate.edu/cache/tile.py/1.0.0/goes-east-vis-1km/{z}/{x}/{y}.png';
+    // NOAA STAR / Iowa Mesonet GOES East Visible 1km XYZ Tile Endpoint
+    const NOAA_STAR_GOES_TILE_URL = 'https://mesonet.agron.iastate.edu/cache/tile.py/1.0.0/goes-east-vis-1km/{z}/{x}/{y}.png';
+    const NOAA_STAR_ATTRIBUTION = `1-Minute Iowa Satellite (GOES) — NOAA STAR (${selectedDateStr})`;
 
     let targetTileUrl = ESRI_CLOUD_FREE_TILE_URL;
     let targetAttribution = ESRI_ATTRIBUTION;
@@ -2977,12 +2978,12 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
             dynamicGoesUrl = satUrls[timeSliderVal] || Object.values(satUrls)[0];
         }
 
-        // Use custom metadata XYZ URL, single layer URL, or standard Iowa/DMX GOES XYZ Tile server
+        // Use custom metadata satellite URL if provided; otherwise load NOAA STAR GOES Tile layer
         targetTileUrl = dynamicGoesUrl 
             || activeGridLayer._meta?.goesSatelliteUrl 
-            || NOAA_DMX_XYZ_TILE_URL;
+            || NOAA_STAR_GOES_TILE_URL;
             
-        targetAttribution = `1-Minute Iowa Satellite (GOES) — NOAA STAR (${selectedDateStr})`;
+        targetAttribution = NOAA_STAR_ATTRIBUTION;
     }
 
     // 5. Non-Blocking Leaflet XYZ Tile Update
@@ -2990,13 +2991,14 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
         if (window.satelliteLayer) {
             if (window.satelliteLayer._url !== targetTileUrl) {
                 window.satelliteLayer.setUrl(targetTileUrl, false);
-                window.satelliteLayer.redraw(); // Instantly update active tiles on slider move
+                window.satelliteLayer.redraw(); // Forces instant canvas refresh during slider drag
             }
         } else {
+            // Instantiate standard Leaflet TileLayer for NOAA STAR / Esri
             window.satelliteLayer = L.tileLayer(targetTileUrl, {
                 attribution: targetAttribution,
                 maxZoom: 19,
-                updateWhenIdle: false,     // Prevents delay during slider scrubbing
+                updateWhenIdle: false,     // Instant tile loading while dragging timeline
                 updateWhenZooming: false,
                 keepBuffer: 4              // Pre-buffers adjacent tiles to prevent screen flicker
             });
@@ -3006,8 +3008,7 @@ function createRadarGridLayer(canvas, clientX, item, mode, prevItem = null, next
             window.satelliteLayer.addTo(activeTargetMap);
         }
     });
-}
-    
+}    
     return activeGridLayer;
 }
 function calculateForecastDayMetrics(forecastYear, forecastMonth, dateNum, targetZoneOrPoint, gridPeriods, confidenceFactor, exactDaysOut, dos, i) {
