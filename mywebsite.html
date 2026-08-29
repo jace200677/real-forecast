@@ -3722,13 +3722,33 @@ function openWeatherMapModal(item, mode = 'temp', selectedDayIndex = null) {
 
   mapModal.style.display = "flex";
 
+ const launchRadarModal = (mapModal, item, mode, selectedDayIndex) => {
+  if (!mapModal) return;
+
+  // Cloud-free ground aerial imagery tile URL preset
+  const cloudFreeSatUrl = 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}';
+
+  const initModal = () => {
+    if (typeof initTimezoneSyncedRadarModal === 'function') {
+      initTimezoneSyncedRadarModal(mapModal, item, mode, selectedDayIndex);
+    }
+  };
+
+  // Display modal element if hidden
+  if (mapModal.style.display !== 'block') {
+    mapModal.style.display = 'block';
+  }
+
+  // Load Leaflet with the satellite preset and execute modal initialization
   if (typeof ensureLeafletLoaded === 'function') {
-    ensureLeafletLoaded(() => {
-      if (typeof initTimezoneSyncedRadarModal === 'function') {
-        initTimezoneSyncedRadarModal(mapModal, item, mode, selectedDayIndex);
-      }
-    });
-  } else if (typeof initTimezoneSyncedRadarModal === 'function') {
+    ensureLeafletLoaded(initModal, cloudFreeSatUrl);
+  } else if (window.L) {
+    initModal();
+  } else {
+    console.error('Leaflet loader (ensureLeafletLoaded) is not defined.');
+  }
+};
+  else if (typeof initTimezoneSyncedRadarModal === 'function') {
     initTimezoneSyncedRadarModal(mapModal, item, mode, selectedDayIndex);
   }
 }
@@ -4184,16 +4204,68 @@ function resolveRadarCoordinates(currentItem, dataset = []) {
 /**
  * Dynamically loads Leaflet.js assets if not present
  */
-function ensureLeafletLoaded(callback) {
-  if (window.L) { callback(); return; }
-  const link = document.createElement("link");
-  link.rel = "stylesheet"; 
-  link.href = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.css";
-  document.head.appendChild(link);
+function ensureLeafletLoaded(callback, customTileUrl = null) {
+  // Pre-configured cloud-free and satellite tile URL presets
+  const SATELLITE_URLS = {
+    esriCloudFree: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+    noaaStarLive: 'https://www.star.nesdis.noaa.gov/GOES/tile_service.php?z={z}&x={x}&y={y}',
+    iastateGoes: 'https://mesonet.agron.iastate.edu/cgi-bin/wms/goes/vis006.cgi'
+  };
+
+  // Store active tile URL globally for map modal access
+  window._activeSatelliteUrl = customTileUrl || SATELLITE_URLS.esriCloudFree;
+
+  if (window.L) { 
+    callback(window._activeSatelliteUrl); 
+    return; 
+  }
+
+  const existingScript = document.querySelector('script[src*="leaflet.js"]');
   
+  if (existingScript) {
+    if (window.L) {
+      callback(window._activeSatelliteUrl);
+      return;
+    }
+    existingScript.addEventListener('load', () => callback(window._activeSatelliteUrl), { once: true });
+    existingScript.addEventListener('error', () => console.error("Leaflet script failed to load."), { once: true });
+    return;
+  }
+
+  // Safety timeout fallback (5 seconds)
+  const loadTimeout = setTimeout(() => {
+    if (!window.L) {
+      console.warn("Leaflet loading timed out. Check network connection.");
+    }
+  }, 5000);
+
+  // Load Leaflet CSS
+  if (!document.querySelector('link[href*="leaflet.css"]')) {
+    const link = document.createElement("link");
+    link.rel = "stylesheet"; 
+    link.href = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.css";
+    link.integrity = "sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=";
+    link.crossOrigin = "";
+    document.head.appendChild(link);
+  }
+
+  // Load Leaflet JS
   const script = document.createElement("script");
   script.src = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.js";
-  script.onload = callback;
+  script.integrity = "sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=";
+  script.crossOrigin = "";
+  script.async = true;
+
+  script.onload = () => {
+    clearTimeout(loadTimeout);
+    callback(window._activeSatelliteUrl);
+  };
+
+  script.onerror = () => {
+    clearTimeout(loadTimeout);
+    console.error("Failed to load Leaflet script from CDN.");
+  };
+
   document.head.appendChild(script);
 }
 let activeMapItem = null;
