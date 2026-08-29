@@ -626,7 +626,7 @@ function renderActiveAlerts(alerts) {
         container.appendChild(alertCard);
     });
 }
-window.onload = verifyDeviceAccess;
+
 function openUploadModal() {
     document.getElementById("uploadModal").style.display = "flex";
     const now = new Date();
@@ -7096,7 +7096,9 @@ window.addEventListener('resize', () => {
         drawForecastCanvasGraph(modal.currentItem, currentMode, modalCanvas, modal.dragX, modal.prevItem, modal.nextItem);
     }
 });
-
+document.addEventListener("DOMContentLoaded", () => {
+    verifyDeviceAccess();
+});
 // Optional: Keep it updated if the page stays open
 setInterval(updateTrafficButtonState, 1000);
 buildForecast();
