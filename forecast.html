@@ -167,6 +167,11 @@ function initMap() {
     const today = new Date().toISOString().split('T')[0];
     document.getElementById('dateInput').value = today;
 
+    // Trigger update on zoom level changes
+    map.on('zoomend', () => {
+        updateAllLayers();
+    });
+
     updateAllLayers();
 }
 
