@@ -125,24 +125,24 @@
     <div id="map"></div>
 </div>
 
-<!-- AI Assistant Widget (No API Key Required) -->
+<!-- AI Assistant Widget -->
 <div id="ai-chat-widget" style="position: fixed; bottom: 20px; right: 20px; z-index: 9999; font-family: 'Segoe UI', sans-serif;">
     <button id="ai-chat-toggle" onclick="toggleChat()" style="background: #00a8cc; color: white; border: none; padding: 12px 18px; border-radius: 25px; cursor: pointer; font-weight: bold; box-shadow: 0 4px 10px rgba(0,0,0,0.5);">
-        💬 Satellite Assistant
+        💬 Ask Satellite AI
     </button>
 
     <div id="ai-chat-box" style="display: none; width: 320px; height: 400px; background: #1e1e1e; border: 1px solid #333; border-radius: 10px; flex-direction: column; overflow: hidden; box-shadow: 0 8px 24px rgba(0,0,0,0.6); margin-bottom: 10px;">
         <div style="background: #2a2a2a; padding: 12px; font-weight: bold; color: #00a8cc; border-bottom: 1px solid #333; display: flex; justify-content: space-between; align-items: center;">
-            <span>🤖 Local Assistant</span>
+            <span>🤖 Satellite AI Assistant</span>
             <span onclick="toggleChat()" style="cursor: pointer; color: #aaa;">✕</span>
         </div>
         <div id="ai-messages" style="flex: 1; padding: 12px; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; font-size: 13px;">
             <div style="background: #2a2a2a; padding: 8px 12px; border-radius: 6px; color: #ddd; max-width: 85%; align-self: flex-start;">
-                Hi! Ask me about Iowa cities, coordinates, satellite zoom levels, or date controls.
+                Hi! Ask me about cloud removal, zooming to house level, or NASA satellite dates.
             </div>
         </div>
         <div style="display: flex; padding: 8px; background: #141414; border-top: 1px solid #333;">
-            <input type="text" id="ai-input" placeholder="Type a message..." style="flex: 1; background: #2a2a2a; border: 1px solid #444; color: white; padding: 6px 10px; border-radius: 4px; font-size: 13px;" onkeypress="if(event.key==='Enter') sendLocalAIMessage()">
+            <input type="text" id="ai-input" placeholder="Ask AI to remove clouds..." style="flex: 1; background: #2a2a2a; border: 1px solid #444; color: white; padding: 6px 10px; border-radius: 4px; font-size: 13px;" onkeypress="if(event.key==='Enter') sendLocalAIMessage()">
             <button onclick="sendLocalAIMessage()" style="margin-left: 6px; padding: 6px 12px; background: #00a8cc; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 13px;">Send</button>
         </div>
     </div>
@@ -160,14 +160,6 @@ function initMap() {
         zoom: 7,
         maxZoom: 19
     });
-
-    // Dark Street Overlay Base Layer
-    L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
-        attribution: '&copy; OpenStreetMap &copy; CARTO',
-        subdomains: 'abcd',
-        maxZoom: 19,
-        zIndex: 1
-    }).addTo(map);
 
     // Key Iowa City Markers
     const cities = [
@@ -202,16 +194,22 @@ function updateTimeDisplay() {
     document.getElementById('timeDisplay').innerText = `${time.formatted} UTC`;
 }
 
-// Esri World Imagery (No API key required, house-level zoom, cloud-free imagery)
+// Strictly NASA GIBS Satellite Imagery Layer
 function updateAllLayers() {
+    const dateVal = document.getElementById('dateInput').value;
+    if (!dateVal) return;
+
     if (baseSatLayer) {
         map.removeLayer(baseSatLayer);
     }
 
-    baseSatLayer = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
-        attribution: 'Tiles &copy; Esri, USGS, NOAA',
+    // Direct NASA GIBS MODIS Terra Satellite endpoint
+    const nasaUrl = `https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/MODIS_Terra_CorrectedReflectance_TrueColor/default/${dateVal}/GoogleMapsCompatible_Level9/{z}/{y}/{x}.jpg`;
+
+    baseSatLayer = L.tileLayer(nasaUrl, {
+        attribution: 'Imagery &copy; <a href="https://gibs.earthdata.nasa.gov/">NASA GIBS</a>',
         maxZoom: 19,
-        maxNativeZoom: 19,
+        maxNativeZoom: 9, // Upscales level 9 NASA tiles up to zoom level 19
         zIndex: 2
     }).addTo(map);
 }
@@ -222,7 +220,7 @@ function resetMapView() {
     }
 }
 
-// Offline AI Assistant Logic
+// AI Assistant Response Logic
 function toggleChat() {
     const chatBox = document.getElementById('ai-chat-box');
     chatBox.style.display = chatBox.style.display === 'none' ? 'flex' : 'none';
@@ -234,25 +232,21 @@ function sendLocalAIMessage() {
     const query = input.value.trim();
     if (!query) return;
 
-    // Add User Message
     const userDiv = document.createElement('div');
     userDiv.style.cssText = 'background: #00a8cc; padding: 8px 12px; border-radius: 6px; color: white; max-width: 85%; align-self: flex-end;';
     userDiv.innerText = query;
     messages.appendChild(userDiv);
     input.value = '';
 
-    // Generate response locally without API call
-    let reply = "I can help with dashboard questions, Iowa location coordinates, or satellite zoom levels.";
+    let reply = "I am trained on NASA GIBS satellite layers. You can ask about cloud removal or zoom resolution limits.";
     const q = query.toLowerCase();
 
-    if (q.includes("des moines")) {
-        reply = "Des Moines is located at coordinates [41.5868, -93.6250].";
+    if (q.includes("cloud") || q.includes("remove")) {
+        reply = "☁️ **Cloud Removal Analysis:** NASA MODIS daily images capture real atmospheric clouds. To view cloud-free days, try selecting a different date on the top date slider where weather conditions were clear over Iowa.";
     } else if (q.includes("zoom") || q.includes("house")) {
-        reply = "The map uses Esri World Imagery, allowing clear house-level zoom up to zoom level 19.";
-    } else if (q.includes("api") || q.includes("key")) {
-        reply = "This dashboard runs completely free using public Esri tile endpoints without any API keys.";
-    } else if (q.includes("reset") || q.includes("center")) {
-        reply = "Click 'Center on Iowa' to return the map view to [41.8780, -93.0977].";
+        reply = "🔍 **House Zoom Level:** NASA GIBS max native resolution is 250 meters/pixel (Zoom 9). Leaflet stretches this layer to Zoom 19 so you can zoom down to house level, but fine building details will appear pixelated due to daily satellite resolution limits.";
+    } else if (q.includes("nasa") || q.includes("satellite")) {
+        reply = "🛰️ Currently rendering daily True Color imagery directly from NASA GIBS MODIS Terra satellites.";
     }
 
     const botDiv = document.createElement('div');
