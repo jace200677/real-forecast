@@ -746,16 +746,15 @@ function getDrawnPolygonCoordinates() {
 // 3. Payload Dispatch & Persistence (Saves to backend DB for all users)
 function submitAlertBroadcast(btnElement) {
     const payload = {
-        device_id: window.localStorage.getItem("DEVICE_NAME") || "ANONYMOUS_USER",
         title: document.getElementById("alert-title").value.trim(),
         description: document.getElementById("alert-desc").value.trim(),
         start_time: document.getElementById("alert-start").value,
         end_time: document.getElementById("alert-end").value,
         severity: document.getElementById("alert-severity").value,
-        bottom_lat: document.getElementById("alert-bottom-lat").value,
-        top_lat: document.getElementById("alert-top-lat").value,
-        bottom_lon: document.getElementById("alert-bottom-lon").value,
-        top_lon: document.getElementById("alert-top-lon").value
+        bottom_lat: parseFloat(document.getElementById("alert-bottom-lat").value),
+        top_lat: parseFloat(document.getElementById("alert-top-lat").value),
+        bottom_lon: parseFloat(document.getElementById("alert-bottom-lon").value),
+        top_lon: parseFloat(document.getElementById("alert-top-lon").value)
     };
 
     if (!payload.title) {
@@ -764,8 +763,8 @@ function submitAlertBroadcast(btnElement) {
         return;
     }
 
-    if (!payload.bottom_lat || !payload.top_lat || !payload.bottom_lon || !payload.top_lon) {
-        alert("Please enter all bounding box coordinate fields (Bottom/Top Lat and Lon) before broadcasting.");
+    if (isNaN(payload.bottom_lat) || isNaN(payload.top_lat) || isNaN(payload.bottom_lon) || isNaN(payload.top_lon)) {
+        alert("Please enter valid numeric values for all bounding box coordinate fields.");
         return;
     }
 
@@ -777,10 +776,20 @@ function submitAlertBroadcast(btnElement) {
 
     fetch('/api/v1/alerts/broadcast', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+            'Content-Type': 'application/json',
+            'Accept': 'application/json'
+        },
         body: JSON.stringify(payload)
     })
-    .then(response => {
+    .then(async response => {
+        let errorData;
+        try {
+            errorData = await response.json();
+        } catch (e) {
+            errorData = null;
+        }
+
         if (response.ok) {
             alert("Alert successfully broadcasted and saved for public view.");
             closeAlertModal();
@@ -791,7 +800,9 @@ function submitAlertBroadcast(btnElement) {
             document.getElementById("alert-bottom-lon").value = "";
             document.getElementById("alert-top-lon").value = "";
         } else {
-            alert("Broadcast failed. Please try again.");
+            console.error("Server rejection details:", errorData);
+            let message = (errorData && (errorData.detail || errorData.message)) ? (errorData.detail || errorData.message) : response.statusText;
+            alert("Broadcast failed (" + response.status + "): " + message);
         }
     })
     .catch(error => {
