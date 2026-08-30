@@ -600,16 +600,20 @@ async function generateHardwareFingerprint() {
     console.log("Your Device Hardware Signature Hash:", finalHash);
     return finalHash;
 }
-// 2. Modal Controls
+let geofenceMap = null;
+
 function openAlertModal() {
-    const modal = document.getElementById('alert-modal');
-    modal.style.display = 'flex';
+    document.getElementById('alert-modal').style.display = 'flex';
     
-    // Fix Leaflet map sizing/rendering inside the modal
-    if (window.geofenceMapInstance) {
-        setTimeout(() => {
-            window.geofenceMapInstance.invalidateSize();
-        }, 100);
+    // Initialize the map only once when the modal opens
+    if (!geofenceMap) {
+        geofenceMap = L.map('geofence-map').setView([37.8, -96], 4); // Adjust center/zoom as needed
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '&copy; OpenStreetMap contributors'
+        }).addTo(geofenceMap);
+    } else {
+        // Refresh dimensions if already initialized
+        geofenceMap.invalidateSize();
     }
 }
 function closeAlertModal() {
