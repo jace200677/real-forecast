@@ -475,7 +475,6 @@
 
     </div>
 </div>
-<!-- Leaflet & Leaflet-Draw CSS -->
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.css" />
 
@@ -567,60 +566,6 @@
 
     </div>
 </div>
-
-<script>
-let alertMap, drawnItems;
-
-function initAlertMap() {
-    if (alertMap) return; // Prevent re-initialization
-
-    // Initialize Map centered on US
-    alertMap = L.map('alert-map').setView([39.8283, -98.5795], 4);
-
-    // OpenStreetMap Tile Layer
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        maxZoom: 18,
-        attribution: '© OpenStreetMap'
-    }).addTo(alertMap);
-
-    // Layer Group to store drawn lines/polygons
-    drawnItems = new L.FeatureGroup();
-    alertMap.addLayer(drawnItems);
-
-    // Configure Draw Control (Enabling custom lines and polygons, disabling standard shapes)
-    const drawControl = new L.Control.Draw({
-        draw: {
-            polygon: true,
-            polyline: true,
-            rectangle: false,
-            circle: false,
-            circlemarker: false,
-            marker: false
-        },
-        edit: {
-            featureGroup: drawnItems
-        }
-    });
-    alertMap.addControl(drawControl);
-
-    // Listen for created layers (custom lines or polygons)
-    alertMap.on(L.Draw.Event.CREATED, function (e) {
-        drawnItems.clearLayers(); // Keep only the latest drawn path
-        const layer = e.layer;
-        drawnItems.addLayer(layer);
-
-        // Extract bounding box (Min/Max Lat & Lon)
-        const bounds = layer.getBounds();
-        document.getElementById('alert-bottom-lat').value = bounds.getSouth().toFixed(6);
-        document.getElementById('alert-top-lat').value = bounds.getNorth().toFixed(6);
-        document.getElementById('alert-bottom-lon').value = bounds.getWest().toFixed(6);
-        document.getElementById('alert-top-lon').value = bounds.getEast().toFixed(6);
-    });
-}
-
-// Call function to render map once modal opens
-
-</script>
 <script>
 const ALLOWED_DEVICES = ["JACES-MOBILE-PC", "JACES-PC"];
 const IS_LIVE_ON_YOUTUBE = false; 
@@ -725,6 +670,54 @@ async function cancelActiveAlert() {
         alert(`Error updating GitHub alerts: ${err.message}`);
     }
 }
+let alertMap, drawnItems;
+
+function initAlertMap() {
+    if (alertMap) return; // Prevent re-initialization
+
+    // Initialize Map centered on US
+    alertMap = L.map('alert-map').setView([39.8283, -98.5795], 4);
+
+    // OpenStreetMap Tile Layer
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        maxZoom: 18,
+        attribution: '© OpenStreetMap'
+    }).addTo(alertMap);
+
+    // Layer Group to store drawn lines/polygons
+    drawnItems = new L.FeatureGroup();
+    alertMap.addLayer(drawnItems);
+
+    // Configure Draw Control (Enabling custom lines and polygons, disabling standard shapes)
+    const drawControl = new L.Control.Draw({
+        draw: {
+            polygon: true,
+            polyline: true,
+            rectangle: false,
+            circle: false,
+            circlemarker: false,
+            marker: false
+        },
+        edit: {
+            featureGroup: drawnItems
+        }
+    });
+    alertMap.addControl(drawControl);
+
+    // Listen for created layers (custom lines or polygons)
+    alertMap.on(L.Draw.Event.CREATED, function (e) {
+        drawnItems.clearLayers(); // Keep only the latest drawn path
+        const layer = e.layer;
+        drawnItems.addLayer(layer);
+
+        // Extract bounding box (Min/Max Lat & Lon)
+        const bounds = layer.getBounds();
+        document.getElementById('alert-bottom-lat').value = bounds.getSouth().toFixed(6);
+        document.getElementById('alert-top-lat').value = bounds.getNorth().toFixed(6);
+        document.getElementById('alert-bottom-lon').value = bounds.getWest().toFixed(6);
+        document.getElementById('alert-top-lon').value = bounds.getEast().toFixed(6);
+    });
+}
 async function verifyDeviceAccess() {
     const broadcastBtn = document.getElementById("broadcast-alert-btn");
     if (!broadcastBtn) return;
@@ -797,7 +790,7 @@ async function generateHardwareFingerprint() {
     return finalHash;
 }
 let geofenceMap = null;
-let drawnItems = null;
+
 function openAlertModal() {
     const modal = document.getElementById('alert-modal');
     modal.style.display = 'flex';
@@ -7943,14 +7936,13 @@ window.addEventListener('resize', () => {
         drawForecastCanvasGraph(modal.currentItem, currentMode, modalCanvas, modal.dragX, modal.prevItem, modal.nextItem);
     }
 });
-document.addEventListener("DOMContentLoaded", function () {
+document.addEventListener("DOMContentLoaded", () => {
     verifyDeviceAccess();
+});
+document.addEventListener("DOMContentLoaded", function () {
     initAlertMap();
-    
-    // Recalculate size in case the modal starts hidden
-    setTimeout(() => { 
-        if (alertMap) alertMap.invalidateSize(); 
-    }, 300);
+    // In case the modal starts hidden, recalculate size when shown:
+    setTimeout(() => { alertMap.invalidateSize(); }, 300);
 });
 // Optional: Keep it updated if the page stays open
 setInterval(updateTrafficButtonState, 1000);
