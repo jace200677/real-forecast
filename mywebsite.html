@@ -714,11 +714,12 @@ async function renderAlertPolygons(lat, lon, selectedAlertTitle = null) {
 
     let rawAlerts = [];
 
-    // Unified parser supporting JSON arrays, objects, and line-by-line fragments
+    // Unified JSON + Regex fallback parser matching renderActiveAlerts exactly
     const parseAlertsText = (rawText, defaultSource = '') => {
         const parsedItems = [];
 
         try {
+            // 1. Try full JSON Parse
             const parsed = JSON.parse(rawText);
             const items = Array.isArray(parsed) ? parsed : (parsed.alerts || parsed.data || parsed.results || [parsed]);
             items.forEach(item => {
@@ -727,6 +728,7 @@ async function renderAlertPolygons(lat, lon, selectedAlertTitle = null) {
             });
             return parsedItems;
         } catch {
+            // 2. Parse multi-line or JSON fragment entries per line
             const lines = rawText.split(/\r?\n/).filter(line => line.trim() !== "");
             
             lines.forEach(line => {
@@ -776,7 +778,7 @@ async function renderAlertPolygons(lat, lon, selectedAlertTitle = null) {
         return parsedItems;
     };
 
-    // Severity color map lookup
+    // Severity color calculation using lookup map (no switch statement)
     const severityColors = {
         extreme: '#d9534f', // Red
         severe: '#f0ad4e',  // Orange
@@ -816,7 +818,7 @@ async function renderAlertPolygons(lat, lon, selectedAlertTitle = null) {
         rawAlerts = window.activeAlerts || window.allAlerts || [];
     }
 
-    // 4. Filter out expired alerts
+    // 4. Filter out expired lines/alerts
     const now = new Date();
     const alertList = rawAlerts.filter(alert => {
         if (alert.end_time && String(alert.end_time).toLowerCase() !== "indefinite") {
@@ -835,12 +837,13 @@ async function renderAlertPolygons(lat, lon, selectedAlertTitle = null) {
         boundsArray.push([userLat, userLon]);
     }
 
-    // 5. Build geometry layers: strictly treat alertlines as filled polygon boundaries parsed like alertsres
+    // 5. Render shapes with fills and layer z-index order matching alertlines/alerts
     alertList.forEach(alert => {
         const severity = alert.severity || "Minor";
         const title = alert.title || alert.header || "Alert Area";
         const baseColor = resolveSeverityColor(severity);
 
+        // Robust matching for selected alert selection
         const isSelected = Boolean(
             selectedAlertTitle && 
             (
@@ -849,6 +852,7 @@ async function renderAlertPolygons(lat, lon, selectedAlertTitle = null) {
             )
         );
 
+        // Extract coordinate array
         let rawPoints = alert.latlngs || alert.points || alert.coordinates;
 
         if (typeof rawPoints === 'string') {
@@ -883,32 +887,51 @@ async function renderAlertPolygons(lat, lon, selectedAlertTitle = null) {
 
                 return null;
             }).filter(pt => pt && !isNaN(pt[0]) && !isNaN(pt[1]));
-        } else if (alert.min_lat !== null && alert.max_lat !== null && alert.min_lon !== null && alert.max_lon !== null) {
-            // Construct polygon boundary box so alertlines fill in interior colors identically to alertsres
-            lineCoords = [
-                [alert.min_lat, alert.min_lon],
-                [alert.max_lat, alert.min_lon],
-                [alert.max_lat, alert.max_lon],
-                [alert.min_lat, alert.max_lon],
-                [alert.min_lat, alert.min_lon]
-            ];
+        }
+
+        // Fallback: If coordinate array is missing/empty, build box coordinates from bounding box fields (min_lat/max_lat/etc.)
+        if (lineCoords.length === 0) {
+            const minLat = alert.min_lat ?? alert.bottomLat;
+            const maxLat = alert.max_lat ?? alert.topLat;
+            const minLon = alert.min_lon ?? alert.bottomLon;
+            const maxLon = alert.max_lon ?? alert.topLon;
+
+            if (minLat != null && maxLat != null && minLon != null && maxLon != null &&
+                !isNaN(minLat) && !isNaN(maxLat) && !isNaN(minLon) && !isNaN(maxLon)) {
+                lineCoords = [
+                    [minLat, minLon],
+                    [maxLat, minLon],
+                    [maxLat, maxLon],
+                    [minLat, maxLon],
+                    [minLat, minLon]
+                ];
+            }
         }
 
         if (lineCoords.length >= 2) {
-            // Render as filled polygon exclusively, ensuring alertlines and alert areas use identical styling and color fills
+            const isExplicitLine = alert.isLine === true || alert.type === 'polyline' || alert.shape === 'line' || alert.shape === 'polyline';
+            const firstPt = lineCoords[0];
+            const lastPt = lineCoords[lineCoords.length - 1];
+            const isClosedLoop = lineCoords.length >= 3 && firstPt[0] === lastPt[0] && firstPt[1] === lastPt[1];
+
+            // Force alertlines to parse and fill inside like alertsres (ignoring sourcefile line-only exceptions so they always form filled polygons using bounding boxes)
+            const renderAsLine = isExplicitLine || (lineCoords.length < 3 && !isClosedLoop && alert._sourceFile !== "alertlines.txt" && alert.min_lat == null);
+
+            // Selected layers receive yellow highlight outline and higher weight/opacity
             const layerOptions = {
                 color: isSelected ? "#ffff00" : baseColor,
                 stroke: true,
-                weight: isSelected ? 8 : 3,
+                weight: isSelected ? 8 : (renderAsLine ? 5 : 3),
                 opacity: isSelected ? 1.0 : 0.85,
-                fill: true,
                 fillColor: baseColor,
-                fillOpacity: isSelected ? 0.65 : 0.35,
+                fillOpacity: renderAsLine ? 0 : (isSelected ? 0.6 : 0.35),
                 lineCap: 'round',
                 lineJoin: 'round'
             };
 
-            const shapeLayer = L.polygon(lineCoords, layerOptions);
+            const shapeLayer = renderAsLine 
+                ? L.polyline(lineCoords, layerOptions)
+                : L.polygon(lineCoords, layerOptions);
 
             shapeLayer.bindPopup(`<b>${title}</b><br>Severity: ${severity}<br>${alert.description || ''}`);
             shapeLayer.bindTooltip(`<b>${title}</b> (${severity})`, { sticky: true });
@@ -923,12 +946,14 @@ async function renderAlertPolygons(lat, lon, selectedAlertTitle = null) {
         }
     });
 
+    // Render normal layers first, then selected layers on top so highlights aren't hidden
     normalLayers.forEach(layer => window.alertPolygonsLayerGroup.addLayer(layer));
     selectedLayers.forEach(layer => {
         window.alertPolygonsLayerGroup.addLayer(layer);
         if (typeof layer.openTooltip === "function") layer.openTooltip();
     });
 
+    // Zoom prioritizing the selected shape/line bounds
     if (mapInstance) {
         if (selectedBounds.length > 0) {
             mapInstance.fitBounds(selectedBounds, { padding: [40, 40], maxZoom: 12 });
