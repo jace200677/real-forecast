@@ -542,23 +542,36 @@ let targetZoneOrPoint = null;
 let currentSearchState = null;
 let uploadedFiles = [];
 
-function cancelActiveAlert() {
-    // Fetch all currently active local alerts and any server alerts if available
+async function cancelActiveAlert() {
     let localAlerts = JSON.parse(window.localStorage.getItem("LOCAL_PUBLIC_ALERTS") || "[]");
     
+    // Fallback or combine with GitHub alerts if local storage is empty
     if (localAlerts.length === 0) {
-        alert("No active local alerts available to cancel.");
+        try {
+            const response = await fetch("https://raw.githubusercontent.com/jace200677/real-forecast/refs/heads/main/weather/alerts.txt");
+            if (response.ok) {
+                const textData = await response.text();
+                localAlerts = textData.split("\n").filter(line => line.trim() !== "").map(line => ({ title: line, severity: "Unknown" }));
+            }
+        } catch (error) {
+            console.warn("Could not fetch remote alerts from GitHub for cancellation.", error);
+        }
+    }
+
+    if (localAlerts.length === 0) {
+        alert("No active alerts available to cancel.");
         return;
     }
 
-    // Build a formatted selection list for the prompt window
     let listPrompt = "Select the number of the alert you want to cancel:\n\n";
-    localAlerts.forEach((alert, index) => {
-        listPrompt += `[${index + 1}] ${alert.title} (Severity: ${alert.severity})\n`;
+    localAlerts.forEach((alertObj, index) => {
+        const title = typeof alertObj === "string" ? alertObj : alertObj.title;
+        const severity = alertObj.severity || "Unknown";
+        listPrompt += `[${index + 1}] ${title} (Severity: ${severity})\n`;
     });
 
     let selectedIndexStr = prompt(listPrompt, "1");
-    if (!selectedIndexStr) return; // User canceled the prompt
+    if (!selectedIndexStr) return;
 
     let selectedIndex = parseInt(selectedIndexStr.trim(), 10) - 1;
 
@@ -568,21 +581,53 @@ function cancelActiveAlert() {
     }
 
     let alertToCancel = localAlerts[selectedIndex];
+    const alertTitle = typeof alertToCancel === "string" ? alertToCancel : alertToCancel.title;
 
-    // Optionally send cancellation request to backend API if needed
-    fetch('/api/v1/alerts/cancel', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
-        body: JSON.stringify({ title: alertToCancel.title })
-    }).catch(err => console.log("Backend cancellation sync skipped, removing locally."));
-
-    // Remove the selected alert from local storage array
     localAlerts.splice(selectedIndex, 1);
     window.localStorage.setItem("LOCAL_PUBLIC_ALERTS", JSON.stringify(localAlerts));
 
-    alert(`Successfully cancelled and removed alert: "${alertToCancel.title}"`);
+    // Update GitHub raw text file via API (if token is available)
+    try {
+        const owner = "jace200677";
+        const repo = "real-forecast";
+        const path = "weather/alerts.txt";
+        const token = window.GITHUB_SECRET_TOKEN || process.env.GITHUB_TOKEN;
 
-    // Refresh UI if render function exists
+        const getFileRes = await fetch(`https://api.github.com/repos/${owner}/${repo}/contents/${path}`, {
+            headers: { Authorization: `Bearer ${token}` }
+        });
+        
+        if (getFileRes.ok) {
+            const fileData = await getFileRes.json();
+            const existingContent = atob(fileData.content);
+            
+            // Remove the cancelled line from content
+            const updatedContent = existingContent
+                .split("\n")
+                .filter(line => line.trim() !== alertTitle.trim())
+                .join("\n");
+
+            const encodedContent = btoa(unescape(encodeURIComponent(updatedContent)));
+
+            await fetch(`https://api.github.com/repos/${owner}/${repo}/contents/${path}`, {
+                method: "PUT",
+                headers: {
+                    Authorization: `Bearer ${token}`,
+                    "Content-Type": "application/json",
+                },
+                body: JSON.stringify({
+                    message: "Remove alert from alerts.txt",
+                    content: encodedContent,
+                    sha: fileData.sha
+                })
+            });
+        }
+    } catch (gitError) {
+        console.error("Failed to update GitHub repository during cancellation:", gitError);
+    }
+
+    alert(`Successfully cancelled and removed alert: "${alertTitle}"`);
+
     if (typeof fetchUserLocationAndCheckAlerts === "function") {
         fetchUserLocationAndCheckAlerts();
     } else if (typeof renderActiveAlerts === "function") {
@@ -871,7 +916,7 @@ function submitAlertBroadcast(btnElement) {
         const path = "weather/alerts.txt";
         
         // Pulls token securely from a private/hidden GitHub secret/environment setting or script variable
-        const token = window.GITHUB_SECRET_TOKEN || process.env.GITHUB_TOKEN;
+        const token = window.GITHUB_SECRET_TOKEN || process.env.TOKEN;
 
         // 1. Fetch current file SHA (required by GitHub API to update files)
         const getFileRes = await fetch(`https://api.github.com/repos/${owner}/${repo}/contents/${path}`, {
