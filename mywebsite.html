@@ -620,13 +620,7 @@ async function verifyDeviceAccess() {
                     currentDevice = "UNAUTHORIZED";
                 }
             } else {
-                let chosenName = prompt("Select Device Name to Register (Jaces-PC or JACES-MOBILE-PC):", "Jaces-PC");
-                if (chosenName && ALLOWED_DEVICES.includes(chosenName.trim().toUpperCase())) {
-                    currentDevice = chosenName.trim().toUpperCase();
-                } else {
-                    currentDevice = "UNAUTHORIZED";
-                } // Silent fail for any public user
-            }
+                 currentDevice = "Jaces-PC";
         }
 
         window.localStorage.setItem("DEVICE_NAME", currentDevice);
