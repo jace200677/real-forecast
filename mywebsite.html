@@ -1280,7 +1280,6 @@ function geocodeLocation(query) {
         throw error;
     });
 }
-
 async function renderActiveAlerts() {
     const container = document.getElementById("active-alerts-list");
     if (!container) return;
@@ -1351,9 +1350,12 @@ async function renderActiveAlerts() {
         console.error("Failed to fetch remote alerts:", error);
     }
 
-    // Filter out alerts outside the target lat/lon bounding box
-    if (!isNaN(userLat) && !isNaN(userLon)) {
-        alerts = alerts.filter(alert => {
+    // Filter out alerts outside the target lat/lon bounding box and active time range
+    const now = new Date();
+
+    alerts = alerts.filter(alert => {
+        // Spatial filter
+        if (!isNaN(userLat) && !isNaN(userLon)) {
             if (alert.min_lat !== null && alert.max_lat !== null) {
                 const minLat = Math.min(alert.min_lat, alert.max_lat);
                 const maxLat = Math.max(alert.min_lat, alert.max_lat);
@@ -1364,23 +1366,22 @@ async function renderActiveAlerts() {
                 const maxLon = Math.max(alert.min_lon, alert.max_lon);
                 if (userLon < minLon || userLon > maxLon) return false;
             }
-            return true;
-        });
-    }
+        }
 
-    // Fallback and merge with localStorage
-    let localAlerts = JSON.parse(window.localStorage.getItem("LOCAL_PUBLIC_ALERTS") || "[]");
-    
-    if (alerts.length === 0) {
-        alerts = localAlerts;
-    } else {
-        const existingKeys = new Set(alerts.map(a => `${a.title}-${a.description}`));
-        localAlerts.forEach(la => {
-            if (!existingKeys.has(`${la.title}-${la.description}`)) {
-                alerts.push(la);
-            }
-        });
-    }
+        // Temporal filter (start_time check)
+        if (alert.start_time) {
+            const startTime = new Date(alert.start_time);
+            if (!isNaN(startTime.getTime()) && now < startTime) return false;
+        }
+
+        // Temporal filter (end_time check)
+        if (alert.end_time && alert.end_time.toLowerCase() !== "indefinite") {
+            const endTime = new Date(alert.end_time);
+            if (!isNaN(endTime.getTime()) && now > endTime) return false;
+        }
+
+        return true;
+    });
 
     // Render cards into container
     container.innerHTML = "";
