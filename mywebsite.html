@@ -646,30 +646,30 @@ function openViewAlertsModal(targetZoneOrPoint) {
     }
 
     // 4. Unified execution inside setTimeout after modal DOM transition
-    setTimeout(() => {
+    setTimeout(async () => {
         if (window.userAlertMap) {
             window.userAlertMap.invalidateSize();
+
+            // Fetch and render the active text list FIRST to ensure global window.activeAlerts is populated
+            if (typeof renderActiveAlerts === "function") {
+                await renderActiveAlerts(lat, lon);
+            }
 
             // Resolve alerts payload properly (handles Single Alert Object, Array, or Global Store)
             let alertsData = [];
             if (Array.isArray(targetZoneOrPoint) && targetZoneOrPoint.length > 0) {
                 alertsData = targetZoneOrPoint;
-            } else if (targetZoneOrPoint && typeof targetZoneOrPoint === 'object' && (targetZoneOrPoint.latlngs || targetZoneOrPoint.points || targetZoneOrPoint.coordinates)) {
-                alertsData = [targetZoneOrPoint]; // Single alert object passed in
+            } else if (targetZoneOrPoint && typeof targetZoneOrPoint === 'object' && (targetZoneOrPoint.latlngs || targetZoneOrPoint.points || targetZoneOrPoint.coordinates || targetZoneOrPoint.min_lat)) {
+                alertsData = [targetZoneOrPoint];
             } else if (window.currentDrawnAlert) {
                 alertsData = [window.currentDrawnAlert];
             } else {
-                alertsData = window.allAlerts || window.rawAlerts || window.activeAlerts || [];
+                alertsData = window.activeAlerts || window.allAlerts || window.rawAlerts || [];
             }
 
-            // Execute render update
+            // Render polygons using the resolved alerts array
             if (typeof renderAlertPolygons === "function") {
-                renderAlertPolygons(alertsData);
-            }
-
-            // Update text list synchronously after map invalidation
-            if (typeof renderActiveAlerts === "function") {
-                renderActiveAlerts(lat, lon);
+                await renderAlertPolygons(alertsData);
             }
         }
     }, 200);
