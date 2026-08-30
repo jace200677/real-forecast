@@ -773,6 +773,7 @@ function submitAlertBroadcast(btnElement) {
         publishBtn.textContent = "Broadcasting...";
     }
 
+    // Fixed trailing slash to match FastAPI routing configurations preventing 405 errors
     fetch('/api/v1/alerts/broadcast/', {
         method: 'POST',
         headers: { 
@@ -791,6 +792,8 @@ function submitAlertBroadcast(btnElement) {
 
         if (response.ok) {
             alert("Alert successfully broadcasted and saved for public view.");
+            // Clear localStorage draft on success
+            window.localStorage.removeItem("FAILED_ALERT_DRAFT");
             closeAlertModal();
             document.getElementById("alert-title").value = "";
             document.getElementById("alert-desc").value = "";
@@ -801,12 +804,20 @@ function submitAlertBroadcast(btnElement) {
         } else {
             console.error("Server rejection details:", errorData);
             let message = (errorData && (errorData.detail || errorData.message)) ? (errorData.detail || errorData.message) : response.statusText;
-            alert("Broadcast failed (" + response.status + "): " + message);
+            
+            // Save inputs to localStorage if broadcast fails
+            window.localStorage.setItem("FAILED_ALERT_DRAFT", JSON.stringify(payload));
+            
+            alert("Broadcast failed (" + response.status + "): " + message + "\n\nYour input data has been safely saved locally.");
         }
     })
     .catch(error => {
         console.error("Network or transmission error:", error);
-        alert("Failed to connect to the server. Please check your network connection.");
+        
+        // Save inputs to localStorage on network errors
+        window.localStorage.setItem("FAILED_ALERT_DRAFT", JSON.stringify(payload));
+        
+        alert("Failed to connect to the server. Please check your network connection.\n\nYour input data has been safely saved locally.");
     })
     .finally(() => {
         if (publishBtn) {
