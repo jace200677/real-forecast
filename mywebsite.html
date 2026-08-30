@@ -971,21 +971,45 @@ function geocodeLocation(query) {
 
 function renderActiveAlerts(alerts) {
     const container = document.getElementById("active-alerts-list");
+    if (!container) return;
+    
     container.innerHTML = "";
     
-    if (alerts.length === 0) {
+    // Normalize input to handle single objects, nested responses, or missing arrays
+    let alertList = alerts;
+    if (alerts && !Array.isArray(alerts)) {
+        alertList = alerts.alerts || alerts.data || alerts.results || [alerts];
+    }
+    
+    // Fallback: Always check localStorage local public alerts if server returned nothing
+    let localAlerts = JSON.parse(window.localStorage.getItem("LOCAL_PUBLIC_ALERTS") || "[]");
+    
+    if (!alertList || alertList.length === 0) {
+        alertList = localAlerts;
+    } else {
+        // Merge without duplicates based on title and description
+        const existingKeys = new Set(alertList.map(a => `${a.title}-${a.description}`));
+        localAlerts.forEach(la => {
+            if (!existingKeys.has(`${la.title}-${la.description}`)) {
+                alertList.push(la);
+            }
+        });
+    }
+
+    if (!alertList || alertList.length === 0) {
         container.innerHTML = "<p>No active alerts for your current location.</p>";
         return;
     }
 
-    alerts.forEach(alert => {
+    alertList.forEach(alert => {
+        const severityStr = alert.severity ? String(alert.severity).toLowerCase() : "medium";
         const alertCard = document.createElement("div");
-        alertCard.className = `alert-card severity-${alert.severity.toLowerCase()}`;
+        alertCard.className = `alert-card severity-${severityStr}`;
         alertCard.innerHTML = `
-            <h4>${alert.title}</h4>
-            <p><strong>Severity:</strong> ${alert.severity}</p>
-            <p>${alert.description}</p>
-            <p><small>Active until: ${alert.end_time}</small></p>
+            <h4>${alert.title || "Untitled Alert"}</h4>
+            <p><strong>Severity:</strong> ${alert.severity || "Normal"}</p>
+            <p>${alert.description || "No description provided."}</p>
+            <p><small>Active until: ${alert.end_time || "Indefinite"}</small></p>
         `;
         container.appendChild(alertCard);
     });
