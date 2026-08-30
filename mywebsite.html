@@ -442,19 +442,37 @@
 </div>
 
 <!-- View Alerts Modal (For Users checking active alerts near their Lat/Lon) -->
-<div id="view-alerts-modal" class="modal-overlay" style="display: none;">
-    <div class="modal-container view-mode">
-        <div class="map-section">
-            <div id="user-location-map" style="width: 100%; height: 400px;"></div>
-            <p class="map-instruction">Displaying active alerts covering your current coordinates.</p>
+<div id="view-alerts-modal" style="display: none; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(0, 0, 0, 0.75); z-index: 9999; justify-content: center; align-items: center; padding: 20px; box-sizing: border-box;">
+    <div style="background: rgba(15, 23, 42, 0.98); padding: 24px; border-radius: 12px; border: 1px solid rgba(255, 255, 255, 0.2); color: #fff; box-shadow: 0 15px 35px rgba(0, 0, 0, 0.8); width: 100%; max-width: 1100px; display: flex; flex-direction: column; gap: 16px; max-height: 95vh; overflow-y: auto;">
+        
+        <!-- Modal Header -->
+        <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(255, 255, 255, 0.2); padding-bottom: 10px;">
+            <div style="font-size: 20px; font-weight: bold;">Active Emergency Alerts</div>
+            <button onclick="closeViewAlertsModal()" style="background: transparent; border: none; color: #fff; font-size: 22px; cursor: pointer;">&times;</button>
         </div>
-        <div class="form-section">
-            <h3>Active Emergency Alerts</h3>
-            <div id="active-alerts-list">
-                <!-- Dynamically populated active alerts -->
+
+        <!-- Map & Content Section -->
+        <div style="display: flex; gap: 16px; flex-wrap: wrap;">
+            <!-- Map Container -->
+            <div style="flex: 1; min-width: 300px; display: flex; flex-direction: column; gap: 8px;">
+                <div id="user-location-map" style="width: 100%; height: 350px; border-radius: 8px; border: 1px solid rgba(255, 255, 255, 0.2); overflow: hidden;"></div>
+                <p style="font-size: 12px; color: #cbd5e1; margin: 0;">Displaying active alerts covering your current coordinates.</p>
             </div>
-            <button onclick="closeViewAlertsModal()">Close</button>
+
+            <!-- Active Alerts List Box -->
+            <div style="flex: 1; min-width: 300px; display: flex; flex-direction: column; gap: 8px;">
+                <div style="font-size: 14px; font-weight: bold;">Location Alerts</div>
+                <div id="active-alerts-list" style="width: 100%; height: 350px; overflow-y: auto; background: rgba(0, 0, 0, 0.2); border-radius: 8px; border: 1px solid rgba(255, 255, 255, 0.1); padding: 12px; box-sizing: border-box;">
+                    <!-- Dynamically populated active alerts -->
+                </div>
+            </div>
         </div>
+
+        <!-- Action Buttons Footer -->
+        <div style="display: flex; justify-content: flex-end; margin-top: 10px; border-top: 1px solid rgba(255, 255, 255, 0.2); padding-top: 14px;">
+            <button onclick="closeViewAlertsModal()" style="padding: 8px 16px; background: #64748b; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold;">Close</button>
+        </div>
+
     </div>
 </div>
 <div id="alert-modal" style="display: none; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(0, 0, 0, 0.75); z-index: 9999; justify-content: center; align-items: center; padding: 20px; box-sizing: border-box;">
@@ -1269,23 +1287,9 @@ async function renderActiveAlerts() {
     
     container.innerHTML = "<p>Loading active alerts...</p>";
 
-    // Retrieve current user coordinates
-    let userLat = parseFloat(window.localStorage.getItem("USER_LAT"));
-    let userLon = parseFloat(window.localStorage.getItem("USER_LON"));
-
-    if (navigator.geolocation && (isNaN(userLat) || isNaN(userLon))) {
-        await new Promise(resolve => {
-            navigator.geolocation.getCurrentPosition(
-                pos => {
-                    userLat = pos.coords.latitude;
-                    userLon = pos.coords.longitude;
-                    resolve();
-                },
-                () => resolve(),
-                { timeout: 3000 }
-            );
-        });
-    }
+    // Derive location directly from targetZoneOrPoint with fallback coordinates
+    const userLat = typeof targetZoneOrPoint !== 'undefined' && targetZoneOrPoint ? parseFloat(targetZoneOrPoint.lat) : 45.0;
+    const userLon = typeof targetZoneOrPoint !== 'undefined' && targetZoneOrPoint ? parseFloat(targetZoneOrPoint.lon) : -93.0;
 
     let alerts = [];
 
@@ -1317,6 +1321,7 @@ async function renderActiveAlerts() {
                     const titleMatch = line.match(/(?:title|header):\s*([^|;\n]+)/i);
                     const severityMatch = line.match(/(?:severity|level):\s*([^|;\n]+)/i);
                     const descMatch = line.match(/(?:desc|description|details):\s*([^|;\n]+)/i);
+                    const startMatch = line.match(/(?:start_time|start time|from):\s*([^|;\n]+)/i);
                     const endMatch = line.match(/(?:end_time|end time|until|expires):\s*([^|;\n]+)/i);
 
                     // Extract coordinates for bounding box checking
@@ -1332,6 +1337,7 @@ async function renderActiveAlerts() {
                         title: alertObj.title || (titleMatch ? titleMatch[1].trim() : "Untitled Alert"),
                         severity: alertObj.severity || (severityMatch ? severityMatch[1].trim() : "Medium"),
                         description: cleanDesc || "No description provided.",
+                        start_time: alertObj.start_time || (startMatch ? startMatch[1].trim() : null),
                         end_time: alertObj.end_time || (endMatch ? endMatch[1].trim() : "Indefinite"),
                         min_lat: isNaN(minLat) ? null : minLat,
                         max_lat: isNaN(maxLat) ? null : maxLat,
@@ -1345,7 +1351,7 @@ async function renderActiveAlerts() {
         console.error("Failed to fetch remote alerts:", error);
     }
 
-    // Filter out alerts outside the user's lat/lon bounding box
+    // Filter out alerts outside the target lat/lon bounding box
     if (!isNaN(userLat) && !isNaN(userLon)) {
         alerts = alerts.filter(alert => {
             if (alert.min_lat !== null && alert.max_lat !== null) {
@@ -1392,12 +1398,12 @@ async function renderActiveAlerts() {
             <h4>${alert.title || "Untitled Alert"}</h4>
             <p><strong>Severity:</strong> ${alert.severity || "Normal"}</p>
             <p>${alert.description || "No description provided."}</p>
+            ${alert.start_time ? `<p><small>Start time: ${alert.start_time}</small></p>` : ""}
             <p><small>Active until: ${alert.end_time || "Indefinite"}</small></p>
         `;
         container.appendChild(alertCard);
     });
 }
-
 function openUploadModal() {
     document.getElementById("uploadModal").style.display = "flex";
     const now = new Date();
