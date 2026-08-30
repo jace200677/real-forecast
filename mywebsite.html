@@ -602,25 +602,16 @@ async function generateHardwareFingerprint() {
 }
 // 2. Modal Controls
 function openAlertModal() {
-    const modal = document.getElementById("alert-modal");
-    if (!modal) {
-        console.error("Modal error: #alert-modal element not found in the DOM.");
-        return;
+    const modal = document.getElementById('alert-modal');
+    modal.style.display = 'flex';
+    
+    // Fix Leaflet map sizing/rendering inside the modal
+    if (window.geofenceMapInstance) {
+        setTimeout(() => {
+            window.geofenceMapInstance.invalidateSize();
+        }, 100);
     }
-    
-    // 1. Force block or flex display so the modal container is rendered in the DOM flow
-    modal.style.display = "flex";
-    
-    // 2. Wrap initialization in a microtask or short timeout to guarantee CSS layout has painted
-    setTimeout(() => {
-        if (typeof initPolygonMap === "function") {
-            initPolygonMap();
-        } else {
-            console.error("Mapping error: initPolygonMap function is not defined.");
-        }
-    }, 50);
 }
-
 function closeAlertModal() {
     const modal = document.getElementById("alert-modal");
     if (!modal) return;
