@@ -650,26 +650,14 @@ function openViewAlertsModal(targetZoneOrPoint) {
         if (window.userAlertMap) {
             window.userAlertMap.invalidateSize();
 
-            // Fetch and render the active text list FIRST to ensure global window.activeAlerts is populated
+            // Fetch and render text list first to populate window.activeAlerts
             if (typeof renderActiveAlerts === "function") {
                 await renderActiveAlerts(lat, lon);
             }
 
-            // Resolve alerts payload properly (handles Single Alert Object, Array, or Global Store)
-            let alertsData = [];
-            if (Array.isArray(targetZoneOrPoint) && targetZoneOrPoint.length > 0) {
-                alertsData = targetZoneOrPoint;
-            } else if (targetZoneOrPoint && typeof targetZoneOrPoint === 'object' && (targetZoneOrPoint.latlngs || targetZoneOrPoint.points || targetZoneOrPoint.coordinates || targetZoneOrPoint.min_lat)) {
-                alertsData = [targetZoneOrPoint];
-            } else if (window.currentDrawnAlert) {
-                alertsData = [window.currentDrawnAlert];
-            } else {
-                alertsData = window.activeAlerts || window.allAlerts || window.rawAlerts || [];
-            }
-
-            // Render polygons using the resolved alerts array
+            // Render polygons passing lat and lon directly
             if (typeof renderAlertPolygons === "function") {
-                await renderAlertPolygons(alertsData);
+                await renderAlertPolygons(lat, lon);
             }
         }
     }, 200);
@@ -703,19 +691,31 @@ function processAndStoreAlerts(rawAlertData) {
 
     return window.allAlerts;
 }
-async function renderAlertPolygons(alerts) {
-    if (!alertPolygonsLayerGroup) return;
+async function renderAlertPolygons(lat, lon) {
+    // 1. Resolve active Leaflet map instance
+    const mapInstance = window.alertsMap 
+        || ((typeof userAlertMap !== 'undefined' && userAlertMap) ? userAlertMap : null)
+        || ((typeof alertMap !== 'undefined' && alertMap) ? alertMap : null);
+
+    // Initialize or attach layer group to map if missing
+    if (!window.alertPolygonsLayerGroup) {
+        window.alertPolygonsLayerGroup = L.layerGroup();
+    }
     
-    alertPolygonsLayerGroup.clearLayers();
+    if (mapInstance && !mapInstance.hasLayer(window.alertPolygonsLayerGroup)) {
+        window.alertPolygonsLayerGroup.addTo(mapInstance);
+    }
+    
+    window.alertPolygonsLayerGroup.clearLayers();
+
+    // 2. Resolve user coordinates
+    const userLat = !isNaN(parseFloat(lat)) ? parseFloat(lat) : (typeof targetZoneOrPoint !== 'undefined' && targetZoneOrPoint ? parseFloat(targetZoneOrPoint.lat) : 45.0);
+    const userLon = !isNaN(parseFloat(lon)) ? parseFloat(lon) : (typeof targetZoneOrPoint !== 'undefined' && targetZoneOrPoint ? parseFloat(targetZoneOrPoint.lon) : -93.0);
 
     let alertList = [];
 
-    // 1. Determine alert source or fetch directly from GitHub raw URL as fallback
-    if (Array.isArray(alerts) && alerts.length > 0) {
-        alertList = alerts;
-    } else if (window.currentDrawnAlert) {
-        alertList = [window.currentDrawnAlert];
-    } else if (window.activeAlerts && window.activeAlerts.length > 0) {
+    // 3. Fetch/resolve global alerts array
+    if (window.activeAlerts && window.activeAlerts.length > 0) {
         alertList = window.activeAlerts;
     } else if (window.allAlerts && window.allAlerts.length > 0) {
         alertList = window.allAlerts;
@@ -744,6 +744,7 @@ async function renderAlertPolygons(alerts) {
                         const titleMatch = line.match(/(?:title|header):\s*([^|;\n]+)/i);
                         const severityMatch = line.match(/(?:severity|level):\s*([^|;\n]+)/i);
                         const descMatch = line.match(/(?:desc|description|details):\s*([^|;\n]+)/i);
+                        const endMatch = line.match(/(?:end_time|end time|until|expires):\s*([^|;\n]+)/i);
 
                         const minLat = alertObj.bottom_lat ?? alertObj.bounding_box?.min_lat ?? parseFloat(line.match(/bottom_lat["']?\s*:\s*(-?\d+(?:\.\d+)?)/i)?.[1]);
                         const maxLat = alertObj.top_lat ?? alertObj.bounding_box?.max_lat ?? parseFloat(line.match(/top_lat["']?\s*:\s*(-?\d+(?:\.\d+)?)/i)?.[1]);
@@ -756,6 +757,7 @@ async function renderAlertPolygons(alerts) {
                             title: alertObj.title || (titleMatch ? titleMatch[1].trim() : "Untitled Alert"),
                             severity: alertObj.severity || (severityMatch ? severityMatch[1].trim() : "Medium"),
                             description: cleanDesc || "No description provided.",
+                            end_time: alertObj.end_time || (endMatch ? endMatch[1].trim() : "Indefinite"),
                             latlngs: alertObj.latlngs || alertObj.coordinates || alertObj.points || null,
                             min_lat: isNaN(minLat) ? null : minLat,
                             max_lat: isNaN(maxLat) ? null : maxLat,
@@ -770,8 +772,22 @@ async function renderAlertPolygons(alerts) {
         }
     }
 
-    const boundsArray = [];
+    // 4. Filter expired alerts
+    const now = new Date();
+    alertList = alertList.filter(alert => {
+        if (alert.end_time && String(alert.end_time).toLowerCase() !== "indefinite") {
+            const endTime = new Date(alert.end_time);
+            if (!isNaN(endTime.getTime()) && now > endTime) return false;
+        }
+        return true;
+    });
 
+    const boundsArray = [];
+    if (!isNaN(userLat) && !isNaN(userLon)) {
+        boundsArray.push([userLat, userLon]);
+    }
+
+    // 5. Draw shapes & lines
     alertList.forEach(alert => {
         const severity = alert.severity || "Medium";
         const title = alert.title || "Alert";
@@ -783,7 +799,7 @@ async function renderAlertPolygons(alerts) {
             try { rawPoints = JSON.parse(rawPoints); } catch (e) { rawPoints = null; }
         }
 
-        // Fallback: Generate polygon coordinates using bounding box bounds if explicit points are missing
+        // Bounding box rectangle fallback if explicit polygon coordinates are missing
         if (!rawPoints) {
             const minLat = alert.min_lat ?? alert.bottomLat;
             const maxLat = alert.max_lat ?? alert.topLat;
@@ -807,7 +823,7 @@ async function renderAlertPolygons(alerts) {
             }
         }
 
-        // Unwrap Leaflet single-nested array wrappers
+        // Unwrap Leaflet nested array wrappers
         while (Array.isArray(rawPoints) && rawPoints.length === 1 && Array.isArray(rawPoints[0])) {
             rawPoints = rawPoints[0];
         }
@@ -818,53 +834,49 @@ async function renderAlertPolygons(alerts) {
             polygonCoords = rawPoints.map(pt => {
                 if (!pt) return null;
 
-                // Handle Array coordinates [lat, lon] or GeoJSON [lon, lat]
                 if (Array.isArray(pt)) {
-                    let lat = parseFloat(pt[0]);
-                    let lon = parseFloat(pt[1]);
+                    let pLat = parseFloat(pt[0]);
+                    let pLon = parseFloat(pt[1]);
 
-                    if (Math.abs(lat) > 90 && Math.abs(lon) <= 90) {
-                        [lat, lon] = [lon, lat];
+                    if (Math.abs(pLat) > 90 && Math.abs(pLon) <= 90) {
+                        [pLat, pLon] = [pLon, pLat];
                     }
-                    return [lat, lon];
+                    return [pLat, pLon];
                 }
 
-                // Handle Object coordinates { lat, lng }
                 if (typeof pt === 'object') {
-                    const lat = parseFloat(pt.lat ?? pt.latitude);
-                    const lon = parseFloat(pt.lng ?? pt.lon ?? pt.longitude);
-                    return [lat, lon];
+                    const pLat = parseFloat(pt.lat ?? pt.latitude);
+                    const pLon = parseFloat(pt.lng ?? pt.lon ?? pt.longitude);
+                    return [pLat, pLon];
                 }
 
                 return null;
             }).filter(pt => pt && !isNaN(pt[0]) && !isNaN(pt[1]));
         }
 
-        // Render polygon or line sequence
         if (polygonCoords.length >= 2) {
             const isPolyline = alert.isLine || alert.type === 'polyline' || polygonCoords.length < 3;
 
+            const layerOptions = {
+                color: color,
+                stroke: true,
+                weight: isPolyline ? 5 : 3,
+                opacity: 0.9,
+                fillColor: color,
+                fillOpacity: isPolyline ? 0 : 0.35
+            };
+
             const layer = isPolyline 
-                ? L.polyline(polygonCoords, { color: color, weight: 5, opacity: 0.85 })
-                : L.polygon(polygonCoords, {
-                    color: color,
-                    fillColor: color,
-                    fillOpacity: 0.35,
-                    weight: 2
-                  });
+                ? L.polyline(polygonCoords, layerOptions)
+                : L.polygon(polygonCoords, layerOptions);
 
             layer.bindPopup(`<b>${title}</b><br>Severity: ${severity}<br>${alert.description || ''}`);
             layer.bindTooltip(`<b>${title}</b> (${severity})`, { sticky: true });
 
-            alertPolygonsLayerGroup.addLayer(layer);
+            window.alertPolygonsLayerGroup.addLayer(layer);
             boundsArray.push(...polygonCoords);
         }
     });
-
-    // 2. Safely locate active Leaflet map instance
-    const mapInstance = window.alertsMap 
-        || ((typeof userAlertMap !== 'undefined' && userAlertMap) ? userAlertMap : null)
-        || ((typeof alertMap !== 'undefined' && alertMap) ? alertMap : null);
 
     if (boundsArray.length > 0 && mapInstance) {
         mapInstance.fitBounds(boundsArray, { padding: [30, 30] });
