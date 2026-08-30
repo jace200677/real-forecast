@@ -617,37 +617,52 @@ function openViewAlertsModal(targetZoneOrPoint) {
         modal.style.display = "flex";
     }
 
-    // Extract default center point
-    const lat = (typeof targetZoneOrPoint !== 'undefined' && targetZoneOrPoint?.lat) ? parseFloat(targetZoneOrPoint.lat) : 45.0;
-    const lon = (typeof targetZoneOrPoint !== 'undefined' && targetZoneOrPoint?.lon) ? parseFloat(targetZoneOrPoint.lon) : -93.0;
+    // Extract default center point safely (handles objects or arrays)
+    let lat = 45.0;
+    let lon = -93.0;
+    
+    if (targetZoneOrPoint && typeof targetZoneOrPoint === 'object' && !Array.isArray(targetZoneOrPoint)) {
+        lat = parseFloat(targetZoneOrPoint.lat ?? targetZoneOrPoint.latitude ?? 45.0);
+        lon = parseFloat(targetZoneOrPoint.lng ?? targetZoneOrPoint.lon ?? targetZoneOrPoint.longitude ?? -93.0);
+    }
 
     // Initialize Map if not built yet
-    if (!userAlertMap) {
-        userAlertMap = L.map('user-location-map').setView([lat, lon], 6);
+    if (!window.userAlertMap) {
+        window.userAlertMap = L.map('user-location-map').setView([lat, lon], 6);
         
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
             maxZoom: 18,
             attribution: '© OpenStreetMap'
-        }).addTo(userAlertMap);
-
-        alertPolygonsLayerGroup = L.layerGroup().addTo(userAlertMap);
+        }).addTo(window.userAlertMap);
     }
 
-    // Recalculate leaflet map dimensions once visible, then render all nationwide polygons
-    setTimeout(() => {
-        if (userAlertMap) {
-            userAlertMap.invalidateSize();
+    // Always ensure layer group exists on window scope and is attached to current map
+    if (!window.alertPolygonsLayerGroup) {
+        window.alertPolygonsLayerGroup = L.layerGroup().addTo(window.userAlertMap);
+    } else if (!window.userAlertMap.hasLayer(window.alertPolygonsLayerGroup)) {
+        window.alertPolygonsLayerGroup.addTo(window.userAlertMap);
+    }
 
-            // Pull explicitly provided alerts or fall back to global out-of-bounds stores
-            const alertsData = (Array.isArray(targetZoneOrPoint) && targetZoneOrPoint.length > 0)
-                ? targetZoneOrPoint 
-                : (window.allAlerts || window.rawAlerts || window.activeAlerts || []);
+    // Recalculate leaflet map dimensions once visible, then render polygons
+    setTimeout(() => {
+        if (window.userAlertMap) {
+            window.userAlertMap.invalidateSize();
+
+            // Resolve alert payload correctly
+            let alertsData = [];
+            if (Array.isArray(targetZoneOrPoint) && targetZoneOrPoint.length > 0) {
+                alertsData = targetZoneOrPoint;
+            } else if (window.currentDrawnAlert) {
+                alertsData = [window.currentDrawnAlert];
+            } else {
+                alertsData = window.allAlerts || window.rawAlerts || window.activeAlerts || [];
+            }
 
             if (typeof renderAlertPolygons === "function") {
                 renderAlertPolygons(alertsData);
             }
         }
-    }, 150);
+    }, 200);
 
     // Populate active alerts text list for local area
     if (typeof renderActiveAlerts === "function") {
