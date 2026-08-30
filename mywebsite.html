@@ -714,65 +714,43 @@ async function renderAlertPolygons(lat, lon) {
 
     let alertList = [];
 
-    // 3. Fetch/resolve global alerts array
-    if (window.activeAlerts && window.activeAlerts.length > 0) {
-        alertList = window.activeAlerts;
-    } else if (window.allAlerts && window.allAlerts.length > 0) {
-        alertList = window.allAlerts;
-    } else if (window.rawAlerts && window.rawAlerts.length > 0) {
-        alertList = window.rawAlerts;
-    } else {
-        try {
-            const response = await fetch("https://raw.githubusercontent.com/jace200677/real-forecast/refs/heads/main/weather/alerts.txt");
-            if (response.ok) {
-                const rawText = await response.text();
-                
-                try {
-                    const parsed = JSON.parse(rawText);
-                    alertList = Array.isArray(parsed) ? parsed : (parsed.alerts || parsed.data || parsed.results || [parsed]);
-                } catch {
-                    const lines = rawText.split(/\r?\n/).filter(line => line.trim() !== "");
-                    lines.forEach(line => {
-                        let alertObj = {};
-                        if (line.includes("{") && line.includes("}")) {
-                            try {
-                                const jsonMatch = line.match(/\{.*\}/);
-                                if (jsonMatch) alertObj = JSON.parse(jsonMatch[0]);
-                            } catch (e) {}
+    // 3. Fetch line data from alertlines.txt GitHub raw URL
+    try {
+        const response = await fetch("https://raw.githubusercontent.com/jace200677/real-forecast/refs/heads/main/weather/alertlines.txt");
+        if (response.ok) {
+            const rawText = await response.text();
+            
+            try {
+                // Try parsing full JSON payload
+                const parsed = JSON.parse(rawText);
+                alertList = Array.isArray(parsed) ? parsed : [parsed];
+            } catch {
+                // Parse line-delimited JSON strings
+                const lines = rawText.split(/\r?\n/).filter(line => line.trim() !== "");
+                lines.forEach(line => {
+                    try {
+                        const jsonMatch = line.match(/\{.*\}/);
+                        if (jsonMatch) {
+                            alertList.push(JSON.parse(jsonMatch[0]));
+                        } else {
+                            alertList.push(JSON.parse(line));
                         }
-
-                        const titleMatch = line.match(/(?:title|header):\s*([^|;\n]+)/i);
-                        const severityMatch = line.match(/(?:severity|level):\s*([^|;\n]+)/i);
-                        const descMatch = line.match(/(?:desc|description|details):\s*([^|;\n]+)/i);
-                        const endMatch = line.match(/(?:end_time|end time|until|expires):\s*([^|;\n]+)/i);
-
-                        const minLat = alertObj.bottom_lat ?? alertObj.bounding_box?.min_lat ?? parseFloat(line.match(/bottom_lat["']?\s*:\s*(-?\d+(?:\.\d+)?)/i)?.[1]);
-                        const maxLat = alertObj.top_lat ?? alertObj.bounding_box?.max_lat ?? parseFloat(line.match(/top_lat["']?\s*:\s*(-?\d+(?:\.\d+)?)/i)?.[1]);
-                        const minLon = alertObj.bottom_lon ?? alertObj.bounding_box?.min_lon ?? parseFloat(line.match(/bottom_lon["']?\s*:\s*(-?\d+(?:\.\d+)?)/i)?.[1]);
-                        const maxLon = alertObj.top_lon ?? alertObj.bounding_box?.max_lon ?? parseFloat(line.match(/top_lon["']?\s*:\s*(-?\d+(?:\.\d+)?)/i)?.[1]);
-
-                        let cleanDesc = alertObj.description || (descMatch ? descMatch[1].trim() : line.replace(/\{.*\}/, '').replace(/Active until:.*$/i, '').trim());
-
-                        alertList.push({
-                            title: alertObj.title || (titleMatch ? titleMatch[1].trim() : "Untitled Alert"),
-                            severity: alertObj.severity || (severityMatch ? severityMatch[1].trim() : "Medium"),
-                            description: cleanDesc || "No description provided.",
-                            end_time: alertObj.end_time || (endMatch ? endMatch[1].trim() : "Indefinite"),
-                            latlngs: alertObj.latlngs || alertObj.coordinates || alertObj.points || null,
-                            min_lat: isNaN(minLat) ? null : minLat,
-                            max_lat: isNaN(maxLat) ? null : maxLat,
-                            min_lon: isNaN(minLon) ? null : minLon,
-                            max_lon: isNaN(maxLon) ? null : maxLon
-                        });
-                    });
-                }
+                    } catch (e) {
+                        console.warn("Failed to parse alertline entry:", line);
+                    }
+                });
             }
-        } catch (error) {
-            console.error("Failed to fetch remote alerts for polygon rendering:", error);
         }
+    } catch (error) {
+        console.error("Failed to fetch remote alert lines:", error);
     }
 
-    // 4. Filter expired alerts
+    // Fallback to active global stores if alertlines fetch returns empty
+    if (alertList.length === 0) {
+        alertList = window.activeAlerts || window.allAlerts || [];
+    }
+
+    // 4. Filter out expired lines
     const now = new Date();
     alertList = alertList.filter(alert => {
         if (alert.end_time && String(alert.end_time).toLowerCase() !== "indefinite") {
@@ -787,40 +765,17 @@ async function renderAlertPolygons(lat, lon) {
         boundsArray.push([userLat, userLon]);
     }
 
-    // 5. Draw shapes & lines
+    // 5. Render polylines strictly from latlngs coordinates
     alertList.forEach(alert => {
         const severity = alert.severity || "Medium";
-        const title = alert.title || "Alert";
+        const title = alert.title || alert.header || "Alert Line";
         const color = typeof getSeverityColor === "function" ? getSeverityColor(severity) : "#3388ff";
 
-        let rawPoints = alert.latlngs || alert.points || alert.coordinates || alert.polygon_points;
+        // Resolve latlngs directly
+        let rawPoints = alert.latlngs || alert.points || alert.coordinates;
 
         if (typeof rawPoints === 'string') {
             try { rawPoints = JSON.parse(rawPoints); } catch (e) { rawPoints = null; }
-        }
-
-        // Bounding box rectangle fallback if explicit polygon coordinates are missing
-        if (!rawPoints) {
-            const minLat = alert.min_lat ?? alert.bottomLat;
-            const maxLat = alert.max_lat ?? alert.topLat;
-            const minLon = alert.min_lon ?? alert.bottomLon;
-            const maxLon = alert.max_lon ?? alert.topLon;
-
-            if (minLat !== null && maxLat !== null && minLon !== null && maxLon !== null &&
-                !isNaN(minLat) && !isNaN(maxLat) && !isNaN(minLon) && !isNaN(maxLon)) {
-                
-                const bMinLat = Math.min(minLat, maxLat);
-                const bMaxLat = Math.max(minLat, maxLat);
-                const bMinLon = Math.min(minLon, maxLon);
-                const bMaxLon = Math.max(minLon, maxLon);
-
-                rawPoints = [
-                    [bMinLat, bMinLon],
-                    [bMaxLat, bMinLon],
-                    [bMaxLat, bMaxLon],
-                    [bMinLat, bMaxLon]
-                ];
-            }
         }
 
         // Unwrap Leaflet nested array wrappers
@@ -828,10 +783,10 @@ async function renderAlertPolygons(lat, lon) {
             rawPoints = rawPoints[0];
         }
 
-        let polygonCoords = [];
+        let lineCoords = [];
 
         if (Array.isArray(rawPoints) && rawPoints.length > 0) {
-            polygonCoords = rawPoints.map(pt => {
+            lineCoords = rawPoints.map(pt => {
                 if (!pt) return null;
 
                 if (Array.isArray(pt)) {
@@ -854,30 +809,25 @@ async function renderAlertPolygons(lat, lon) {
             }).filter(pt => pt && !isNaN(pt[0]) && !isNaN(pt[1]));
         }
 
-        if (polygonCoords.length >= 2) {
-            const isPolyline = alert.isLine || alert.type === 'polyline' || polygonCoords.length < 3;
-
-            const layerOptions = {
+        // Render line polygon/polyline if coordinates exist
+        if (lineCoords.length >= 2) {
+            const lineLayer = L.polyline(lineCoords, {
                 color: color,
-                stroke: true,
-                weight: isPolyline ? 5 : 3,
-                opacity: 0.9,
-                fillColor: color,
-                fillOpacity: isPolyline ? 0 : 0.35
-            };
+                weight: 5,
+                opacity: 0.85,
+                lineCap: 'round',
+                lineJoin: 'round'
+            });
 
-            const layer = isPolyline 
-                ? L.polyline(polygonCoords, layerOptions)
-                : L.polygon(polygonCoords, layerOptions);
+            lineLayer.bindPopup(`<b>${title}</b><br>Severity: ${severity}<br>${alert.description || ''}`);
+            lineLayer.bindTooltip(`<b>${title}</b> (${severity})`, { sticky: true });
 
-            layer.bindPopup(`<b>${title}</b><br>Severity: ${severity}<br>${alert.description || ''}`);
-            layer.bindTooltip(`<b>${title}</b> (${severity})`, { sticky: true });
-
-            window.alertPolygonsLayerGroup.addLayer(layer);
-            boundsArray.push(...polygonCoords);
+            window.alertPolygonsLayerGroup.addLayer(lineLayer);
+            boundsArray.push(...lineCoords);
         }
     });
 
+    // Adjust view bounds to frame rendered lines and user position
     if (boundsArray.length > 0 && mapInstance) {
         mapInstance.fitBounds(boundsArray, { padding: [30, 30] });
     }
