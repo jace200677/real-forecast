@@ -536,7 +536,7 @@
     </div>
 </div>
 <script>
-const ALLOWED_DEVICES = ["JACES-MOBILE-PC", "JACES-PC"];
+const ALLOWED_DEVICES = ["JACES-MOBILE-PC", "Jaces-PC"];
 const IS_LIVE_ON_YOUTUBE = false; 
 let targetZoneOrPoint = null;
 let currentSearchState = null;
@@ -601,7 +601,7 @@ async function verifyDeviceAccess() {
         const deviceSignature = await generateHardwareFingerprint();
         
         const signatureMap = {
-            "YOUR_PC_HASH_HERE": "JACES-PC",
+            "YOUR_PC_HASH_HERE": "Jaces-PC",
             "YOUR_MOBILE_PC_HASH_HERE": "JACES-MOBILE-PC"
         };
 
