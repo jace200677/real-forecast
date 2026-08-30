@@ -1739,7 +1739,7 @@ async function searchLocationForecast() {
             
             const address = geoData[0].address || {};
             currentSearchState = address.state ? address.state.toLowerCase() : null;
-            
+            updateAlertCountBadge();
             buildForecast();
         } else {
             container.innerHTML = "<p>Location not found. Please try again with a valid US city or zip code.</p>";
