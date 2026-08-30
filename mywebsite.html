@@ -1217,39 +1217,61 @@ function geocodeLocation(query) {
     });
 }
 
-function renderActiveAlerts(alerts) {
+async function renderActiveAlerts() {
     const container = document.getElementById("active-alerts-list");
     if (!container) return;
     
-    container.innerHTML = "";
-    
-    // Normalize input to handle single objects, nested responses, or missing arrays
-    let alertList = alerts;
-    if (alerts && !Array.isArray(alerts)) {
-        alertList = alerts.alerts || alerts.data || alerts.results || [alerts];
+    container.innerHTML = "<p>Loading active alerts...</p>";
+
+    let alerts = [];
+
+    try {
+        const response = await fetch("https://raw.githubusercontent.com/jace200677/real-forecast/refs/heads/main/weather/alerts.txt");
+        if (response.ok) {
+            const rawText = await response.text();
+            
+            // Handle plain text response (attempts JSON parse, falls back to raw text block)
+            try {
+                const parsed = JSON.parse(rawText);
+                alerts = Array.isArray(parsed) ? parsed : (parsed.alerts || parsed.data || parsed.results || [parsed]);
+            } catch {
+                if (rawText.trim()) {
+                    alerts = [{
+                        title: "Weather Alert",
+                        severity: "Medium",
+                        description: rawText.trim(),
+                        end_time: "Indefinite"
+                    }];
+                }
+            }
+        }
+    } catch (error) {
+        console.error("Failed to fetch remote alerts:", error);
     }
-    
-    // Fallback: Always check localStorage local public alerts if server returned nothing
+
+    // Fallback and merge with localStorage
     let localAlerts = JSON.parse(window.localStorage.getItem("LOCAL_PUBLIC_ALERTS") || "[]");
     
-    if (!alertList || alertList.length === 0) {
-        alertList = localAlerts;
+    if (alerts.length === 0) {
+        alerts = localAlerts;
     } else {
-        // Merge without duplicates based on title and description
-        const existingKeys = new Set(alertList.map(a => `${a.title}-${a.description}`));
+        const existingKeys = new Set(alerts.map(a => `${a.title}-${a.description}`));
         localAlerts.forEach(la => {
             if (!existingKeys.has(`${la.title}-${la.description}`)) {
-                alertList.push(la);
+                alerts.push(la);
             }
         });
     }
 
-    if (!alertList || alertList.length === 0) {
+    // Render to container bounding box
+    container.innerHTML = "";
+
+    if (alerts.length === 0) {
         container.innerHTML = "<p>No active alerts for your current location.</p>";
         return;
     }
 
-    alertList.forEach(alert => {
+    alerts.forEach(alert => {
         const severityStr = alert.severity ? String(alert.severity).toLowerCase() : "medium";
         const alertCard = document.createElement("div");
         alertCard.className = `alert-card severity-${severityStr}`;
