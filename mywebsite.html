@@ -1258,6 +1258,38 @@ async function renderActiveAlerts() {
     
     container.innerHTML = "<p>Loading active alerts...</p>";
 
+    // Define coordinate boundary limits
+    const MIN_LAT = -90.0;
+    const MAX_LAT = 90.0;
+    const MIN_LON = -180.0;
+    const MAX_LON = 180.0;
+
+    // Retrieve current coordinates from browser or localStorage
+    let userLat = parseFloat(window.localStorage.getItem("USER_LAT"));
+    let userLon = parseFloat(window.localStorage.getItem("USER_LON"));
+
+    if (navigator.geolocation && (isNaN(userLat) || isNaN(userLon))) {
+        await new Promise(resolve => {
+            navigator.geolocation.getCurrentPosition(
+                pos => {
+                    userLat = pos.coords.latitude;
+                    userLon = pos.coords.longitude;
+                    resolve();
+                },
+                () => resolve(),
+                { timeout: 3000 }
+            );
+        });
+    }
+
+    // Out-of-bounds check: clear bounding box container and halt execution
+    if (!isNaN(userLat) && !isNaN(userLon)) {
+        if (userLat < MIN_LAT || userLat > MAX_LAT || userLon < MIN_LON || userLon > MAX_LON) {
+            container.innerHTML = "<p>No active alerts for your current location.</p>";
+            return;
+        }
+    }
+
     let alerts = [];
 
     try {
@@ -1269,28 +1301,25 @@ async function renderActiveAlerts() {
                 const parsed = JSON.parse(rawText);
                 alerts = Array.isArray(parsed) ? parsed : (parsed.alerts || parsed.data || parsed.results || [parsed]);
             } catch {
-                // Parse line-by-line formatted text
-                const lines = rawText.split("\n").filter(line => line.trim() !== "");
+                // Separate alerts ONLY on explicit newlines (\n or \r\n)
+                const lines = rawText.split(/\r?\n/).filter(line => line.trim() !== "");
                 
                 lines.forEach(line => {
-                    // Extract fields matching pattern like "Title: ... | Severity: ... | Desc: ... | End: ..."
-                    // or standalone key-value matches per line
+                    // Extract fields within the single line
                     const titleMatch = line.match(/(?:title|header):\s*([^|;\n]+)/i);
                     const severityMatch = line.match(/(?:severity|level):\s*([^|;\n]+)/i);
                     const descMatch = line.match(/(?:desc|description|details):\s*([^|;\n]+)/i);
                     const endMatch = line.match(/(?:end_time|end time|until|expires):\s*([^|;\n]+)/i);
 
-                    if (titleMatch || descMatch) {
-                        alerts.push({
-                            title: titleMatch ? titleMatch[1].trim() : "Untitled Alert",
-                            severity: severityMatch ? severityMatch[1].trim() : "Medium",
-                            description: descMatch ? descMatch[1].trim() : line.trim(),
-                            end_time: endMatch ? endMatch[1].trim() : "Indefinite"
-                        });
-                    }
+                    // Keep full single-line text as description fallback without splitting wording
+                    alerts.push({
+                        title: titleMatch ? titleMatch[1].trim() : "Untitled Alert",
+                        severity: severityMatch ? severityMatch[1].trim() : "Medium",
+                        description: descMatch ? descMatch[1].trim() : line.trim(),
+                        end_time: endMatch ? endMatch[1].trim() : "Indefinite"
+                    });
                 });
 
-                // Fallback if line matching didn't yield structured objects
                 if (alerts.length === 0 && rawText.trim()) {
                     alerts = [{
                         title: "Weather Alert",
