@@ -440,70 +440,6 @@
         <i class="icon-map"></i> View Area Alerts
     </button>
 </div>
-<div id="alert-modal" style="display: none; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(0, 0, 0, 0.75); z-index: 9999; justify-content: center; align-items: center; padding: 20px; box-sizing: border-box;">
-    <div style="background: rgba(15, 23, 42, 0.98); padding: 24px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.2); color: #fff; box-shadow: 0 15px 35px rgba(0,0,0,0.8); width: 100%; max-width: 1100px; display: flex; flex-direction: column; gap: 16px; max-height: 95vh; overflow-y: auto;">
-        
-        <!-- Modal Header -->
-        <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(255,255,255,0.2); padding-bottom: 10px;">
-            <div style="font-size: 20px; font-weight: bold;">Create Emergency NWS Alert</div>
-            <button onclick="closeAlertModal()" style="background: transparent; border: none; color: #fff; font-size: 22px; cursor: pointer;">&times;</button>
-        </div>
-
-        <!-- Instruction banner -->
-        <div style="font-size: 14px; font-weight: bold; color: #ff4444;">Click on the map to draw the NWS-style impact polygon.</div>
-
-        <!-- Expanded Map Container (Taller for better drawing space) -->
-        <div id="geofence-map" style="width: 100%; height: 480px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.2);"></div>
-
-        <!-- Alert Metadata Form Fields -->
-        <div style="font-size: 16px; font-weight: bold; margin-top: 5px;">Alert Metadata</div>
-        
-        <div style="display: flex; flex-direction: column; gap: 12px;">
-            <!-- Row 1: Title & Severity -->
-            <div style="display: flex; gap: 12px; flex-wrap: wrap;">
-                <div style="flex: 2; min-width: 250px;">
-                    <label style="display: block; font-size: 12px; margin-bottom: 4px;">Title:</label>
-                    <input type="text" id="alert-title" placeholder="e.g., Severe Weather Warning" style="width: 100%; padding: 8px; border-radius: 4px; border: 1px solid #ccc; background: #fff; color: #000; box-sizing: border-box;" />
-                </div>
-                <div style="flex: 1; min-width: 180px;">
-                    <label style="display: block; font-size: 12px; margin-bottom: 4px;">Severity & Category:</label>
-                    <select id="alert-severity" style="width: 100%; padding: 8px; border-radius: 4px; border: 1px solid #ccc; background: #fff; color: #000; box-sizing: border-box;">
-                        <option>Extreme</option>
-                        <option>Severe</option>
-                        <option>Moderate</option>
-                        <option>Minor</option>
-                    </select>
-                </div>
-            </div>
-
-            <!-- Row 2: Expanded Description Textarea (Much more room) -->
-            <div>
-                <label style="display: block; font-size: 12px; margin-bottom: 4px;">Description & Safety Instructions:</label>
-                <textarea id="alert-desc" rows="4" placeholder="Enter comprehensive details, impacted locations, and safety instructions..." style="width: 100%; padding: 8px; border-radius: 4px; border: 1px solid #ccc; background: #fff; color: #000; box-sizing: border-box; resize: vertical; font-family: inherit;"></textarea>
-            </div>
-
-            <!-- Row 3: Timestamps -->
-            <div style="display: flex; gap: 12px; flex-wrap: wrap;">
-                <div>
-                    <label style="display: block; font-size: 12px; margin-bottom: 4px;">Start Time:</label>
-                    <input type="datetime-local" id="alert-start" style="padding: 7px; border-radius: 4px; border: 1px solid #ccc; background: #fff; color: #000;" />
-                </div>
-                <div>
-                    <label style="display: block; font-size: 12px; margin-bottom: 4px;">End Time:</label>
-                    <input type="datetime-local" id="alert-end" style="padding: 7px; border-radius: 4px; border: 1px solid #ccc; background: #fff; color: #000;" />
-                </div>
-            </div>
-        </div>
-
-        <!-- Action Buttons -->
-        <div style="display: flex; gap: 10px; justify-content: flex-end; margin-top: 10px; border-top: 1px solid rgba(255,255,255,0.2); padding-top: 14px;">
-            <button onclick="closeAlertModal()" style="padding: 8px 16px; background: #f0ad4e; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold;">Cancel</button>
-            <button style="padding: 8px 16px; background: #d9534f; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold;">Cancel Alert</button>
-            <button style="padding: 8px 16px; background: #5cb85c; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold;">Publish & Push Alert</button>
-        </div>
-
-    </div>
-</div>
 
 <!-- View Alerts Modal (For Users checking active alerts near their Lat/Lon) -->
 <div id="view-alerts-modal" class="modal-overlay" style="display: none;">
@@ -634,14 +570,19 @@ let geofenceMap;
 let drawnItems;
 let drawControl;
 
+// Global map variables
+let geofenceMap;
+let drawnItems;
+let drawControl;
+
 function initPolygonMap() {
-    // 1. If the map instance already exists, remove it entirely to prevent container collision bugs
+    // 1. If a map instance already exists, safely remove it to prevent container collision bugs
     if (geofenceMap) {
         geofenceMap.remove();
         geofenceMap = null;
     }
 
-    // 2. Double-check that the DOM element exists before running Leaflet
+    // 2. Verify that the modal's #geofence-map DOM element is present before rendering
     const mapElement = document.getElementById('geofence-map');
     if (!mapElement) {
         console.error("Leaflet error: #geofence-map container not found in DOM.");
@@ -651,7 +592,7 @@ function initPolygonMap() {
     // 3. Initialize the Leaflet map centered on Tower, MN
     geofenceMap = L.map('geofence-map').setView([47.8083, -92.2773], 10);
 
-    // 4. Define Base Tile Layers
+    // 4. Define Base Tile Layers (Street View and High-Res Esri Satellite View)
     const streetLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
         maxZoom: 19,
         attribution: '&copy; OpenStreetMap contributors'
@@ -662,7 +603,7 @@ function initPolygonMap() {
         attribution: 'Tiles &copy; Esri &mdash; Source: Esri, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-EGP, and GIS Community'
     });
 
-    // Default to satellite view
+    // Default starting view set directly to satellite imagery
     satelliteLayer.addTo(geofenceMap);
 
     const baseMaps = {
@@ -671,11 +612,11 @@ function initPolygonMap() {
     };
     L.control.layers(baseMaps).addTo(geofenceMap);
 
-    // 5. Initialize FeatureGroup for drawing
+    // 5. Initialize FeatureGroup to store editable drawn polygons
     drawnItems = new L.FeatureGroup();
     geofenceMap.addLayer(drawnItems);
 
-    // 6. Configure Leaflet.Draw toolbar controls
+    // 6. Configure Leaflet.Draw toolbar controls for NWS-style polygon creation
     const drawPluginOptions = {
         position: 'topright',
         draw: {
@@ -712,10 +653,24 @@ function initPolygonMap() {
         drawnItems.addLayer(layer);
     });
 
-    // 8. Force Leaflet to calculate container size dimensions correctly after CSS display changes
+    // 8. Force Leaflet to recalculate container dimensions immediately after modal layout renders
     setTimeout(() => {
         geofenceMap.invalidateSize();
-    }, 250);
+    }, 200);
+}
+
+// Utility function to extract coordinate points when submitting the payload
+function getDrawnPolygonCoordinates() {
+    let coordinates = [];
+    
+    drawnItems.eachLayer(function (layer) {
+        if (layer instanceof L.Polygon || layer instanceof L.Rectangle) {
+            const latLngs = layer.getLatLngs()[0];
+            coordinates = latLngs.map(pt => [pt.lat, pt.lng]);
+        }
+    });
+
+    return coordinates;
 }
 // 3. Payload Dispatch & Persistence (Saves to backend DB for all users)
 function submitAlertBroadcast() {
