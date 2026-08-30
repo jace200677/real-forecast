@@ -7939,11 +7939,6 @@ window.addEventListener('resize', () => {
 document.addEventListener("DOMContentLoaded", () => {
     verifyDeviceAccess();
 });
-document.addEventListener("DOMContentLoaded", function () {
-    initAlertMap();
-    // In case the modal starts hidden, recalculate size when shown:
-    setTimeout(() => { alertMap.invalidateSize(); }, 300);
-});
 // Optional: Keep it updated if the page stays open
 setInterval(updateTrafficButtonState, 1000);
 buildForecast();
