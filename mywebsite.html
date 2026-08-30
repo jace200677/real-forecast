@@ -475,7 +475,15 @@
 
     </div>
 </div>
-<div id="alert-modal" style="display: none; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(0, 0, 0, 0.75); z-index: 9999; justify-content: center; align-items: center; padding: 20px; box-sizing: border-box;">
+<!-- Leaflet & Leaflet-Draw CSS -->
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.css" />
+
+<!-- Leaflet & Leaflet-Draw JS -->
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.js"></script>
+
+<div id="alert-modal" style="display: flex; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(0, 0, 0, 0.75); z-index: 9999; justify-content: center; align-items: center; padding: 20px; box-sizing: border-box;">
     <div style="background: rgba(15, 23, 42, 0.98); padding: 24px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.2); color: #fff; box-shadow: 0 15px 35px rgba(0,0,0,0.8); width: 100%; max-width: 1100px; display: flex; flex-direction: column; gap: 16px; max-height: 95vh; overflow-y: auto;">
         
         <!-- Modal Header -->
@@ -505,22 +513,28 @@
                 </div>
             </div>
 
-            <!-- Row 1.5: Bottom / Top Lat/Lon Coordinates -->
+            <!-- Map Container for Custom Drawing -->
+            <div>
+                <label style="display: block; font-size: 12px; margin-bottom: 4px;">Draw Affected Region (Custom Polygon or Polyline):</label>
+                <div id="alert-map" style="height: 280px; width: 100%; border-radius: 6px; border: 1px solid rgba(255,255,255,0.3);"></div>
+            </div>
+
+            <!-- Row 1.5: Bottom / Top Lat/Lon Coordinates (Auto-populated by Map) -->
             <div style="display: flex; gap: 12px; flex-wrap: wrap;">
                 <div style="flex: 1; min-width: 130px;">
-                    <label style="display: block; font-size: 12px; margin-bottom: 4px;">Bottom Lat:</label>
+                    <label style="display: block; font-size: 12px; margin-bottom: 4px;">Bottom Lat (Min Lat):</label>
                     <input type="number" step="any" id="alert-bottom-lat" placeholder="e.g., 35.0" style="width: 100%; padding: 8px; border-radius: 4px; border: 1px solid #ccc; background: #fff; color: #000; box-sizing: border-box;" />
                 </div>
                 <div style="flex: 1; min-width: 130px;">
-                    <label style="display: block; font-size: 12px; margin-bottom: 4px;">Top Lat:</label>
+                    <label style="display: block; font-size: 12px; margin-bottom: 4px;">Top Lat (Max Lat):</label>
                     <input type="number" step="any" id="alert-top-lat" placeholder="e.g., 42.0" style="width: 100%; padding: 8px; border-radius: 4px; border: 1px solid #ccc; background: #fff; color: #000; box-sizing: border-box;" />
                 </div>
                 <div style="flex: 1; min-width: 130px;">
-                    <label style="display: block; font-size: 12px; margin-bottom: 4px;">Bottom Lon:</label>
+                    <label style="display: block; font-size: 12px; margin-bottom: 4px;">Bottom Lon (Min Lon):</label>
                     <input type="number" step="any" id="alert-bottom-lon" placeholder="e.g., -95.0" style="width: 100%; padding: 8px; border-radius: 4px; border: 1px solid #ccc; background: #fff; color: #000; box-sizing: border-box;" />
                 </div>
                 <div style="flex: 1; min-width: 130px;">
-                    <label style="display: block; font-size: 12px; margin-bottom: 4px;">Top Lon:</label>
+                    <label style="display: block; font-size: 12px; margin-bottom: 4px;">Top Lon (Max Lon):</label>
                     <input type="number" step="any" id="alert-top-lon" placeholder="e.g., -90.0" style="width: 100%; padding: 8px; border-radius: 4px; border: 1px solid #ccc; background: #fff; color: #000; box-sizing: border-box;" />
                 </div>
             </div>
@@ -553,6 +567,60 @@
 
     </div>
 </div>
+
+<script>
+let alertMap, drawnItems;
+
+function initAlertMap() {
+    if (alertMap) return; // Prevent re-initialization
+
+    // Initialize Map centered on US
+    alertMap = L.map('alert-map').setView([39.8283, -98.5795], 4);
+
+    // OpenStreetMap Tile Layer
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        maxZoom: 18,
+        attribution: '© OpenStreetMap'
+    }).addTo(alertMap);
+
+    // Layer Group to store drawn lines/polygons
+    drawnItems = new L.FeatureGroup();
+    alertMap.addLayer(drawnItems);
+
+    // Configure Draw Control (Enabling custom lines and polygons, disabling standard shapes)
+    const drawControl = new L.Control.Draw({
+        draw: {
+            polygon: true,
+            polyline: true,
+            rectangle: false,
+            circle: false,
+            circlemarker: false,
+            marker: false
+        },
+        edit: {
+            featureGroup: drawnItems
+        }
+    });
+    alertMap.addControl(drawControl);
+
+    // Listen for created layers (custom lines or polygons)
+    alertMap.on(L.Draw.Event.CREATED, function (e) {
+        drawnItems.clearLayers(); // Keep only the latest drawn path
+        const layer = e.layer;
+        drawnItems.addLayer(layer);
+
+        // Extract bounding box (Min/Max Lat & Lon)
+        const bounds = layer.getBounds();
+        document.getElementById('alert-bottom-lat').value = bounds.getSouth().toFixed(6);
+        document.getElementById('alert-top-lat').value = bounds.getNorth().toFixed(6);
+        document.getElementById('alert-bottom-lon').value = bounds.getWest().toFixed(6);
+        document.getElementById('alert-top-lon').value = bounds.getEast().toFixed(6);
+    });
+}
+
+// Call function to render map once modal opens
+
+</script>
 <script>
 const ALLOWED_DEVICES = ["JACES-MOBILE-PC", "JACES-PC"];
 const IS_LIVE_ON_YOUTUBE = false; 
@@ -7875,8 +7943,14 @@ window.addEventListener('resize', () => {
         drawForecastCanvasGraph(modal.currentItem, currentMode, modalCanvas, modal.dragX, modal.prevItem, modal.nextItem);
     }
 });
-document.addEventListener("DOMContentLoaded", () => {
+document.addEventListener("DOMContentLoaded", function () {
     verifyDeviceAccess();
+    initAlertMap();
+    
+    // Recalculate size in case the modal starts hidden
+    setTimeout(() => { 
+        if (alertMap) alertMap.invalidateSize(); 
+    }, 300);
 });
 // Optional: Keep it updated if the page stays open
 setInterval(updateTrafficButtonState, 1000);
