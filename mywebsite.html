@@ -436,8 +436,9 @@
     </button>
     
     <!-- View Alerts Button (Visible for non-whitelisted devices or general users) -->
-    <button id="view-alerts-btn" class="secondary-btn" onclick="openViewAlertsModal()">
-        <i class="icon-map"></i> View Area Alerts
+    <button id="view-alerts-btn" class="secondary-btn" onclick="openViewAlertsModal(activeAlerts)" aria-haspopup="dialog" aria-controls="view-alerts-modal">
+         <i class="icon-map" aria-hidden="true"></i> 
+         <span>View Area Alerts</span>
     </button>
 </div>
 
@@ -573,7 +574,89 @@ const IS_LIVE_ON_YOUTUBE = false;
 let targetZoneOrPoint = null;
 let currentSearchState = null;
 let uploadedFiles = [];
+let userAlertMap = null;
+let alertPolygonsLayerGroup = null;
 
+// Severity Color Mapping
+function getSeverityColor(severity) {
+    switch (severity?.toLowerCase()) {
+        case 'extreme':
+            return '#d9534f'; // Red
+        case 'severe':
+            return '#f0ad4e'; // Orange
+        case 'moderate':
+            return '#5bc0de'; // Cyan/Blue
+        case 'minor':
+        default:
+            return '#5cb85c'; // Green
+    }
+}
+
+// Function to open modal and load alerts onto the map
+function openViewAlertsModal(alertsData = []) {
+    const modal = document.getElementById('view-alerts-modal');
+    modal.style.display = 'flex';
+
+    // Initialize Map if not built yet
+    if (!userAlertMap) {
+        userAlertMap = L.map('user-location-map').setView([39.8283, -98.5795], 4);
+        
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            maxZoom: 18,
+            attribution: '© OpenStreetMap'
+        }).addTo(userAlertMap);
+
+        alertPolygonsLayerGroup = L.layerGroup().addTo(userAlertMap);
+    }
+
+    // Fix rendering layout inside modal
+    setTimeout(() => {
+        userAlertMap.invalidateSize();
+    }, 100);
+
+    // Render alert polygons on map
+    renderAlertPolygons(alertsData);
+}
+function renderAlertPolygons(alerts) {
+    if (!alertPolygonsLayerGroup) return;
+    
+    // Clear previous layers
+    alertPolygonsLayerGroup.clearLayers();
+
+    const boundsArray = [];
+
+    alerts.forEach(alert => {
+        const { bottomLat, topLat, bottomLon, topLon, severity, title } = alert;
+
+        if (bottomLat && topLat && bottomLon && topLon) {
+            // Construct polygon coordinates from bounding coordinates
+            const polygonCoords = [
+                [parseFloat(bottomLat), parseFloat(bottomLon)],
+                [parseFloat(topLat), parseFloat(bottomLon)],
+                [parseFloat(topLat), parseFloat(topLon)],
+                [parseFloat(bottomLat), parseFloat(topLon)]
+            ];
+
+            const color = getSeverityColor(severity);
+
+            // Create colored polygon layer
+            const polygon = L.polygon(polygonCoords, {
+                color: color,
+                fillColor: color,
+                fillOpacity: 0.35,
+                weight: 2
+            }).bindPopup(`<b>${title || 'Alert'}</b><br>Severity: ${severity}`);
+
+            alertPolygonsLayerGroup.addLayer(polygon);
+            boundsArray.push(...polygonCoords);
+        }
+    });
+
+    // Auto-fit map camera to display all drawn alert bounds
+    if (boundsArray.length > 0) {
+        userAlertMap.fitBounds(boundsArray, { padding: [20, 20] });
+    }
+}
 async function cancelActiveAlert() {
     // 1. Get or prompt for a GitHub Personal Access Token (PAT) with repo contents write access
     let authToken = window.localStorage.getItem("API_AUTH_TOKEN");
