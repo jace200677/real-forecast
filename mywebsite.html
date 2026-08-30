@@ -1597,34 +1597,35 @@ function geocodeLocation(query) {
         throw error;
     });
 }
-async function renderActiveAlerts(targetLat, targetLon) {
+async function renderActiveAlerts() {
     const container = document.getElementById("active-alerts-list");
-    if (container) {
-        container.innerHTML = "<p>Loading active alerts...</p>";
-    }
+    if (!container) return;
+    
+    container.innerHTML = "<p>Loading active alerts...</p>";
 
-    // Extract Lat/Lon parameters properly or fall back to defaults
-    const userLat = typeof targetLat === 'number' ? targetLat : (targetLat?.lat ? parseFloat(targetLat.lat) : 45.0);
-    const userLon = typeof targetLon === 'number' ? targetLon : (targetLat?.lon ? parseFloat(targetLat.lon) : -93.0);
+    // Derive location directly from targetZoneOrPoint with fallback coordinates
+    const userLat = typeof targetZoneOrPoint !== 'undefined' && targetZoneOrPoint ? parseFloat(targetZoneOrPoint.lat) : 45.0;
+    const userLon = typeof targetZoneOrPoint !== 'undefined' && targetZoneOrPoint ? parseFloat(targetZoneOrPoint.lon) : -93.0;
 
-    let alerts = [];
+    let rawAlerts = [];
 
     try {
         const response = await fetch("https://raw.githubusercontent.com/jace200677/real-forecast/refs/heads/main/weather/alerts.txt");
         if (response.ok) {
             const rawText = await response.text();
             
-            // 1. Try JSON Parse first
+            // 1. Try JSON Parse
             try {
                 const parsed = JSON.parse(rawText);
-                alerts = Array.isArray(parsed) ? parsed : (parsed.alerts || parsed.data || parsed.results || [parsed]);
+                rawAlerts = Array.isArray(parsed) ? parsed : (parsed.alerts || parsed.data || parsed.results || [parsed]);
             } catch {
-                // 2. Line-by-line fallback parser
+                // 2. Parse multi-line or JSON fragment entries per line
                 const lines = rawText.split(/\r?\n/).filter(line => line.trim() !== "");
                 
                 lines.forEach(line => {
                     let alertObj = {};
                     
+                    // Attempt parsing embedded JSON object fragment per line
                     if (line.includes("{") && line.includes("}")) {
                         try {
                             const jsonMatch = line.match(/\{.*\}/);
@@ -1632,50 +1633,32 @@ async function renderActiveAlerts(targetLat, targetLon) {
                         } catch (e) {}
                     }
 
+                    // Extract text fields if JSON parsing isn't applicable
                     const titleMatch = line.match(/(?:title|header):\s*([^|;\n]+)/i);
                     const severityMatch = line.match(/(?:severity|level):\s*([^|;\n]+)/i);
                     const descMatch = line.match(/(?:desc|description|details):\s*([^|;\n]+)/i);
                     const startMatch = line.match(/(?:start_time|start time|from):\s*([^|;\n]+)/i);
                     const endMatch = line.match(/(?:end_time|end time|until|expires):\s*([^|;\n]+)/i);
 
-                    // Extract coordinates or custom point sequences
-                    let customPoints = alertObj.latlngs || alertObj.points || alertObj.coordinates || alertObj.polygon_points || null;
+                    // Extract coordinates for bounding box checking
+                    const minLat = alertObj.bottom_lat ?? alertObj.bounding_box?.min_lat ?? parseFloat(line.match(/bottom_lat["']?\s*:\s*(-?\d+(?:\.\d+)?)/i)?.[1]);
+                    const maxLat = alertObj.top_lat ?? alertObj.bounding_box?.max_lat ?? parseFloat(line.match(/top_lat["']?\s*:\s*(-?\d+(?:\.\d+)?)/i)?.[1]);
+                    const minLon = alertObj.bottom_lon ?? alertObj.bounding_box?.min_lon ?? parseFloat(line.match(/bottom_lon["']?\s*:\s*(-?\d+(?:\.\d+)?)/i)?.[1]);
+                    const maxLon = alertObj.top_lon ?? alertObj.bounding_box?.max_lon ?? parseFloat(line.match(/top_lon["']?\s*:\s*(-?\d+(?:\.\d+)?)/i)?.[1]);
 
-                    // Parse text line for JSON coordinate arrays if not already an object
-                    if (!customPoints) {
-                        const coordsMatch = line.match(/(?:latlngs|points|coordinates)\s*:\s*(\[.*?\])/i);
-                        if (coordsMatch) {
-                            try { customPoints = JSON.parse(coordsMatch[1]); } catch(e) {}
-                        }
-                    }
-
-                    let minLat = alertObj.bottom_lat ?? alertObj.min_lat ?? alertObj.bounding_box?.min_lat ?? parseFloat(line.match(/bottom_lat["']?\s*:\s*(-?\d+(?:\.\d+)?)/i)?.[1]);
-                    let maxLat = alertObj.top_lat ?? alertObj.max_lat ?? alertObj.bounding_box?.max_lat ?? parseFloat(line.match(/top_lat["']?\s*:\s*(-?\d+(?:\.\d+)?)/i)?.[1]);
-                    let minLon = alertObj.bottom_lon ?? alertObj.min_lon ?? alertObj.bounding_box?.min_lon ?? parseFloat(line.match(/bottom_lon["']?\s*:\s*(-?\d+(?:\.\d+)?)/i)?.[1]);
-                    let maxLon = alertObj.top_lon ?? alertObj.max_lon ?? alertObj.bounding_box?.max_lon ?? parseFloat(line.match(/top_lon["']?\s*:\s*(-?\d+(?:\.\d+)?)/i)?.[1]);
-
-                    // Automatically calculate bounding values from point arrays if missing
-                    if (Array.isArray(customPoints) && customPoints.length > 0 && (isNaN(minLat) || isNaN(maxLat))) {
-                        const lats = customPoints.map(p => Array.isArray(p) ? p[0] : p.lat).filter(v => !isNaN(v));
-                        const lons = customPoints.map(p => Array.isArray(p) ? p[1] : (p.lng ?? p.lon)).filter(v => !isNaN(v));
-                        if (lats.length > 0) {
-                            minLat = Math.min(...lats);
-                            maxLat = Math.max(...lats);
-                            minLon = Math.min(...lons);
-                            maxLon = Math.max(...lons);
-                        }
-                    }
-
+                    // Extract plain text leading portion as description if missing
                     let cleanDesc = alertObj.description || (descMatch ? descMatch[1].trim() : line.replace(/\{.*\}/, '').replace(/Active until:.*$/i, '').trim());
 
-                    alerts.push({
+                    rawAlerts.push({
                         title: alertObj.title || (titleMatch ? titleMatch[1].trim() : "Untitled Alert"),
                         severity: alertObj.severity || (severityMatch ? severityMatch[1].trim() : "Medium"),
                         description: cleanDesc || "No description provided.",
                         start_time: alertObj.start_time || (startMatch ? startMatch[1].trim() : null),
                         end_time: alertObj.end_time || (endMatch ? endMatch[1].trim() : "Indefinite"),
-                        latlngs: customPoints,
-                        isLine: alertObj.isLine || alertObj.type === 'polyline',
+                        bottomLat: isNaN(minLat) ? null : minLat,
+                        topLat: isNaN(maxLat) ? null : maxLat,
+                        bottomLon: isNaN(minLon) ? null : minLon,
+                        topLon: isNaN(maxLon) ? null : maxLon,
                         min_lat: isNaN(minLat) ? null : minLat,
                         max_lat: isNaN(maxLat) ? null : maxLat,
                         min_lon: isNaN(minLon) ? null : minLon,
@@ -1690,8 +1673,8 @@ async function renderActiveAlerts(targetLat, targetLon) {
 
     const now = new Date();
 
-    // Remove expired alerts
-    const activeUnfilteredAlerts = alerts.filter(alert => {
+    // 1. Keep all non-expired alerts for global map rendering
+    const allValidAlerts = rawAlerts.filter(alert => {
         if (alert.end_time && alert.end_time.toLowerCase() !== "indefinite") {
             const endTime = new Date(alert.end_time);
             if (!isNaN(endTime.getTime()) && now > endTime) return false;
@@ -1699,11 +1682,11 @@ async function renderActiveAlerts(targetLat, targetLon) {
         return true;
     });
 
-    // 1. SAVE UNFILTERED ALERTS GLOBALLY for map polygon layers (draws shapes outside bounds)
-    window.allAlerts = activeUnfilteredAlerts;
+    // Save ALL active alerts globally for map rendering access (out-of-box alerts included)
+    window.activeAlerts = allValidAlerts;
 
-    // 2. Filter alerts spatially strictly for local text card list
-    const filteredAlerts = activeUnfilteredAlerts.filter(alert => {
+    // 2. Filter down to user's location for the list UI card display
+    const userAlerts = allValidAlerts.filter(alert => {
         if (!isNaN(userLat) && !isNaN(userLon)) {
             if (alert.min_lat !== null && alert.max_lat !== null) {
                 const minLat = Math.min(alert.min_lat, alert.max_lat);
@@ -1719,45 +1702,38 @@ async function renderActiveAlerts(targetLat, targetLon) {
         return true;
     });
 
-    window.activeAlerts = filteredAlerts;
-
+    // Update count badge (reflects user's local active alerts)
     if (typeof updateAlertCountBadge === "function") {
-        updateAlertCountBadge(filteredAlerts.length);
+        updateAlertCountBadge(userAlerts.length);
     }
 
-    // Render cards into UI text container
-    if (container) {
-        container.innerHTML = "";
+    // Render cards into container using userAlerts
+    container.innerHTML = "";
 
-        if (filteredAlerts.length === 0) {
-            container.innerHTML = "<p>No active alerts for your current location.</p>";
-        } else {
-            filteredAlerts.forEach(alert => {
-                const severityStr = alert.severity ? String(alert.severity).toLowerCase() : "medium";
-                const startTime = alert.start_time ? new Date(alert.start_time) : null;
-                const isBeforeStart = startTime && !isNaN(startTime.getTime()) && now < startTime;
-
-                const startLabel = isBeforeStart ? "Starts at" : "Started at";
-                const endLabel = isBeforeStart ? "Ends at" : "Active until";
-
-                const alertCard = document.createElement("div");
-                alertCard.className = `alert-card severity-${severityStr}`;
-                alertCard.innerHTML = `
-                    <h4>${alert.title || "Untitled Alert"}</h4>
-                    <p><strong>Severity:</strong> ${alert.severity || "Normal"}</p>
-                    <p>${alert.description || "No description provided."}</p>
-                    ${alert.start_time ? `<p><small>${startLabel}: ${alert.start_time}</small></p>` : ""}
-                    <p><small>${endLabel}: ${alert.end_time || "Indefinite"}</small></p>
-                `;
-                container.appendChild(alertCard);
-            });
-        }
+    if (userAlerts.length === 0) {
+        container.innerHTML = "<p>No active alerts for your current location.</p>";
+        return;
     }
 
-    // Trigger polygon redraw on the active map using the unfiltered global store
-    if (typeof renderAlertPolygons === "function") {
-        renderAlertPolygons(window.allAlerts);
-    }
+    userAlerts.forEach(alert => {
+        const severityStr = alert.severity ? String(alert.severity).toLowerCase() : "medium";
+        const startTime = alert.start_time ? new Date(alert.start_time) : null;
+        const isBeforeStart = startTime && !isNaN(startTime.getTime()) && now < startTime;
+
+        const startLabel = isBeforeStart ? "Starts at" : "Started at";
+        const endLabel = isBeforeStart ? "Ends at" : "Active until";
+
+        const alertCard = document.createElement("div");
+        alertCard.className = `alert-card severity-${severityStr}`;
+        alertCard.innerHTML = `
+            <h4>${alert.title || "Untitled Alert"}</h4>
+            <p><strong>Severity:</strong> ${alert.severity || "Normal"}</p>
+            <p>${alert.description || "No description provided."}</p>
+            ${alert.start_time ? `<p><small>${startLabel}: ${alert.start_time}</small></p>` : ""}
+            <p><small>${endLabel}: ${alert.end_time || "Indefinite"}</small></p>
+        `;
+        container.appendChild(alertCard);
+    });
 }
 function openUploadModal() {
     document.getElementById("uploadModal").style.display = "flex";
