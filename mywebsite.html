@@ -1740,7 +1740,15 @@ async function searchLocationForecast() {
             const address = geoData[0].address || {};
             currentSearchState = address.state ? address.state.toLowerCase() : null;
             
+            // Build the weather forecast view
             buildForecast();
+
+            // Fetch & update alerts and badge count for searched coordinates
+            if (typeof renderActiveAlerts === "function") {
+                await renderActiveAlerts();
+            } else if (typeof updateAlertCountBadge === "function") {
+                updateAlertCountBadge();
+            }
         } else {
             container.innerHTML = "<p>Location not found. Please try again with a valid US city or zip code.</p>";
         }
@@ -2070,7 +2078,7 @@ async function buildForecast() {
     const container = document.getElementById("forecastContainer");
     const alerts = await fetchActiveAlerts();
     const gridPeriods = await fetchLocalForecastGrid();
-    updateAlertCountBadge();
+    
     if (!alerts) {
         container.innerHTML = "<p>Unable to retrieve live NWS data. Please try again shortly.</p>";
         return;
