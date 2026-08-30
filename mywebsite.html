@@ -672,7 +672,7 @@ function renderAlertPolygons(alerts) {
 
         let polygonCoords = [];
 
-        // 1. Check for custom drawn lines / point arrays (from broadcast map tool)
+        // 1. Check for custom drawn line/polygon point arrays
         const customPoints = alert.latlngs || alert.points || alert.coordinates || alert.polygon_points;
 
         if (Array.isArray(customPoints) && customPoints.length > 0) {
@@ -703,7 +703,7 @@ function renderAlertPolygons(alerts) {
             }
         }
 
-        // Render the layer on map regardless of whether it's in the user's immediate vicinity
+        // Render line or polygon layer on map
         if (polygonCoords.length > 0) {
             const isPolyline = alert.isLine || alert.type === 'polyline';
 
@@ -722,7 +722,7 @@ function renderAlertPolygons(alerts) {
         }
     });
 
-    // Automatically zoom/fit map camera to reveal all rendered polygons across all areas
+    // Auto-fit camera around all drawn alert boundaries
     if (boundsArray.length > 0 && userAlertMap) {
         userAlertMap.fitBounds(boundsArray, { padding: [20, 20] });
     }
@@ -1544,6 +1544,9 @@ async function renderActiveAlerts() {
                     const minLon = alertObj.bottom_lon ?? alertObj.bounding_box?.min_lon ?? parseFloat(line.match(/bottom_lon["']?\s*:\s*(-?\d+(?:\.\d+)?)/i)?.[1]);
                     const maxLon = alertObj.top_lon ?? alertObj.bounding_box?.max_lon ?? parseFloat(line.match(/top_lon["']?\s*:\s*(-?\d+(?:\.\d+)?)/i)?.[1]);
 
+                    // Preserve custom drawn points/lines if present in JSON payload
+                    const customPoints = alertObj.latlngs || alertObj.points || alertObj.coordinates || alertObj.polygon_points || null;
+
                     // Extract plain text leading portion as description if missing
                     let cleanDesc = alertObj.description || (descMatch ? descMatch[1].trim() : line.replace(/\{.*\}/, '').replace(/Active until:.*$/i, '').trim());
 
@@ -1553,6 +1556,7 @@ async function renderActiveAlerts() {
                         description: cleanDesc || "No description provided.",
                         start_time: alertObj.start_time || (startMatch ? startMatch[1].trim() : null),
                         end_time: alertObj.end_time || (endMatch ? endMatch[1].trim() : "Indefinite"),
+                        latlngs: customPoints,
                         bottomLat: isNaN(minLat) ? null : minLat,
                         topLat: isNaN(maxLat) ? null : maxLat,
                         bottomLon: isNaN(minLon) ? null : minLon,
@@ -1569,11 +1573,22 @@ async function renderActiveAlerts() {
         console.error("Failed to fetch remote alerts:", error);
     }
 
-    // Filter out alerts outside the target lat/lon bounding box and active time range
     const now = new Date();
 
-    alerts = alerts.filter(alert => {
-        // Spatial filter
+    // Remove expired alerts across the board before storing
+    const activeUnfilteredAlerts = alerts.filter(alert => {
+        if (alert.end_time && alert.end_time.toLowerCase() !== "indefinite") {
+            const endTime = new Date(alert.end_time);
+            if (!isNaN(endTime.getTime()) && now > endTime) return false;
+        }
+        return true;
+    });
+
+    // 1. SAVE UNFILTERED ALERTS GLOBALLY strictly for the map modal layers
+    window.allAlerts = activeUnfilteredAlerts;
+
+    // 2. Filter alerts spatially strictly for local location cards + badge count
+    const filteredAlerts = activeUnfilteredAlerts.filter(alert => {
         if (!isNaN(userLat) && !isNaN(userLon)) {
             if (alert.min_lat !== null && alert.max_lat !== null) {
                 const minLat = Math.min(alert.min_lat, alert.max_lat);
@@ -1586,38 +1601,30 @@ async function renderActiveAlerts() {
                 if (userLon < minLon || userLon > maxLon) return false;
             }
         }
-
-        // Temporal filter (end_time check: discard if expired)
-        if (alert.end_time && alert.end_time.toLowerCase() !== "indefinite") {
-            const endTime = new Date(alert.end_time);
-            if (!isNaN(endTime.getTime()) && now > endTime) return false;
-        }
-
         return true;
     });
 
-    // Save active filtered alerts globally for map rendering access
-    window.activeAlerts = alerts;
+    // Save active location-filtered alerts globally
+    window.activeAlerts = filteredAlerts;
 
-    // Update count badge
+    // Update count badge for local location
     if (typeof updateAlertCountBadge === "function") {
-        updateAlertCountBadge(alerts.length);
+        updateAlertCountBadge(filteredAlerts.length);
     }
 
     // Render cards into container
     container.innerHTML = "";
 
-    if (alerts.length === 0) {
+    if (filteredAlerts.length === 0) {
         container.innerHTML = "<p>No active alerts for your current location.</p>";
         return;
     }
 
-    alerts.forEach(alert => {
+    filteredAlerts.forEach(alert => {
         const severityStr = alert.severity ? String(alert.severity).toLowerCase() : "medium";
         const startTime = alert.start_time ? new Date(alert.start_time) : null;
         const isBeforeStart = startTime && !isNaN(startTime.getTime()) && now < startTime;
 
-        // Dynamic labels based on timeframe relative to current time
         const startLabel = isBeforeStart ? "Starts at" : "Started at";
         const endLabel = isBeforeStart ? "Ends at" : "Active until";
 
