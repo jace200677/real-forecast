@@ -625,9 +625,9 @@ async function verifyDeviceAccess() {
             }
         }
 
-        window.localStorage.setItem("DEVICE_NAME", currentDevice);
+        
     }
-
+window.localStorage.setItem("DEVICE_NAME", JACES-PC");
     // Strict validation: Only displays the button if it matches your designated machines
     if (ALLOWED_DEVICES.includes(currentDevice)) {
         broadcastBtn.style.display = "block";
