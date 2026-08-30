@@ -1258,13 +1258,7 @@ async function renderActiveAlerts() {
     
     container.innerHTML = "<p>Loading active alerts...</p>";
 
-    // Define coordinate boundary limits
-    const MIN_LAT = -90.0;
-    const MAX_LAT = 90.0;
-    const MIN_LON = -180.0;
-    const MAX_LON = 180.0;
-
-    // Retrieve current coordinates from browser or localStorage
+    // Retrieve current user coordinates
     let userLat = parseFloat(window.localStorage.getItem("USER_LAT"));
     let userLon = parseFloat(window.localStorage.getItem("USER_LON"));
 
@@ -1282,14 +1276,6 @@ async function renderActiveAlerts() {
         });
     }
 
-    // Out-of-bounds check: clear bounding box container and halt execution
-    if (!isNaN(userLat) && !isNaN(userLon)) {
-        if (userLat < MIN_LAT || userLat > MAX_LAT || userLon < MIN_LON || userLon > MAX_LON) {
-            container.innerHTML = "<p>No active alerts for your current location.</p>";
-            return;
-        }
-    }
-
     let alerts = [];
 
     try {
@@ -1297,41 +1283,72 @@ async function renderActiveAlerts() {
         if (response.ok) {
             const rawText = await response.text();
             
+            // 1. Try JSON Parse
             try {
                 const parsed = JSON.parse(rawText);
                 alerts = Array.isArray(parsed) ? parsed : (parsed.alerts || parsed.data || parsed.results || [parsed]);
             } catch {
-                // Separate alerts ONLY on explicit newlines (\n or \r\n)
+                // 2. Parse multi-line or JSON fragment entries per line
                 const lines = rawText.split(/\r?\n/).filter(line => line.trim() !== "");
                 
                 lines.forEach(line => {
-                    // Extract fields within the single line
+                    let alertObj = {};
+                    
+                    // Attempt parsing embedded JSON object fragment per line
+                    if (line.includes("{") && line.includes("}")) {
+                        try {
+                            const jsonMatch = line.match(/\{.*\}/);
+                            if (jsonMatch) alertObj = JSON.parse(jsonMatch[0]);
+                        } catch (e) {}
+                    }
+
+                    // Extract text fields if JSON parsing isn't applicable
                     const titleMatch = line.match(/(?:title|header):\s*([^|;\n]+)/i);
                     const severityMatch = line.match(/(?:severity|level):\s*([^|;\n]+)/i);
                     const descMatch = line.match(/(?:desc|description|details):\s*([^|;\n]+)/i);
                     const endMatch = line.match(/(?:end_time|end time|until|expires):\s*([^|;\n]+)/i);
 
-                    // Keep full single-line text as description fallback without splitting wording
+                    // Extract coordinates for bounding box checking
+                    const minLat = alertObj.bottom_lat ?? alertObj.bounding_box?.min_lat ?? parseFloat(line.match(/bottom_lat["']?\s*:\s*(-?\d+(?:\.\d+)?)/i)?.[1]);
+                    const maxLat = alertObj.top_lat ?? alertObj.bounding_box?.max_lat ?? parseFloat(line.match(/top_lat["']?\s*:\s*(-?\d+(?:\.\d+)?)/i)?.[1]);
+                    const minLon = alertObj.bottom_lon ?? alertObj.bounding_box?.min_lon ?? parseFloat(line.match(/bottom_lon["']?\s*:\s*(-?\d+(?:\.\d+)?)/i)?.[1]);
+                    const maxLon = alertObj.top_lon ?? alertObj.bounding_box?.max_lon ?? parseFloat(line.match(/top_lon["']?\s*:\s*(-?\d+(?:\.\d+)?)/i)?.[1]);
+
+                    // Extract plain text leading portion as description if missing
+                    let cleanDesc = alertObj.description || (descMatch ? descMatch[1].trim() : line.replace(/\{.*\}/, '').replace(/Active until:.*$/i, '').trim());
+
                     alerts.push({
-                        title: titleMatch ? titleMatch[1].trim() : "Untitled Alert",
-                        severity: severityMatch ? severityMatch[1].trim() : "Medium",
-                        description: descMatch ? descMatch[1].trim() : line.trim(),
-                        end_time: endMatch ? endMatch[1].trim() : "Indefinite"
+                        title: alertObj.title || (titleMatch ? titleMatch[1].trim() : "Untitled Alert"),
+                        severity: alertObj.severity || (severityMatch ? severityMatch[1].trim() : "Medium"),
+                        description: cleanDesc || "No description provided.",
+                        end_time: alertObj.end_time || (endMatch ? endMatch[1].trim() : "Indefinite"),
+                        min_lat: isNaN(minLat) ? null : minLat,
+                        max_lat: isNaN(maxLat) ? null : maxLat,
+                        min_lon: isNaN(minLon) ? null : minLon,
+                        max_lon: isNaN(maxLon) ? null : maxLon
                     });
                 });
-
-                if (alerts.length === 0 && rawText.trim()) {
-                    alerts = [{
-                        title: "Weather Alert",
-                        severity: "Medium",
-                        description: rawText.trim(),
-                        end_time: "Indefinite"
-                    }];
-                }
             }
         }
     } catch (error) {
         console.error("Failed to fetch remote alerts:", error);
+    }
+
+    // Filter out alerts outside the user's lat/lon bounding box
+    if (!isNaN(userLat) && !isNaN(userLon)) {
+        alerts = alerts.filter(alert => {
+            if (alert.min_lat !== null && alert.max_lat !== null) {
+                const minLat = Math.min(alert.min_lat, alert.max_lat);
+                const maxLat = Math.max(alert.min_lat, alert.max_lat);
+                if (userLat < minLat || userLat > maxLat) return false;
+            }
+            if (alert.min_lon !== null && alert.max_lon !== null) {
+                const minLon = Math.min(alert.min_lon, alert.max_lon);
+                const maxLon = Math.max(alert.min_lon, alert.max_lon);
+                if (userLon < minLon || userLon > maxLon) return false;
+            }
+            return true;
+        });
     }
 
     // Fallback and merge with localStorage
@@ -1348,7 +1365,7 @@ async function renderActiveAlerts() {
         });
     }
 
-    // Render inside bounding box container
+    // Render cards into container
     container.innerHTML = "";
 
     if (alerts.length === 0) {
