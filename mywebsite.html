@@ -600,7 +600,6 @@ async function generateHardwareFingerprint() {
     console.log("Your Device Hardware Signature Hash:", finalHash);
     return finalHash;
 }
-let geofenceMap = null;
 
 let geofenceMap = null;
 let drawnItems = null;
@@ -679,8 +678,7 @@ function closeViewAlertsModal() {
     document.getElementById("view-alerts-modal").style.display = "none";
 }
 
-// Global map variables
-let geofenceMap;
+// Global map variabl
 let drawControl;
 
 function initPolygonMap() {
