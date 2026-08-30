@@ -540,15 +540,22 @@ async function generateHardwareFingerprint() {
 // 2. Modal Controls
 function openAlertModal() {
     const modal = document.getElementById("alert-modal");
-    if (!modal) return;
+    if (!modal) {
+        console.error("Modal error: #alert-modal element not found in the DOM.");
+        return;
+    }
     
-    // Ensure display uses flex layout for proper centering/alignment
+    // 1. Force block or flex display so the modal container is rendered in the DOM flow
     modal.style.display = "flex";
     
-    // Initialize or refresh the Leaflet satellite map sizing after it becomes visible
-    if (typeof initPolygonMap === "function") {
-        initPolygonMap();
-    }
+    // 2. Wrap initialization in a microtask or short timeout to guarantee CSS layout has painted
+    setTimeout(() => {
+        if (typeof initPolygonMap === "function") {
+            initPolygonMap();
+        } else {
+            console.error("Mapping error: initPolygonMap function is not defined.");
+        }
+    }, 50);
 }
 
 function closeAlertModal() {
