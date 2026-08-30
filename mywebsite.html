@@ -745,27 +745,8 @@ function getDrawnPolygonCoordinates() {
 }
 // 3. Payload Dispatch & Persistence (Saves to backend DB for all users)
 function submitAlertBroadcast(btnElement) {
-    // Automatically retrieve the saved device name or prompt if missing/unknown
-    let currentDevice = window.localStorage.getItem("DEVICE_NAME");
-    
-    if (!currentDevice || currentDevice === "UNKNOWN_DEVICE" || currentDevice === "UNAUTHORIZED") {
-        let inputName = prompt("Device name not recognized. Enter your registered device name (e.g., JACES-PC or JACES-MOBILE-PC):", "JACES-PC");
-        if (inputName) {
-            currentDevice = inputName.trim().toUpperCase();
-            window.localStorage.setItem("DEVICE_NAME", currentDevice);
-        } else {
-            currentDevice = "UNKNOWN_DEVICE";
-        }
-    }
-    
-    // Quick security check to block unauthorized users
-    if (typeof ALLOWED_DEVICES !== "undefined" && !ALLOWED_DEVICES.includes(currentDevice)) {
-        alert("Access Denied: " + currentDevice + " does not have administrator permissions to broadcast alerts.");
-        return;
-    }
-
     const payload = {
-        device_id: currentDevice,
+        device_id: window.localStorage.getItem("DEVICE_NAME") || "ANONYMOUS_USER",
         title: document.getElementById("alert-title").value.trim(),
         description: document.getElementById("alert-desc").value.trim(),
         start_time: document.getElementById("alert-start").value,
@@ -810,7 +791,7 @@ function submitAlertBroadcast(btnElement) {
             document.getElementById("alert-bottom-lon").value = "";
             document.getElementById("alert-top-lon").value = "";
         } else {
-            alert("Broadcast failed. Verify authorization permissions.");
+            alert("Broadcast failed. Please try again.");
         }
     })
     .catch(error => {
