@@ -600,61 +600,6 @@ async function generateHardwareFingerprint() {
     console.log("Your Device Hardware Signature Hash:", finalHash);
     return finalHash;
 }
-
-let geofenceMap = null;
-let drawnItems = null;
-
-function openAlertModal() {
-    const modal = document.getElementById('alert-modal');
-    modal.style.display = 'flex';
-    
-    // Defer initialization or refresh slightly to ensure modal is rendered and dimensions are computed
-    setTimeout(() => {
-        if (!geofenceMap) {
-            geofenceMap = L.map('geofence-map').setView([37.8, -96], 4);
-            
-            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-                attribution: '&copy; OpenStreetMap contributors'
-            }).addTo(geofenceMap);
-
-            drawnItems = new L.FeatureGroup();
-            geofenceMap.addLayer(drawnItems);
-
-            const drawControl = new L.Control.Draw({
-                edit: {
-                    featureGroup: drawnItems,
-                    remove: true
-                },
-                draw: {
-                    polygon: {
-                        allowIntersection: false,
-                        shapeOptions: {
-                            color: '#ff4444',
-                            weight: 3,
-                            fillOpacity: 0.3
-                        }
-                    },
-                    polyline: false,
-                    circle: false,
-                    rectangle: false,
-                    marker: false,
-                    circlemarker: false
-                }
-            });
-            geofenceMap.addControl(drawControl);
-
-            geofenceMap.on(L.Draw.Event.CREATED, function (e) {
-                drawnItems.clearLayers();
-                const layer = e.layer;
-                drawnItems.addLayer(layer);
-                console.log("NWS Polygon Coordinates:", layer.getLatLngs()[0]);
-            });
-        }
-        
-        // Force Leaflet to recalculate container size now that modal is visible
-        geofenceMap.invalidateSize();
-    }, 50);
-}
 let geofenceMap = null;
 let drawnItems = null;
 
