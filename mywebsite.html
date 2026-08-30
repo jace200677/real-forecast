@@ -809,15 +809,36 @@ async function appendAlertToGitHubFile(payload, token) {
     const repo = "real-forecast";
     const filePath = "weather/alerts.txt";
     const apiUrl = `https://api.github.com/repos/${owner}/${repo}/contents/${filePath}`;
-    
-    // Format the alert as a single-line JSON string (escaped newlines removed)
-    const newAlertLine = JSON.stringify(payload).replace(/\r?\n|\r/g, "") + "\n";
+
+    // Ensure numeric parsing for bounding box bounds
+    const bottomLat = parseFloat(payload.bottom_lat);
+    const topLat = parseFloat(payload.top_lat);
+    const bottomLon = parseFloat(payload.bottom_lon);
+    const topLon = parseFloat(payload.top_lon);
+
+    // Build the formatted payload including explicit bounding box min/max coordinates
+    const alertData = {
+        ...payload,
+        bottom_lat: bottomLat,
+        top_lat: topLat,
+        bottom_lon: bottomLon,
+        top_lon: topLon,
+        bounding_box: {
+            min_lat: Math.min(bottomLat, topLat),
+            max_lat: Math.max(bottomLat, topLat),
+            min_lon: Math.min(bottomLon, topLon),
+            max_lon: Math.max(bottomLon, topLon)
+        }
+    };
+
+    // Format as a single-line JSON string
+    const newAlertLine = JSON.stringify(alertData).replace(/\r?\n|\r/g, "") + "\n";
 
     try {
         let sha = null;
         let currentContent = "";
 
-        // Get existing file content and its blob SHA (if it exists)
+        // Fetch existing file content and its blob SHA
         const getRes = await fetch(apiUrl, {
             headers: {
                 'Authorization': `Bearer ${token}`,
@@ -828,15 +849,15 @@ async function appendAlertToGitHubFile(payload, token) {
         if (getRes.ok) {
             const fileData = await getRes.json();
             sha = fileData.sha;
-            // Decode base64 content handling UTF-8 characters safely
+            // Decode base64 content safely handling UTF-8 characters
             currentContent = decodeURIComponent(escape(atob(fileData.content.replace(/\n/g, ''))));
         }
 
-        // Append the new single line to the existing file content
+        // Append the new single line to existing content
         const updatedContent = currentContent + newAlertLine;
         const encodedContent = btoa(unescape(encodeURIComponent(updatedContent)));
 
-        // Push the update back to GitHub
+        // Commit single line update to GitHub
         const putRes = await fetch(apiUrl, {
             method: 'PUT',
             headers: {
@@ -847,12 +868,12 @@ async function appendAlertToGitHubFile(payload, token) {
             body: JSON.stringify({
                 message: `Append alert: ${payload.title}`,
                 content: encodedContent,
-                sha: sha // Required if updating an existing file
+                sha: sha
             })
         });
 
         if (putRes.ok) {
-            console.log("Alert appended as a new line to alerts.txt on GitHub.");
+            console.log("Alert with bounding box appended to weather/alerts.txt on GitHub.");
         } else {
             const err = await putRes.json();
             console.error("GitHub file push failed:", err.message || putRes.statusText);
@@ -1059,10 +1080,10 @@ function fallbackToDefaultCoordinates(combinedFetcher) {
         .catch(() => renderLocalOnlyAlerts());
 }
 
-async function renderLocalOnlyAlerts() {
+async function renderLocalOnlyAlerts(targetBounds = null) {
     const owner = "jace200677";
     const repo = "real-forecast";
-    const rawUrl = `https://raw.githubusercontent.com/${owner}/${repo}/main/alerts.txt`;
+    const rawUrl = `https://raw.githubusercontent.com/${owner}/${repo}/main/weather/alerts.txt`;
 
     let alerts = [];
 
@@ -1072,18 +1093,79 @@ async function renderLocalOnlyAlerts() {
         if (response.ok) {
             const rawText = await response.text();
             
-            // Split line-by-line and parse non-empty JSON strings
+            // Split line-by-line, parse non-empty JSON strings, and map bounding box fields
             alerts = rawText
                 .split("\n")
                 .map(line => line.trim())
                 .filter(line => line.length > 0)
-                .map(line => JSON.parse(line));
+                .map(line => {
+                    const data = JSON.parse(line);
+                    
+                    // Standardize coordinate fields for rendering logic
+                    const bottomLat = parseFloat(data.bottom_lat ?? data.bounding_box?.min_lat);
+                    const topLat = parseFloat(data.top_lat ?? data.bounding_box?.max_lat);
+                    const bottomLon = parseFloat(data.bottom_lon ?? data.bounding_box?.min_lon);
+                    const topLon = parseFloat(data.top_lon ?? data.bounding_box?.max_lon);
+
+                    return {
+                        ...data,
+                        bottom_lat: bottomLat,
+                        top_lat: topLat,
+                        bottom_lon: bottomLon,
+                        top_lon: topLon,
+                        bounding_box: {
+                            min_lat: Math.min(bottomLat, topLat),
+                            max_lat: Math.max(bottomLat, topLat),
+                            min_lon: Math.min(bottomLon, topLon),
+                            max_lon: Math.max(bottomLon, topLon)
+                        }
+                    };
+                });
         } else {
             throw new Error(`Failed to fetch GitHub raw data: ${response.statusText}`);
         }
     } catch (err) {
         console.warn("Could not fetch raw alerts from GitHub. Falling back to localStorage.", err);
-        alerts = JSON.parse(window.localStorage.getItem("LOCAL_PUBLIC_ALERTS") || "[]");
+        const localData = JSON.parse(window.localStorage.getItem("LOCAL_PUBLIC_ALERTS") || "[]");
+        
+        alerts = localData.map(item => {
+            const bottomLat = parseFloat(item.bottom_lat);
+            const topLat = parseFloat(item.top_lat);
+            const bottomLon = parseFloat(item.bottom_lon);
+            const topLon = parseFloat(item.top_lon);
+            return {
+                ...item,
+                bottom_lat: bottomLat,
+                top_lat: topLat,
+                bottom_lon: bottomLon,
+                top_lon: topLon,
+                bounding_box: {
+                    min_lat: Math.min(bottomLat, topLat),
+                    max_lat: Math.max(bottomLat, topLat),
+                    min_lon: Math.min(bottomLon, topLon),
+                    max_lon: Math.max(bottomLon, topLon)
+                }
+            };
+        });
+    }
+
+    // Filter alerts to keep only those that overlap with targetBounds (if passed)
+    if (targetBounds && typeof targetBounds === "object") {
+        const targetMinLat = parseFloat(targetBounds.min_lat ?? targetBounds.bottom_lat);
+        const targetMaxLat = parseFloat(targetBounds.max_lat ?? targetBounds.top_lat);
+        const targetMinLon = parseFloat(targetBounds.min_lon ?? targetBounds.bottom_lon);
+        const targetMaxLon = parseFloat(targetBounds.max_lon ?? targetBounds.top_lon);
+
+        alerts = alerts.filter(alert => {
+            const b = alert.bounding_box;
+            // Checks for bounding box intersection/overlap
+            return (
+                b.min_lat <= targetMaxLat &&
+                b.max_lat >= targetMinLat &&
+                b.min_lon <= targetMaxLon &&
+                b.max_lon >= targetMinLon
+            );
+        });
     }
 
     // Render using your existing UI function
