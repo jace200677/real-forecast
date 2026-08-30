@@ -690,10 +690,15 @@ function renderAlertPolygons(alerts) {
     
     alertPolygonsLayerGroup.clearLayers();
 
-    // Pull from provided alerts argument or global dataset
-    const alertList = (Array.isArray(alerts) && alerts.length > 0) 
-        ? alerts 
-        : (window.allAlerts || window.rawAlerts || window.activeAlerts || []);
+    // 1. Fall back to currentDrawnAlert (from initAlertMap) if no array is passed
+    let alertList = [];
+    if (Array.isArray(alerts) && alerts.length > 0) {
+        alertList = alerts;
+    } else if (window.currentDrawnAlert) {
+        alertList = [window.currentDrawnAlert]; // Wrap single drawn object into array
+    } else {
+        alertList = window.allAlerts || window.rawAlerts || window.activeAlerts || [];
+    }
 
     const boundsArray = [];
 
@@ -708,7 +713,7 @@ function renderAlertPolygons(alerts) {
             try { rawPoints = JSON.parse(rawPoints); } catch (e) { rawPoints = null; }
         }
 
-        // Unwrap single-nested Leaflet array wrappers: [[[lat, lon], ...]] -> [[lat, lon], ...]
+        // Unwrap Leaflet single-nested array wrappers
         while (Array.isArray(rawPoints) && rawPoints.length === 1 && Array.isArray(rawPoints[0])) {
             rawPoints = rawPoints[0];
         }
@@ -724,14 +729,13 @@ function renderAlertPolygons(alerts) {
                     let lat = parseFloat(pt[0]);
                     let lon = parseFloat(pt[1]);
 
-                    // Swap inverted GeoJSON coordinates if Longitude comes first
                     if (Math.abs(lat) > 90 && Math.abs(lon) <= 90) {
                         [lat, lon] = [lon, lat];
                     }
                     return [lat, lon];
                 }
 
-                // Handle Object coordinates { lat, lng } or { lat, lon }
+                // Handle Object coordinates { lat, lng }
                 if (typeof pt === 'object') {
                     const lat = parseFloat(pt.lat ?? pt.latitude);
                     const lon = parseFloat(pt.lng ?? pt.lon ?? pt.longitude);
@@ -763,8 +767,11 @@ function renderAlertPolygons(alerts) {
         }
     });
 
-    // Auto-fit camera view to display all drawn paths
-    const mapInstance = (typeof userAlertMap !== 'undefined' && userAlertMap) ? userAlertMap : alertMap;
+    // 2. Safely locate whichever active Leaflet map instance is currently loaded in the DOM
+    const mapInstance = (typeof userAlertMap !== 'undefined' && userAlertMap) 
+        ? userAlertMap 
+        : ((typeof alertMap !== 'undefined' && alertMap) ? alertMap : null);
+
     if (boundsArray.length > 0 && mapInstance) {
         mapInstance.fitBounds(boundsArray, { padding: [30, 30] });
     }
