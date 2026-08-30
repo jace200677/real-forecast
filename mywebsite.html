@@ -794,6 +794,14 @@ let geofenceMap = null;
 function openAlertModal() {
     const modal = document.getElementById('alert-modal');
     modal.style.display = 'flex';
+    
+    // Initialize map if not already built
+    initAlertMap();
+    
+    // Recalculate leaflet map dimensions once visible
+    setTimeout(() => {
+        if (alertMap) alertMap.invalidateSize();
+    }, 100);
 }
 
 // Global helper to trigger map updates externally if needed
