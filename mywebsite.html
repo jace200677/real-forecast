@@ -436,7 +436,7 @@
     </button>
     
     <!-- View Alerts Button (Visible for non-whitelisted devices or general users) -->
-    <button id="view-alerts-btn" class="secondary-btn" onclick="openViewAlertsModal(activeAlerts)">
+    <button id="view-alerts-btn" class="secondary-btn" onclick="openViewAlertsModal()">
         <i class="icon-map"></i> View Area Alerts
     </button>
 </div>
@@ -592,13 +592,19 @@ function getSeverityColor(severity) {
 }
 
 // Function to open modal and load alerts onto the map
-function openViewAlertsModal(alertsData = []) {
-    const modal = document.getElementById('view-alerts-modal');
-    modal.style.display = 'flex';
+function openViewAlertsModal(targetZoneOrPoint) {
+    const modal = document.getElementById("view-alerts-modal");
+    if (modal) {
+        modal.style.display = "flex";
+    }
+
+    // Extract lat/lon directly from targetZoneOrPoint, falling back to window.activeAlerts or defaults
+    const lat = typeof targetZoneOrPoint !== 'undefined' && targetZoneOrPoint?.lat ? parseFloat(targetZoneOrPoint.lat) : 45.0;
+    const lon = typeof targetZoneOrPoint !== 'undefined' && targetZoneOrPoint?.lon ? parseFloat(targetZoneOrPoint.lon) : -93.0;
 
     // Initialize Map if not built yet
     if (!userAlertMap) {
-        userAlertMap = L.map('user-location-map').setView([39.8283, -98.5795], 4);
+        userAlertMap = L.map('user-location-map').setView([lat, lon], 6);
         
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
             maxZoom: 18,
@@ -608,13 +614,24 @@ function openViewAlertsModal(alertsData = []) {
         alertPolygonsLayerGroup = L.layerGroup().addTo(userAlertMap);
     }
 
-    // Fix rendering layout inside modal
+    // Recalculate leaflet map dimensions once visible
     setTimeout(() => {
-        userAlertMap.invalidateSize();
+        if (userAlertMap) userAlertMap.invalidateSize();
     }, 100);
 
-    // Render alert polygons on map
-    renderAlertPolygons(alertsData);
+    // Populate active alerts list container
+    if (typeof renderActiveAlerts === "function") {
+        renderActiveAlerts(lat, lon);
+    }
+
+    // Determine alerts payload and render map polygons
+    const alertsData = Array.isArray(targetZoneOrPoint) 
+        ? targetZoneOrPoint 
+        : (window.activeAlerts || []);
+
+    if (typeof renderAlertPolygons === "function") {
+        renderAlertPolygons(alertsData);
+    }
 }
 function renderAlertPolygons(alerts) {
     if (!alertPolygonsLayerGroup) return;
@@ -900,21 +917,7 @@ function closeAlertModal() {
     modal.style.display = "none";
 }
 
-function openViewAlertsModal(targetZoneOrPoint) {
-    const modal = document.getElementById("view-alerts-modal");
-    if (modal) {
-        modal.style.display = "flex";
-    }
 
-    // Extract lat/lon directly from targetZoneOrPoint in-memory
-    const lat = typeof targetZoneOrPoint !== 'undefined' && targetZoneOrPoint ? parseFloat(targetZoneOrPoint.lat) : 45.0;
-    const lon = typeof targetZoneOrPoint !== 'undefined' && targetZoneOrPoint ? parseFloat(targetZoneOrPoint.lon) : -93.0;
-
-    // Call renderActiveAlerts directly with in-memory coordinates
-    if (typeof renderActiveAlerts === "function") {
-        renderActiveAlerts(lat, lon);
-    }
-}
 
 function closeViewAlertsModal() {
     document.getElementById("view-alerts-modal").style.display = "none";
