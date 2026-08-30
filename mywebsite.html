@@ -436,9 +436,11 @@
     </button>
     
     <!-- View Alerts Button (Visible for non-whitelisted devices or general users) -->
-    <button id="view-alerts-btn" class="secondary-btn" onclick="openViewAlertsModal()">
-        <i class="icon-map"></i> View Area Alerts
-    </button>
+    <button id="view-alerts-btn" class="secondary-btn" onclick="openViewAlertsModal()" style="display: inline-flex; align-items: center; gap: 8px;">
+    <i class="icon-map"></i> 
+    <span>View Area Alerts</span>
+    <span id="alert-count-badge" style="background: #d9534f; color: #ffffff; font-size: 11px; font-weight: bold; padding: 2px 7px; border-radius: 10px; min-width: 14px; text-align: center;">0</span>
+</button>
 </div>
 
 <!-- View Alerts Modal (For Users checking active alerts near their Lat/Lon) -->
@@ -590,7 +592,20 @@ function getSeverityColor(severity) {
             return '#5cb85c'; // Green
     }
 }
+function updateAlertCountBadge(count) {
+    const badge = document.getElementById('alert-count-badge');
+    if (!badge) return;
 
+    // Resolve count from argument or fallback to length of global activeAlerts array
+    const alertCount = (typeof count === 'number') 
+        ? count 
+        : (Array.isArray(window.activeAlerts) ? window.activeAlerts.length : 0);
+    
+    badge.textContent = alertCount;
+    
+    // Toggle visibility based on active count
+    badge.style.display = alertCount > 0 ? 'inline-block' : 'none';
+}
 // Function to open modal and load alerts onto the map
 function openViewAlertsModal(targetZoneOrPoint) {
     const modal = document.getElementById("view-alerts-modal");
@@ -1560,6 +1575,8 @@ async function renderActiveAlerts() {
         `;
         container.appendChild(alertCard);
     });
+    const activeCount = Array.isArray(window.activeAlerts) ? window.activeAlerts.length : 0;
+    updateAlertCountBadge(activeCount);
 }
 function openUploadModal() {
     document.getElementById("uploadModal").style.display = "flex";
