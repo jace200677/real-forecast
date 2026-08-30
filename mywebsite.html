@@ -712,12 +712,12 @@ async function renderAlertPolygons(lat, lon, selectedAlertTitle = null) {
 
     let rawAlerts = [];
 
-    // Robust JSON Parser for Standard Arrays and Line-Delimited JSON (NDJSON)
+    // Comprehensive parser that handles standard JSON arrays, NDJSON, and raw text objects in custom files
     const parseAlertsText = (rawText, defaultSource = '') => {
         const parsedItems = [];
         if (!rawText || typeof rawText !== 'string') return parsedItems;
 
-        // Try standard JSON first
+        // Try standard JSON parse first
         try {
             const parsed = JSON.parse(rawText.trim());
             const items = Array.isArray(parsed) ? parsed : (parsed.alerts || parsed.data || parsed.results || [parsed]);
@@ -728,13 +728,13 @@ async function renderAlertPolygons(lat, lon, selectedAlertTitle = null) {
             return parsedItems;
         } catch (e) {}
 
-        // Fallback: Line-by-line NDJSON/JSON text parsing
+        // Fallback: Line-by-line and custom text format parsing
         const lines = rawText.split(/\r?\n/).filter(line => line.trim() !== "");
         lines.forEach(line => {
             let cleanLine = line.trim();
             if (cleanLine.endsWith(',')) cleanLine = cleanLine.slice(0, -1);
 
-            let alertObj = null;
+            let alertObj = {};
             try {
                 if (cleanLine.startsWith("{") && cleanLine.endsWith("}")) {
                     alertObj = JSON.parse(cleanLine);
@@ -744,10 +744,34 @@ async function renderAlertPolygons(lat, lon, selectedAlertTitle = null) {
                 }
             } catch (err) {}
 
-            if (alertObj && typeof alertObj === 'object') {
-                if (defaultSource) alertObj._sourceFile = defaultSource;
-                parsedItems.push(alertObj);
-            }
+            // Extract properties via regex if missing from JSON object
+            const titleMatch = cleanLine.match(/(?:title|header):\s*([^|;\n]+)/i);
+            const severityMatch = cleanLine.match(/(?:severity|level):\s*([^|;\n]+)/i);
+            const descMatch = cleanLine.match(/(?:desc|description|details):\s*([^|;\n]+)/i);
+            const startMatch = cleanLine.match(/(?:start_time|start time|from):\s*([^|;\n]+)/i);
+            const endMatch = cleanLine.match(/(?:end_time|end time|until|expires):\s*([^|;\n]+)/i);
+
+            const minLat = alertObj.bottom_lat ?? alertObj.bounding_box?.min_lat ?? parseFloat(cleanLine.match(/bottom_lat["']?\s*:\s*(-?\d+(?:\.\d+)?)/i)?.[1]);
+            const maxLat = alertObj.top_lat ?? alertObj.bounding_box?.max_lat ?? parseFloat(cleanLine.match(/top_lat["']?\s*:\s*(-?\d+(?:\.\d+)?)/i)?.[1]);
+            const minLon = alertObj.bottom_lon ?? alertObj.bounding_box?.min_lon ?? parseFloat(cleanLine.match(/bottom_lon["']?\s*:\s*(-?\d+(?:\.\d+)?)/i)?.[1]);
+            const maxLon = alertObj.top_lon ?? alertObj.bounding_box?.max_lon ?? parseFloat(cleanLine.match(/top_lon["']?\s*:\s*(-?\d+(?:\.\d+)?)/i)?.[1]);
+
+            let cleanDesc = alertObj.description || (descMatch ? descMatch[1].trim() : cleanLine.replace(/\{.*\}/, '').replace(/Active until:.*$/i, '').trim());
+
+            parsedItems.push({
+                ...alertObj,
+                _sourceFile: defaultSource,
+                title: alertObj.title || alertObj.header || (titleMatch ? titleMatch[1].trim() : "Untitled Alert"),
+                severity: alertObj.severity || alertObj.level || (severityMatch ? severityMatch[1].trim() : "Medium"),
+                description: cleanDesc || "No description provided.",
+                start_time: alertObj.start_time || (startMatch ? startMatch[1].trim() : null),
+                end_time: alertObj.end_time || (endMatch ? endMatch[1].trim() : "Indefinite"),
+                latlngs: alertObj.latlngs || alertObj.points || alertObj.coordinates || alertObj.geometry || alertObj.polygon || null,
+                bottomLat: isNaN(minLat) ? null : minLat,
+                topLat: isNaN(maxLat) ? null : maxLat,
+                bottomLon: isNaN(minLon) ? null : minLon,
+                topLon: isNaN(maxLon) ? null : maxLon
+            });
         });
 
         return parsedItems;
@@ -807,11 +831,11 @@ async function renderAlertPolygons(lat, lon, selectedAlertTitle = null) {
     const normalLayers = [];
     const selectedLayers = [];
 
-    // 5. Build layers with correct severity colors, solid fills, and tooltips
+    // 4. Build layers with clean geometry, severity coloring, fills, and precise tooltip matching
     alertList.forEach(alert => {
         if (!alert) return;
         const severity = alert.severity || alert.level || "Minor";
-        const title = alert.title || alert.header || "Alert Area";
+        const title = alert.title || alert.header || "Untitled Alert";
         const baseColor = resolveSeverityColor(severity);
 
         const isSelected = Boolean(
@@ -859,13 +883,13 @@ async function renderAlertPolygons(lat, lon, selectedAlertTitle = null) {
 
             const renderAsLine = isExplicitLine || (lineCoords.length < 3 && !isClosedLoop);
 
-            // Styling: Matches exact severity colors for both border and fill, with a high-contrast thick outline when selected
+            // Keep selected outlines directly on top of the custom lines without breaking map boundaries
             const layerOptions = {
-                color: baseColor,                     
-                weight: isSelected ? 6 : (renderAsLine ? 4 : 2.5),
+                color: isSelected ? "#111111" : baseColor,       // Crisp high-contrast border for selection or severity color
+                weight: isSelected ? 5 : (renderAsLine ? 4 : 2.5),
                 opacity: 1.0,
-                fillColor: baseColor,                 
-                fillOpacity: renderAsLine ? 0 : 0.4,  // Solid fill color inside polygon regions
+                fillColor: baseColor,                             // Solid color fill inside custom lines / polygons
+                fillOpacity: renderAsLine ? 0 : (isSelected ? 0.45 : 0.35),
                 lineCap: 'round',
                 lineJoin: 'round'
             };
@@ -874,7 +898,6 @@ async function renderAlertPolygons(lat, lon, selectedAlertTitle = null) {
                 ? L.polyline(lineCoords, layerOptions)
                 : L.polygon(lineCoords, layerOptions);
 
-            // Bind detailed popups and tooltips for every alert layer
             shapeLayer.bindPopup(`<b>${title}</b><br>Severity: ${severity}<br>${alert.description || 'No description provided.'}`);
             shapeLayer.bindTooltip(`<b>${title}</b> (${severity})`, { sticky: true, direction: 'auto' });
 
