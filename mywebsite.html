@@ -658,13 +658,27 @@ function renderAlertPolygons(alerts) {
     // Clear previous layers
     alertPolygonsLayerGroup.clearLayers();
 
+    // Render all active alerts (or custom passed alerts) regardless of user/searched area bounds
+    const alertList = (Array.isArray(alerts) && alerts.length > 0) 
+        ? alerts 
+        : (window.activeAlerts || []);
+
     const boundsArray = [];
 
-    alerts.forEach(alert => {
-        const { bottomLat, topLat, bottomLon, topLon, severity, title } = alert;
+    alertList.forEach(alert => {
+        // Support property names from both form payloads and parsed alert file objects
+        const bottomLat = alert.bottomLat ?? alert.bottom_lat ?? alert.min_lat;
+        const topLat = alert.topLat ?? alert.top_lat ?? alert.max_lat;
+        const bottomLon = alert.bottomLon ?? alert.bottom_lon ?? alert.min_lon;
+        const topLon = alert.topLon ?? alert.top_lon ?? alert.max_lon;
 
-        if (bottomLat && topLat && bottomLon && topLon) {
-            // Construct polygon coordinates from bounding coordinates
+        const severity = alert.severity || "Medium";
+        const title = alert.title || "Alert";
+
+        if (bottomLat !== null && topLat !== null && bottomLon !== null && topLon !== null &&
+            !isNaN(bottomLat) && !isNaN(topLat) && !isNaN(bottomLon) && !isNaN(topLon)) {
+            
+            // Construct rectangle polygon coordinates from bounding coordinates
             const polygonCoords = [
                 [parseFloat(bottomLat), parseFloat(bottomLon)],
                 [parseFloat(topLat), parseFloat(bottomLon)],
@@ -672,23 +686,23 @@ function renderAlertPolygons(alerts) {
                 [parseFloat(bottomLat), parseFloat(topLon)]
             ];
 
-            const color = getSeverityColor(severity);
+            const color = typeof getSeverityColor === "function" ? getSeverityColor(severity) : "#f0ad4e";
 
-            // Create colored polygon layer
+            // Draw polygon layer representing the broadcast alert region
             const polygon = L.polygon(polygonCoords, {
                 color: color,
                 fillColor: color,
                 fillOpacity: 0.35,
                 weight: 2
-            }).bindPopup(`<b>${title || 'Alert'}</b><br>Severity: ${severity}`);
+            }).bindPopup(`<b>${title}</b><br>Severity: ${severity}`);
 
             alertPolygonsLayerGroup.addLayer(polygon);
             boundsArray.push(...polygonCoords);
         }
     });
 
-    // Auto-fit map camera to display all drawn alert bounds
-    if (boundsArray.length > 0) {
+    // Auto-fit map viewport to encompass all broadcasted alert boundaries
+    if (boundsArray.length > 0 && userAlertMap) {
         userAlertMap.fitBounds(boundsArray, { padding: [20, 20] });
     }
 }
