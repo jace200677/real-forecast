@@ -545,33 +545,19 @@ let uploadedFiles = [];
 async function cancelActiveAlert() {
     let localAlerts = JSON.parse(window.localStorage.getItem("LOCAL_PUBLIC_ALERTS") || "[]");
     
-    // Fallback or combine with GitHub alerts if local storage is empty
     if (localAlerts.length === 0) {
-        try {
-            const response = await fetch("https://raw.githubusercontent.com/jace200677/real-forecast/refs/heads/main/weather/alerts.txt");
-            if (response.ok) {
-                const textData = await response.text();
-                localAlerts = textData.split("\n").filter(line => line.trim() !== "").map(line => ({ title: line, severity: "Unknown" }));
-            }
-        } catch (error) {
-            console.warn("Could not fetch remote alerts from GitHub for cancellation.", error);
-        }
-    }
-
-    if (localAlerts.length === 0) {
-        alert("No active alerts available to cancel.");
+        alert("No active local alerts available to cancel.");
         return;
     }
 
+    // Build selection list
     let listPrompt = "Select the number of the alert you want to cancel:\n\n";
-    localAlerts.forEach((alertObj, index) => {
-        const title = typeof alertObj === "string" ? alertObj : alertObj.title;
-        const severity = alertObj.severity || "Unknown";
-        listPrompt += `[${index + 1}] ${title} (Severity: ${severity})\n`;
+    localAlerts.forEach((alertItem, index) => {
+        listPrompt += `[${index + 1}] ${alertItem.title} (Severity: ${alertItem.severity})\n`;
     });
 
     let selectedIndexStr = prompt(listPrompt, "1");
-    if (!selectedIndexStr) return;
+    if (!selectedIndexStr) return; // User canceled prompt
 
     let selectedIndex = parseInt(selectedIndexStr.trim(), 10) - 1;
 
@@ -581,57 +567,92 @@ async function cancelActiveAlert() {
     }
 
     let alertToCancel = localAlerts[selectedIndex];
-    const alertTitle = typeof alertToCancel === "string" ? alertToCancel : alertToCancel.title;
 
+    // 1. Remove from local storage first
     localAlerts.splice(selectedIndex, 1);
     window.localStorage.setItem("LOCAL_PUBLIC_ALERTS", JSON.stringify(localAlerts));
 
-    // Update GitHub raw text file via API (if token is available)
-    try {
-        const owner = "jace200677";
-        const repo = "real-forecast";
-        const path = "weather/alerts.txt";
-        const token = window.GITHUB_SECRET_TOKEN || process.env.GITHUB_TOKEN;
+    // Optional API cancellation attempt
+    fetch('/api/v1/alerts/cancel', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+        body: JSON.stringify({ title: alertToCancel.title })
+    }).catch(() => console.log("Backend cancellation sync skipped."));
 
-        const getFileRes = await fetch(`https://api.github.com/repos/${owner}/${repo}/contents/${path}`, {
-            headers: { Authorization: `Bearer ${token}` }
-        });
-        
-        if (getFileRes.ok) {
-            const fileData = await getFileRes.json();
-            const existingContent = atob(fileData.content);
-            
-            // Remove the cancelled line from content
-            const updatedContent = existingContent
-                .split("\n")
-                .filter(line => line.trim() !== alertTitle.trim())
-                .join("\n");
-
-            const encodedContent = btoa(unescape(encodeURIComponent(updatedContent)));
-
-            await fetch(`https://api.github.com/repos/${owner}/${repo}/contents/${path}`, {
-                method: "PUT",
-                headers: {
-                    Authorization: `Bearer ${token}`,
-                    "Content-Type": "application/json",
-                },
-                body: JSON.stringify({
-                    message: "Remove alert from alerts.txt",
-                    content: encodedContent,
-                    sha: fileData.sha
-                })
-            });
+    // 2. Obtain & Save Token FIRST
+    let token = localStorage.getItem("GITHUB_PAT");
+    if (!token) {
+        token = prompt("Please enter your GitHub Personal Access Token to sync cancellation:");
+        if (!token || !token.trim()) {
+            alert(`Alert "${alertToCancel.title}" canceled locally only (GitHub sync skipped: No token provided).`);
+            refreshAlertUI(localAlerts);
+            return;
         }
-    } catch (gitError) {
-        console.error("Failed to update GitHub repository during cancellation:", gitError);
+        token = token.trim();
+        localStorage.setItem("GITHUB_PAT", token);
     }
 
-    alert(`Successfully cancelled and removed alert: "${alertTitle}"`);
+    // 3. Sync update to GitHub repository
+    const owner = "jace200677";
+    const repo = "real-forecast";
+    const path = "weather/alerts.txt";
 
+    try {
+        const getFileRes = await fetch(`https://api.github.com/repos/${owner}/${repo}/contents/${path}`, {
+            headers: { 
+                "Authorization": `Bearer ${token}`,
+                "Accept": "application/vnd.github.v3+json"
+            }
+        });
+
+        if (getFileRes.status === 401 || getFileRes.status === 403) {
+            localStorage.removeItem("GITHUB_PAT");
+            throw new Error("Invalid or expired GitHub Token. Token cleared.");
+        }
+
+        if (getFileRes.ok) {
+            const fileData = await getFileRes.json();
+            const fileSha = fileData.sha;
+
+            // Convert remaining array to newline-delimited text string
+            const updatedContentText = localAlerts
+                .map(item => (typeof item === "string" ? item.trim() : JSON.stringify(item)))
+                .join("\n");
+
+            const encodedContent = btoa(unescape(encodeURIComponent(updatedContentText)));
+
+            const pushRes = await fetch(`https://api.github.com/repos/${owner}/${repo}/contents/${path}`, {
+                method: "PUT",
+                headers: {
+                    "Authorization": `Bearer ${token}`,
+                    "Content-Type": "application/json",
+                    "Accept": "application/vnd.github.v3+json"
+                },
+                body: JSON.stringify({
+                    message: `Cancel alert: ${alertToCancel.title}`,
+                    content: encodedContent,
+                    sha: fileSha
+                })
+            });
+
+            if (!pushRes.ok) throw new Error(`GitHub sync failed (Status: ${pushRes.status})`);
+
+            alert(`Successfully canceled "${alertToCancel.title}" locally and updated GitHub repository!`);
+        }
+    } catch (gitError) {
+        console.error("GitHub Cancellation Sync Error:", gitError);
+        alert(`Alert canceled locally (${gitError.message || "GitHub sync failed"}).`);
+    }
+
+    refreshAlertUI(localAlerts);
+}
+
+// Helper function to handle UI re-rendering
+function refreshAlertUI(alerts) {
     if (typeof fetchUserLocationAndCheckAlerts === "function") {
         fetchUserLocationAndCheckAlerts();
     } else if (typeof renderActiveAlerts === "function") {
-        renderActiveAlerts(localAlerts);
+        renderActiveAlerts(alerts);
     }
 }
 
@@ -860,13 +881,13 @@ function submitAlertBroadcast(btnElement) {
         return;
     }
 
-    const publishBtn = btnElement || (event && event.target ? event.target : null);
+    const publishBtn = btnElement || (typeof event !== "undefined" && event.target ? event.target : null);
     if (publishBtn) {
         publishBtn.disabled = true;
         publishBtn.textContent = "Broadcasting...";
     }
 
-    // Try primary backend route first
+    // Primary API Route
     fetch('/api/v1/alerts/broadcast/', {
         method: 'POST',
         headers: { 
@@ -881,7 +902,6 @@ function submitAlertBroadcast(btnElement) {
             window.localStorage.removeItem("FAILED_ALERT_DRAFT");
             finalizeSuccessfulBroadcast();
         } else {
-            // Fallback to secondary endpoint if first returns error status
             return fetch('/api/v1/alerts/', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
@@ -898,65 +918,84 @@ function submitAlertBroadcast(btnElement) {
         }
     })
     .catch(async error => {
-    console.warn("Backend API unreachable. Using GitHub raw or Local Storage fallback.", error);
-    
-    // Save locally as a fallback
-    let existingAlerts = JSON.parse(window.localStorage.getItem("LOCAL_PUBLIC_ALERTS") || "[]");
-    existingAlerts.unshift(payload);
-    window.localStorage.setItem("LOCAL_PUBLIC_ALERTS", JSON.stringify(existingAlerts));
-    
-    window.dispatchEvent(new CustomEvent('localAlertPublished', { detail: payload }));
+        console.warn("Backend API unreachable. Using GitHub raw & Local Storage fallback.", error);
+        
+        // 1. Save locally immediately
+        let existingAlerts = JSON.parse(window.localStorage.getItem("LOCAL_PUBLIC_ALERTS") || "[]");
+        existingAlerts.unshift(payload);
+        window.localStorage.setItem("LOCAL_PUBLIC_ALERTS", JSON.stringify(existingAlerts));
+        
+        window.dispatchEvent(new CustomEvent('localAlertPublished', { detail: payload }));
 
-    // Format payload as a single line
-    const alertLine = typeof payload === "string" ? payload.trim() : JSON.stringify(payload);
+        // 2. Obtain & Save Token FIRST
+        let token = localStorage.getItem("GITHUB_PAT");
+        if (!token) {
+            token = prompt("Please enter your GitHub Personal Access Token to sync remotely:");
+            if (!token || !token.trim()) {
+                alert("Alert saved locally only (GitHub sync canceled: No token provided).");
+                finalizeSuccessfulBroadcast();
+                return;
+            }
+            token = token.trim();
+            localStorage.setItem("GITHUB_PAT", token);
+        }
 
-    try {
+        const alertLine = typeof payload === "string" ? payload.trim() : JSON.stringify(payload);
         const owner = "jace200677";
         const repo = "real-forecast";
         const path = "weather/alerts.txt";
-        
-        // Pulls token securely from a private/hidden GitHub secret/environment setting or script variable
-        const token = window.GITHUB_SECRET_TOKEN || process.env.TOKEN;
 
-        // 1. Fetch current file SHA (required by GitHub API to update files)
-        const getFileRes = await fetch(`https://api.github.com/repos/${owner}/${repo}/contents/${path}`, {
-            headers: { Authorization: `Bearer ${token}` }
-        });
-        
-        let fileSha = "";
-        let existingContent = "";
-        if (getFileRes.ok) {
-            const fileData = await getFileRes.json();
-            fileSha = fileData.sha;
-            existingContent = atob(fileData.content); // decode base64 content
+        try {
+            // 3. Fetch current file SHA
+            const getFileRes = await fetch(`https://api.github.com/repos/${owner}/${repo}/contents/${path}`, {
+                headers: { 
+                    "Authorization": `Bearer ${token}`,
+                    "Accept": "application/vnd.github.v3+json"
+                }
+            });
+            
+            if (getFileRes.status === 401 || getFileRes.status === 403) {
+                localStorage.removeItem("GITHUB_PAT");
+                throw new Error("Invalid or expired GitHub Token. Token cleared.");
+            }
+
+            let fileSha = "";
+            let existingContent = "";
+            if (getFileRes.ok) {
+                const fileData = await getFileRes.json();
+                fileSha = fileData.sha;
+                existingContent = decodeURIComponent(escape(atob(fileData.content.replace(/\s/g, ''))));
+            }
+
+            // 4. Append and encode content
+            const updatedContent = existingContent ? `${existingContent}\n${alertLine}` : alertLine;
+            const encodedContent = btoa(unescape(encodeURIComponent(updatedContent)));
+
+            // 5. Commit/Push back to GitHub
+            const pushRes = await fetch(`https://api.github.com/repos/${owner}/${repo}/contents/${path}`, {
+                method: "PUT",
+                headers: {
+                    "Authorization": `Bearer ${token}`,
+                    "Content-Type": "application/json",
+                    "Accept": "application/vnd.github.v3+json"
+                },
+                body: JSON.stringify({
+                    message: "Update alerts.txt via client broadcast",
+                    content: encodedContent,
+                    sha: fileSha || undefined
+                })
+            });
+
+            if (!pushRes.ok) throw new Error(`GitHub push rejected (Status: ${pushRes.status})`);
+
+            alert("Alert published locally AND pushed to GitHub successfully!");
+        } catch (gitError) {
+            console.error("GitHub Push Error:", gitError);
+            alert(`Alert published locally (${gitError.message || "GitHub sync failed"}).`);
         }
 
-        // 2. Append new alert line (multiple lines handled by newline separation)
-        const updatedContent = existingContent ? `${existingContent}\n${alertLine}` : alertLine;
-        const encodedContent = btoa(unescape(encodeURIComponent(updatedContent)));
-
-        // 3. Push/Commit updated file back to GitHub
-        await fetch(`https://api.github.com/repos/${owner}/${repo}/contents/${path}`, {
-            method: "PUT",
-            headers: {
-                Authorization: `Bearer ${token}`,
-                "Content-Type": "application/json",
-            },
-            body: JSON.stringify({
-                message: "Update alerts.txt via client broadcast",
-                content: encodedContent,
-                sha: fileSha
-            })
-        });
-
-        alert("Alert published and pushed to GitHub successfully!");
-    } catch (gitError) {
-        console.error("Failed to push to GitHub repository:", gitError);
-        alert("Alert published locally (GitHub sync failed).");
-    }
-
-    finalizeSuccessfulBroadcast();
-})
+        finalizeSuccessfulBroadcast();
+    })
     .finally(() => {
         if (publishBtn) {
             publishBtn.disabled = false;
@@ -1061,19 +1100,25 @@ async function renderLocalOnlyAlerts() {
     let localAlerts = JSON.parse(window.localStorage.getItem("LOCAL_PUBLIC_ALERTS") || "[]");
     let sharedAlerts = JSON.parse(window.localStorage.getItem("SHARED_PUBLIC_ALERTS") || "[]");
     
+    // Fetch broadcasts from your GitHub raw text file
     try {
         const response = await fetch("https://raw.githubusercontent.com/jace200677/real-forecast/refs/heads/main/weather/alerts.txt");
         if (response.ok) {
             const textData = await response.text();
-            const alertText = textData.trim();
-            if (alertText) {
-                sharedAlerts = [alertText];
+            
+            // Optional: Parse text data into an array of alerts (e.g., split by lines or JSON parse)
+            // Assuming each line is an alert or it contains text you want to display:
+            const remoteAlerts = textData.split("\n").filter(line => line.trim() !== "");
+            
+            if (remoteAlerts.length > 0) {
+                sharedAlerts = remoteAlerts;
             }
         }
     } catch (error) {
         console.warn("Could not fetch remote broadcasts from GitHub, falling back to local storage.", error);
     }
 
+    // Combine local, storage-shared, and GitHub-fetched alerts for everyone
     let combinedAlerts = [...localAlerts, ...sharedAlerts];
 
     if (typeof renderActiveAlerts === "function") {
