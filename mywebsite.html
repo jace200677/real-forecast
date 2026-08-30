@@ -466,12 +466,6 @@
             <button onclick="closeAlertModal()" style="background: transparent; border: none; color: #fff; font-size: 22px; cursor: pointer;">&times;</button>
         </div>
 
-        <!-- Instruction banner -->
-        <div style="font-size: 14px; font-weight: bold; color: #ff4444;">Click on the map to draw the NWS-style impact polygon.</div>
-
-        <!-- Expanded Map Container (Taller for better drawing space) -->
-        <div id="geofence-map" style="width: 100%; height: 480px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.2);"></div>
-
         <!-- Alert Metadata Form Fields -->
         <div style="font-size: 16px; font-weight: bold; margin-top: 5px;">Alert Metadata</div>
         
@@ -493,7 +487,27 @@
                 </div>
             </div>
 
-            <!-- Row 2: Expanded Description Textarea (Much more room) -->
+            <!-- Row 1.5: Bottom / Top Lat/Lon Coordinates -->
+            <div style="display: flex; gap: 12px; flex-wrap: wrap;">
+                <div style="flex: 1; min-width: 130px;">
+                    <label style="display: block; font-size: 12px; margin-bottom: 4px;">Bottom Lat:</label>
+                    <input type="number" step="any" id="alert-bottom-lat" placeholder="e.g., 35.0" style="width: 100%; padding: 8px; border-radius: 4px; border: 1px solid #ccc; background: #fff; color: #000; box-sizing: border-box;" />
+                </div>
+                <div style="flex: 1; min-width: 130px;">
+                    <label style="display: block; font-size: 12px; margin-bottom: 4px;">Top Lat:</label>
+                    <input type="number" step="any" id="alert-top-lat" placeholder="e.g., 42.0" style="width: 100%; padding: 8px; border-radius: 4px; border: 1px solid #ccc; background: #fff; color: #000; box-sizing: border-box;" />
+                </div>
+                <div style="flex: 1; min-width: 130px;">
+                    <label style="display: block; font-size: 12px; margin-bottom: 4px;">Bottom Lon:</label>
+                    <input type="number" step="any" id="alert-bottom-lon" placeholder="e.g., -95.0" style="width: 100%; padding: 8px; border-radius: 4px; border: 1px solid #ccc; background: #fff; color: #000; box-sizing: border-box;" />
+                </div>
+                <div style="flex: 1; min-width: 130px;">
+                    <label style="display: block; font-size: 12px; margin-bottom: 4px;">Top Lon:</label>
+                    <input type="number" step="any" id="alert-top-lon" placeholder="e.g., -90.0" style="width: 100%; padding: 8px; border-radius: 4px; border: 1px solid #ccc; background: #fff; color: #000; box-sizing: border-box;" />
+                </div>
+            </div>
+
+            <!-- Row 2: Expanded Description Textarea -->
             <div>
                 <label style="display: block; font-size: 12px; margin-bottom: 4px;">Description & Safety Instructions:</label>
                 <textarea id="alert-desc" rows="4" placeholder="Enter comprehensive details, impacted locations, and safety instructions..." style="width: 100%; padding: 8px; border-radius: 4px; border: 1px solid #ccc; background: #fff; color: #000; box-sizing: border-box; resize: vertical; font-family: inherit;"></textarea>
@@ -602,58 +616,9 @@ async function generateHardwareFingerprint() {
 }
 let geofenceMap = null;
 let drawnItems = null;
-
 function openAlertModal() {
     const modal = document.getElementById('alert-modal');
     modal.style.display = 'flex';
-    
-    // Defer initialization or refresh slightly to ensure modal is rendered and dimensions are computed
-    setTimeout(() => {
-        if (!geofenceMap) {
-            geofenceMap = L.map('geofence-map').setView([37.8, -96], 4);
-            
-            L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
-    attribution: 'Tiles &copy; Esri &mdash; Source: Esri, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-EGP, and the GIS User Community',
-    maxZoom: 19
-}).addTo(geofenceMap);
-
-            drawnItems = new L.FeatureGroup();
-            geofenceMap.addLayer(drawnItems);
-
-            const drawControl = new L.Control.Draw({
-                edit: {
-                    featureGroup: drawnItems,
-                    remove: true
-                },
-                draw: {
-                    polygon: {
-                        allowIntersection: false,
-                        shapeOptions: {
-                            color: '#ff4444',
-                            weight: 3,
-                            fillOpacity: 0.3
-                        }
-                    },
-                    polyline: false,
-                    circle: false,
-                    rectangle: false,
-                    marker: false,
-                    circlemarker: false
-                }
-            });
-            geofenceMap.addControl(drawControl);
-
-            geofenceMap.on(L.Draw.Event.CREATED, function (e) {
-                drawnItems.clearLayers();
-                const layer = e.layer;
-                drawnItems.addLayer(layer);
-                console.log("NWS Polygon Coordinates:", layer.getLatLngs()[0]);
-            });
-        }
-        
-        // Force Leaflet to recalculate container size now that modal is visible
-        geofenceMap.invalidateSize();
-    }, 50);
 }
 
 // Global helper to trigger map updates externally if needed
@@ -780,8 +745,6 @@ function getDrawnPolygonCoordinates() {
 }
 // 3. Payload Dispatch & Persistence (Saves to backend DB for all users)
 function submitAlertBroadcast() {
-    const coordinates = getDrawnPolygonCoordinates();
-
     const payload = {
         device_id: window.localStorage.getItem("DEVICE_NAME") || "UNKNOWN_DEVICE",
         title: document.getElementById("alert-title").value.trim(),
@@ -789,7 +752,10 @@ function submitAlertBroadcast() {
         start_time: document.getElementById("alert-start").value,
         end_time: document.getElementById("alert-end").value,
         severity: document.getElementById("alert-severity").value,
-        polygon_coordinates: coordinates 
+        bottom_lat: document.getElementById("alert-bottom-lat").value,
+        top_lat: document.getElementById("alert-top-lat").value,
+        bottom_lon: document.getElementById("alert-bottom-lon").value,
+        top_lon: document.getElementById("alert-top-lon").value
     };
 
     if (!payload.title) {
@@ -798,8 +764,8 @@ function submitAlertBroadcast() {
         return;
     }
 
-    if (payload.polygon_coordinates.length === 0) {
-        alert("Please draw an NWS-style impact polygon on the map before broadcasting.");
+    if (!payload.bottom_lat || !payload.top_lat || !payload.bottom_lon || !payload.top_lon) {
+        alert("Please enter all bounding box coordinate fields (Bottom/Top Lat and Lon) before broadcasting.");
         return;
     }
 
@@ -820,12 +786,13 @@ function submitAlertBroadcast() {
         if (response.ok) {
             alert("Alert successfully broadcasted and saved for public view.");
             closeAlertModal();
-            // Reset input fields if needed
+            // Reset input fields
             document.getElementById("alert-title").value = "";
             document.getElementById("alert-desc").value = "";
-            if (typeof drawnItems !== "undefined" && drawnItems) {
-                drawnItems.clearLayers();
-            }
+            document.getElementById("alert-bottom-lat").value = "";
+            document.getElementById("alert-top-lat").value = "";
+            document.getElementById("alert-bottom-lon").value = "";
+            document.getElementById("alert-top-lon").value = "";
         } else {
             alert("Broadcast failed. Verify authorization permissions.");
         }
