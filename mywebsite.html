@@ -714,7 +714,7 @@ async function renderAlertPolygons(lat, lon, selectedAlertTitle = null) {
 
     let rawAlerts = [];
 
-    // Parsing logic matching renderActiveAlerts exactly
+    // Unified JSON + Regex fallback parser matching renderActiveAlerts exactly
     const parseAlertsText = (rawText, defaultSource = '') => {
         const parsedItems = [];
 
@@ -830,23 +830,20 @@ async function renderAlertPolygons(lat, lon, selectedAlertTitle = null) {
 
     const boundsArray = [];
     const selectedBounds = [];
+    const normalLayers = [];
+    const selectedLayers = [];
 
     if (!isNaN(userLat) && !isNaN(userLon)) {
         boundsArray.push([userLat, userLon]);
     }
 
-    // Separate normal rendering from selected rendering so selected layers always draw on top
-    const normalLayers = [];
-    const selectedLayers = [];
-
-    // 5. Build layers and match selected item highlights to exact geometries
+    // 5. Render shapes with fills and layer z-index order matching alertlines/alerts
     alertList.forEach(alert => {
         const severity = alert.severity || "Minor";
         const title = alert.title || alert.header || "Alert Area";
-        
         const baseColor = resolveSeverityColor(severity);
 
-        // Flexible matching for selected alert title
+        // Robust matching for selected alert selection
         const isSelected = Boolean(
             selectedAlertTitle && 
             (
@@ -855,7 +852,7 @@ async function renderAlertPolygons(lat, lon, selectedAlertTitle = null) {
             )
         );
 
-        // Resolve latlngs coordinates array
+        // Extract coordinate array
         let rawPoints = alert.latlngs || alert.points || alert.coordinates;
 
         if (typeof rawPoints === 'string') {
@@ -898,10 +895,10 @@ async function renderAlertPolygons(lat, lon, selectedAlertTitle = null) {
             const lastPt = lineCoords[lineCoords.length - 1];
             const isClosedLoop = lineCoords.length >= 3 && firstPt[0] === lastPt[0] && firstPt[1] === lastPt[1];
 
-            // Match polyline geometry vs polygon geometry
+            // Correctly match open-ended line entries vs closed polygons
             const renderAsLine = isExplicitLine || lineCoords.length < 3 || (!isClosedLoop && alert._sourceFile === "alertlines.txt");
 
-            // Define highlighted styles matching selected shape/line
+            // Selected layers receive yellow highlight outline and higher weight/opacity
             const layerOptions = {
                 color: isSelected ? "#ffff00" : baseColor,
                 stroke: true,
@@ -930,14 +927,14 @@ async function renderAlertPolygons(lat, lon, selectedAlertTitle = null) {
         }
     });
 
-    // Add normal layers first, then selected layers on top for z-index ordering
+    // Render normal layers first, then selected layers on top so highlights aren't hidden
     normalLayers.forEach(layer => window.alertPolygonsLayerGroup.addLayer(layer));
     selectedLayers.forEach(layer => {
         window.alertPolygonsLayerGroup.addLayer(layer);
         if (typeof layer.openTooltip === "function") layer.openTooltip();
     });
 
-    // Adjust map bounds prioritizing the selected alert line/polygon
+    // Zoom prioritizing the selected shape/line bounds
     if (mapInstance) {
         if (selectedBounds.length > 0) {
             mapInstance.fitBounds(selectedBounds, { padding: [40, 40], maxZoom: 12 });
