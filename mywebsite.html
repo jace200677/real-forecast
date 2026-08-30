@@ -617,9 +617,9 @@ function openViewAlertsModal(targetZoneOrPoint) {
         modal.style.display = "flex";
     }
 
-    // Extract lat/lon directly from targetZoneOrPoint, falling back to window.activeAlerts or defaults
-    const lat = typeof targetZoneOrPoint !== 'undefined' && targetZoneOrPoint?.lat ? parseFloat(targetZoneOrPoint.lat) : 45.0;
-    const lon = typeof targetZoneOrPoint !== 'undefined' && targetZoneOrPoint?.lon ? parseFloat(targetZoneOrPoint.lon) : -93.0;
+    // Extract default center point
+    const lat = (typeof targetZoneOrPoint !== 'undefined' && targetZoneOrPoint?.lat) ? parseFloat(targetZoneOrPoint.lat) : 45.0;
+    const lon = (typeof targetZoneOrPoint !== 'undefined' && targetZoneOrPoint?.lon) ? parseFloat(targetZoneOrPoint.lon) : -93.0;
 
     // Initialize Map if not built yet
     if (!userAlertMap) {
@@ -633,23 +633,25 @@ function openViewAlertsModal(targetZoneOrPoint) {
         alertPolygonsLayerGroup = L.layerGroup().addTo(userAlertMap);
     }
 
-    // Recalculate leaflet map dimensions once visible
+    // Recalculate leaflet map dimensions once visible, then adjust camera bounds
     setTimeout(() => {
-        if (userAlertMap) userAlertMap.invalidateSize();
-    }, 100);
+        if (userAlertMap) {
+            userAlertMap.invalidateSize();
 
-    // Populate active alerts list container
+            // Determine alerts payload to render
+            const alertsData = (Array.isArray(targetZoneOrPoint) && targetZoneOrPoint.length > 0)
+                ? targetZoneOrPoint 
+                : (window.allAlerts || window.rawAlerts || window.activeAlerts || []);
+
+            if (typeof renderAlertPolygons === "function") {
+                renderAlertPolygons(alertsData);
+            }
+        }
+    }, 150);
+
+    // Populate active alerts list text container
     if (typeof renderActiveAlerts === "function") {
         renderActiveAlerts(lat, lon);
-    }
-
-    // Determine alerts payload and render map polygons
-    const alertsData = Array.isArray(targetZoneOrPoint) 
-        ? targetZoneOrPoint 
-        : (window.activeAlerts || []);
-
-    if (typeof renderAlertPolygons === "function") {
-        renderAlertPolygons(alertsData);
     }
 }
 function renderAlertPolygons(alerts) {
@@ -658,7 +660,7 @@ function renderAlertPolygons(alerts) {
     // Clear previous map layers
     alertPolygonsLayerGroup.clearLayers();
 
-    // Pull from provided alerts argument, unfiltered global store, or filtered activeAlerts
+    // Pull explicitly from provided alerts, global stores, or activeAlerts fallback
     const alertList = (Array.isArray(alerts) && alerts.length > 0) 
         ? alerts 
         : (window.allAlerts || window.rawAlerts || window.activeAlerts || []);
@@ -670,41 +672,30 @@ function renderAlertPolygons(alerts) {
         const title = alert.title || "Alert";
         const color = typeof getSeverityColor === "function" ? getSeverityColor(severity) : "#f0ad4e";
 
+        // Extract custom drawn points
+        let rawPoints = alert.latlngs || alert.points || alert.coordinates || alert.polygon_points;
+
+        // Parse JSON string formatted point arrays if stored as plain text
+        if (typeof rawPoints === 'string') {
+            try { 
+                rawPoints = JSON.parse(rawPoints); 
+            } catch (e) { 
+                rawPoints = null; 
+            }
+        }
+
         let polygonCoords = [];
 
-        // 1. Strict extraction of custom drawn point arrays (preserves exact drawn path)
-        const customPoints = alert.latlngs || alert.points || alert.coordinates || alert.polygon_points;
-
-        if (Array.isArray(customPoints) && customPoints.length > 0) {
-            polygonCoords = customPoints.map(pt => {
+        if (Array.isArray(rawPoints) && rawPoints.length > 0) {
+            polygonCoords = rawPoints.map(pt => {
                 if (Array.isArray(pt)) return [parseFloat(pt[0]), parseFloat(pt[1])];
                 if (pt && typeof pt === 'object') return [parseFloat(pt.lat), parseFloat(pt.lng ?? pt.lon)];
                 return null;
             }).filter(pt => pt && !isNaN(pt[0]) && !isNaN(pt[1]));
         }
 
-        // 2. Fallback to bounding box ONLY if no custom drawn points exist
-        if (polygonCoords.length === 0) {
-            const bottomLat = alert.bottomLat ?? alert.bottom_lat ?? alert.min_lat;
-            const topLat = alert.topLat ?? alert.top_lat ?? alert.max_lat;
-            const bottomLon = alert.bottomLon ?? alert.bottom_lon ?? alert.min_lon;
-            const topLon = alert.topLon ?? alert.top_lon ?? alert.max_lon;
-
-            if (bottomLat !== null && topLat !== null && bottomLon !== null && topLon !== null &&
-                !isNaN(bottomLat) && !isNaN(topLat) && !isNaN(bottomLon) && !isNaN(topLon)) {
-                
-                polygonCoords = [
-                    [parseFloat(bottomLat), parseFloat(bottomLon)],
-                    [parseFloat(topLat), parseFloat(bottomLon)],
-                    [parseFloat(topLat), parseFloat(topLon)],
-                    [parseFloat(bottomLat), parseFloat(topLon)]
-                ];
-            }
-        }
-
-        // Render multi-point polylines or irregular polygons directly
-        if (polygonCoords.length > 0) {
-            // Force polyline if specified or if path is open (fewer than 3 points)
+        // Render point lines and freeform polygons (Requires at least 2 points to draw)
+        if (polygonCoords.length >= 2) {
             const isPolyline = alert.isLine || alert.type === 'polyline' || polygonCoords.length < 3;
 
             const layer = isPolyline 
@@ -722,9 +713,10 @@ function renderAlertPolygons(alerts) {
         }
     });
 
-    // Fit map view to bound all custom shapes
-    if (boundsArray.length > 0 && typeof userAlertMap !== 'undefined' && userAlertMap) {
-        userAlertMap.fitBounds(boundsArray, { padding: [20, 20] });
+    // Auto-fit Leaflet camera to encompass all drawn paths nationwide
+    const mapInstance = typeof userAlertMap !== 'undefined' && userAlertMap ? userAlertMap : alertMap;
+    if (boundsArray.length > 0 && mapInstance) {
+        mapInstance.fitBounds(boundsArray, { padding: [30, 30] });
     }
 }
 async function cancelActiveAlert() {
