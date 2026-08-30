@@ -633,12 +633,12 @@ function openViewAlertsModal(targetZoneOrPoint) {
         alertPolygonsLayerGroup = L.layerGroup().addTo(userAlertMap);
     }
 
-    // Recalculate leaflet map dimensions once visible, then adjust camera bounds
+    // Recalculate leaflet map dimensions once visible, then render all nationwide polygons
     setTimeout(() => {
         if (userAlertMap) {
             userAlertMap.invalidateSize();
 
-            // Determine alerts payload to render
+            // Pull explicitly provided alerts or fall back to global out-of-bounds stores
             const alertsData = (Array.isArray(targetZoneOrPoint) && targetZoneOrPoint.length > 0)
                 ? targetZoneOrPoint 
                 : (window.allAlerts || window.rawAlerts || window.activeAlerts || []);
@@ -649,18 +649,48 @@ function openViewAlertsModal(targetZoneOrPoint) {
         }
     }, 150);
 
-    // Populate active alerts list text container
+    // Populate active alerts text list for local area
     if (typeof renderActiveAlerts === "function") {
         renderActiveAlerts(lat, lon);
     }
 }
+// 1. UPDATE YOUR ALERT INITIALIZATION / PARSER METHOD
+// Call this whenever raw alerts are parsed, fetched, or created via Leaflet Draw
+function processAndStoreAlerts(rawAlertData) {
+    const alertList = Array.isArray(rawAlertData) ? rawAlertData : [rawAlertData];
+
+    window.allAlerts = alertList.map(alert => {
+        let coords = alert.latlngs || alert.points || alert.coordinates || alert.polygon_points || [];
+
+        // If coordinates were saved as a JSON string, parse them into a JavaScript array
+        if (typeof coords === 'string') {
+            try { coords = JSON.parse(coords); } catch (e) { coords = []; }
+        }
+
+        // Handle Leaflet Draw layer event objects directly: e.layer.getLatLngs()
+        if (alert.layer && typeof alert.layer.getLatLngs === 'function') {
+            coords = alert.layer.getLatLngs();
+        }
+
+        return {
+            ...alert,
+            title: alert.title || alert.event || "Active Alert",
+            severity: alert.severity || "Medium",
+            isLine: alert.isLine || alert.type === 'polyline' || (Array.isArray(coords) && coords.length === 2),
+            latlngs: coords // Standardize point array key
+        };
+    });
+
+    return window.allAlerts;
+}
+
+// 2. UPDATED RENDER METHOD
 function renderAlertPolygons(alerts) {
     if (!alertPolygonsLayerGroup) return;
     
-    // Clear previous map layers
     alertPolygonsLayerGroup.clearLayers();
 
-    // Pull explicitly from provided alerts, global stores, or activeAlerts fallback
+    // Pull from provided alerts argument or global dataset
     const alertList = (Array.isArray(alerts) && alerts.length > 0) 
         ? alerts 
         : (window.allAlerts || window.rawAlerts || window.activeAlerts || []);
@@ -670,36 +700,54 @@ function renderAlertPolygons(alerts) {
     alertList.forEach(alert => {
         const severity = alert.severity || "Medium";
         const title = alert.title || "Alert";
-        const color = typeof getSeverityColor === "function" ? getSeverityColor(severity) : "#f0ad4e";
+        const color = typeof getSeverityColor === "function" ? getSeverityColor(severity) : "#3388ff";
 
-        // Extract custom drawn points
         let rawPoints = alert.latlngs || alert.points || alert.coordinates || alert.polygon_points;
 
-        // Parse JSON string formatted point arrays if stored as plain text
         if (typeof rawPoints === 'string') {
-            try { 
-                rawPoints = JSON.parse(rawPoints); 
-            } catch (e) { 
-                rawPoints = null; 
-            }
+            try { rawPoints = JSON.parse(rawPoints); } catch (e) { rawPoints = null; }
+        }
+
+        // Unwrap single-nested Leaflet array wrappers: [[[lat, lon], ...]] -> [[lat, lon], ...]
+        while (Array.isArray(rawPoints) && rawPoints.length === 1 && Array.isArray(rawPoints[0])) {
+            rawPoints = rawPoints[0];
         }
 
         let polygonCoords = [];
 
         if (Array.isArray(rawPoints) && rawPoints.length > 0) {
             polygonCoords = rawPoints.map(pt => {
-                if (Array.isArray(pt)) return [parseFloat(pt[0]), parseFloat(pt[1])];
-                if (pt && typeof pt === 'object') return [parseFloat(pt.lat), parseFloat(pt.lng ?? pt.lon)];
+                if (!pt) return null;
+
+                // Handle Array coordinates [lat, lon] or GeoJSON [lon, lat]
+                if (Array.isArray(pt)) {
+                    let lat = parseFloat(pt[0]);
+                    let lon = parseFloat(pt[1]);
+
+                    // Swap inverted GeoJSON coordinates if Longitude comes first
+                    if (Math.abs(lat) > 90 && Math.abs(lon) <= 90) {
+                        [lat, lon] = [lon, lat];
+                    }
+                    return [lat, lon];
+                }
+
+                // Handle Object coordinates { lat, lng } or { lat, lon }
+                if (typeof pt === 'object') {
+                    const lat = parseFloat(pt.lat ?? pt.latitude);
+                    const lon = parseFloat(pt.lng ?? pt.lon ?? pt.longitude);
+                    return [lat, lon];
+                }
+
                 return null;
             }).filter(pt => pt && !isNaN(pt[0]) && !isNaN(pt[1]));
         }
 
-        // Render point lines and freeform polygons (Requires at least 2 points to draw)
+        // Render line sequence matching custom drawn points
         if (polygonCoords.length >= 2) {
             const isPolyline = alert.isLine || alert.type === 'polyline' || polygonCoords.length < 3;
 
             const layer = isPolyline 
-                ? L.polyline(polygonCoords, { color: color, weight: 4, opacity: 0.85 })
+                ? L.polyline(polygonCoords, { color: color, weight: 5, opacity: 0.85 })
                 : L.polygon(polygonCoords, {
                     color: color,
                     fillColor: color,
@@ -708,13 +756,15 @@ function renderAlertPolygons(alerts) {
                   });
 
             layer.bindPopup(`<b>${title}</b><br>Severity: ${severity}`);
+            layer.bindTooltip(`<b>${title}</b> (${severity})`, { sticky: true });
+
             alertPolygonsLayerGroup.addLayer(layer);
             boundsArray.push(...polygonCoords);
         }
     });
 
-    // Auto-fit Leaflet camera to encompass all drawn paths nationwide
-    const mapInstance = typeof userAlertMap !== 'undefined' && userAlertMap ? userAlertMap : alertMap;
+    // Auto-fit camera view to display all drawn paths
+    const mapInstance = (typeof userAlertMap !== 'undefined' && userAlertMap) ? userAlertMap : alertMap;
     if (boundsArray.length > 0 && mapInstance) {
         mapInstance.fitBounds(boundsArray, { padding: [30, 30] });
     }
@@ -854,14 +904,47 @@ function initAlertMap() {
     alertMap.on(L.Draw.Event.CREATED, function (e) {
         drawnItems.clearLayers(); // Keep only the latest drawn path
         const layer = e.layer;
+        const layerType = e.layerType; // 'polyline' or 'polygon'
         drawnItems.addLayer(layer);
 
-        // Extract bounding box (Min/Max Lat & Lon)
+        // 1. Extract bounding box (Min/Max Lat & Lon) for form inputs
         const bounds = layer.getBounds();
-        document.getElementById('alert-bottom-lat').value = bounds.getSouth().toFixed(6);
-        document.getElementById('alert-top-lat').value = bounds.getNorth().toFixed(6);
-        document.getElementById('alert-bottom-lon').value = bounds.getWest().toFixed(6);
-        document.getElementById('alert-top-lon').value = bounds.getEast().toFixed(6);
+        const bottomLatEl = document.getElementById('alert-bottom-lat');
+        const topLatEl = document.getElementById('alert-top-lat');
+        const bottomLonEl = document.getElementById('alert-bottom-lon');
+        const topLonEl = document.getElementById('alert-top-lon');
+
+        if (bottomLatEl) bottomLatEl.value = bounds.getSouth().toFixed(6);
+        if (topLatEl) topLatEl.value = bounds.getNorth().toFixed(6);
+        if (bottomLonEl) bottomLonEl.value = bounds.getWest().toFixed(6);
+        if (topLonEl) topLonEl.value = bounds.getEast().toFixed(6);
+
+        // 2. Extract exact point coordinates (latlngs) for custom path rendering
+        let rawLatLngs = layer.getLatLngs();
+        
+        // Leaflet polygons enclose points in an extra array layer: [[[lat, lng], ...]] -> [[lat, lng], ...]
+        while (Array.isArray(rawLatLngs) && rawLatLngs.length === 1 && Array.isArray(rawLatLngs[0])) {
+            rawLatLngs = rawLatLngs[0];
+        }
+
+        // Convert Leaflet LatLng objects into standard [lat, lng] array format
+        const pointArray = rawLatLngs.map(pt => [
+            parseFloat(pt.lat.toFixed(6)), 
+            parseFloat(pt.lng.toFixed(6))
+        ]);
+
+        // 3. Store point sequence & shape type in hidden form inputs or global state
+        window.currentDrawnAlert = {
+            type: layerType,
+            isLine: layerType === 'polyline',
+            latlngs: pointArray
+        };
+
+        // If you use a hidden input field in your form to submit point arrays to the backend:
+        const pointsInput = document.getElementById('alert-latlngs') || document.getElementById('alert-points');
+        if (pointsInput) {
+            pointsInput.value = JSON.stringify(pointArray);
+        }
     });
 }
 async function verifyDeviceAccess() {
