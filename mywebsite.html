@@ -658,10 +658,10 @@ function renderAlertPolygons(alerts) {
     // Clear previous map layers
     alertPolygonsLayerGroup.clearLayers();
 
-    // Pull from provided alerts argument or global active alerts state
+    // Pull from provided alerts argument, unfiltered global store, or filtered activeAlerts
     const alertList = (Array.isArray(alerts) && alerts.length > 0) 
         ? alerts 
-        : (window.activeAlerts || []);
+        : (window.allAlerts || window.rawAlerts || window.activeAlerts || []);
 
     const boundsArray = [];
 
@@ -703,11 +703,10 @@ function renderAlertPolygons(alerts) {
             }
         }
 
-        // Render the layer on map if valid coordinates exist
+        // Render the layer on map regardless of whether it's in the user's immediate vicinity
         if (polygonCoords.length > 0) {
             const isPolyline = alert.isLine || alert.type === 'polyline';
 
-            // Draw either a closed custom polygon or open polyline based on type
             const layer = isPolyline 
                 ? L.polyline(polygonCoords, { color: color, weight: 3 })
                 : L.polygon(polygonCoords, {
@@ -723,7 +722,7 @@ function renderAlertPolygons(alerts) {
         }
     });
 
-    // Fit map camera around all rendered custom lines and polygons
+    // Automatically zoom/fit map camera to reveal all rendered polygons across all areas
     if (boundsArray.length > 0 && userAlertMap) {
         userAlertMap.fitBounds(boundsArray, { padding: [20, 20] });
     }
