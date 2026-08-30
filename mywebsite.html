@@ -740,10 +740,8 @@ function openViewAlertsModal(targetZoneOrPoint) {
     const lat = typeof targetZoneOrPoint !== 'undefined' && targetZoneOrPoint ? parseFloat(targetZoneOrPoint.lat) : 45.0;
     const lon = typeof targetZoneOrPoint !== 'undefined' && targetZoneOrPoint ? parseFloat(targetZoneOrPoint.lon) : -93.0;
 
-    // Pass coordinates directly to render routines without localStorage
-    if (typeof fetchUserLocationAndCheckAlerts === "function") {
-        fetchUserLocationAndCheckAlerts(lat, lon);
-    } else if (typeof renderActiveAlerts === "function") {
+    // Call renderActiveAlerts directly with in-memory coordinates
+    if (typeof renderActiveAlerts === "function") {
         renderActiveAlerts(lat, lon);
     }
 }
