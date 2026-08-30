@@ -542,6 +542,53 @@ let targetZoneOrPoint = null;
 let currentSearchState = null;
 let uploadedFiles = [];
 
+function cancelActiveAlert() {
+    // Fetch all currently active local alerts and any server alerts if available
+    let localAlerts = JSON.parse(window.localStorage.getItem("LOCAL_PUBLIC_ALERTS") || "[]");
+    
+    if (localAlerts.length === 0) {
+        alert("No active local alerts available to cancel.");
+        return;
+    }
+
+    // Build a formatted selection list for the prompt window
+    let listPrompt = "Select the number of the alert you want to cancel:\n\n";
+    localAlerts.forEach((alert, index) => {
+        listPrompt += `[${index + 1}] ${alert.title} (Severity: ${alert.severity})\n`;
+    });
+
+    let selectedIndexStr = prompt(listPrompt, "1");
+    if (!selectedIndexStr) return; // User canceled the prompt
+
+    let selectedIndex = parseInt(selectedIndexStr.trim(), 10) - 1;
+
+    if (isNaN(selectedIndex) || selectedIndex < 0 || selectedIndex >= localAlerts.length) {
+        alert("Invalid selection. Operation canceled.");
+        return;
+    }
+
+    let alertToCancel = localAlerts[selectedIndex];
+
+    // Optionally send cancellation request to backend API if needed
+    fetch('/api/v1/alerts/cancel', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+        body: JSON.stringify({ title: alertToCancel.title })
+    }).catch(err => console.log("Backend cancellation sync skipped, removing locally."));
+
+    // Remove the selected alert from local storage array
+    localAlerts.splice(selectedIndex, 1);
+    window.localStorage.setItem("LOCAL_PUBLIC_ALERTS", JSON.stringify(localAlerts));
+
+    alert(`Successfully cancelled and removed alert: "${alertToCancel.title}"`);
+
+    // Refresh UI if render function exists
+    if (typeof fetchUserLocationAndCheckAlerts === "function") {
+        fetchUserLocationAndCheckAlerts();
+    } else if (typeof renderActiveAlerts === "function") {
+        renderActiveAlerts(localAlerts);
+    }
+}
 
 async function verifyDeviceAccess() {
     const broadcastBtn = document.getElementById("broadcast-alert-btn");
