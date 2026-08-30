@@ -605,60 +605,114 @@ let geofenceMap = null;
 let drawnItems = null;
 
 function openAlertModal() {
-    document.getElementById('alert-modal').style.display = 'flex';
+    const modal = document.getElementById('alert-modal');
+    modal.style.display = 'flex';
     
-    // Initialize the map and drawing tools only once when the modal opens
-    if (!geofenceMap) {
-        geofenceMap = L.map('geofence-map').setView([37.8, -96], 4);
-        
-        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-            attribution: '&copy; OpenStreetMap contributors'
-        }).addTo(geofenceMap);
-
-        // FeatureGroup to store editable layers
-        drawnItems = new L.FeatureGroup();
-        geofenceMap.addLayer(drawnItems);
-
-        // Initialize Leaflet.draw control for polygons
-        const drawControl = new L.Control.Draw({
-            edit: {
-                featureGroup: drawnItems,
-                remove: true
-            },
-            draw: {
-                polygon: {
-                    allowIntersection: false,
-                    shapeOptions: {
-                        color: '#ff4444',
-                        weight: 3,
-                        fillOpacity: 0.3
-                    }
-                },
-                // Disable other shapes to focus strictly on NWS impact polygons
-                polyline: false,
-                circle: false,
-                rectangle: false,
-                marker: false,
-                circlemarker: false
-            }
-        });
-        geofenceMap.addControl(drawControl);
-
-        // Event listener when a polygon is successfully created
-        geofenceMap.on(L.Draw.Event.CREATED, function (e) {
-            // Clear previous polygon if you only want one active warning area at a time
-            drawnItems.clearLayers();
+    // Defer initialization or refresh slightly to ensure modal is rendered and dimensions are computed
+    setTimeout(() => {
+        if (!geofenceMap) {
+            geofenceMap = L.map('geofence-map').setView([37.8, -96], 4);
             
-            const layer = e.layer;
-            drawnItems.addLayer(layer);
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                attribution: '&copy; OpenStreetMap contributors'
+            }).addTo(geofenceMap);
 
-            // Extract lat/lng coordinates for NWS alert submission
-            const latLngs = layer.getLatLngs()[0];
-            console.log("NWS Polygon Coordinates:", latLngs);
-        });
+            drawnItems = new L.FeatureGroup();
+            geofenceMap.addLayer(drawnItems);
 
-    } else {
-        // Refresh dimensions if already initialized
+            const drawControl = new L.Control.Draw({
+                edit: {
+                    featureGroup: drawnItems,
+                    remove: true
+                },
+                draw: {
+                    polygon: {
+                        allowIntersection: false,
+                        shapeOptions: {
+                            color: '#ff4444',
+                            weight: 3,
+                            fillOpacity: 0.3
+                        }
+                    },
+                    polyline: false,
+                    circle: false,
+                    rectangle: false,
+                    marker: false,
+                    circlemarker: false
+                }
+            });
+            geofenceMap.addControl(drawControl);
+
+            geofenceMap.on(L.Draw.Event.CREATED, function (e) {
+                drawnItems.clearLayers();
+                const layer = e.layer;
+                drawnItems.addLayer(layer);
+                console.log("NWS Polygon Coordinates:", layer.getLatLngs()[0]);
+            });
+        }
+        
+        // Force Leaflet to recalculate container size now that modal is visible
+        geofenceMap.invalidateSize();
+    }, 50);
+}
+let geofenceMap = null;
+let drawnItems = null;
+
+function openAlertModal() {
+    const modal = document.getElementById('alert-modal');
+    modal.style.display = 'flex';
+    
+    // Defer initialization or refresh slightly to ensure modal is rendered and dimensions are computed
+    setTimeout(() => {
+        if (!geofenceMap) {
+            geofenceMap = L.map('geofence-map').setView([37.8, -96], 4);
+            
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                attribution: '&copy; OpenStreetMap contributors'
+            }).addTo(geofenceMap);
+
+            drawnItems = new L.FeatureGroup();
+            geofenceMap.addLayer(drawnItems);
+
+            const drawControl = new L.Control.Draw({
+                edit: {
+                    featureGroup: drawnItems,
+                    remove: true
+                },
+                draw: {
+                    polygon: {
+                        allowIntersection: false,
+                        shapeOptions: {
+                            color: '#ff4444',
+                            weight: 3,
+                            fillOpacity: 0.3
+                        }
+                    },
+                    polyline: false,
+                    circle: false,
+                    rectangle: false,
+                    marker: false,
+                    circlemarker: false
+                }
+            });
+            geofenceMap.addControl(drawControl);
+
+            geofenceMap.on(L.Draw.Event.CREATED, function (e) {
+                drawnItems.clearLayers();
+                const layer = e.layer;
+                drawnItems.addLayer(layer);
+                console.log("NWS Polygon Coordinates:", layer.getLatLngs()[0]);
+            });
+        }
+        
+        // Force Leaflet to recalculate container size now that modal is visible
+        geofenceMap.invalidateSize();
+    }, 50);
+}
+
+// Global helper to trigger map updates externally if needed
+function renderMap() {
+    if (geofenceMap) {
         geofenceMap.invalidateSize();
     }
 }
