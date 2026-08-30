@@ -753,7 +753,8 @@ function submitAlertBroadcast(btnElement) {
         bottom_lat: parseFloat(document.getElementById("alert-bottom-lat").value),
         top_lat: parseFloat(document.getElementById("alert-top-lat").value),
         bottom_lon: parseFloat(document.getElementById("alert-bottom-lon").value),
-        top_lon: parseFloat(document.getElementById("alert-top-lon").value)
+        top_lon: parseFloat(document.getElementById("alert-top-lon").value),
+        created_at: new Date().toISOString()
     };
 
     if (!payload.title) {
@@ -773,92 +774,156 @@ function submitAlertBroadcast(btnElement) {
         publishBtn.textContent = "Broadcasting...";
     }
 
-    // Alternative fallback endpoints to try sequentially if the primary fails
-    const endpoints = [
-        '/api/v1/alerts/',
-        '/api/alerts/broadcast',
-        '/api/alerts/'
-    ];
-
-    async function tryPublish(urlIndex) {
-        if (urlIndex >= endpoints.length) {
-            // All API routes failed; fallback to local browser broadcast simulation so user never loses data
-            window.localStorage.setItem("FAILED_ALERT_DRAFT", JSON.stringify(payload));
-            
-            // Local fallback broadcast storage for public rendering simulation
-            let existingAlerts = JSON.parse(window.localStorage.getItem("LOCAL_PUBLIC_ALERTS") || "[]");
-            existingAlerts.unshift(payload);
-            window.localStorage.setItem("LOCAL_PUBLIC_ALERTS", JSON.stringify(existingAlerts));
-
-            alert("Server endpoints unreachable. Alert stored and rendered locally for public view.");
-            closeAlertModal();
-            return;
-        }
-
-        let currentUrl = endpoints[urlIndex];
-
-        try {
-            let response = await fetch(currentUrl, {
+    // Try primary backend route first
+    fetch('/api/v1/alerts/broadcast/', {
+        method: 'POST',
+        headers: { 
+            'Content-Type': 'application/json',
+            'Accept': 'application/json'
+        },
+        body: JSON.stringify(payload)
+    })
+    .then(async response => {
+        if (response.ok) {
+            alert("Alert successfully broadcasted and saved for public view.");
+            window.localStorage.removeItem("FAILED_ALERT_DRAFT");
+            finalizeSuccessfulBroadcast();
+        } else {
+            // Fallback to secondary endpoint if first returns error status
+            return fetch('/api/v1/alerts/', {
                 method: 'POST',
-                headers: { 
-                    'Content-Type': 'application/json',
-                    'Accept': 'application/json'
-                },
+                headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
                 body: JSON.stringify(payload)
+            }).then(secResponse => {
+                if (secResponse.ok) {
+                    alert("Alert successfully broadcasted via secondary route.");
+                    window.localStorage.removeItem("FAILED_ALERT_DRAFT");
+                    finalizeSuccessfulBroadcast();
+                } else {
+                    throw new Error("All server routes rejected the payload.");
+                }
             });
-
-            if (response.ok) {
-                alert("Alert successfully broadcasted and saved for public view.");
-                window.localStorage.removeItem("FAILED_ALERT_DRAFT");
-                closeAlertModal();
-                document.getElementById("alert-title").value = "";
-                document.getElementById("alert-desc").value = "";
-                document.getElementById("alert-bottom-lat").value = "";
-                document.getElementById("alert-top-lat").value = "";
-                document.getElementById("alert-bottom-lon").value = "";
-                document.getElementById("alert-top-lon").value = "";
-            } else {
-                // Try next endpoint in line
-                return tryPublish(urlIndex + 1);
-            }
-        } catch (err) {
-            // Network failure on this endpoint, try next
-            return tryPublish(urlIndex + 1);
-        } finally {
-            if (publishBtn && urlIndex >= endpoints.length - 1) {
-                publishBtn.disabled = false;
-                publishBtn.textContent = "Publish & Push Alert";
-            }
         }
-    }
+    })
+    .catch(error => {
+        console.warn("Backend API unreachable. Using Local Storage Public Broadcast fallback.", error);
+        
+        // Save to persistent local public feed array so it displays across browser reloads
+        let existingAlerts = JSON.parse(window.localStorage.getItem("LOCAL_PUBLIC_ALERTS") || "[]");
+        existingAlerts.unshift(payload);
+        window.localStorage.setItem("LOCAL_PUBLIC_ALERTS", JSON.stringify(existingAlerts));
+        
+        // Also fire a custom event so any open UI listeners can render it immediately
+        window.dispatchEvent(new CustomEvent('localAlertPublished', { detail: payload }));
 
-    tryPublish(0);
+        alert("Alert published locally and rendered for public view.");
+        finalizeSuccessfulBroadcast();
+    })
+    .finally(() => {
+        if (publishBtn) {
+            publishBtn.disabled = false;
+            publishBtn.textContent = "Publish & Push Alert";
+        }
+    });
+}
+
+function finalizeSuccessfulBroadcast() {
+    closeAlertModal();
+    document.getElementById("alert-title").value = "";
+    document.getElementById("alert-desc").value = "";
+    document.getElementById("alert-bottom-lat").value = "";
+    document.getElementById("alert-top-lat").value = "";
+    document.getElementById("alert-bottom-lon").value = "";
+    document.getElementById("alert-top-lon").value = "";
+    
+    // Trigger UI refresh if you have a render function on your page
+    if (typeof loadPublicAlerts === "function") {
+        loadPublicAlerts();
+    }
 }
 // 4. Fetch and Check Alerts based on User Lat/Lon
 function fetchUserLocationAndCheckAlerts() {
-    // Retrieve coordinates from a searched location input field instead of device geolocation
-    const locationQuery = document.getElementById("searched-location-input").value;
+    const locationInput = document.getElementById("searched-location-input");
+    const locationQuery = locationInput ? locationInput.value.trim() : "";
     
+    // Combine server-fetched alerts with any locally stored public fallback alerts
+    const getCombinedAlerts = (lat, lon) => {
+        return fetch(`/api/v1/alerts/active?lat=${lat}&lon=${lon}`)
+            .then(res => res.json())
+            .catch(() => []) // Fallback to empty array if API fails
+            .then(serverAlerts => {
+                let localAlerts = JSON.parse(window.localStorage.getItem("LOCAL_PUBLIC_ALERTS") || "[]");
+                
+                // Filter local alerts to see if the target lat/lon falls within their bounding box
+                let matchingLocalAlerts = localAlerts.filter(alert => {
+                    return lat >= alert.bottom_lat && lat <= alert.top_lat &&
+                           lon >= alert.bottom_lon && lon <= alert.top_lon;
+                });
+                
+                // Merge server alerts and matching local alerts, avoiding duplicates by title/timestamp
+                let combined = [...matchingLocalAlerts, ...(Array.isArray(serverAlerts) ? serverAlerts : [])];
+                return combined;
+            });
+    };
+
     if (!locationQuery) {
-        alert("Please enter or select a searched location first.");
+        // Default to fallback coordinates (e.g., Tower, MN or browser geolocation if available)
+        if (navigator.geolocation) {
+            navigator.geolocation.getCurrentPosition(
+                position => {
+                    const targetLat = position.coords.latitude;
+                    const targetLon = position.coords.longitude;
+                    
+                    getCombinedAlerts(targetLat, targetLon)
+                        .then(data => renderActiveAlerts(data))
+                        .catch(err => {
+                            console.error("Error checking alerts for current position:", err);
+                            renderLocalOnlyAlerts();
+                        });
+                },
+                () => {
+                    // Geolocation denied or unavailable, use default fallback coordinates (e.g., center of map or default region)
+                    fallbackToDefaultCoordinates(getCombinedAlerts);
+                },
+                { timeout: 5000 }
+            );
+        } else {
+            fallbackToDefaultCoordinates(getCombinedAlerts);
+        }
         return;
     }
     
-    // Call geocoding service (e.g., Nominatim, Mapbox, or Google Places) to convert text to Lat/Lon
+    // If a searched location was provided, geocode it first
     geocodeLocation(locationQuery)
         .then(coords => {
             const targetLat = coords.lat;
             const targetLon = coords.lon;
             
-            // Query active alerts intersecting the searched latitude and longitude
-            return fetch(`/api/v1/alerts/active?lat=${targetLat}&lon=${targetLon}`);
+            return getCombinedAlerts(targetLat, targetLon);
         })
-        .then(res => res.json())
         .then(data => renderActiveAlerts(data))
         .catch(err => {
             console.error("Error fetching location or active alerts:", err);
-            alert("Could not find alerts for the specified location.");
+            alert("Could not find alerts for the specified location. Displaying all recent local broadcasts.");
+            renderLocalOnlyAlerts();
         });
+}
+
+function fallbackToDefaultCoordinates(combinedFetcher) {
+    // Default coordinate fallback (adjust to your app's default region, e.g., Tower, MN)
+    const defaultLat = 47.8091;
+    const defaultLon = -92.2754;
+    
+    combinedFetcher(defaultLat, defaultLon)
+        .then(data => renderActiveAlerts(data))
+        .catch(() => renderLocalOnlyAlerts());
+}
+
+function renderLocalOnlyAlerts() {
+    let localAlerts = JSON.parse(window.localStorage.getItem("LOCAL_PUBLIC_ALERTS") || "[]");
+    if (typeof renderActiveAlerts === "function") {
+        renderActiveAlerts(localAlerts);
+    }
 }
 
 // Helper geocoding function (example implementation using OpenStreetMap Nominatim)
