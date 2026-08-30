@@ -602,15 +602,62 @@ async function generateHardwareFingerprint() {
 }
 let geofenceMap = null;
 
+let geofenceMap = null;
+let drawnItems = null;
+
 function openAlertModal() {
     document.getElementById('alert-modal').style.display = 'flex';
     
-    // Initialize the map only once when the modal opens
+    // Initialize the map and drawing tools only once when the modal opens
     if (!geofenceMap) {
-        geofenceMap = L.map('geofence-map').setView([37.8, -96], 4); // Adjust center/zoom as needed
+        geofenceMap = L.map('geofence-map').setView([37.8, -96], 4);
+        
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
             attribution: '&copy; OpenStreetMap contributors'
         }).addTo(geofenceMap);
+
+        // FeatureGroup to store editable layers
+        drawnItems = new L.FeatureGroup();
+        geofenceMap.addLayer(drawnItems);
+
+        // Initialize Leaflet.draw control for polygons
+        const drawControl = new L.Control.Draw({
+            edit: {
+                featureGroup: drawnItems,
+                remove: true
+            },
+            draw: {
+                polygon: {
+                    allowIntersection: false,
+                    shapeOptions: {
+                        color: '#ff4444',
+                        weight: 3,
+                        fillOpacity: 0.3
+                    }
+                },
+                // Disable other shapes to focus strictly on NWS impact polygons
+                polyline: false,
+                circle: false,
+                rectangle: false,
+                marker: false,
+                circlemarker: false
+            }
+        });
+        geofenceMap.addControl(drawControl);
+
+        // Event listener when a polygon is successfully created
+        geofenceMap.on(L.Draw.Event.CREATED, function (e) {
+            // Clear previous polygon if you only want one active warning area at a time
+            drawnItems.clearLayers();
+            
+            const layer = e.layer;
+            drawnItems.addLayer(layer);
+
+            // Extract lat/lng coordinates for NWS alert submission
+            const latLngs = layer.getLatLngs()[0];
+            console.log("NWS Polygon Coordinates:", latLngs);
+        });
+
     } else {
         // Refresh dimensions if already initialized
         geofenceMap.invalidateSize();
@@ -634,7 +681,6 @@ function closeViewAlertsModal() {
 
 // Global map variables
 let geofenceMap;
-let drawnItems;
 let drawControl;
 
 function initPolygonMap() {
