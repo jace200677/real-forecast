@@ -692,28 +692,34 @@ function processAndStoreAlerts(rawAlertData) {
     return window.allAlerts;
 }
 async function renderAlertPolygons(lat, lon, selectedAlertTitle = null) {
+    // 1. Resolve active Leaflet map instance
     const mapInstance = window.alertsMap 
         || ((typeof userAlertMap !== 'undefined' && userAlertMap) ? userAlertMap : null)
         || ((typeof alertMap !== 'undefined' && alertMap) ? alertMap : null);
 
+    // Initialize or attach layer group to map if missing
     if (!window.alertPolygonsLayerGroup) {
         window.alertPolygonsLayerGroup = L.layerGroup();
     }
-
+    
     if (mapInstance && !mapInstance.hasLayer(window.alertPolygonsLayerGroup)) {
         window.alertPolygonsLayerGroup.addTo(mapInstance);
     }
-
+    
     window.alertPolygonsLayerGroup.clearLayers();
 
+    // 2. Resolve user coordinates
     const userLat = !isNaN(parseFloat(lat)) ? parseFloat(lat) : (typeof targetZoneOrPoint !== 'undefined' && targetZoneOrPoint ? parseFloat(targetZoneOrPoint.lat) : 45.0);
     const userLon = !isNaN(parseFloat(lon)) ? parseFloat(lon) : (typeof targetZoneOrPoint !== 'undefined' && targetZoneOrPoint ? parseFloat(targetZoneOrPoint.lon) : -93.0);
 
     let rawAlerts = [];
 
+    // Parsing logic matching renderActiveAlerts exactly
     const parseAlertsText = (rawText, defaultSource = '') => {
         const parsedItems = [];
+
         try {
+            // 1. Try full JSON Parse
             const parsed = JSON.parse(rawText);
             const items = Array.isArray(parsed) ? parsed : (parsed.alerts || parsed.data || parsed.results || [parsed]);
             items.forEach(item => {
@@ -722,9 +728,12 @@ async function renderAlertPolygons(lat, lon, selectedAlertTitle = null) {
             });
             return parsedItems;
         } catch {
+            // 2. Parse multi-line or JSON fragment entries per line
             const lines = rawText.split(/\r?\n/).filter(line => line.trim() !== "");
+            
             lines.forEach(line => {
                 let alertObj = {};
+                
                 if (line.includes("{") && line.includes("}")) {
                     try {
                         const jsonMatch = line.match(/\{.*\}/);
@@ -754,6 +763,10 @@ async function renderAlertPolygons(lat, lon, selectedAlertTitle = null) {
                     start_time: alertObj.start_time || (startMatch ? startMatch[1].trim() : null),
                     end_time: alertObj.end_time || (endMatch ? endMatch[1].trim() : "Indefinite"),
                     latlngs: alertObj.latlngs || alertObj.points || alertObj.coordinates || null,
+                    bottomLat: isNaN(minLat) ? null : minLat,
+                    topLat: isNaN(maxLat) ? null : maxLat,
+                    bottomLon: isNaN(minLon) ? null : minLon,
+                    topLon: isNaN(maxLon) ? null : maxLon,
                     min_lat: isNaN(minLat) ? null : minLat,
                     max_lat: isNaN(maxLat) ? null : maxLat,
                     min_lon: isNaN(minLon) ? null : minLon,
@@ -761,21 +774,27 @@ async function renderAlertPolygons(lat, lon, selectedAlertTitle = null) {
                 });
             });
         }
+
         return parsedItems;
     };
 
+    // Severity color calculation using lookup map (no switch statement)
     const severityColors = {
-        extreme: '#d9534f',
-        severe: '#f0ad4e',
-        moderate: '#5bc0de',
-        minor: '#5cb85c'
+        extreme: '#d9534f', // Red
+        severe: '#f0ad4e',  // Orange
+        moderate: '#5bc0de',// Cyan/Blue
+        minor: '#5cb85c'    // Green
     };
 
     const resolveSeverityColor = (severity) => {
-        if (typeof getSeverityColor === "function") return getSeverityColor(severity);
-        return severityColors[(severity || '').toLowerCase()] || '#5cb85c';
+        if (typeof getSeverityColor === "function") {
+            return getSeverityColor(severity);
+        }
+        const key = (severity || '').toLowerCase();
+        return severityColors[key] || '#5cb85c';
     };
 
+    // 3. Fetch data in parallel from both alerts.txt and alertlines.txt
     try {
         const [alertsRes, linesRes] = await Promise.allSettled([
             fetch("https://raw.githubusercontent.com/jace200677/real-forecast/refs/heads/main/weather/alerts.txt"),
@@ -783,17 +802,23 @@ async function renderAlertPolygons(lat, lon, selectedAlertTitle = null) {
         ]);
 
         if (alertsRes.status === "fulfilled" && alertsRes.value.ok) {
-            rawAlerts.push(...parseAlertsText(await alertsRes.value.text(), "alerts.txt"));
+            const alertsText = await alertsRes.value.text();
+            rawAlerts.push(...parseAlertsText(alertsText, "alerts.txt"));
         }
+
         if (linesRes.status === "fulfilled" && linesRes.value.ok) {
-            rawAlerts.push(...parseAlertsText(await linesRes.value.text(), "alertlines.txt"));
+            const linesText = await linesRes.value.text();
+            rawAlerts.push(...parseAlertsText(linesText, "alertlines.txt"));
         }
     } catch (error) {
-        console.error("Failed to fetch remote alerts:", error);
+        console.error("Failed to fetch remote alerts and alert lines:", error);
     }
 
-    if (rawAlerts.length === 0) rawAlerts = window.activeAlerts || window.allAlerts || [];
+    if (rawAlerts.length === 0) {
+        rawAlerts = window.activeAlerts || window.allAlerts || [];
+    }
 
+    // 4. Filter out expired lines/alerts
     const now = new Date();
     const alertList = rawAlerts.filter(alert => {
         if (alert.end_time && String(alert.end_time).toLowerCase() !== "indefinite") {
@@ -805,16 +830,23 @@ async function renderAlertPolygons(lat, lon, selectedAlertTitle = null) {
 
     const boundsArray = [];
     const selectedBounds = [];
+
+    if (!isNaN(userLat) && !isNaN(userLon)) {
+        boundsArray.push([userLat, userLon]);
+    }
+
+    // Separate normal rendering from selected rendering so selected layers always draw on top
     const normalLayers = [];
     const selectedLayers = [];
 
-    if (!isNaN(userLat) && !isNaN(userLon)) boundsArray.push([userLat, userLon]);
-
+    // 5. Build layers and match selected item highlights to exact geometries
     alertList.forEach(alert => {
         const severity = alert.severity || "Minor";
         const title = alert.title || alert.header || "Alert Area";
+        
         const baseColor = resolveSeverityColor(severity);
 
+        // Flexible matching for selected alert title
         const isSelected = Boolean(
             selectedAlertTitle && 
             (
@@ -823,7 +855,9 @@ async function renderAlertPolygons(lat, lon, selectedAlertTitle = null) {
             )
         );
 
+        // Resolve latlngs coordinates array
         let rawPoints = alert.latlngs || alert.points || alert.coordinates;
+
         if (typeof rawPoints === 'string') {
             try { rawPoints = JSON.parse(rawPoints); } catch (e) { rawPoints = null; }
         }
@@ -833,45 +867,48 @@ async function renderAlertPolygons(lat, lon, selectedAlertTitle = null) {
         }
 
         let lineCoords = [];
+
         if (Array.isArray(rawPoints) && rawPoints.length > 0) {
             lineCoords = rawPoints.map(pt => {
                 if (!pt) return null;
+
                 if (Array.isArray(pt)) {
-                    let pLat = parseFloat(pt[0]), pLon = parseFloat(pt[1]);
-                    if (Math.abs(pLat) > 90 && Math.abs(pLon) <= 90) [pLat, pLon] = [pLon, pLat];
+                    let pLat = parseFloat(pt[0]);
+                    let pLon = parseFloat(pt[1]);
+
+                    if (Math.abs(pLat) > 90 && Math.abs(pLon) <= 90) {
+                        [pLat, pLon] = [pLon, pLat];
+                    }
                     return [pLat, pLon];
                 }
+
                 if (typeof pt === 'object') {
-                    return [parseFloat(pt.lat ?? pt.latitude), parseFloat(pt.lng ?? pt.lon ?? pt.longitude)];
+                    const pLat = parseFloat(pt.lat ?? pt.latitude);
+                    const pLon = parseFloat(pt.lng ?? pt.lon ?? pt.longitude);
+                    return [pLat, pLon];
                 }
+
                 return null;
             }).filter(pt => pt && !isNaN(pt[0]) && !isNaN(pt[1]));
-        } else if (alert.min_lat !== null && alert.max_lat !== null && alert.min_lon !== null && alert.max_lon !== null) {
-            lineCoords = [
-                [alert.min_lat, alert.min_lon],
-                [alert.max_lat, alert.min_lon],
-                [alert.max_lat, alert.max_lon],
-                [alert.min_lat, alert.max_lon],
-                [alert.min_lat, alert.min_lon]
-            ];
         }
 
         if (lineCoords.length >= 2) {
-            const explicitLineFlag = alert.isLine === true || alert.type === 'polyline' || alert.shape === 'line' || alert.shape === 'polyline' || alert._sourceFile === 'alertlines.txt';
+            const isExplicitLine = alert.isLine === true || alert.type === 'polyline' || alert.shape === 'line' || alert.shape === 'polyline';
             const firstPt = lineCoords[0];
             const lastPt = lineCoords[lineCoords.length - 1];
             const isClosedLoop = lineCoords.length >= 3 && firstPt[0] === lastPt[0] && firstPt[1] === lastPt[1];
 
-            const renderAsLine = explicitLineFlag && !isClosedLoop;
+            // Match polyline geometry vs polygon geometry
+            const renderAsLine = isExplicitLine || lineCoords.length < 3 || (!isClosedLoop && alert._sourceFile === "alertlines.txt");
 
+            // Define highlighted styles matching selected shape/line
             const layerOptions = {
                 color: isSelected ? "#ffff00" : baseColor,
                 stroke: true,
                 weight: isSelected ? 8 : (renderAsLine ? 5 : 3),
                 opacity: isSelected ? 1.0 : 0.85,
-                fill: !renderAsLine,
                 fillColor: baseColor,
-                fillOpacity: isSelected ? 0.65 : 0.35,
+                fillOpacity: renderAsLine ? 0 : (isSelected ? 0.6 : 0.35),
                 lineCap: 'round',
                 lineJoin: 'round'
             };
@@ -893,12 +930,14 @@ async function renderAlertPolygons(lat, lon, selectedAlertTitle = null) {
         }
     });
 
+    // Add normal layers first, then selected layers on top for z-index ordering
     normalLayers.forEach(layer => window.alertPolygonsLayerGroup.addLayer(layer));
     selectedLayers.forEach(layer => {
         window.alertPolygonsLayerGroup.addLayer(layer);
         if (typeof layer.openTooltip === "function") layer.openTooltip();
     });
 
+    // Adjust map bounds prioritizing the selected alert line/polygon
     if (mapInstance) {
         if (selectedBounds.length > 0) {
             mapInstance.fitBounds(selectedBounds, { padding: [40, 40], maxZoom: 12 });
