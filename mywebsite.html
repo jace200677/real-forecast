@@ -714,28 +714,25 @@ async function renderAlertPolygons(lat, lon) {
 
     let alertList = [];
 
-    // Helper function to parse JSON line by line without altering entries
-    const parseJsonText = (rawText) => {
+    // Helper function to parse JSON line-by-line without altering entry formats
+    const parseJsonText = (rawText, defaultSource = '') => {
         const parsedItems = [];
-        try {
-            const parsed = JSON.parse(rawText);
-            if (Array.isArray(parsed)) return parsed;
-            if (parsed && typeof parsed === 'object') return [parsed];
-        } catch {
-            const lines = rawText.split(/\r?\n/).filter(line => line.trim() !== "");
-            lines.forEach(line => {
-                try {
-                    const jsonMatch = line.match(/\{.*\}/);
-                    if (jsonMatch) {
-                        parsedItems.push(JSON.parse(jsonMatch[0]));
-                    } else {
-                        parsedItems.push(JSON.parse(line));
-                    }
-                } catch (e) {
-                    console.warn("Failed to parse JSON entry:", line);
+        const lines = rawText.split(/\r?\n/).filter(line => line.trim() !== "");
+        
+        lines.forEach(line => {
+            try {
+                const jsonMatch = line.match(/\{.*\}/);
+                const parsedObj = jsonMatch ? JSON.parse(jsonMatch[0]) : JSON.parse(line);
+                
+                if (defaultSource) {
+                    parsedObj._sourceFile = defaultSource;
                 }
-            });
-        }
+                parsedItems.push(parsedObj);
+            } catch (e) {
+                console.warn("Failed to parse JSON entry:", line);
+            }
+        });
+        
         return parsedItems;
     };
 
@@ -748,12 +745,12 @@ async function renderAlertPolygons(lat, lon) {
 
         if (alertsRes.status === "fulfilled" && alertsRes.value.ok) {
             const alertsText = await alertsRes.value.text();
-            alertList.push(...parseJsonText(alertsText));
+            alertList.push(...parseJsonText(alertsText, "alerts.txt"));
         }
 
         if (linesRes.status === "fulfilled" && linesRes.value.ok) {
             const linesText = await linesRes.value.text();
-            alertList.push(...parseJsonText(linesText));
+            alertList.push(...parseJsonText(linesText, "alertlines.txt"));
         }
     } catch (error) {
         console.error("Failed to fetch remote alerts and alert lines:", error);
@@ -779,7 +776,7 @@ async function renderAlertPolygons(lat, lon) {
         boundsArray.push([userLat, userLon]);
     }
 
-    // 5. Render polygons/lines strictly from latlngs coordinates with severity color fill
+    // 5. Render shapes with fills for alertlines polylines matching standard alert polygon styles
     alertList.forEach(alert => {
         const severity = alert.severity || "Medium";
         const title = alert.title || alert.header || "Alert Line";
@@ -826,24 +823,24 @@ async function renderAlertPolygons(lat, lon) {
         }
 
         if (lineCoords.length >= 2) {
-            // Check if explicitly marked as a line/polyline or selected item is NOT a closed polygon shape
+            const isFromAlertLines = alert._sourceFile === "alertlines.txt";
             const isExplicitLine = alert.isLine === true || alert.type === 'polyline' || alert.shape === 'line' || alert.shape === 'polyline';
             
-            // Check if coordinates auto-close (first point matches last point)
+            // Check if coordinates form a closed shape
             const firstPt = lineCoords[0];
             const lastPt = lineCoords[lineCoords.length - 1];
-            const isClosedShape = lineCoords.length >= 3 && firstPt[0] === lastPt[0] && firstPt[1] === lastPt[1];
+            const isClosedLoop = lineCoords.length >= 3 && firstPt[0] === lastPt[0] && firstPt[1] === lastPt[1];
 
-            // If it's an explicit line, has fewer than 3 points, or isn't a closed loop shape, render as polyline
-            const renderAsLine = isExplicitLine || lineCoords.length < 3 || !isClosedShape;
+            // Render as polyline if strictly marked as line without a closed loop; otherwise render filled polygon shape
+            const renderAsLine = isExplicitLine && !isClosedLoop && lineCoords.length < 3;
 
             const layerOptions = {
                 color: color,
                 stroke: true,
                 weight: renderAsLine ? 5 : 3,
                 opacity: 0.85,
-                fillColor: color,               // Inside fill color
-                fillOpacity: renderAsLine ? 0 : 0.4, // Fill inside area if it's a closed shape
+                fillColor: color,                       // Inside fill color matching severity
+                fillOpacity: (renderAsLine && !isFromAlertLines) ? 0 : 0.35, // Force inside fill for alertlines.txt shapes
                 lineCap: 'round',
                 lineJoin: 'round'
             };
