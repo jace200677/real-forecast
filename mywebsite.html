@@ -1099,33 +1099,62 @@ function fallbackToDefaultCoordinates(combinedFetcher) {
 async function renderLocalOnlyAlerts() {
     let localAlerts = JSON.parse(window.localStorage.getItem("LOCAL_PUBLIC_ALERTS") || "[]");
     let sharedAlerts = JSON.parse(window.localStorage.getItem("SHARED_PUBLIC_ALERTS") || "[]");
+    let githubAlerts = [];
     
-    // Fetch broadcasts from your GitHub raw text file
+    // Fetch broadcasts from GitHub raw text file (cache-busted)
     try {
-        const response = await fetch("https://raw.githubusercontent.com/jace200677/real-forecast/refs/heads/main/weather/alerts.txt");
+        const cacheBuster = new Date().getTime();
+        const response = await fetch(`https://raw.githubusercontent.com/jace200677/real-forecast/main/weather/alerts.txt?_t=${cacheBuster}`);
+        
         if (response.ok) {
             const textData = await response.text();
             
-            // Optional: Parse text data into an array of alerts (e.g., split by lines or JSON parse)
-            // Assuming each line is an alert or it contains text you want to display:
-            const remoteAlerts = textData.split("\n").filter(line => line.trim() !== "");
-            
-            if (remoteAlerts.length > 0) {
-                sharedAlerts = remoteAlerts;
-            }
+            // Parse non-empty lines; handle both JSON objects and raw strings
+            githubAlerts = textData
+                .split("\n")
+                .map(line => line.trim())
+                .filter(line => line.length > 0)
+                .map(line => {
+                    try {
+                        return JSON.parse(line);
+                    } catch (e) {
+                        return { title: line, description: line, severity: "Informational" };
+                    }
+                });
         }
     } catch (error) {
         console.warn("Could not fetch remote broadcasts from GitHub, falling back to local storage.", error);
     }
 
-    // Combine local, storage-shared, and GitHub-fetched alerts for everyone
-    let combinedAlerts = [...localAlerts, ...sharedAlerts];
+    // Combine local, shared storage, and GitHub alerts
+    let rawCombined = [...localAlerts, ...sharedAlerts, ...githubAlerts];
 
+    // Deduplicate alerts based on created_at timestamp or title
+    const seenKeys = new Set();
+    let combinedAlerts = rawCombined.filter(alertItem => {
+        if (!alertItem) return false;
+        
+        const key = typeof alertItem === "string" 
+            ? alertItem 
+            : (alertItem.created_at || `${alertItem.title}-${alertItem.start_time}`);
+            
+        if (seenKeys.has(key)) return false;
+        seenKeys.add(key);
+        return true;
+    });
+
+    // Update shared alerts storage for offline access
+    if (githubAlerts.length > 0) {
+        window.localStorage.setItem("SHARED_PUBLIC_ALERTS", JSON.stringify(githubAlerts));
+    }
+
+    // Render to UI
     if (typeof renderActiveAlerts === "function") {
         renderActiveAlerts(combinedAlerts);
     }
-}
 
+    return combinedAlerts;
+}
 // Helper geocoding function (example implementation using OpenStreetMap Nominatim)
 function geocodeLocation(query) {
     const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}`;
