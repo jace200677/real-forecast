@@ -743,12 +743,24 @@ function getDrawnPolygonCoordinates() {
 
     return coordinates;
 }
-function Broadcast(btnElement) {
-    const currentDevice = window.localStorage.getItem("DEVICE_NAME") || "UNKNOWN_DEVICE";
+// 3. Payload Dispatch & Persistence (Saves to backend DB for all users)
+function submitAlertBroadcast(btnElement) {
+    // Automatically retrieve the saved device name or prompt if missing/unknown
+    let currentDevice = window.localStorage.getItem("DEVICE_NAME");
+    
+    if (!currentDevice || currentDevice === "UNKNOWN_DEVICE" || currentDevice === "UNAUTHORIZED") {
+        let inputName = prompt("Device name not recognized. Enter your registered device name (e.g., JACES-PC or JACES-MOBILE-PC):", "JACES-PC");
+        if (inputName) {
+            currentDevice = inputName.trim().toUpperCase();
+            window.localStorage.setItem("DEVICE_NAME", currentDevice);
+        } else {
+            currentDevice = "UNKNOWN_DEVICE";
+        }
+    }
     
     // Quick security check to block unauthorized users
     if (typeof ALLOWED_DEVICES !== "undefined" && !ALLOWED_DEVICES.includes(currentDevice)) {
-        alert("Access Denied: You do not have administrator permissions to broadcast alerts.");
+        alert("Access Denied: " + currentDevice + " does not have administrator permissions to broadcast alerts.");
         return;
     }
 
@@ -812,27 +824,6 @@ function Broadcast(btnElement) {
         }
     });
 }
-
-const ALLOWED_DEVICES = ["JACES-PC", "JACES-MOBILE-PC"];
-
-async function generateHardwareFingerprint() {
-    const rawData = [
-        navigator.userAgent,
-        navigator.language,
-        screen.width,
-        screen.height,
-        new Date().getTimezoneOffset()
-    ].join('||');
-    
-    let hash = 0;
-    for (let i = 0; i < rawData.length; i++) {
-        hash = ((hash << 5) - hash) + rawData.charCodeAt(i);
-        hash |= 0;
-    }
-    return Math.abs(hash).toString(16);
-}
-
-
 // 4. Fetch and Check Alerts based on User Lat/Lon
 function fetchUserLocationAndCheckAlerts() {
     // Retrieve coordinates from a searched location input field instead of device geolocation
@@ -924,94 +915,7 @@ function renderActiveAlerts(alerts) {
         container.appendChild(alertCard);
     });
 }
-function submitAlertBroadcast(btnElement) {
-    const currentDevice = window.localStorage.getItem("DEVICE_NAME") || "UNKNOWN_DEVICE";
-    
-    // Quick security check to block unauthorized users
-    if (typeof ALLOWED_DEVICES !== "undefined" && !ALLOWED_DEVICES.includes(currentDevice)) {
-        alert("Access Denied: You do not have administrator permissions to broadcast alerts.");
-        return;
-    }
 
-    const payload = {
-        device_id: currentDevice,
-        title: document.getElementById("alert-title").value.trim(),
-        description: document.getElementById("alert-desc").value.trim(),
-        start_time: document.getElementById("alert-start").value,
-        end_time: document.getElementById("alert-end").value,
-        severity: document.getElementById("alert-severity").value,
-        bottom_lat: document.getElementById("alert-bottom-lat").value,
-        top_lat: document.getElementById("alert-top-lat").value,
-        bottom_lon: document.getElementById("alert-bottom-lon").value,
-        top_lon: document.getElementById("alert-top-lon").value
-    };
-
-    if (!payload.title) {
-        alert("Please enter a title for the alert.");
-        document.getElementById("alert-title").focus();
-        return;
-    }
-
-    if (!payload.bottom_lat || !payload.top_lat || !payload.bottom_lon || !payload.top_lon) {
-        alert("Please enter all bounding box coordinate fields (Bottom/Top Lat and Lon) before broadcasting.");
-        return;
-    }
-
-    const publishBtn = btnElement || (event && event.target ? event.target : null);
-    if (publishBtn) {
-        publishBtn.disabled = true;
-        publishBtn.textContent = "Broadcasting...";
-    }
-
-    fetch('/api/v1/alerts/broadcast', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-    })
-    .then(response => {
-        if (response.ok) {
-            alert("Alert successfully broadcasted and saved for public view.");
-            closeAlertModal();
-            document.getElementById("alert-title").value = "";
-            document.getElementById("alert-desc").value = "";
-            document.getElementById("alert-bottom-lat").value = "";
-            document.getElementById("alert-top-lat").value = "";
-            document.getElementById("alert-bottom-lon").value = "";
-            document.getElementById("alert-top-lon").value = "";
-        } else {
-            alert("Broadcast failed. Verify authorization permissions.");
-        }
-    })
-    .catch(error => {
-        console.error("Network or transmission error:", error);
-        alert("Failed to connect to the server. Please check your network connection.");
-    })
-    .finally(() => {
-        if (publishBtn) {
-            publishBtn.disabled = false;
-            publishBtn.textContent = "Publish & Push Alert";
-        }
-    });
-}
-
-const ALLOWED_DEVICES = ["JACES-PC", "JACES-MOBILE-PC"];
-
-async function generateHardwareFingerprint() {
-    const rawData = [
-        navigator.userAgent,
-        navigator.language,
-        screen.width,
-        screen.height,
-        new Date().getTimezoneOffset()
-    ].join('||');
-    
-    let hash = 0;
-    for (let i = 0; i < rawData.length; i++) {
-        hash = ((hash << 5) - hash) + rawData.charCodeAt(i);
-        hash |= 0;
-    }
-    return Math.abs(hash).toString(16);
-}
 function openUploadModal() {
     document.getElementById("uploadModal").style.display = "flex";
     const now = new Date();
