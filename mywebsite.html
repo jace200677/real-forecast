@@ -671,22 +671,37 @@ function getDrawnPolygonCoordinates() {
 }
 // 3. Payload Dispatch & Persistence (Saves to backend DB for all users)
 function submitAlertBroadcast() {
+    const coordinates = getDrawnPolygonCoordinates();
+
     const payload = {
-        device_id: window.localStorage.getItem("DEVICE_NAME"),
-        title: document.getElementById("alert-title").value,
-        description: document.getElementById("alert-desc").value,
+        device_id: window.localStorage.getItem("DEVICE_NAME") || "UNKNOWN_DEVICE",
+        title: document.getElementById("alert-title").value.trim(),
+        description: document.getElementById("alert-desc").value.trim(),
         start_time: document.getElementById("alert-start").value,
         end_time: document.getElementById("alert-end").value,
         severity: document.getElementById("alert-severity").value,
-        polygon_coordinates: getDrawnPolygonCoordinates() 
+        polygon_coordinates: coordinates 
     };
 
-    if (!payload.title || payload.polygon_coordinates.length === 0) {
-        alert("Please provide a title and draw an impact area on the map.");
+    if (!payload.title) {
+        alert("Please enter a title for the alert.");
+        document.getElementById("alert-title").focus();
         return;
     }
 
-    // Sends payload to server database so it becomes visible to other users
+    if (payload.polygon_coordinates.length === 0) {
+        alert("Please draw an NWS-style impact polygon on the map before broadcasting.");
+        return;
+    }
+
+    // Optional UI loading state feedback on the publish button
+    const publishBtn = event && event.target ? event.target : null;
+    if (publishBtn) {
+        publishBtn.disabled = true;
+        publishBtn.textContent = "Broadcasting...";
+    }
+
+    // Sends payload to server database so it becomes visible to all users
     fetch('/api/v1/alerts/broadcast', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -696,12 +711,27 @@ function submitAlertBroadcast() {
         if (response.ok) {
             alert("Alert successfully broadcasted and saved for public view.");
             closeAlertModal();
+            // Reset input fields if needed
+            document.getElementById("alert-title").value = "";
+            document.getElementById("alert-desc").value = "";
+            if (typeof drawnItems !== "undefined" && drawnItems) {
+                drawnItems.clearLayers();
+            }
         } else {
             alert("Broadcast failed. Verify authorization permissions.");
         }
+    })
+    .catch(error => {
+        console.error("Network or transmission error:", error);
+        alert("Failed to connect to the server. Please check your network connection.");
+    })
+    .finally(() => {
+        if (publishBtn) {
+            publishBtn.disabled = false;
+            publishBtn.textContent = "Publish & Push Alert";
+        }
     });
 }
-
 // 4. Fetch and Check Alerts based on User Lat/Lon
 function fetchUserLocationAndCheckAlerts() {
     // Retrieve coordinates from a searched location input field instead of device geolocation
@@ -732,17 +762,44 @@ function fetchUserLocationAndCheckAlerts() {
 // Helper geocoding function (example implementation using OpenStreetMap Nominatim)
 function geocodeLocation(query) {
     const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}`;
-    return fetch(url)
-        .then(response => response.json())
-        .then(results => {
-            if (results && results.length > 0) {
-                return {
-                    lat: parseFloat(results[0].lat),
-                    lon: parseFloat(results[0].lon)
-                };
+    
+    return fetch(url, {
+        headers: {
+            "User-Agent": "JACES-Weather-Alert-System/1.0 (contact@jaces.local)"
+        }
+    })
+    .then(response => {
+        if (!response.ok) {
+            throw new Error(`Nominatim network error: ${response.statusText}`);
+        }
+        return response.json();
+    })
+    .then(results => {
+        if (results && results.length > 0) {
+            const lat = parseFloat(results[0].lat);
+            const lon = parseFloat(results[0].lon);
+
+            // Automatically pan and center the Leaflet map and drop a marker for visual reference
+            if (typeof geofenceMap !== "undefined" && geofenceMap) {
+                geofenceMap.setView([lat, lon], 12);
+                
+                // Optional: Drop or move a marker/layer to pinpoint the searched location
+                if (typeof searchMarker !== "undefined" && searchMarker) {
+                    geofenceMap.removeLayer(searchMarker);
+                }
+                searchMarker = L.marker([lat, lon]).addTo(geofenceMap)
+                    .bindPopup(`<b>Searched Location:</b> ${query}`).openPopup();
             }
-            throw new Error("Location not found");
-        });
+
+            return { lat, lon };
+        }
+        throw new Error("Location not found");
+    })
+    .catch(error => {
+        console.error("Geocoding failed:", error);
+        alert("Could not find the specified location on the map.");
+        throw error;
+    });
 }
 
 function renderActiveAlerts(alerts) {
