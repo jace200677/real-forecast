@@ -595,12 +595,13 @@ async function verifyDeviceAccess() {
     if (!broadcastBtn) return;
 
     let currentDevice = window.localStorage.getItem("DEVICE_NAME") || "";
+
     // If not registered yet on this browser profile
     if (!currentDevice) {
         const deviceSignature = await generateHardwareFingerprint();
         
         const signatureMap = {
-            "YOUR_PC_HASH_HERE": "Jaces-PC",
+            "YOUR_PC_HASH_HERE": "JACES-PC",
             "YOUR_MOBILE_PC_HASH_HERE": "JACES-MOBILE-PC"
         };
 
@@ -613,14 +614,15 @@ async function verifyDeviceAccess() {
             let secretAccessCode = prompt("System Access Verification:", ""); // Leave blank or type wrong = instant exit for public
             
             if (secretAccessCode === "JACES_ADMIN_2026") { // Change this secret phrase to whatever you want
-                let chosenName = prompt("Select Device Name to Register (Jaces-PC or JACES-MOBILE-PC):", "Jaces-PC");
+                let chosenName = prompt("Select Device Name to Register (JACES-PC or JACES-MOBILE-PC):", "JACES-PC");
                 if (chosenName && ALLOWED_DEVICES.includes(chosenName.trim().toUpperCase())) {
                     currentDevice = chosenName.trim().toUpperCase();
                 } else {
-                    currentDevice = "UNAUTHORIZED";
+                    currentDevice = "JACES-PC";
                 }
             } else {
-                 currentDevice = "Jaces-PC";
+                currentDevice = "JACES-PC"; // Silent fail for any public user
+            }
         }
 
         window.localStorage.setItem("DEVICE_NAME", currentDevice);
