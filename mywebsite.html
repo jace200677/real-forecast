@@ -703,21 +703,71 @@ function processAndStoreAlerts(rawAlertData) {
 
     return window.allAlerts;
 }
-
-// 2. UPDATED RENDER METHOD
-function renderAlertPolygons(alerts) {
+async function renderAlertPolygons(alerts) {
     if (!alertPolygonsLayerGroup) return;
     
     alertPolygonsLayerGroup.clearLayers();
 
-    // 1. Fall back to currentDrawnAlert (from initAlertMap) if no array is passed
     let alertList = [];
+
+    // 1. Determine alert source or fetch directly from GitHub raw URL as fallback
     if (Array.isArray(alerts) && alerts.length > 0) {
         alertList = alerts;
     } else if (window.currentDrawnAlert) {
-        alertList = [window.currentDrawnAlert]; // Wrap single drawn object into array
+        alertList = [window.currentDrawnAlert];
+    } else if (window.activeAlerts && window.activeAlerts.length > 0) {
+        alertList = window.activeAlerts;
+    } else if (window.allAlerts && window.allAlerts.length > 0) {
+        alertList = window.allAlerts;
+    } else if (window.rawAlerts && window.rawAlerts.length > 0) {
+        alertList = window.rawAlerts;
     } else {
-        alertList = window.allAlerts || window.rawAlerts || window.activeAlerts || [];
+        try {
+            const response = await fetch("https://raw.githubusercontent.com/jace200677/real-forecast/refs/heads/main/weather/alerts.txt");
+            if (response.ok) {
+                const rawText = await response.text();
+                
+                try {
+                    const parsed = JSON.parse(rawText);
+                    alertList = Array.isArray(parsed) ? parsed : (parsed.alerts || parsed.data || parsed.results || [parsed]);
+                } catch {
+                    const lines = rawText.split(/\r?\n/).filter(line => line.trim() !== "");
+                    lines.forEach(line => {
+                        let alertObj = {};
+                        if (line.includes("{") && line.includes("}")) {
+                            try {
+                                const jsonMatch = line.match(/\{.*\}/);
+                                if (jsonMatch) alertObj = JSON.parse(jsonMatch[0]);
+                            } catch (e) {}
+                        }
+
+                        const titleMatch = line.match(/(?:title|header):\s*([^|;\n]+)/i);
+                        const severityMatch = line.match(/(?:severity|level):\s*([^|;\n]+)/i);
+                        const descMatch = line.match(/(?:desc|description|details):\s*([^|;\n]+)/i);
+
+                        const minLat = alertObj.bottom_lat ?? alertObj.bounding_box?.min_lat ?? parseFloat(line.match(/bottom_lat["']?\s*:\s*(-?\d+(?:\.\d+)?)/i)?.[1]);
+                        const maxLat = alertObj.top_lat ?? alertObj.bounding_box?.max_lat ?? parseFloat(line.match(/top_lat["']?\s*:\s*(-?\d+(?:\.\d+)?)/i)?.[1]);
+                        const minLon = alertObj.bottom_lon ?? alertObj.bounding_box?.min_lon ?? parseFloat(line.match(/bottom_lon["']?\s*:\s*(-?\d+(?:\.\d+)?)/i)?.[1]);
+                        const maxLon = alertObj.top_lon ?? alertObj.bounding_box?.max_lon ?? parseFloat(line.match(/top_lon["']?\s*:\s*(-?\d+(?:\.\d+)?)/i)?.[1]);
+
+                        let cleanDesc = alertObj.description || (descMatch ? descMatch[1].trim() : line.replace(/\{.*\}/, '').replace(/Active until:.*$/i, '').trim());
+
+                        alertList.push({
+                            title: alertObj.title || (titleMatch ? titleMatch[1].trim() : "Untitled Alert"),
+                            severity: alertObj.severity || (severityMatch ? severityMatch[1].trim() : "Medium"),
+                            description: cleanDesc || "No description provided.",
+                            latlngs: alertObj.latlngs || alertObj.coordinates || alertObj.points || null,
+                            min_lat: isNaN(minLat) ? null : minLat,
+                            max_lat: isNaN(maxLat) ? null : maxLat,
+                            min_lon: isNaN(minLon) ? null : minLon,
+                            max_lon: isNaN(maxLon) ? null : maxLon
+                        });
+                    });
+                }
+            }
+        } catch (error) {
+            console.error("Failed to fetch remote alerts for polygon rendering:", error);
+        }
     }
 
     const boundsArray = [];
@@ -731,6 +781,30 @@ function renderAlertPolygons(alerts) {
 
         if (typeof rawPoints === 'string') {
             try { rawPoints = JSON.parse(rawPoints); } catch (e) { rawPoints = null; }
+        }
+
+        // Fallback: Generate polygon coordinates using bounding box bounds if explicit points are missing
+        if (!rawPoints) {
+            const minLat = alert.min_lat ?? alert.bottomLat;
+            const maxLat = alert.max_lat ?? alert.topLat;
+            const minLon = alert.min_lon ?? alert.bottomLon;
+            const maxLon = alert.max_lon ?? alert.topLon;
+
+            if (minLat !== null && maxLat !== null && minLon !== null && maxLon !== null &&
+                !isNaN(minLat) && !isNaN(maxLat) && !isNaN(minLon) && !isNaN(maxLon)) {
+                
+                const bMinLat = Math.min(minLat, maxLat);
+                const bMaxLat = Math.max(minLat, maxLat);
+                const bMinLon = Math.min(minLon, maxLon);
+                const bMaxLon = Math.max(minLon, maxLon);
+
+                rawPoints = [
+                    [bMinLat, bMinLon],
+                    [bMaxLat, bMinLon],
+                    [bMaxLat, bMaxLon],
+                    [bMinLat, bMaxLon]
+                ];
+            }
         }
 
         // Unwrap Leaflet single-nested array wrappers
@@ -766,7 +840,7 @@ function renderAlertPolygons(alerts) {
             }).filter(pt => pt && !isNaN(pt[0]) && !isNaN(pt[1]));
         }
 
-        // Render line sequence matching custom drawn points
+        // Render polygon or line sequence
         if (polygonCoords.length >= 2) {
             const isPolyline = alert.isLine || alert.type === 'polyline' || polygonCoords.length < 3;
 
@@ -779,7 +853,7 @@ function renderAlertPolygons(alerts) {
                     weight: 2
                   });
 
-            layer.bindPopup(`<b>${title}</b><br>Severity: ${severity}`);
+            layer.bindPopup(`<b>${title}</b><br>Severity: ${severity}<br>${alert.description || ''}`);
             layer.bindTooltip(`<b>${title}</b> (${severity})`, { sticky: true });
 
             alertPolygonsLayerGroup.addLayer(layer);
@@ -787,15 +861,17 @@ function renderAlertPolygons(alerts) {
         }
     });
 
-    // 2. Safely locate whichever active Leaflet map instance is currently loaded in the DOM
-    const mapInstance = (typeof userAlertMap !== 'undefined' && userAlertMap) 
-        ? userAlertMap 
-        : ((typeof alertMap !== 'undefined' && alertMap) ? alertMap : null);
+    // 2. Safely locate active Leaflet map instance
+    const mapInstance = window.alertsMap 
+        || ((typeof userAlertMap !== 'undefined' && userAlertMap) ? userAlertMap : null)
+        || ((typeof alertMap !== 'undefined' && alertMap) ? alertMap : null);
 
     if (boundsArray.length > 0 && mapInstance) {
         mapInstance.fitBounds(boundsArray, { padding: [30, 30] });
     }
 }
+// 2. UPDATED RENDER METHOD
+
 async function cancelActiveAlert() {
     // 1. Get or prompt for a GitHub Personal Access Token (PAT) with repo contents write access
     let authToken = window.localStorage.getItem("API_AUTH_TOKEN");
