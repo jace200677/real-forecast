@@ -717,7 +717,7 @@ async function renderAlertPolygons(lat, lon, selectedAlertTitle = null) {
         const parsedItems = [];
         if (!rawText || typeof rawText !== 'string') return parsedItems;
 
-        // Attempt 1: Standard JSON Parse (Array or Object wrapper)
+        // Try standard JSON first
         try {
             const parsed = JSON.parse(rawText.trim());
             const items = Array.isArray(parsed) ? parsed : (parsed.alerts || parsed.data || parsed.results || [parsed]);
@@ -726,13 +726,10 @@ async function renderAlertPolygons(lat, lon, selectedAlertTitle = null) {
                 parsedItems.push(item);
             });
             return parsedItems;
-        } catch (e) {
-            // Not a single valid JSON block; proceed to line-by-line NDJSON/fragment parser
-        }
+        } catch (e) {}
 
-        // Attempt 2: Line-by-line / NDJSON parsing
+        // Fallback: Line-by-line NDJSON/JSON text parsing
         const lines = rawText.split(/\r?\n/).filter(line => line.trim() !== "");
-        
         lines.forEach(line => {
             let cleanLine = line.trim();
             if (cleanLine.endsWith(',')) cleanLine = cleanLine.slice(0, -1);
@@ -794,7 +791,6 @@ async function renderAlertPolygons(lat, lon, selectedAlertTitle = null) {
         rawAlerts = window.activeAlerts || window.allAlerts || [];
     }
 
-    // 4. Filter expired alerts
     const now = new Date();
     const alertList = rawAlerts.filter(alert => {
         if (alert && alert.end_time && String(alert.end_time).toLowerCase() !== "indefinite") {
@@ -811,7 +807,7 @@ async function renderAlertPolygons(lat, lon, selectedAlertTitle = null) {
     const normalLayers = [];
     const selectedLayers = [];
 
-    // 5. Build geometry layers safely
+    // 5. Build layers with correct severity colors, solid fills, and tooltips
     alertList.forEach(alert => {
         if (!alert) return;
         const severity = alert.severity || alert.level || "Minor";
@@ -826,7 +822,6 @@ async function renderAlertPolygons(lat, lon, selectedAlertTitle = null) {
             )
         );
 
-        // Extract coordinate arrays safely without fallback corruption
         let rawPoints = alert.latlngs || alert.points || alert.coordinates || alert.geometry?.coordinates || alert.polygon;
 
         if (typeof rawPoints === 'string') {
@@ -864,12 +859,13 @@ async function renderAlertPolygons(lat, lon, selectedAlertTitle = null) {
 
             const renderAsLine = isExplicitLine || (lineCoords.length < 3 && !isClosedLoop);
 
+            // Styling: Matches exact severity colors for both border and fill, with a high-contrast thick outline when selected
             const layerOptions = {
-                color: isSelected ? "#000000" : baseColor,
-                weight: isSelected ? 4 : (renderAsLine ? 3 : 2),
+                color: baseColor,                     
+                weight: isSelected ? 6 : (renderAsLine ? 4 : 2.5),
                 opacity: 1.0,
-                fillColor: baseColor,
-                fillOpacity: renderAsLine ? 0 : 0.45, // Clean color fill inside the polygon boundary
+                fillColor: baseColor,                 
+                fillOpacity: renderAsLine ? 0 : 0.4,  // Solid fill color inside polygon regions
                 lineCap: 'round',
                 lineJoin: 'round'
             };
@@ -878,8 +874,9 @@ async function renderAlertPolygons(lat, lon, selectedAlertTitle = null) {
                 ? L.polyline(lineCoords, layerOptions)
                 : L.polygon(lineCoords, layerOptions);
 
-            shapeLayer.bindPopup(`<b>${title}</b><br>Severity: ${severity}<br>${alert.description || ''}`);
-            shapeLayer.bindTooltip(`<b>${title}</b> (${severity})`, { sticky: true });
+            // Bind detailed popups and tooltips for every alert layer
+            shapeLayer.bindPopup(`<b>${title}</b><br>Severity: ${severity}<br>${alert.description || 'No description provided.'}`);
+            shapeLayer.bindTooltip(`<b>${title}</b> (${severity})`, { sticky: true, direction: 'auto' });
 
             if (isSelected) {
                 selectedLayers.push(shapeLayer);
