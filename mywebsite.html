@@ -1368,10 +1368,7 @@ async function renderActiveAlerts() {
             }
         }
 
-        // Temporal filter (start_time check)
-        
-
-        // Temporal filter (end_time check)
+        // Temporal filter (end_time check: discard if expired)
         if (alert.end_time && alert.end_time.toLowerCase() !== "indefinite") {
             const endTime = new Date(alert.end_time);
             if (!isNaN(endTime.getTime()) && now > endTime) return false;
@@ -1390,14 +1387,21 @@ async function renderActiveAlerts() {
 
     alerts.forEach(alert => {
         const severityStr = alert.severity ? String(alert.severity).toLowerCase() : "medium";
+        const startTime = alert.start_time ? new Date(alert.start_time) : null;
+        const isBeforeStart = startTime && !isNaN(startTime.getTime()) && now < startTime;
+
+        // Dynamic labels based on timeframe relative to current time
+        const startLabel = isBeforeStart ? "Starts at" : "Started at";
+        const endLabel = isBeforeStart ? "Ends at" : "Active until";
+
         const alertCard = document.createElement("div");
         alertCard.className = `alert-card severity-${severityStr}`;
         alertCard.innerHTML = `
             <h4>${alert.title || "Untitled Alert"}</h4>
             <p><strong>Severity:</strong> ${alert.severity || "Normal"}</p>
             <p>${alert.description || "No description provided."}</p>
-            ${alert.start_time ? `<p><small>Start time: ${alert.start_time}</small></p>` : ""}
-            <p><small>Active until: ${alert.end_time || "Indefinite"}</small></p>
+            ${alert.start_time ? `<p><small>${startLabel}: ${alert.start_time}</small></p>` : ""}
+            <p><small>${endLabel}: ${alert.end_time || "Indefinite"}</small></p>
         `;
         container.appendChild(alertCard);
     });
