@@ -595,7 +595,7 @@ async function verifyDeviceAccess() {
     if (!broadcastBtn) return;
 
     let currentDevice = window.localStorage.getItem("DEVICE_NAME") || "";
-
+    alert("cuurent device" + currentDevice);
     // If not registered yet on this browser profile
     if (!currentDevice) {
         const deviceSignature = await generateHardwareFingerprint();
