@@ -743,7 +743,6 @@ function getDrawnPolygonCoordinates() {
 
     return coordinates;
 }
-// 3. Payload Dispatch & Persistence (Saves to backend DB for all users)
 function submitAlertBroadcast(btnElement) {
     const payload = {
         title: document.getElementById("alert-title").value.trim(),
@@ -774,7 +773,7 @@ function submitAlertBroadcast(btnElement) {
         publishBtn.textContent = "Broadcasting...";
     }
 
-    fetch('/api/v1/alerts/broadcast', {
+    fetch('/api/v1/alerts/broadcast/', {
         method: 'POST',
         headers: { 
             'Content-Type': 'application/json',
