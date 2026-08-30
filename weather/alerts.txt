@@ -1,2 +1,0 @@
-
-{"title":"High WInd Watch","description":"What: Winds 30 to 40 mph with gusts to 60 to 70 mph Where: all counites in northern Minnesota When: 3am today to 12am tomorrow Details Driving maybe difficult even for high profile vehicles","start_time":"2026-08-30T03:00","end_time":"2026-08-31T00:00","severity":"Severe","bottom_lat":47,"top_lat":49,"bottom_lon":-89.5,"top_lon":-95.2,"created_at":"2026-08-30T07:01:21.877Z","bounding_box":{"min_lat":47,"max_lat":49,"min_lon":-95.2,"max_lon":-89.5}}
