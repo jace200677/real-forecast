@@ -655,10 +655,10 @@ function openViewAlertsModal(targetZoneOrPoint) {
 function renderAlertPolygons(alerts) {
     if (!alertPolygonsLayerGroup) return;
     
-    // Clear previous layers
+    // Clear previous map layers
     alertPolygonsLayerGroup.clearLayers();
 
-    // Render all active alerts (or custom passed alerts) regardless of user/searched area bounds
+    // Pull from provided alerts argument or global active alerts state
     const alertList = (Array.isArray(alerts) && alerts.length > 0) 
         ? alerts 
         : (window.activeAlerts || []);
@@ -666,42 +666,64 @@ function renderAlertPolygons(alerts) {
     const boundsArray = [];
 
     alertList.forEach(alert => {
-        // Support property names from both form payloads and parsed alert file objects
-        const bottomLat = alert.bottomLat ?? alert.bottom_lat ?? alert.min_lat;
-        const topLat = alert.topLat ?? alert.top_lat ?? alert.max_lat;
-        const bottomLon = alert.bottomLon ?? alert.bottom_lon ?? alert.min_lon;
-        const topLon = alert.topLon ?? alert.top_lon ?? alert.max_lon;
-
         const severity = alert.severity || "Medium";
         const title = alert.title || "Alert";
+        const color = typeof getSeverityColor === "function" ? getSeverityColor(severity) : "#f0ad4e";
 
-        if (bottomLat !== null && topLat !== null && bottomLon !== null && topLon !== null &&
-            !isNaN(bottomLat) && !isNaN(topLat) && !isNaN(bottomLon) && !isNaN(topLon)) {
-            
-            // Construct rectangle polygon coordinates from bounding coordinates
-            const polygonCoords = [
-                [parseFloat(bottomLat), parseFloat(bottomLon)],
-                [parseFloat(topLat), parseFloat(bottomLon)],
-                [parseFloat(topLat), parseFloat(topLon)],
-                [parseFloat(bottomLat), parseFloat(topLon)]
-            ];
+        let polygonCoords = [];
 
-            const color = typeof getSeverityColor === "function" ? getSeverityColor(severity) : "#f0ad4e";
+        // 1. Check for custom drawn lines / point arrays (from broadcast map tool)
+        const customPoints = alert.latlngs || alert.points || alert.coordinates || alert.polygon_points;
 
-            // Draw polygon layer representing the broadcast alert region
-            const polygon = L.polygon(polygonCoords, {
-                color: color,
-                fillColor: color,
-                fillOpacity: 0.35,
-                weight: 2
-            }).bindPopup(`<b>${title}</b><br>Severity: ${severity}`);
+        if (Array.isArray(customPoints) && customPoints.length > 0) {
+            // Normalize custom points into Leaflet format [[lat, lon], [lat, lon], ...]
+            polygonCoords = customPoints.map(pt => {
+                if (Array.isArray(pt)) return [parseFloat(pt[0]), parseFloat(pt[1])];
+                if (pt && typeof pt === 'object') return [parseFloat(pt.lat), parseFloat(pt.lng ?? pt.lon)];
+                return null;
+            }).filter(pt => pt && !isNaN(pt[0]) && !isNaN(pt[1]));
+        }
 
-            alertPolygonsLayerGroup.addLayer(polygon);
+        // 2. Fallback to bounding lat/lon box if no custom line points were saved
+        if (polygonCoords.length === 0) {
+            const bottomLat = alert.bottomLat ?? alert.bottom_lat ?? alert.min_lat;
+            const topLat = alert.topLat ?? alert.top_lat ?? alert.max_lat;
+            const bottomLon = alert.bottomLon ?? alert.bottom_lon ?? alert.min_lon;
+            const topLon = alert.topLon ?? alert.top_lon ?? alert.max_lon;
+
+            if (bottomLat !== null && topLat !== null && bottomLon !== null && topLon !== null &&
+                !isNaN(bottomLat) && !isNaN(topLat) && !isNaN(bottomLon) && !isNaN(topLon)) {
+                
+                polygonCoords = [
+                    [parseFloat(bottomLat), parseFloat(bottomLon)],
+                    [parseFloat(topLat), parseFloat(bottomLon)],
+                    [parseFloat(topLat), parseFloat(topLon)],
+                    [parseFloat(bottomLat), parseFloat(topLon)]
+                ];
+            }
+        }
+
+        // Render the layer on map if valid coordinates exist
+        if (polygonCoords.length > 0) {
+            const isPolyline = alert.isLine || alert.type === 'polyline';
+
+            // Draw either a closed custom polygon or open polyline based on type
+            const layer = isPolyline 
+                ? L.polyline(polygonCoords, { color: color, weight: 3 })
+                : L.polygon(polygonCoords, {
+                    color: color,
+                    fillColor: color,
+                    fillOpacity: 0.35,
+                    weight: 2
+                  });
+
+            layer.bindPopup(`<b>${title}</b><br>Severity: ${severity}`);
+            alertPolygonsLayerGroup.addLayer(layer);
             boundsArray.push(...polygonCoords);
         }
     });
 
-    // Auto-fit map viewport to encompass all broadcasted alert boundaries
+    // Fit map camera around all rendered custom lines and polygons
     if (boundsArray.length > 0 && userAlertMap) {
         userAlertMap.fitBounds(boundsArray, { padding: [20, 20] });
     }
