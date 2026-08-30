@@ -617,7 +617,7 @@ function openViewAlertsModal(targetZoneOrPoint) {
         modal.style.display = "flex";
     }
 
-    // Extract default center point safely (handles objects or arrays)
+    // 1. Extract default center point safely
     let lat = 45.0;
     let lon = -93.0;
     
@@ -626,7 +626,7 @@ function openViewAlertsModal(targetZoneOrPoint) {
         lon = parseFloat(targetZoneOrPoint.lng ?? targetZoneOrPoint.lon ?? targetZoneOrPoint.longitude ?? -93.0);
     }
 
-    // Initialize Map if not built yet
+    // 2. Initialize Map if not built yet, or center existing map
     if (!window.userAlertMap) {
         window.userAlertMap = L.map('user-location-map').setView([lat, lon], 6);
         
@@ -634,40 +634,45 @@ function openViewAlertsModal(targetZoneOrPoint) {
             maxZoom: 18,
             attribution: '© OpenStreetMap'
         }).addTo(window.userAlertMap);
+    } else if (!isNaN(lat) && !isNaN(lon)) {
+        window.userAlertMap.setView([lat, lon], 6);
     }
 
-    // Always ensure layer group exists on window scope and is attached to current map
+    // 3. Ensure layer group exists and is attached to active map
     if (!window.alertPolygonsLayerGroup) {
         window.alertPolygonsLayerGroup = L.layerGroup().addTo(window.userAlertMap);
     } else if (!window.userAlertMap.hasLayer(window.alertPolygonsLayerGroup)) {
         window.alertPolygonsLayerGroup.addTo(window.userAlertMap);
     }
 
-    // Recalculate leaflet map dimensions once visible, then render polygons
+    // 4. Unified execution inside setTimeout after modal DOM transition
     setTimeout(() => {
         if (window.userAlertMap) {
             window.userAlertMap.invalidateSize();
 
-            // Resolve alert payload correctly
+            // Resolve alerts payload properly (handles Single Alert Object, Array, or Global Store)
             let alertsData = [];
             if (Array.isArray(targetZoneOrPoint) && targetZoneOrPoint.length > 0) {
                 alertsData = targetZoneOrPoint;
+            } else if (targetZoneOrPoint && typeof targetZoneOrPoint === 'object' && (targetZoneOrPoint.latlngs || targetZoneOrPoint.points || targetZoneOrPoint.coordinates)) {
+                alertsData = [targetZoneOrPoint]; // Single alert object passed in
             } else if (window.currentDrawnAlert) {
                 alertsData = [window.currentDrawnAlert];
             } else {
                 alertsData = window.allAlerts || window.rawAlerts || window.activeAlerts || [];
             }
 
-            
-        }
-    }, 200);
-if (typeof renderAlertPolygons === "function") {
+            // Execute render update
+            if (typeof renderAlertPolygons === "function") {
                 renderAlertPolygons(alertsData);
             }
-    // Populate active alerts text list for local area
-    if (typeof renderActiveAlerts === "function") {
-        renderActiveAlerts(lat, lon);
-    }
+
+            // Update text list synchronously after map invalidation
+            if (typeof renderActiveAlerts === "function") {
+                renderActiveAlerts(lat, lon);
+            }
+        }
+    }, 200);
 }
 // 1. UPDATE YOUR ALERT INITIALIZATION / PARSER METHOD
 // Call this whenever raw alerts are parsed, fetched, or created via Leaflet Draw
