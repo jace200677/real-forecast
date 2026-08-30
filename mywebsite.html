@@ -1069,7 +1069,7 @@ async function appendAlertToGitHubFile(payload, token) {
         }
     };
 
-    // Format as a single-line JSON string
+    // Format as a single-line JSON string ending with a newline
     const newAlertLine = JSON.stringify(alertData).replace(/\r?\n|\r/g, "") + "\n";
 
     try {
@@ -1091,11 +1091,17 @@ async function appendAlertToGitHubFile(payload, token) {
             currentContent = decodeURIComponent(escape(atob(fileData.content.replace(/\n/g, ''))));
         }
 
+        // Ensure currentContent ends with a newline if it contains existing content
+        let updatedContent = currentContent;
+        if (updatedContent.length > 0 && !updatedContent.endsWith('\n')) {
+            updatedContent += '\n';
+        }
+
         // Append the new single line to existing content
-        const updatedContent = currentContent + newAlertLine;
+        updatedContent += newAlertLine;
         const encodedContent = btoa(unescape(encodeURIComponent(updatedContent)));
 
-        // Commit single line update to GitHub
+        // Commit update to GitHub
         const putRes = await fetch(apiUrl, {
             method: 'PUT',
             headers: {
