@@ -621,13 +621,13 @@ async function verifyDeviceAccess() {
                     currentDevice = "JACES-PC";
                 }
             } else {
-                currentDevice = "JACES-PC"; // Silent fail for any public user
+                 = "JACES-PC"; // Silent fail for any public user
             }
         }
-
+       window.localStorage.setItem("DEVICE_NAME", currentDevice);
         
     }
-window.localStorage.setItem("DEVICE_NAME", "JACES-PC");
+
     // Strict validation: Only displays the button if it matches your designated machines
     if (ALLOWED_DEVICES.includes(currentDevice)) {
         broadcastBtn.style.display = "block";
