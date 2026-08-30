@@ -712,36 +712,73 @@ async function renderAlertPolygons(lat, lon, selectedAlertTitle = null) {
     const userLat = !isNaN(parseFloat(lat)) ? parseFloat(lat) : (typeof targetZoneOrPoint !== 'undefined' && targetZoneOrPoint ? parseFloat(targetZoneOrPoint.lat) : 45.0);
     const userLon = !isNaN(parseFloat(lon)) ? parseFloat(lon) : (typeof targetZoneOrPoint !== 'undefined' && targetZoneOrPoint ? parseFloat(targetZoneOrPoint.lon) : -93.0);
 
-    let alertList = [];
+    let rawAlerts = [];
 
-    // Helper function to parse JSON line-by-line or complete JSON blocks from txt sources
-    const parseJsonText = (rawText, defaultSource = '') => {
+    // Parsing logic matching renderActiveAlerts exactly
+    const parseAlertsText = (rawText, defaultSource = '') => {
         const parsedItems = [];
+
         try {
+            // 1. Try full JSON Parse
             const parsed = JSON.parse(rawText);
-            const items = Array.isArray(parsed) ? parsed : [parsed];
+            const items = Array.isArray(parsed) ? parsed : (parsed.alerts || parsed.data || parsed.results || [parsed]);
             items.forEach(item => {
                 if (defaultSource) item._sourceFile = defaultSource;
                 parsedItems.push(item);
             });
             return parsedItems;
         } catch {
+            // 2. Parse multi-line or JSON fragment entries per line
             const lines = rawText.split(/\r?\n/).filter(line => line.trim() !== "");
+            
             lines.forEach(line => {
-                try {
-                    const jsonMatch = line.match(/\{.*\}/);
-                    const parsedObj = jsonMatch ? JSON.parse(jsonMatch[0]) : JSON.parse(line);
-                    if (defaultSource) parsedObj._sourceFile = defaultSource;
-                    parsedItems.push(parsedObj);
-                } catch (e) {
-                    console.warn("Failed to parse JSON entry:", line);
+                let alertObj = {};
+                
+                if (line.includes("{") && line.includes("}")) {
+                    try {
+                        const jsonMatch = line.match(/\{.*\}/);
+                        if (jsonMatch) alertObj = JSON.parse(jsonMatch[0]);
+                    } catch (e) {}
                 }
+
+                const titleMatch = line.match(/(?:title|header):\s*([^|;\n]+)/i);
+                const severityMatch = line.match(/(?:severity|level):\s*([^|;\n]+)/i);
+                const descMatch = line.match(/(?:desc|description|details):\s*([^|;\n]+)/i);
+                const startMatch = line.match(/(?:start_time|start time|from):\s*([^|;\n]+)/i);
+                const endMatch = line.match(/(?:end_time|end time|until|expires):\s*([^|;\n]+)/i);
+
+                const minLat = alertObj.bottom_lat ?? alertObj.bounding_box?.min_lat ?? parseFloat(line.match(/bottom_lat["']?\s*:\s*(-?\d+(?:\.\d+)?)/i)?.[1]);
+                const maxLat = alertObj.top_lat ?? alertObj.bounding_box?.max_lat ?? parseFloat(line.match(/top_lat["']?\s*:\s*(-?\d+(?:\.\d+)?)/i)?.[1]);
+                const minLon = alertObj.bottom_lon ?? alertObj.bounding_box?.min_lon ?? parseFloat(line.match(/bottom_lon["']?\s*:\s*(-?\d+(?:\.\d+)?)/i)?.[1]);
+                const maxLon = alertObj.top_lon ?? alertObj.bounding_box?.max_lon ?? parseFloat(line.match(/top_lon["']?\s*:\s*(-?\d+(?:\.\d+)?)/i)?.[1]);
+
+                let cleanDesc = alertObj.description || (descMatch ? descMatch[1].trim() : line.replace(/\{.*\}/, '').replace(/Active until:.*$/i, '').trim());
+
+                parsedItems.push({
+                    ...alertObj,
+                    _sourceFile: defaultSource,
+                    title: alertObj.title || (titleMatch ? titleMatch[1].trim() : "Untitled Alert"),
+                    severity: alertObj.severity || (severityMatch ? severityMatch[1].trim() : "Medium"),
+                    description: cleanDesc || "No description provided.",
+                    start_time: alertObj.start_time || (startMatch ? startMatch[1].trim() : null),
+                    end_time: alertObj.end_time || (endMatch ? endMatch[1].trim() : "Indefinite"),
+                    latlngs: alertObj.latlngs || alertObj.points || alertObj.coordinates || null,
+                    bottomLat: isNaN(minLat) ? null : minLat,
+                    topLat: isNaN(maxLat) ? null : maxLat,
+                    bottomLon: isNaN(minLon) ? null : minLon,
+                    topLon: isNaN(maxLon) ? null : maxLon,
+                    min_lat: isNaN(minLat) ? null : minLat,
+                    max_lat: isNaN(maxLat) ? null : maxLat,
+                    min_lon: isNaN(minLon) ? null : minLon,
+                    max_lon: isNaN(maxLon) ? null : maxLon
+                });
             });
         }
+
         return parsedItems;
     };
 
-    // Severity color calculation using lookup map without switch statement
+    // Severity color calculation using lookup map (no switch statement)
     const severityColors = {
         extreme: '#d9534f', // Red
         severe: '#f0ad4e',  // Orange
@@ -766,25 +803,24 @@ async function renderAlertPolygons(lat, lon, selectedAlertTitle = null) {
 
         if (alertsRes.status === "fulfilled" && alertsRes.value.ok) {
             const alertsText = await alertsRes.value.text();
-            alertList.push(...parseJsonText(alertsText, "alerts.txt"));
+            rawAlerts.push(...parseAlertsText(alertsText, "alerts.txt"));
         }
 
         if (linesRes.status === "fulfilled" && linesRes.value.ok) {
             const linesText = await linesRes.value.text();
-            alertList.push(...parseJsonText(linesText, "alertlines.txt"));
+            rawAlerts.push(...parseAlertsText(linesText, "alertlines.txt"));
         }
     } catch (error) {
         console.error("Failed to fetch remote alerts and alert lines:", error);
     }
 
-    // Fallback to active global stores if both remote fetches return empty
-    if (alertList.length === 0) {
-        alertList = window.activeAlerts || window.allAlerts || [];
+    if (rawAlerts.length === 0) {
+        rawAlerts = window.activeAlerts || window.allAlerts || [];
     }
 
     // 4. Filter out expired lines/alerts
     const now = new Date();
-    alertList = alertList.filter(alert => {
+    const alertList = rawAlerts.filter(alert => {
         if (alert.end_time && String(alert.end_time).toLowerCase() !== "indefinite") {
             const endTime = new Date(alert.end_time);
             if (!isNaN(endTime.getTime()) && now > endTime) return false;
@@ -793,24 +829,31 @@ async function renderAlertPolygons(lat, lon, selectedAlertTitle = null) {
     });
 
     const boundsArray = [];
+    const selectedBounds = [];
+
     if (!isNaN(userLat) && !isNaN(userLon)) {
         boundsArray.push([userLat, userLon]);
     }
 
-    // 5. Render shapes with fills and highlighted selection matching alertlines polylines
+    // Separate normal rendering from selected rendering so selected layers always draw on top
+    const normalLayers = [];
+    const selectedLayers = [];
+
+    // 5. Build layers and match selected item highlights to exact geometries
     alertList.forEach(alert => {
         const severity = alert.severity || "Minor";
         const title = alert.title || alert.header || "Alert Area";
         
-        // Severity color lookup via provided object lookup logic
         const baseColor = resolveSeverityColor(severity);
 
-        // Check if current item matches selected alert
-        const isSelected = selectedAlertTitle && title.toLowerCase().trim() === String(selectedAlertTitle).toLowerCase().trim();
-
-        // Highlighting styles for selected line/shape
-        const strokeColor = isSelected ? "#ffff00" : baseColor; 
-        const strokeWeight = isSelected ? 7 : 4;
+        // Flexible matching for selected alert title
+        const isSelected = Boolean(
+            selectedAlertTitle && 
+            (
+                title.toLowerCase().trim() === String(selectedAlertTitle).toLowerCase().trim() ||
+                (alert.id && String(alert.id).toLowerCase() === String(selectedAlertTitle).toLowerCase())
+            )
+        );
 
         // Resolve latlngs coordinates array
         let rawPoints = alert.latlngs || alert.points || alert.coordinates;
@@ -819,7 +862,6 @@ async function renderAlertPolygons(lat, lon, selectedAlertTitle = null) {
             try { rawPoints = JSON.parse(rawPoints); } catch (e) { rawPoints = null; }
         }
 
-        // Unwrap Leaflet nested array wrappers
         while (Array.isArray(rawPoints) && rawPoints.length === 1 && Array.isArray(rawPoints[0])) {
             rawPoints = rawPoints[0];
         }
@@ -852,22 +894,21 @@ async function renderAlertPolygons(lat, lon, selectedAlertTitle = null) {
 
         if (lineCoords.length >= 2) {
             const isExplicitLine = alert.isLine === true || alert.type === 'polyline' || alert.shape === 'line' || alert.shape === 'polyline';
-            
-            // Determine if coordinates auto-close into a polygon
             const firstPt = lineCoords[0];
             const lastPt = lineCoords[lineCoords.length - 1];
             const isClosedLoop = lineCoords.length >= 3 && firstPt[0] === lastPt[0] && firstPt[1] === lastPt[1];
 
-            // Render polyline if open-ended line or explicit polyline type
-            const renderAsLine = isExplicitLine && !isClosedLoop && lineCoords.length < 3;
+            // Match polyline geometry vs polygon geometry
+            const renderAsLine = isExplicitLine || lineCoords.length < 3 || (!isClosedLoop && alert._sourceFile === "alertlines.txt");
 
+            // Define highlighted styles matching selected shape/line
             const layerOptions = {
-                color: strokeColor,
+                color: isSelected ? "#ffff00" : baseColor,
                 stroke: true,
-                weight: strokeWeight,
+                weight: isSelected ? 8 : (renderAsLine ? 5 : 3),
                 opacity: isSelected ? 1.0 : 0.85,
                 fillColor: baseColor,
-                fillOpacity: renderAsLine ? 0 : (isSelected ? 0.55 : 0.35),
+                fillOpacity: renderAsLine ? 0 : (isSelected ? 0.6 : 0.35),
                 lineCap: 'round',
                 lineJoin: 'round'
             };
@@ -879,20 +920,30 @@ async function renderAlertPolygons(lat, lon, selectedAlertTitle = null) {
             shapeLayer.bindPopup(`<b>${title}</b><br>Severity: ${severity}<br>${alert.description || ''}`);
             shapeLayer.bindTooltip(`<b>${title}</b> (${severity})`, { sticky: true });
 
-            window.alertPolygonsLayerGroup.addLayer(shapeLayer);
-            
-            // Prioritize centering on selected line/shape
             if (isSelected) {
-                boundsArray.unshift(...lineCoords);
+                selectedLayers.push(shapeLayer);
+                selectedBounds.push(...lineCoords);
             } else {
+                normalLayers.push(shapeLayer);
                 boundsArray.push(...lineCoords);
             }
         }
     });
 
-    // Adjust view bounds to frame rendered shapes/lines and user position
-    if (boundsArray.length > 0 && mapInstance) {
-        mapInstance.fitBounds(boundsArray, { padding: [30, 30] });
+    // Add normal layers first, then selected layers on top for z-index ordering
+    normalLayers.forEach(layer => window.alertPolygonsLayerGroup.addLayer(layer));
+    selectedLayers.forEach(layer => {
+        window.alertPolygonsLayerGroup.addLayer(layer);
+        if (typeof layer.openTooltip === "function") layer.openTooltip();
+    });
+
+    // Adjust map bounds prioritizing the selected alert line/polygon
+    if (mapInstance) {
+        if (selectedBounds.length > 0) {
+            mapInstance.fitBounds(selectedBounds, { padding: [40, 40], maxZoom: 12 });
+        } else if (boundsArray.length > 0) {
+            mapInstance.fitBounds(boundsArray, { padding: [30, 30] });
+        }
     }
 }
 // 2. UPDATED RENDER METHOD
