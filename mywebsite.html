@@ -1369,10 +1369,7 @@ async function renderActiveAlerts() {
         }
 
         // Temporal filter (start_time check)
-        if (alert.start_time) {
-            const startTime = new Date(alert.start_time);
-            if (!isNaN(startTime.getTime()) && now < startTime) return false;
-        }
+        
 
         // Temporal filter (end_time check)
         if (alert.end_time && alert.end_time.toLowerCase() !== "indefinite") {
