@@ -633,26 +633,24 @@ function openViewAlertsModal(targetZoneOrPoint) {
         alertPolygonsLayerGroup = L.layerGroup().addTo(userAlertMap);
     }
 
+    // Recalculate leaflet map dimensions once visible
+    setTimeout(() => {
+        if (userAlertMap) userAlertMap.invalidateSize();
+    }, 100);
+
     // Populate active alerts list container
     if (typeof renderActiveAlerts === "function") {
         renderActiveAlerts(lat, lon);
     }
 
-    // Recalculate map size & render alert polygons after modal animation/display frame
-    setTimeout(() => {
-        if (userAlertMap) {
-            userAlertMap.invalidateSize();
-        }
+    // Determine alerts payload and render map polygons (uses window.allAlerts to bypass spatial bounds)
+    const alertsData = Array.isArray(targetZoneOrPoint) 
+        ? targetZoneOrPoint 
+        : (window.allAlerts || window.rawAlerts || window.activeAlerts || []);
 
-        // Pull explicitly provided alerts array, or fall back to global alerts stores
-        const alertsData = (Array.isArray(targetZoneOrPoint) && targetZoneOrPoint.length > 0)
-            ? targetZoneOrPoint 
-            : (window.allAlerts || window.rawAlerts || window.activeAlerts || []);
-
-        if (typeof renderAlertPolygons === "function") {
-            renderAlertPolygons(alertsData);
-        }
-    }, 100);
+    if (typeof renderAlertPolygons === "function") {
+        renderAlertPolygons(alertsData);
+    }
 }
 function renderAlertPolygons(alerts) {
     if (!alertPolygonsLayerGroup) return;
