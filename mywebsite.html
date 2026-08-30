@@ -966,10 +966,33 @@ function fallbackToDefaultCoordinates(combinedFetcher) {
         .catch(() => renderLocalOnlyAlerts());
 }
 
-function renderLocalOnlyAlerts() {
+async function renderLocalOnlyAlerts() {
     let localAlerts = JSON.parse(window.localStorage.getItem("LOCAL_PUBLIC_ALERTS") || "[]");
+    let sharedAlerts = JSON.parse(window.localStorage.getItem("SHARED_PUBLIC_ALERTS") || "[]");
+    
+    // Fetch broadcasts from your GitHub raw text file
+    try {
+        const response = await fetch("https://raw.githubusercontent.com/jace200677/real-forecast/refs/heads/main/weather/alerts.txt");
+        if (response.ok) {
+            const textData = await response.text();
+            
+            // Optional: Parse text data into an array of alerts (e.g., split by lines or JSON parse)
+            // Assuming each line is an alert or it contains text you want to display:
+            const remoteAlerts = textData.split("\n").filter(line => line.trim() !== "");
+            
+            if (remoteAlerts.length > 0) {
+                sharedAlerts = remoteAlerts;
+            }
+        }
+    } catch (error) {
+        console.warn("Could not fetch remote broadcasts from GitHub, falling back to local storage.", error);
+    }
+
+    // Combine local, storage-shared, and GitHub-fetched alerts for everyone
+    let combinedAlerts = [...localAlerts, ...sharedAlerts];
+
     if (typeof renderActiveAlerts === "function") {
-        renderActiveAlerts(localAlerts);
+        renderActiveAlerts(combinedAlerts);
     }
 }
 
