@@ -617,9 +617,9 @@ function openViewAlertsModal(targetZoneOrPoint) {
         modal.style.display = "flex";
     }
 
-    // Extract lat/lon directly from targetZoneOrPoint, falling back to window.activeAlerts or defaults
-    const lat = typeof targetZoneOrPoint !== 'undefined' && targetZoneOrPoint?.lat ? parseFloat(targetZoneOrPoint.lat) : 45.0;
-    const lon = typeof targetZoneOrPoint !== 'undefined' && targetZoneOrPoint?.lon ? parseFloat(targetZoneOrPoint.lon) : -93.0;
+    // Extract default center point
+    const lat = (typeof targetZoneOrPoint !== 'undefined' && targetZoneOrPoint?.lat) ? parseFloat(targetZoneOrPoint.lat) : 45.0;
+    const lon = (typeof targetZoneOrPoint !== 'undefined' && targetZoneOrPoint?.lon) ? parseFloat(targetZoneOrPoint.lon) : -93.0;
 
     // Initialize Map if not built yet
     if (!userAlertMap) {
@@ -633,23 +633,25 @@ function openViewAlertsModal(targetZoneOrPoint) {
         alertPolygonsLayerGroup = L.layerGroup().addTo(userAlertMap);
     }
 
-    // Recalculate leaflet map dimensions once visible
+    // Recalculate leaflet map dimensions once visible, then adjust camera bounds
     setTimeout(() => {
-        if (userAlertMap) userAlertMap.invalidateSize();
-    }, 100);
+        if (userAlertMap) {
+            userAlertMap.invalidateSize();
 
-    // Populate active alerts list container
+            // Determine alerts payload to render
+            const alertsData = (Array.isArray(targetZoneOrPoint) && targetZoneOrPoint.length > 0)
+                ? targetZoneOrPoint 
+                : (window.allAlerts || window.rawAlerts || window.activeAlerts || []);
+
+            if (typeof renderAlertPolygons === "function") {
+                renderAlertPolygons(alertsData);
+            }
+        }
+    }, 150);
+
+    // Populate active alerts list text container
     if (typeof renderActiveAlerts === "function") {
         renderActiveAlerts(lat, lon);
-    }
-
-    // Determine alerts payload and render map polygons (uses window.allAlerts to bypass spatial bounds)
-    const alertsData = Array.isArray(targetZoneOrPoint) 
-        ? targetZoneOrPoint 
-        : (window.allAlerts || window.rawAlerts || window.activeAlerts || []);
-
-    if (typeof renderAlertPolygons === "function") {
-        renderAlertPolygons(alertsData);
     }
 }
 function renderAlertPolygons(alerts) {
@@ -658,7 +660,7 @@ function renderAlertPolygons(alerts) {
     // Clear previous map layers
     alertPolygonsLayerGroup.clearLayers();
 
-    // Pull from provided alerts array or global store
+    // Pull explicitly from provided alerts, global stores, or activeAlerts fallback
     const alertList = (Array.isArray(alerts) && alerts.length > 0) 
         ? alerts 
         : (window.allAlerts || window.rawAlerts || window.activeAlerts || []);
@@ -668,12 +670,12 @@ function renderAlertPolygons(alerts) {
     alertList.forEach(alert => {
         const severity = alert.severity || "Medium";
         const title = alert.title || "Alert";
-        const color = typeof getSeverityColor === "function" ? getSeverityColor(severity) : "#3388ff";
+        const color = typeof getSeverityColor === "function" ? getSeverityColor(severity) : "#f0ad4e";
 
-        // Extract drawn point path arrays directly
+        // Extract custom drawn points
         let rawPoints = alert.latlngs || alert.points || alert.coordinates || alert.polygon_points;
 
-        // Parse JSON string formatted point arrays if stored as text strings
+        // Parse JSON string formatted point arrays if stored as plain text
         if (typeof rawPoints === 'string') {
             try { 
                 rawPoints = JSON.parse(rawPoints); 
@@ -682,67 +684,36 @@ function renderAlertPolygons(alerts) {
             }
         }
 
-        // Handle Leaflet nested array structures: [[[lat, lon], ...]] -> [[lat, lon], ...]
-        while (Array.isArray(rawPoints) && rawPoints.length === 1 && Array.isArray(rawPoints[0])) {
-            rawPoints = rawPoints[0];
-        }
-
         let polygonCoords = [];
 
         if (Array.isArray(rawPoints) && rawPoints.length > 0) {
             polygonCoords = rawPoints.map(pt => {
-                if (!pt) return null;
-
-                // Handle Array coordinate format: [lat, lon] or GeoJSON [lon, lat]
-                if (Array.isArray(pt)) {
-                    let lat = parseFloat(pt[0]);
-                    let lon = parseFloat(pt[1]);
-
-                    // Auto-fix inverted GeoJSON coordinates where Longitude (-180 to 180) comes first
-                    if (Math.abs(lat) > 90 && Math.abs(lon) <= 90) {
-                        [lat, lon] = [lon, lat];
-                    }
-                    return [lat, lon];
-                }
-
-                // Handle Object coordinate format: { lat, lng } or { lat, lon }
-                if (typeof pt === 'object') {
-                    const lat = parseFloat(pt.lat ?? pt.latitude);
-                    const lon = parseFloat(pt.lng ?? pt.lon ?? pt.longitude);
-                    return [lat, lon];
-                }
-
+                if (Array.isArray(pt)) return [parseFloat(pt[0]), parseFloat(pt[1])];
+                if (pt && typeof pt === 'object') return [parseFloat(pt.lat), parseFloat(pt.lng ?? pt.lon)];
                 return null;
             }).filter(pt => pt && !isNaN(pt[0]) && !isNaN(pt[1]));
         }
 
-        // Render line sequence directly matching custom drawn points
+        // Render point lines and freeform polygons (Requires at least 2 points to draw)
         if (polygonCoords.length >= 2) {
-            // Use polyline for open lines or polygon for closed shapes
             const isPolyline = alert.isLine || alert.type === 'polyline' || polygonCoords.length < 3;
 
             const layer = isPolyline 
-                ? L.polyline(polygonCoords, {
-                    color: color,
-                    weight: 5,
-                    opacity: 0.85
-                  })
+                ? L.polyline(polygonCoords, { color: color, weight: 4, opacity: 0.85 })
                 : L.polygon(polygonCoords, {
                     color: color,
                     fillColor: color,
-                    fillOpacity: 0.2,
-                    weight: 3
+                    fillOpacity: 0.35,
+                    weight: 2
                   });
 
             layer.bindPopup(`<b>${title}</b><br>Severity: ${severity}`);
-            layer.bindTooltip(`<b>${title}</b>`, { sticky: true });
-
             alertPolygonsLayerGroup.addLayer(layer);
             boundsArray.push(...polygonCoords);
         }
     });
 
-    // Auto-fit Leaflet camera to encompass all custom drawn paths
+    // Auto-fit Leaflet camera to encompass all drawn paths nationwide
     const mapInstance = typeof userAlertMap !== 'undefined' && userAlertMap ? userAlertMap : alertMap;
     if (boundsArray.length > 0 && mapInstance) {
         mapInstance.fitBounds(boundsArray, { padding: [30, 30] });
