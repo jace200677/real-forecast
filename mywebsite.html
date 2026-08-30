@@ -1042,24 +1042,38 @@ function initAlertMap() {
             rawLatLngs = rawLatLngs[0];
         }
 
-        // Convert Leaflet LatLng objects into standard [lat, lng] array format
+        // Convert Leaflet LatLng objects into standard [lat, lng] array format (point-to-point sequence)
         const pointArray = rawLatLngs.map(pt => [
             parseFloat(pt.lat.toFixed(6)), 
             parseFloat(pt.lng.toFixed(6))
         ]);
 
-        // 3. Store point sequence & shape type in hidden form inputs or global state
-        window.currentDrawnAlert = {
+        // 3. Construct drawn alert object payload
+        const drawnAlertObj = {
+            id: `alert-${Date.now()}`,
             type: layerType,
             isLine: layerType === 'polyline',
-            latlngs: pointArray
+            latlngs: pointArray,
+            min_lat: parseFloat(bounds.getSouth().toFixed(6)),
+            max_lat: parseFloat(bounds.getNorth().toFixed(6)),
+            min_lon: parseFloat(bounds.getWest().toFixed(6)),
+            max_lon: parseFloat(bounds.getEast().toFixed(6))
         };
 
-        // If you use a hidden input field in your form to submit point arrays to the backend:
+        // 4. Store object globally & populate input fields
+        window.currentDrawnAlert = drawnAlertObj;
+
         const pointsInput = document.getElementById('alert-latlngs') || document.getElementById('alert-points');
         if (pointsInput) {
             pointsInput.value = JSON.stringify(pointArray);
         }
+
+        // 5. Append to global alerts arrays without triggering renderAlertPolygons()
+        if (!Array.isArray(window.activeAlerts)) window.activeAlerts = [];
+        window.activeAlerts.push(drawnAlertObj);
+
+        if (!Array.isArray(window.allAlerts)) window.allAlerts = [];
+        window.allAlerts.push(drawnAlertObj);
     });
 }
 async function verifyDeviceAccess() {
