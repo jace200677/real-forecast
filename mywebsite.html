@@ -730,9 +730,22 @@ function closeAlertModal() {
     modal.style.display = "none";
 }
 
-function openViewAlertsModal() {
-    document.getElementById("view-alerts-modal").style.display = "flex";
-    fetchUserLocationAndCheckAlerts();
+function openViewAlertsModal(targetZoneOrPoint) {
+    const modal = document.getElementById("view-alerts-modal");
+    if (modal) {
+        modal.style.display = "flex";
+    }
+
+    // Extract lat/lon directly from targetZoneOrPoint in-memory
+    const lat = typeof targetZoneOrPoint !== 'undefined' && targetZoneOrPoint ? parseFloat(targetZoneOrPoint.lat) : 45.0;
+    const lon = typeof targetZoneOrPoint !== 'undefined' && targetZoneOrPoint ? parseFloat(targetZoneOrPoint.lon) : -93.0;
+
+    // Pass coordinates directly to render routines without localStorage
+    if (typeof fetchUserLocationAndCheckAlerts === "function") {
+        fetchUserLocationAndCheckAlerts(lat, lon);
+    } else if (typeof renderActiveAlerts === "function") {
+        renderActiveAlerts(lat, lon);
+    }
 }
 
 function closeViewAlertsModal() {
