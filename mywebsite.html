@@ -603,8 +603,12 @@ function updateAlertCountBadge(count) {
     
     badge.textContent = alertCount;
     
-    // Toggle visibility based on active count
-    badge.style.display = alertCount > 0 ? 'inline-block' : 'none';
+    // Explicitly hide when 0 or negative, show inline-block when > 0
+    if (alertCount > 0) {
+        badge.style.display = 'inline-block';
+    } else {
+        badge.style.display = 'none';
+    }
 }
 // Function to open modal and load alerts onto the map
 function openViewAlertsModal(targetZoneOrPoint) {
@@ -8059,6 +8063,9 @@ window.addEventListener('resize', () => {
 });
 document.addEventListener("DOMContentLoaded", () => {
     verifyDeviceAccess();
+});
+document.addEventListener("DOMContentLoaded", function () {
+    updateAlertCountBadge();
 });
 // Optional: Keep it updated if the page stays open
 setInterval(updateTrafficButtonState, 1000);
