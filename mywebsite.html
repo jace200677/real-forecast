@@ -885,10 +885,10 @@ async function renderAlertPolygons(lat, lon) {
 // 2. UPDATED RENDER METHOD
 
 async function cancelActiveAlert() {
-    // 1. Get or prompt for a GitHub Personal Access Token (PAT) with repo contents write access
+    // 1. Get or prompt for GitHub PAT
     let authToken = window.localStorage.getItem("API_AUTH_TOKEN");
     if (!authToken) {
-        authToken = prompt("Please enter your GitHub Personal Access Token (Token requires write access to the repo):");
+        authToken = prompt("Please enter your GitHub Personal Access Token (Requires write access):");
         if (!authToken || !authToken.trim()) {
             alert("Authorization token is required. Operation canceled.");
             return;
@@ -898,78 +898,112 @@ async function cancelActiveAlert() {
 
     const repoOwner = "jace200677";
     const repoName = "real-forecast";
-    const filePath = "weather/alerts.txt";
-    const apiUrl = `https://api.github.com/repos/${repoOwner}/${repoName}/contents/${filePath}`;
+    const headers = {
+        "Authorization": `Bearer ${authToken.trim()}`,
+        "Accept": "application/vnd.github.v3+json",
+        "Content-Type": "application/json"
+    };
 
     try {
-        // 2. Fetch file metadata and content via GitHub API (retrieves file SHA needed for updates)
-        const getResponse = await fetch(apiUrl, {
-            headers: {
-                "Authorization": `Bearer ${authToken.trim()}`,
-                "Accept": "application/vnd.github.v3+json"
-            }
-        });
+        // 2. Fetch alerts.txt metadata and raw text
+        const alertsUrl = `https://api.github.com/repos/${repoOwner}/${repoName}/contents/weather/alerts.txt`;
+        const alertsRes = await fetch(alertsUrl, { headers });
+        if (!alertsRes.ok) throw new Error(`Failed to fetch alerts.txt: ${alertsRes.statusText}`);
 
-        if (!getResponse.ok) {
-            throw new Error(`Failed to fetch file from GitHub: ${getResponse.statusText}`);
-        }
+        const alertsData = await alertsRes.json();
+        const rawAlertsText = decodeURIComponent(escape(atob(alertsData.content.replace(/\s/g, ''))));
+        let alertLines = rawAlertsText.split("\n").filter(line => line.trim() !== "");
 
-        const fileData = await getResponse.json();
-        // Decode base64 file content from GitHub API
-        const rawContent = decodeURIComponent(escape(atob(fileData.content.replace(/\s/g, ''))));
-        let lines = rawContent.split("\n").filter(line => line.trim() !== "");
-
-        if (lines.length === 0) {
+        if (alertLines.length === 0) {
             alert("No active alerts found in alerts.txt.");
             return;
         }
 
-        // 3. Build selection prompt
-        let listPrompt = "Select the number of the alert line you want to remove:\n\n";
-        lines.forEach((line, index) => {
-            listPrompt += `[${index + 1}] ${line}\n`;
+        // Parse alert lines into objects or JSON structures
+        let parsedAlerts = alertLines.map((line, idx) => {
+            try {
+                const jsonMatch = line.match(/\{.*\}/);
+                const parsed = jsonMatch ? JSON.parse(jsonMatch[0]) : JSON.parse(line);
+                return { ...parsed, rawLine: line, originalIndex: idx };
+            } catch {
+                return { title: line.trim(), rawLine: line, originalIndex: idx };
+            }
+        });
+
+        // 3. Selection prompt listing formatted titles/JSON properties
+        let listPrompt = "Select the number of the alert to remove:\n\n";
+        parsedAlerts.forEach((item, index) => {
+            const displayTitle = item.title || item.header || item.id || item.rawLine.substring(0, 40);
+            listPrompt += `[${index + 1}] ${displayTitle}\n`;
         });
 
         let selectedIndexStr = prompt(listPrompt, "1");
         if (!selectedIndexStr) return;
 
         let selectedIndex = parseInt(selectedIndexStr.trim(), 10) - 1;
-
-        if (isNaN(selectedIndex) || selectedIndex < 0 || selectedIndex >= lines.length) {
+        if (isNaN(selectedIndex) || selectedIndex < 0 || selectedIndex >= parsedAlerts.length) {
             alert("Invalid selection. Operation canceled.");
             return;
         }
 
-        const removedLine = lines[selectedIndex];
+        const targetAlert = parsedAlerts[selectedIndex];
 
-        // 4. Remove the selected line and prepare new content
-        lines.splice(selectedIndex, 1);
-        const updatedContent = lines.join("\n");
+        // 4. Update alerts.txt by filtering out the removed item
+        alertLines.splice(targetAlert.originalIndex, 1);
+        const updatedAlertsContent = alertLines.join("\n");
+        const encodedAlerts = btoa(unescape(encodeURIComponent(updatedAlertsContent)));
 
-        // Encode content to base64 for GitHub API
-        const encodedContent = btoa(unescape(encodeURIComponent(updatedContent)));
-
-        // 5. Send PUT request to GitHub API to overwrite file and remove the line
-        const updateResponse = await fetch(apiUrl, {
+        const updateAlertsRes = await fetch(alertsUrl, {
             method: "PUT",
-            headers: {
-                "Authorization": `Bearer ${authToken.trim()}`,
-                "Content-Type": "application/json",
-                "Accept": "application/vnd.github.v3+json"
-            },
+            headers,
             body: JSON.stringify({
-                message: `Remove alert: ${removedLine.substring(0, 30)}...`,
-                content: encodedContent,
-                sha: fileData.sha // Required by GitHub API to update existing file
+                message: `Remove alert: ${targetAlert.title || targetAlert.id || 'Selected item'}`,
+                content: encodedAlerts,
+                sha: alertsData.sha
             })
         });
 
-        if (!updateResponse.ok) {
-            const errorInfo = await updateResponse.json();
-            throw new Error(errorInfo.message || "Failed to commit update to GitHub.");
+        if (!updateAlertsRes.ok) throw new Error("Failed to update alerts.txt on GitHub");
+
+        // 5. Remove matching line/record from weather/alertlines.txt
+        try {
+            const linesUrl = `https://api.github.com/repos/${repoOwner}/${repoName}/contents/weather/alertlines.txt`;
+            const linesRes = await fetch(linesUrl, { headers });
+
+            if (linesRes.ok) {
+                const linesData = await linesRes.json();
+                const rawLinesText = decodeURIComponent(escape(atob(linesData.content.replace(/\s/g, ''))));
+                let lineRecords = rawLinesText.split("\n").filter(l => l.trim() !== "");
+
+                // Filter out line matching by target ID, title, or exact string match
+                let initialCount = lineRecords.length;
+                lineRecords = lineRecords.filter(line => {
+                    if (targetAlert.id && line.includes(targetAlert.id)) return false;
+                    if (targetAlert.title && line.includes(targetAlert.title)) return false;
+                    return line.trim() !== targetAlert.rawLine.trim();
+                });
+
+                // If items were filtered out, push update to alertlines.txt
+                if (lineRecords.length < initialCount) {
+                    const updatedLinesContent = lineRecords.join("\n");
+                    const encodedLines = btoa(unescape(encodeURIComponent(updatedLinesContent)));
+
+                    await fetch(linesUrl, {
+                        method: "PUT",
+                        headers,
+                        body: JSON.stringify({
+                            message: `Remove corresponding line for: ${targetAlert.id || targetAlert.title || 'alert'}`,
+                            content: encodedLines,
+                            sha: linesData.sha
+                        })
+                    });
+                }
+            }
+        } catch (lineErr) {
+            console.warn("Could not synchronize alertlines.txt deletion:", lineErr);
         }
 
-        alert(`Successfully removed alert line from GitHub:\n"${removedLine}"`);
+        alert(`Successfully removed alert from alerts.txt and alertlines.txt!`);
 
         // Refresh UI
         if (typeof renderActiveAlerts === "function") {
@@ -983,23 +1017,74 @@ async function cancelActiveAlert() {
 }
 let alertMap, drawnItems;
 
-function initAlertMap() {
-    if (alertMap) return; // Prevent re-initialization
+async function initAlertMap() {
+    if (window.alertMap) return; // Prevent re-initialization
 
-    // Initialize Map centered on US
-    alertMap = L.map('alert-map').setView([39.8283, -98.5795], 4);
+    // 1. Initialize Map centered on US
+    window.alertMap = L.map('alert-map').setView([39.8283, -98.5795], 4);
 
-    // OpenStreetMap Tile Layer
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
         maxZoom: 18,
         attribution: '© OpenStreetMap'
-    }).addTo(alertMap);
+    }).addTo(window.alertMap);
 
-    // Layer Group to store drawn lines/polygons
-    drawnItems = new L.FeatureGroup();
-    alertMap.addLayer(drawnItems);
+    // 2. Layer Group to store drawn items
+    window.drawnItems = new L.FeatureGroup();
+    window.alertMap.addLayer(window.drawnItems);
 
-    // Configure Draw Control (Enabling custom lines and polygons, disabling standard shapes)
+    // 3. Fetch initial alert lines
+    try {
+        const response = await fetch("https://raw.githubusercontent.com/jace200677/real-forecast/refs/heads/main/weather/alertlines.txt");
+        if (response.ok) {
+            const rawText = await response.text();
+            let parsedLines = [];
+
+            try {
+                const parsed = JSON.parse(rawText);
+                parsedLines = Array.isArray(parsed) ? parsed : [parsed];
+            } catch {
+                // Parse line by line if text-delimited
+                const lines = rawText.split(/\r?\n/).filter(line => line.trim() !== "");
+                lines.forEach(line => {
+                    if (/[a-zA-Z0-9]/.test(line)) {
+                        try {
+                            const jsonMatch = line.match(/\{.*\}/);
+                            if (jsonMatch) parsedLines.push(JSON.parse(jsonMatch[0]));
+                        } catch (e) {}
+                    }
+                });
+            }
+
+            if (!Array.isArray(window.activeAlerts)) window.activeAlerts = [];
+            if (!Array.isArray(window.allAlerts)) window.allAlerts = [];
+
+            parsedLines.forEach((item, idx) => {
+                const points = item.latlngs || item.points || item.coordinates || [];
+                const isLine = item.isLine ?? (item.type === 'polyline' || points.length < 3);
+
+                const lineAlertObj = {
+                    id: item.id || `remote-line-${Date.now()}-${idx}`,
+                    type: isLine ? 'polyline' : 'polygon',
+                    isLine: isLine,
+                    latlngs: points,
+                    title: item.title || "Alert Line",
+                    severity: item.severity || "Medium",
+                    description: item.description || "",
+                    min_lat: item.min_lat ?? null,
+                    max_lat: item.max_lat ?? null,
+                    min_lon: item.min_lon ?? null,
+                    max_lon: item.max_lon ?? null
+                };
+
+                window.activeAlerts.push(lineAlertObj);
+                window.allAlerts.push(lineAlertObj);
+            });
+        }
+    } catch (error) {
+        console.error("Failed to load remote alert lines:", error);
+    }
+
+    // 4. Configure Leaflet Draw Controls
     const drawControl = new L.Control.Draw({
         draw: {
             polygon: true,
@@ -1010,19 +1095,19 @@ function initAlertMap() {
             marker: false
         },
         edit: {
-            featureGroup: drawnItems
+            featureGroup: window.drawnItems
         }
     });
-    alertMap.addControl(drawControl);
+    window.alertMap.addControl(drawControl);
 
-    // Listen for created layers (custom lines or polygons)
-    alertMap.on(L.Draw.Event.CREATED, function (e) {
-        drawnItems.clearLayers(); // Keep only the latest drawn path
+    // 5. Listen for created paths, format, and push to GitHub on a new line
+    window.alertMap.on(L.Draw.Event.CREATED, async function (e) {
+        window.drawnItems.clearLayers();
         const layer = e.layer;
-        const layerType = e.layerType; // 'polyline' or 'polygon'
-        drawnItems.addLayer(layer);
+        const layerType = e.layerType;
+        window.drawnItems.addLayer(layer);
 
-        // 1. Extract bounding box (Min/Max Lat & Lon) for form inputs
+        // Extract bounding box
         const bounds = layer.getBounds();
         const bottomLatEl = document.getElementById('alert-bottom-lat');
         const topLatEl = document.getElementById('alert-top-lat');
@@ -1034,23 +1119,19 @@ function initAlertMap() {
         if (bottomLonEl) bottomLonEl.value = bounds.getWest().toFixed(6);
         if (topLonEl) topLonEl.value = bounds.getEast().toFixed(6);
 
-        // 2. Extract exact point coordinates (latlngs) for custom path rendering
+        // Extract point array
         let rawLatLngs = layer.getLatLngs();
-        
-        // Leaflet polygons enclose points in an extra array layer: [[[lat, lng], ...]] -> [[lat, lng], ...]
         while (Array.isArray(rawLatLngs) && rawLatLngs.length === 1 && Array.isArray(rawLatLngs[0])) {
             rawLatLngs = rawLatLngs[0];
         }
 
-        // Convert Leaflet LatLng objects into standard [lat, lng] array format (point-to-point sequence)
         const pointArray = rawLatLngs.map(pt => [
             parseFloat(pt.lat.toFixed(6)), 
             parseFloat(pt.lng.toFixed(6))
         ]);
 
-        // 3. Construct drawn alert object payload
         const drawnAlertObj = {
-            id: `alert-${Date.now()}`,
+            id: `line-${Date.now()}`,
             type: layerType,
             isLine: layerType === 'polyline',
             latlngs: pointArray,
@@ -1060,7 +1141,6 @@ function initAlertMap() {
             max_lon: parseFloat(bounds.getEast().toFixed(6))
         };
 
-        // 4. Store object globally & populate input fields
         window.currentDrawnAlert = drawnAlertObj;
 
         const pointsInput = document.getElementById('alert-latlngs') || document.getElementById('alert-points');
@@ -1068,13 +1148,87 @@ function initAlertMap() {
             pointsInput.value = JSON.stringify(pointArray);
         }
 
-        // 5. Append to global alerts arrays without triggering renderAlertPolygons()
         if (!Array.isArray(window.activeAlerts)) window.activeAlerts = [];
         window.activeAlerts.push(drawnAlertObj);
 
         if (!Array.isArray(window.allAlerts)) window.allAlerts = [];
         window.allAlerts.push(drawnAlertObj);
+
+        // Push to GitHub endpoint on a new line
+        await pushAlertLineToGitHub(drawnAlertObj);
     });
+}
+
+// Token retriever & GitHub pusher helper
+async function pushAlertLineToGitHub(drawnAlertObj) {
+    let token = localStorage.getItem("API_AUTH_TOKEN");
+
+    if (!token) {
+        token = prompt("Please enter your GitHub Personal Access Token (API_AUTH_TOKEN):");
+        if (token && token.trim() !== "") {
+            token = token.trim();
+            localStorage.setItem("API_AUTH_TOKEN", token);
+        } else {
+            console.warn("No API_AUTH_TOKEN provided. Could not save to alertlines.txt.");
+            return;
+        }
+    }
+
+    const owner = "jace200677";
+    const repo = "real-forecast";
+    const path = "weather/alertlines.txt";
+    const url = `https://api.github.com/repos/${owner}/${repo}/contents/${path}`;
+
+    try {
+        const getRes = await fetch(url, {
+            headers: { 
+                "Authorization": `Bearer ${token}`,
+                "Accept": "application/vnd.github.v3+json"
+            }
+        });
+
+        let rawContent = "";
+        let sha = "";
+
+        if (getRes.ok) {
+            const fileData = await getRes.json();
+            sha = fileData.sha;
+            rawContent = atob(fileData.content.replace(/\n/g, ''));
+        }
+
+        // Format: ensure existing text ends with a newline and append new item on a new line
+        const newRecord = JSON.stringify(drawnAlertObj);
+        let updatedContent = rawContent.trim();
+        updatedContent = updatedContent ? `${updatedContent}\n${newRecord}` : newRecord;
+
+        const updatedBase64 = btoa(unescape(encodeURIComponent(updatedContent)));
+
+        const putRes = await fetch(url, {
+            method: "PUT",
+            headers: {
+                "Authorization": `Bearer ${token}`,
+                "Content-Type": "application/json",
+                "Accept": "application/vnd.github.v3+json"
+            },
+            body: JSON.stringify({
+                message: `Update alertlines.txt - Add ${drawnAlertObj.id}`,
+                content: updatedBase64,
+                sha: sha
+            })
+        });
+
+        if (!putRes.ok) {
+            if (putRes.status === 401 || putRes.status === 403) {
+                localStorage.removeItem("API_AUTH_TOKEN");
+                alert("Invalid or expired token. Storage cleared.");
+            }
+            throw new Error("GitHub API push failed");
+        }
+
+        console.log("Alert line appended to alertlines.txt on a new line!");
+    } catch (err) {
+        console.error("Failed to commit alert line:", err);
+    }
 }
 async function verifyDeviceAccess() {
     const broadcastBtn = document.getElementById("broadcast-alert-btn");
