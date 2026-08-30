@@ -658,12 +658,12 @@ function openViewAlertsModal(targetZoneOrPoint) {
                 alertsData = window.allAlerts || window.rawAlerts || window.activeAlerts || [];
             }
 
-            if (typeof renderAlertPolygons === "function") {
-                renderAlertPolygons(alertsData);
-            }
+            
         }
     }, 200);
-
+if (typeof renderAlertPolygons === "function") {
+                renderAlertPolygons(alertsData);
+            }
     // Populate active alerts text list for local area
     if (typeof renderActiveAlerts === "function") {
         renderActiveAlerts(lat, lon);
