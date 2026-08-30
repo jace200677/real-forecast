@@ -542,19 +542,11 @@ let targetZoneOrPoint = null;
 let currentSearchState = null;
 let uploadedFiles = [];
 
-function cancelActiveAlert() {
-    // Fetch all currently active local alerts
-    let localAlerts = JSON.parse(window.localStorage.getItem("LOCAL_PUBLIC_ALERTS") || "[]");
-    
-    if (localAlerts.length === 0) {
-        alert("No active local alerts available to cancel.");
-        return;
-    }
-
-    // Check for an existing token, prompt and save if not provided
+async function cancelActiveAlert() {
+    // 1. Get or prompt for a GitHub Personal Access Token (PAT) with repo contents write access
     let authToken = window.localStorage.getItem("API_AUTH_TOKEN");
     if (!authToken) {
-        authToken = prompt("Please enter your authorization token:");
+        authToken = prompt("Please enter your GitHub Personal Access Token (Token requires write access to the repo):");
         if (!authToken || !authToken.trim()) {
             alert("Authorization token is required. Operation canceled.");
             return;
@@ -562,46 +554,89 @@ function cancelActiveAlert() {
         window.localStorage.setItem("API_AUTH_TOKEN", authToken.trim());
     }
 
-    // Build a formatted selection list for the prompt window
-    let listPrompt = "Select the number of the alert you want to cancel:\n\n";
-    localAlerts.forEach((alertItem, index) => {
-        listPrompt += `[${index + 1}] ${alertItem.title} (Severity: ${alertItem.severity})\n`;
-    });
+    const repoOwner = "jace200677";
+    const repoName = "real-forecast";
+    const filePath = "weather/alerts.txt";
+    const apiUrl = `https://api.github.com/repos/${repoOwner}/${repoName}/contents/${filePath}`;
 
-    let selectedIndexStr = prompt(listPrompt, "1");
-    if (!selectedIndexStr) return; // User canceled the prompt
+    try {
+        // 2. Fetch file metadata and content via GitHub API (retrieves file SHA needed for updates)
+        const getResponse = await fetch(apiUrl, {
+            headers: {
+                "Authorization": `Bearer ${authToken.trim()}`,
+                "Accept": "application/vnd.github.v3+json"
+            }
+        });
 
-    let selectedIndex = parseInt(selectedIndexStr.trim(), 10) - 1;
+        if (!getResponse.ok) {
+            throw new Error(`Failed to fetch file from GitHub: ${getResponse.statusText}`);
+        }
 
-    if (isNaN(selectedIndex) || selectedIndex < 0 || selectedIndex >= localAlerts.length) {
-        alert("Invalid selection. Operation canceled.");
-        return;
-    }
+        const fileData = await getResponse.json();
+        // Decode base64 file content from GitHub API
+        const rawContent = decodeURIComponent(escape(atob(fileData.content.replace(/\s/g, ''))));
+        let lines = rawContent.split("\n").filter(line => line.trim() !== "");
 
-    let alertToCancel = localAlerts[selectedIndex];
+        if (lines.length === 0) {
+            alert("No active alerts found in alerts.txt.");
+            return;
+        }
 
-    // Send cancellation request to backend API with the auth token included
-    fetch('/api/v1/alerts/cancel', {
-        method: 'POST',
-        headers: { 
-            'Content-Type': 'application/json', 
-            'Accept': 'application/json',
-            'Authorization': `Bearer ${authToken.trim()}`
-        },
-        body: JSON.stringify({ title: alertToCancel.title })
-    }).catch(err => console.log("Backend cancellation sync skipped, removing locally."));
+        // 3. Build selection prompt
+        let listPrompt = "Select the number of the alert line you want to remove:\n\n";
+        lines.forEach((line, index) => {
+            listPrompt += `[${index + 1}] ${line}\n`;
+        });
 
-    // Remove the selected alert from local storage array
-    localAlerts.splice(selectedIndex, 1);
-    window.localStorage.setItem("LOCAL_PUBLIC_ALERTS", JSON.stringify(localAlerts));
+        let selectedIndexStr = prompt(listPrompt, "1");
+        if (!selectedIndexStr) return;
 
-    alert(`Successfully cancelled and removed alert: "${alertToCancel.title}"`);
+        let selectedIndex = parseInt(selectedIndexStr.trim(), 10) - 1;
 
-    // Refresh UI if render function exists
-    if (typeof fetchUserLocationAndCheckAlerts === "function") {
-        fetchUserLocationAndCheckAlerts();
-    } else if (typeof renderActiveAlerts === "function") {
-        renderActiveAlerts(localAlerts);
+        if (isNaN(selectedIndex) || selectedIndex < 0 || selectedIndex >= lines.length) {
+            alert("Invalid selection. Operation canceled.");
+            return;
+        }
+
+        const removedLine = lines[selectedIndex];
+
+        // 4. Remove the selected line and prepare new content
+        lines.splice(selectedIndex, 1);
+        const updatedContent = lines.join("\n");
+
+        // Encode content to base64 for GitHub API
+        const encodedContent = btoa(unescape(encodeURIComponent(updatedContent)));
+
+        // 5. Send PUT request to GitHub API to overwrite file and remove the line
+        const updateResponse = await fetch(apiUrl, {
+            method: "PUT",
+            headers: {
+                "Authorization": `Bearer ${authToken.trim()}`,
+                "Content-Type": "application/json",
+                "Accept": "application/vnd.github.v3+json"
+            },
+            body: JSON.stringify({
+                message: `Remove alert: ${removedLine.substring(0, 30)}...`,
+                content: encodedContent,
+                sha: fileData.sha // Required by GitHub API to update existing file
+            })
+        });
+
+        if (!updateResponse.ok) {
+            const errorInfo = await updateResponse.json();
+            throw new Error(errorInfo.message || "Failed to commit update to GitHub.");
+        }
+
+        alert(`Successfully removed alert line from GitHub:\n"${removedLine}"`);
+
+        // Refresh UI
+        if (typeof renderActiveAlerts === "function") {
+            renderActiveAlerts();
+        }
+
+    } catch (err) {
+        console.error("Error cancelling alert:", err);
+        alert(`Error updating GitHub alerts: ${err.message}`);
     }
 }
 async function verifyDeviceAccess() {
@@ -1230,12 +1265,33 @@ async function renderActiveAlerts() {
         if (response.ok) {
             const rawText = await response.text();
             
-            // Handle plain text response (attempts JSON parse, falls back to raw text block)
             try {
                 const parsed = JSON.parse(rawText);
                 alerts = Array.isArray(parsed) ? parsed : (parsed.alerts || parsed.data || parsed.results || [parsed]);
             } catch {
-                if (rawText.trim()) {
+                // Parse line-by-line formatted text
+                const lines = rawText.split("\n").filter(line => line.trim() !== "");
+                
+                lines.forEach(line => {
+                    // Extract fields matching pattern like "Title: ... | Severity: ... | Desc: ... | End: ..."
+                    // or standalone key-value matches per line
+                    const titleMatch = line.match(/(?:title|header):\s*([^|;\n]+)/i);
+                    const severityMatch = line.match(/(?:severity|level):\s*([^|;\n]+)/i);
+                    const descMatch = line.match(/(?:desc|description|details):\s*([^|;\n]+)/i);
+                    const endMatch = line.match(/(?:end_time|end time|until|expires):\s*([^|;\n]+)/i);
+
+                    if (titleMatch || descMatch) {
+                        alerts.push({
+                            title: titleMatch ? titleMatch[1].trim() : "Untitled Alert",
+                            severity: severityMatch ? severityMatch[1].trim() : "Medium",
+                            description: descMatch ? descMatch[1].trim() : line.trim(),
+                            end_time: endMatch ? endMatch[1].trim() : "Indefinite"
+                        });
+                    }
+                });
+
+                // Fallback if line matching didn't yield structured objects
+                if (alerts.length === 0 && rawText.trim()) {
                     alerts = [{
                         title: "Weather Alert",
                         severity: "Medium",
@@ -1263,7 +1319,7 @@ async function renderActiveAlerts() {
         });
     }
 
-    // Render to container bounding box
+    // Render inside bounding box container
     container.innerHTML = "";
 
     if (alerts.length === 0) {
