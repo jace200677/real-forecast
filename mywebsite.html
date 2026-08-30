@@ -672,11 +672,10 @@ function renderAlertPolygons(alerts) {
 
         let polygonCoords = [];
 
-        // 1. Check for custom drawn line/polygon point arrays
+        // 1. Strict extraction of custom drawn point arrays (preserves exact drawn path)
         const customPoints = alert.latlngs || alert.points || alert.coordinates || alert.polygon_points;
 
         if (Array.isArray(customPoints) && customPoints.length > 0) {
-            // Normalize custom points into Leaflet format [[lat, lon], [lat, lon], ...]
             polygonCoords = customPoints.map(pt => {
                 if (Array.isArray(pt)) return [parseFloat(pt[0]), parseFloat(pt[1])];
                 if (pt && typeof pt === 'object') return [parseFloat(pt.lat), parseFloat(pt.lng ?? pt.lon)];
@@ -684,7 +683,7 @@ function renderAlertPolygons(alerts) {
             }).filter(pt => pt && !isNaN(pt[0]) && !isNaN(pt[1]));
         }
 
-        // 2. Fallback to bounding lat/lon box if no custom line points were saved
+        // 2. Fallback to bounding box ONLY if no custom drawn points exist
         if (polygonCoords.length === 0) {
             const bottomLat = alert.bottomLat ?? alert.bottom_lat ?? alert.min_lat;
             const topLat = alert.topLat ?? alert.top_lat ?? alert.max_lat;
@@ -703,12 +702,13 @@ function renderAlertPolygons(alerts) {
             }
         }
 
-        // Render line or polygon layer on map
+        // Render multi-point polylines or irregular polygons directly
         if (polygonCoords.length > 0) {
-            const isPolyline = alert.isLine || alert.type === 'polyline';
+            // Force polyline if specified or if path is open (fewer than 3 points)
+            const isPolyline = alert.isLine || alert.type === 'polyline' || polygonCoords.length < 3;
 
             const layer = isPolyline 
-                ? L.polyline(polygonCoords, { color: color, weight: 3 })
+                ? L.polyline(polygonCoords, { color: color, weight: 4, opacity: 0.85 })
                 : L.polygon(polygonCoords, {
                     color: color,
                     fillColor: color,
@@ -722,8 +722,8 @@ function renderAlertPolygons(alerts) {
         }
     });
 
-    // Auto-fit camera around all drawn alert boundaries
-    if (boundsArray.length > 0 && userAlertMap) {
+    // Fit map view to bound all custom shapes
+    if (boundsArray.length > 0 && typeof userAlertMap !== 'undefined' && userAlertMap) {
         userAlertMap.fitBounds(boundsArray, { padding: [20, 20] });
     }
 }
