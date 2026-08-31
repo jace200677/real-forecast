@@ -802,22 +802,25 @@ async function renderAlertPolygons(lat, lon, selectedAlertTitle = null) {
         return parsedItems;
     };
 
-    const resolveSeverityColor = () => '#d9534f';
+    // Maps severity levels to distinct fill/stroke colors
+    const resolveSeverityColor = (severityStr) => {
+        if (!severityStr) return '#d9534f'; // Default red
+        const sev = String(severityStr).toLowerCase();
+        
+        if (sev.includes('extreme') || sev.includes('emergency')) return '#d9534f'; // Red
+        if (sev.includes('severe') || sev.includes('warning')) return '#ff9800';     // Orange
+        if (sev.includes('moderate') || sev.includes('watch')) return '#ffeb3b';    // Yellow
+        if (sev.includes('minor') || sev.includes('advisory')) return '#03a9f4';    // Blue
+        
+        return '#d9534f';
+    };
 
-    // Fetch data from GitHub repository sources
+    // Fetch alert lines from GitHub
     try {
-        const [alertsRes, linesRes] = await Promise.allSettled([
-            fetch('https://raw.githubusercontent.com/jace200677/real-forecast/refs/heads/main/weather/alerts.txt'),
-            fetch('https://raw.githubusercontent.com/jace200677/real-forecast/refs/heads/main/weather/alertlines.txt')
-        ]);
+        const linesRes = await fetch('https://raw.githubusercontent.com/jace200677/real-forecast/refs/heads/main/weather/alertlines.txt');
 
-        if (alertsRes.status === "fulfilled" && alertsRes.value.ok) {
-            const text = await alertsRes.value.text();
-            rawAlerts.push(...parseAlertsText(text, "alerts.txt"));
-        }
-
-        if (linesRes.status === "fulfilled" && linesRes.value.ok) {
-            const text = await linesRes.value.text();
+        if (linesRes.ok) {
+            const text = await linesRes.text();
             rawAlerts.push(...parseAlertsText(text, "alertlines.txt"));
         }
     } catch (error) {
@@ -852,7 +855,9 @@ async function renderAlertPolygons(lat, lon, selectedAlertTitle = null) {
 
         const severity = alert.severity || alert.level || "Moderate";
         const title = alert.title || alert.header || alert.name || "Weather Alert";
-        const baseColor = resolveSeverityColor();
+        
+        // Custom fill and stroke color based on severity
+        const fillColor = alert.fillColor || alert.color || resolveSeverityColor(severity);
 
         const isSelected = Boolean(
             selectedAlertTitle && 
@@ -862,7 +867,7 @@ async function renderAlertPolygons(lat, lon, selectedAlertTitle = null) {
             )
         );
 
-        // Exhaustive coordinate extraction (checking latlngs, points, coordinates, geometry, lines, line)
+        // Exhaustive coordinate extraction
         let rawPoints = alert.latlngs 
             || alert.points 
             || alert.coordinates 
@@ -909,13 +914,13 @@ async function renderAlertPolygons(lat, lon, selectedAlertTitle = null) {
 
         const isLineSource = alert._sourceFile === "alertlines.txt";
 
-        // Render matching Polyline / Polygon path (NO L.rectangle fallbacks)
+        // Render matching Polyline / Polygon path with designated fill/stroke color
         const layerOptions = {
-            color: isSelected ? "#000000" : baseColor,       
+            color: isSelected ? "#000000" : fillColor,       
             weight: isSelected ? 5 : 3,
             opacity: 1.0,
-            fill: !isLineSource,
-            fillColor: baseColor,                             
+            fill: true,
+            fillColor: fillColor,                             
             fillOpacity: 0.45,                                
             lineCap: 'round',
             lineJoin: 'round'
@@ -1251,8 +1256,39 @@ async function pushAlertLineToGitHub(drawnAlertObj) {
     const repo = "real-forecast";
     const path = "weather/alertlines.txt";
     const url = `https://api.github.com/repos/${owner}/${repo}/contents/${path}`;
+    const rawAlertsUrl = "https://raw.githubusercontent.com/jace200677/real-forecast/refs/heads/main/weather/alerts.txt";
 
     try {
+        // Fetch external alerts data to extract metadata
+        let metadata = { title: "", description: "", severity: "" };
+        const alertsRes = await fetch(rawAlertsUrl);
+        
+        if (alertsRes.ok) {
+            const alertsData = await alertsRes.json();
+            // Handle array of alert objects or a feature collection
+            const alertsList = Array.isArray(alertsData) ? alertsData : (alertsData.features || []);
+            const matchedAlert = alertsList.find(item => {
+                const id = item.id || (item.properties && item.properties.id);
+                return id === drawnAlertObj.id;
+            });
+
+            if (matchedAlert) {
+                const props = matchedAlert.properties || matchedAlert;
+                metadata = {
+                    title: props.title || props.headline || props.event || "",
+                    description: props.description || "",
+                    severity: props.severity || ""
+                };
+            }
+        }
+
+        // Merge metadata into drawnAlertObj
+        const enrichedAlertObj = {
+            ...drawnAlertObj,
+            ...metadata
+        };
+
+        // Fetch existing alertlines.txt content
         const getRes = await fetch(url, {
             headers: { 
                 "Authorization": `Bearer ${token}`,
@@ -1269,13 +1305,14 @@ async function pushAlertLineToGitHub(drawnAlertObj) {
             rawContent = atob(fileData.content.replace(/\n/g, ''));
         }
 
-        // Format: ensure existing text ends with a newline and append new item on a new line
-        const newRecord = JSON.stringify(drawnAlertObj);
+        // Format and append record
+        const newRecord = JSON.stringify(enrichedAlertObj);
         let updatedContent = rawContent.trim();
         updatedContent = updatedContent ? `${updatedContent}\n${newRecord}` : newRecord;
 
         const updatedBase64 = btoa(unescape(encodeURIComponent(updatedContent)));
 
+        // Push update to GitHub
         const putRes = await fetch(url, {
             method: "PUT",
             headers: {
@@ -1286,7 +1323,7 @@ async function pushAlertLineToGitHub(drawnAlertObj) {
             body: JSON.stringify({
                 message: `Update alertlines.txt - Add ${drawnAlertObj.id}`,
                 content: updatedBase64,
-                sha: sha
+                sha: sha !== "" ? sha : undefined
             })
         });
 
