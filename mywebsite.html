@@ -840,7 +840,6 @@ async function renderAlertPolygons(lat, lon, selectedAlertTitle = null) {
         return true;
     });
 
-    const boundsArray = [];
     const selectedBounds = [];
     const normalLayers = [];
     const selectedLayers = [];
@@ -876,7 +875,7 @@ async function renderAlertPolygons(lat, lon, selectedAlertTitle = null) {
         if (rawPoints) {
             if (typeof rawPoints === 'string') {
                 try { rawPoints = JSON.parse(rawPoints); } catch (e) {
-                    try { rawPoints = JSON.parse(rawPoints.replace(/'/g, '"')); } catch (err) { rawPoints = null; }
+                    try { rawPoints = JSON.replace(/'/g, '"'); rawPoints = JSON.parse(rawPoints); } catch (err) { rawPoints = null; }
                 }
             }
 
@@ -899,7 +898,6 @@ async function renderAlertPolygons(lat, lon, selectedAlertTitle = null) {
 
                     if (isNaN(pLat) || isNaN(pLon)) return null;
 
-                    // Standardize [Lon, Lat] (GeoJSON format) to Leaflet [Lat, Lon] strictly based on US coordinate bounds
                     if (pLat < -50 || pLat > 180 || (pLat < 0 && pLon > 0)) {
                         [pLat, pLon] = [pLon, pLat];
                     }
@@ -917,7 +915,7 @@ async function renderAlertPolygons(lat, lon, selectedAlertTitle = null) {
             color: isSelected ? "#000000" : fillColor,       
             weight: isSelected ? 5 : 3,
             opacity: 1.0,
-            fill: !isLineSource, // Disable fill for polylines to prevent render clipping glitches
+            fill: !isLineSource,
             fillColor: fillColor,                             
             fillOpacity: 0.45,                                
             lineCap: 'round',
@@ -939,7 +937,6 @@ async function renderAlertPolygons(lat, lon, selectedAlertTitle = null) {
             selectedBounds.push(...lineCoords);
         } else {
             normalLayers.push(shapeLayer);
-            boundsArray.push(...lineCoords);
         }
     });
 
@@ -951,16 +948,9 @@ async function renderAlertPolygons(lat, lon, selectedAlertTitle = null) {
         }
     });
 
-    // Animate map view bounds cleanly without re-triggering recursive layout resets
-    if (mapInstance && !mapInstance._isZooming) {
-        const targetBounds = selectedBounds.length > 0 ? selectedBounds : boundsArray;
-        if (targetBounds.length > 0) {
-            mapInstance.fitBounds(targetBounds, { 
-                padding: selectedBounds.length > 0 ? [50, 50] : [40, 40], 
-                maxZoom: selectedBounds.length > 0 ? 11 : 10,
-                animate: true
-            });
-        }
+    // Only pan/zoom the map if an explicit alert was clicked/selected by the user
+    if (mapInstance && selectedAlertTitle && selectedBounds.length > 0) {
+        mapInstance.fitBounds(selectedBounds, { padding: [50, 50], maxZoom: 11, animate: true });
     }
 }
 async function cancelActiveAlert() {
