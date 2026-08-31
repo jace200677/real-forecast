@@ -709,6 +709,9 @@ async function renderAlertPolygons(lat, lon, selectedAlertTitle = null) {
     
     window.alertPolygonsLayerGroup.clearLayers();
 
+    const userLat = !isNaN(parseFloat(lat)) ? parseFloat(lat) : (typeof targetZoneOrPoint !== 'undefined' && targetZoneOrPoint ? parseFloat(targetZoneOrPoint.lat) : 45.0);
+    const userLon = !isNaN(parseFloat(lon)) ? parseFloat(lon) : (typeof targetZoneOrPoint !== 'undefined' && targetZoneOrPoint ? parseFloat(targetZoneOrPoint.lon) : -93.0);
+
     let rawAlerts = [];
 
     // Robust parser supporting NDJSON, standard JSON, and structured text blocks
@@ -718,7 +721,7 @@ async function renderAlertPolygons(lat, lon, selectedAlertTitle = null) {
 
         const trimmedText = rawText.trim();
 
-        // 1. Standard JSON parsing (arrays or objects)
+        // 1. Attempt standard JSON parsing first (arrays or objects)
         try {
             let parsed = JSON.parse(trimmedText);
             let items = Array.isArray(parsed) ? parsed : (parsed.alerts || parsed.data || parsed.results || [parsed]);
@@ -731,7 +734,7 @@ async function renderAlertPolygons(lat, lon, selectedAlertTitle = null) {
             if (parsedItems.length > 0) return parsedItems;
         } catch (e) {}
 
-        // 2. Newline-Delimited JSON (NDJSON) parsing
+        // 2. Attempt parsing as Newline-Delimited JSON (NDJSON) where each line is a separate JSON object
         const lines = trimmedText.split(/\r?\n/);
         let ndjsonSuccess = false;
         lines.forEach(line => {
@@ -754,7 +757,7 @@ async function renderAlertPolygons(lat, lon, selectedAlertTitle = null) {
                 if (defaultSource && !currentAlert._sourceFile) {
                     currentAlert._sourceFile = defaultSource;
                 }
-                if (currentAlert.title || currentAlert.severity || currentAlert.description || (currentAlert.latlngs && currentAlert.latlngs.length > 0)) {
+                if (currentAlert.title || currentAlert.severity || currentAlert.description || (currentAlert.latlngs && currentAlert.latlngs.length > 0) || currentAlert.bounding_box) {
                     parsedItems.push(currentAlert);
                 }
             }
@@ -828,7 +831,7 @@ async function renderAlertPolygons(lat, lon, selectedAlertTitle = null) {
         return severityColors[(severity || '').toLowerCase()] || '#5cb85c';
     };
 
-    // 2. Fetch live data from external repository
+    // 3. Fetch data in parallel from GitHub repository sources
     try {
         const [alertsRes, linesRes] = await Promise.allSettled([
             fetch('https://raw.githubusercontent.com/jace200677/real-forecast/refs/heads/main/weather/alerts.txt'),
@@ -852,7 +855,6 @@ async function renderAlertPolygons(lat, lon, selectedAlertTitle = null) {
         rawAlerts = window.activeAlerts || window.allAlerts || [];
     }
 
-    // Filter out expired alerts
     const now = new Date();
     const alertList = rawAlerts.filter(alert => {
         if (alert && alert.end_time && String(alert.end_time).toLowerCase() !== "indefinite") {
@@ -867,7 +869,7 @@ async function renderAlertPolygons(lat, lon, selectedAlertTitle = null) {
     const normalLayers = [];
     const selectedLayers = [];
 
-    // 3. Process exact lat/lng coordinate arrays directly
+    // 4. Build layers: Construct custom undulating boundary paths instead of rigid rectangles
     alertList.forEach(alert => {
         if (!alert) return;
         const severity = alert.severity || alert.level || "Moderate";
@@ -881,6 +883,41 @@ async function renderAlertPolygons(lat, lon, selectedAlertTitle = null) {
                 (alert.id && String(alert.id).toLowerCase() === String(selectedAlertTitle).toLowerCase())
             )
         );
+
+        // Generate an organic, custom multi-point polyline/polygon path using bounding box extremes
+        if (!alert.latlngs) {
+            const bb = alert.bounding_box || {
+                min_lat: alert.bottom_lat,
+                max_lat: alert.top_lat,
+                min_lon: alert.bottom_lon,
+                max_lon: alert.top_lon
+            };
+
+            if (bb && bb.min_lat !== undefined && bb.max_lat !== undefined) {
+                const latMin = parseFloat(bb.min_lat);
+                const latMax = parseFloat(bb.max_lat);
+                const lonMin = parseFloat(bb.min_lon);
+                const lonMax = parseFloat(bb.max_lon);
+                const latMid = (latMin + latMax) / 2;
+                const lonMid = (lonMin + lonMax) / 2;
+
+                // Custom multi-node path mimicking a geographical weather warning contour line
+                alert.latlngs = [
+                    [latMin + (latMax - latMin) * 0.2, lonMin],
+                    [latMin, lonMin + (lonMax - lonMin) * 0.3],
+                    [latMin + (latMax - latMin) * 0.1, lonMid],
+                    [latMin, lonMax - (lonMax - lonMin) * 0.2],
+                    [latMin + (latMax - latMin) * 0.3, lonMax],
+                    [latMid, lonMax - (lonMax - lonMin) * 0.1],
+                    [latMax - (latMax - latMin) * 0.2, lonMax],
+                    [latMax, lonMax - (lonMax - lonMin) * 0.4],
+                    [latMax, lonMin + (lonMax - lonMin) * 0.3],
+                    [latMax - (latMax - latMin) * 0.1, lonMin + (lonMax - lonMin) * 0.1],
+                    [latMid, lonMin],
+                    [latMin + (latMax - latMin) * 0.4, lonMin]
+                ];
+            }
+        }
 
         let rawPoints = alert.latlngs || alert.points || alert.coordinates || alert.geometry?.coordinates || alert.polygon;
 
@@ -896,7 +933,6 @@ async function renderAlertPolygons(lat, lon, selectedAlertTitle = null) {
             }
         }
 
-        // Flatten single-wrapped coordinate arrays
         while (Array.isArray(rawPoints) && rawPoints.length === 1 && Array.isArray(rawPoints[0])) {
             rawPoints = rawPoints[0];
         }
@@ -908,7 +944,6 @@ async function renderAlertPolygons(lat, lon, selectedAlertTitle = null) {
                 if (Array.isArray(pt)) {
                     let pLat = parseFloat(pt[0]);
                     let pLon = parseFloat(pt[1]);
-                    // Swap inverted latitude/longitude coordinates if latitude bounds exceed [-90, 90]
                     if (Math.abs(pLat) > 90 && Math.abs(pLon) <= 90) [pLat, pLon] = [pLon, pLat];
                     return [pLat, pLon];
                 }
@@ -921,24 +956,21 @@ async function renderAlertPolygons(lat, lon, selectedAlertTitle = null) {
             }).filter(pt => pt && !isNaN(pt[0]) && !isNaN(pt[1]));
         }
 
-        // Draw polyline or polygon layers using actual parsed points
         if (lineCoords.length >= 2) {
-            const isLineSource = alert.isLine || alert.type === "polyline" || alert._sourceFile === "alertlines.txt";
+            const isLineSource = alert._sourceFile === "alertlines.txt";
 
             const layerOptions = {
                 color: isSelected ? "#000000" : baseColor,       
                 weight: isSelected ? 5 : 3,
                 opacity: 1.0,
-                fill: !isLineSource,
+                fill: true,
                 fillColor: baseColor,                             
-                fillOpacity: isLineSource ? 0 : 0.45,                                
+                fillOpacity: 0.45,                                
                 lineCap: 'round',
                 lineJoin: 'round'
             };
 
-            const shapeLayer = isLineSource 
-                ? L.polyline(lineCoords, layerOptions) 
-                : L.polygon(lineCoords, layerOptions);
+            const shapeLayer = isLineSource ? L.polyline(lineCoords, layerOptions) : L.polygon(lineCoords, layerOptions);
 
             const popupContent = `<b>${title}</b><br>Severity: ${severity}<br>${alert.description || 'No description provided.'}`;
             shapeLayer.bindPopup(popupContent);
@@ -954,7 +986,6 @@ async function renderAlertPolygons(lat, lon, selectedAlertTitle = null) {
         }
     });
 
-    // 4. Render layers and fit bounds
     normalLayers.forEach(layer => window.alertPolygonsLayerGroup.addLayer(layer));
     selectedLayers.forEach(layer => {
         window.alertPolygonsLayerGroup.addLayer(layer);
@@ -969,7 +1000,6 @@ async function renderAlertPolygons(lat, lon, selectedAlertTitle = null) {
         }
     }
 }
-
 async function cancelActiveAlert() {
     // 1. Get or prompt for GitHub PAT
     let authToken = window.localStorage.getItem("API_AUTH_TOKEN");
