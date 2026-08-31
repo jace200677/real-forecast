@@ -709,6 +709,9 @@ async function renderAlertPolygons(lat, lon, selectedAlertTitle = null) {
     
     window.alertPolygonsLayerGroup.clearLayers();
 
+    const userLat = !isNaN(parseFloat(lat)) ? parseFloat(lat) : (typeof targetZoneOrPoint !== 'undefined' && targetZoneOrPoint ? parseFloat(targetZoneOrPoint.lat) : 45.0);
+    const userLon = !isNaN(parseFloat(lon)) ? parseFloat(lon) : (typeof targetZoneOrPoint !== 'undefined' && targetZoneOrPoint ? parseFloat(targetZoneOrPoint.lon) : -93.0);
+
     let rawAlerts = [];
 
     // Robust parser supporting NDJSON, standard JSON, and structured text blocks
@@ -718,7 +721,7 @@ async function renderAlertPolygons(lat, lon, selectedAlertTitle = null) {
 
         const trimmedText = rawText.trim();
 
-        // 1. Standard JSON
+        // 1. Attempt standard JSON parsing first (arrays or objects)
         try {
             let parsed = JSON.parse(trimmedText);
             let items = Array.isArray(parsed) ? parsed : (parsed.alerts || parsed.data || parsed.results || [parsed]);
@@ -731,7 +734,7 @@ async function renderAlertPolygons(lat, lon, selectedAlertTitle = null) {
             if (parsedItems.length > 0) return parsedItems;
         } catch (e) {}
 
-        // 2. NDJSON
+        // 2. Attempt parsing as Newline-Delimited JSON (NDJSON) where each line is a separate JSON object
         const lines = trimmedText.split(/\r?\n/);
         let ndjsonSuccess = false;
         lines.forEach(line => {
@@ -747,14 +750,14 @@ async function renderAlertPolygons(lat, lon, selectedAlertTitle = null) {
         });
         if (ndjsonSuccess && parsedItems.length > 0) return parsedItems;
 
-        // 3. Structured text parser
+        // 3. Fallback: Line-by-line structured text parser
         let currentAlert = null;
         const commitCurrentAlert = () => {
             if (currentAlert) {
                 if (defaultSource && !currentAlert._sourceFile) {
                     currentAlert._sourceFile = defaultSource;
                 }
-                if (currentAlert.title || currentAlert.severity || currentAlert.description || (currentAlert.latlngs && currentAlert.latlngs.length > 0)) {
+                if (currentAlert.title || currentAlert.severity || currentAlert.description || (currentAlert.latlngs && currentAlert.latlngs.length > 0) || currentAlert.bounding_box) {
                     parsedItems.push(currentAlert);
                 }
             }
@@ -796,7 +799,6 @@ async function renderAlertPolygons(lat, lon, selectedAlertTitle = null) {
                 currentAlert.end_time = cleanLine.substring(cleanLine.indexOf(":") + 1).trim();
             }
 
-            // Extract coordinate pairs safely
             const bracketArrayMatches = cleanLine.match(/\[\s*-?\d+(?:\.\d+)?\s*,\s*-?\d+(?:\.\d+)?\s*\]/g);
             if (bracketArrayMatches) {
                 if (!currentAlert.latlngs) currentAlert.latlngs = [];
@@ -804,11 +806,7 @@ async function renderAlertPolygons(lat, lon, selectedAlertTitle = null) {
                     try {
                         const pair = JSON.parse(bracketStr);
                         if (Array.isArray(pair) && pair.length === 2) {
-                            let val1 = parseFloat(pair[0]);
-                            let val2 = parseFloat(pair[1]);
-                            if (!isNaN(val1) && !isNaN(val2)) {
-                                currentAlert.latlngs.push([val1, val2]);
-                            }
+                            currentAlert.latlngs.push([parseFloat(pair[0]), parseFloat(pair[1])]);
                         }
                     } catch (e) {}
                 });
@@ -833,7 +831,7 @@ async function renderAlertPolygons(lat, lon, selectedAlertTitle = null) {
         return severityColors[(severity || '').toLowerCase()] || '#5cb85c';
     };
 
-    // Fetch alert files
+    // 3. Fetch data in parallel from GitHub repository sources
     try {
         const [alertsRes, linesRes] = await Promise.allSettled([
             fetch('https://raw.githubusercontent.com/jace200677/real-forecast/refs/heads/main/weather/alerts.txt'),
@@ -871,7 +869,7 @@ async function renderAlertPolygons(lat, lon, selectedAlertTitle = null) {
     const normalLayers = [];
     const selectedLayers = [];
 
-    // Render Leaflet shapes
+    // 4. Build layers: Construct custom undulating boundary paths instead of rigid rectangles
     alertList.forEach(alert => {
         if (!alert) return;
         const severity = alert.severity || alert.level || "Moderate";
@@ -885,6 +883,41 @@ async function renderAlertPolygons(lat, lon, selectedAlertTitle = null) {
                 (alert.id && String(alert.id).toLowerCase() === String(selectedAlertTitle).toLowerCase())
             )
         );
+
+        // Generate an organic, custom multi-point polyline/polygon path using bounding box extremes
+        if (!alert.latlngs) {
+            const bb = alert.bounding_box || {
+                min_lat: alert.bottom_lat,
+                max_lat: alert.top_lat,
+                min_lon: alert.bottom_lon,
+                max_lon: alert.top_lon
+            };
+
+            if (bb && bb.min_lat !== undefined && bb.max_lat !== undefined) {
+                const latMin = parseFloat(bb.min_lat);
+                const latMax = parseFloat(bb.max_lat);
+                const lonMin = parseFloat(bb.min_lon);
+                const lonMax = parseFloat(bb.max_lon);
+                const latMid = (latMin + latMax) / 2;
+                const lonMid = (lonMin + lonMax) / 2;
+
+                // Custom multi-node path mimicking a geographical weather warning contour line
+                alert.latlngs = [
+                    [latMin + (latMax - latMin) * 0.2, lonMin],
+                    [latMin, lonMin + (lonMax - lonMin) * 0.3],
+                    [latMin + (latMax - latMin) * 0.1, lonMid],
+                    [latMin, lonMax - (lonMax - lonMin) * 0.2],
+                    [latMin + (latMax - latMin) * 0.3, lonMax],
+                    [latMid, lonMax - (lonMax - lonMin) * 0.1],
+                    [latMax - (latMax - latMin) * 0.2, lonMax],
+                    [latMax, lonMax - (lonMax - lonMin) * 0.4],
+                    [latMax, lonMin + (lonMax - lonMin) * 0.3],
+                    [latMax - (latMax - latMin) * 0.1, lonMin + (lonMax - lonMin) * 0.1],
+                    [latMid, lonMin],
+                    [latMin + (latMax - latMin) * 0.4, lonMin]
+                ];
+            }
+        }
 
         let rawPoints = alert.latlngs || alert.points || alert.coordinates || alert.geometry?.coordinates || alert.polygon;
 
@@ -900,8 +933,7 @@ async function renderAlertPolygons(lat, lon, selectedAlertTitle = null) {
             }
         }
 
-        // Recursively unnest array coordinate structures until reaching coordinate pairs
-        while (Array.isArray(rawPoints) && rawPoints.length > 0 && Array.isArray(rawPoints[0]) && Array.isArray(rawPoints[0][0])) {
+        while (Array.isArray(rawPoints) && rawPoints.length === 1 && Array.isArray(rawPoints[0])) {
             rawPoints = rawPoints[0];
         }
 
@@ -909,41 +941,29 @@ async function renderAlertPolygons(lat, lon, selectedAlertTitle = null) {
         if (Array.isArray(rawPoints) && rawPoints.length > 0) {
             lineCoords = rawPoints.map(pt => {
                 if (!pt) return null;
-                let pLat, pLon;
-
-                if (Array.isArray(pt) && pt.length >= 2) {
-                    let v1 = parseFloat(pt[0]);
-                    let v2 = parseFloat(pt[1]);
-                    
-                    if (isNaN(v1) || isNaN(v2)) return null;
-
-                    // Standard GeoJSON is [lon, lat]. Check if v1 is longitude.
-                    if (v1 < -90 || v1 > 90 || v2 > 90 || v2 < -90) { 
-                        pLat = v2;
-                        pLon = v1;
-                    } else {
-                        pLat = v1;
-                        pLon = v2;
-                    }
-                } else if (typeof pt === 'object' && pt !== null) {
-                    pLat = parseFloat(pt.lat ?? pt.latitude);
-                    pLon = parseFloat(pt.lng ?? pt.lon ?? pt.longitude);
+                if (Array.isArray(pt)) {
+                    let pLat = parseFloat(pt[0]);
+                    let pLon = parseFloat(pt[1]);
+                    if (Math.abs(pLat) > 90 && Math.abs(pLon) <= 90) [pLat, pLon] = [pLon, pLat];
+                    return [pLat, pLon];
                 }
-
-                if (isNaN(pLat) || isNaN(pLon)) return null;
-                return [pLat, pLon];
-            }).filter(pt => pt !== null);
+                if (typeof pt === 'object') {
+                    const pLat = parseFloat(pt.lat ?? pt.latitude);
+                    const pLon = parseFloat(pt.lng ?? pt.lon ?? pt.longitude);
+                    return [pLat, pLon];
+                }
+                return null;
+            }).filter(pt => pt && !isNaN(pt[0]) && !isNaN(pt[1]));
         }
 
-        const isLineSource = alert._sourceFile === "alertlines.txt";
-        const minPoints = isLineSource ? 2 : 3;
+        if (lineCoords.length >= 2) {
+            const isLineSource = alert._sourceFile === "alertlines.txt";
 
-        if (lineCoords.length >= minPoints) {
             const layerOptions = {
                 color: isSelected ? "#000000" : baseColor,       
                 weight: isSelected ? 5 : 3,
                 opacity: 1.0,
-                fill: !isLineSource,
+                fill: true,
                 fillColor: baseColor,                             
                 fillOpacity: 0.45,                                
                 lineCap: 'round',
