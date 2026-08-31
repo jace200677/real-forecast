@@ -1241,10 +1241,21 @@ async function initAlertMap() {
 // Queue lock mechanism to handle concurrent commits
 let commitQueue = Promise.resolve();
 
+/**
+ * Enqueues a task to push an alert line to GitHub sequentially.
+ * 
+ * @param {Object} drawnAlertObj - The alert object data to process.
+ * @returns {Promise<any>} Resolves or rejects with the result of `_executePushAlertLine`.
+ */
 async function pushAlertLineToGitHub(drawnAlertObj) {
-    // Chain the task onto the queue so calls execute sequentially
-    commitQueue = commitQueue.then(() => _executePushAlertLine(drawnAlertObj)).catch(() => {});
-    return commitQueue;
+    // 1. Chain task to run sequentially after the preceding queue completes
+    const currentTask = commitQueue.then(() => _executePushAlertLine(drawnAlertObj));
+
+    // 2. Swallow errors on the internal queue reference so failure doesn't block future tasks
+    commitQueue = currentTask.catch(() => {});
+
+    // 3. Return the task promise directly to propagate success/failure to the caller
+    return currentTask;
 }
 
 async function _executePushAlertLine(drawnAlertObj) {
