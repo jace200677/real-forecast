@@ -703,10 +703,10 @@ async function renderAlertPolygons(lat, lon, selectedAlertTitle = null) {
         window.alertPolygonsLayerGroup = L.layerGroup();
     }
     
+    // Ensure group is attached to map and completely cleared before drawing to prevent duplicates
     if (mapInstance && !mapInstance.hasLayer(window.alertPolygonsLayerGroup)) {
         window.alertPolygonsLayerGroup.addTo(mapInstance);
     }
-    
     window.alertPolygonsLayerGroup.clearLayers();
 
     const userLat = !isNaN(parseFloat(lat)) ? parseFloat(lat) : (typeof targetZoneOrPoint !== 'undefined' && targetZoneOrPoint ? parseFloat(targetZoneOrPoint.lat) : 45.0);
@@ -721,7 +721,7 @@ async function renderAlertPolygons(lat, lon, selectedAlertTitle = null) {
 
         const trimmedText = rawText.trim();
 
-        // 1. Attempt standard JSON parsing first (arrays or objects)
+        // 1. Attempt standard JSON parsing first
         try {
             let parsed = JSON.parse(trimmedText);
             let items = Array.isArray(parsed) ? parsed : (parsed.alerts || parsed.data || parsed.results || [parsed]);
@@ -734,7 +734,7 @@ async function renderAlertPolygons(lat, lon, selectedAlertTitle = null) {
             if (parsedItems.length > 0) return parsedItems;
         } catch (e) {}
 
-        // 2. Attempt parsing as Newline-Delimited JSON (NDJSON) where each line is a separate JSON object
+        // 2. Attempt parsing as Newline-Delimited JSON (NDJSON)
         const lines = trimmedText.split(/\r?\n/);
         let ndjsonSuccess = false;
         lines.forEach(line => {
@@ -831,7 +831,7 @@ async function renderAlertPolygons(lat, lon, selectedAlertTitle = null) {
         return severityColors[(severity || '').toLowerCase()] || '#5cb85c';
     };
 
-    // 3. Fetch data in parallel from GitHub repository sources
+    // 2. Fetch remote alerts
     try {
         const [alertsRes, linesRes] = await Promise.allSettled([
             fetch('https://raw.githubusercontent.com/jace200677/real-forecast/refs/heads/main/weather/alerts.txt'),
@@ -855,8 +855,18 @@ async function renderAlertPolygons(lat, lon, selectedAlertTitle = null) {
         rawAlerts = window.activeAlerts || window.allAlerts || [];
     }
 
+    // Deduplicate parsed raw alert records using alert ID or Title + Source combination
+    const seenAlertKeys = new Set();
+    const uniqueRawAlerts = rawAlerts.filter(alert => {
+        if (!alert) return false;
+        const key = alert.id || `${alert.title}_${alert._sourceFile}`;
+        if (seenAlertKeys.has(key)) return false;
+        seenAlertKeys.add(key);
+        return true;
+    });
+
     const now = new Date();
-    const alertList = rawAlerts.filter(alert => {
+    const alertList = uniqueRawAlerts.filter(alert => {
         if (alert && alert.end_time && String(alert.end_time).toLowerCase() !== "indefinite") {
             const endTime = new Date(alert.end_time);
             if (!isNaN(endTime.getTime()) && now > endTime) return false;
@@ -868,17 +878,13 @@ async function renderAlertPolygons(lat, lon, selectedAlertTitle = null) {
     const selectedBounds = [];
     const normalLayers = [];
     const selectedLayers = [];
-    
-    // Track added signatures to prevent duplicate map layers
-    const addedLayerKeys = new Set();
 
-    // 4. Build layers: Explicitly differentiate true alert lines from areal polygon boundaries
+    // 3. Build shape layers directly from coordinate inputs or bounding box dimensions
     alertList.forEach(alert => {
         if (!alert) return;
         const severity = alert.severity || alert.level || "Moderate";
         const title = alert.title || alert.header || alert.name || "Weather Alert";
         const baseColor = resolveSeverityColor(severity);
-        const isLineSource = alert._sourceFile === "alertlines.txt";
 
         const isSelected = Boolean(
             selectedAlertTitle && 
@@ -888,8 +894,8 @@ async function renderAlertPolygons(lat, lon, selectedAlertTitle = null) {
             )
         );
 
-        // If coordinates/latlngs are missing, generate clean rectangular/perimeter bounds for polygons only (skip lines)
-        if (!alert.latlngs && !isLineSource) {
+        // Fallback: Construct rectangular polygon boundary from bounding box if no explicit coordinates exist
+        if (!alert.latlngs && !alert.points && !alert.coordinates && !alert.geometry?.coordinates && !alert.polygon) {
             const bb = alert.bounding_box || {
                 min_lat: alert.bottom_lat,
                 max_lat: alert.top_lat,
@@ -903,12 +909,11 @@ async function renderAlertPolygons(lat, lon, selectedAlertTitle = null) {
                 const lonMin = parseFloat(bb.min_lon);
                 const lonMax = parseFloat(bb.max_lon);
 
-                // Standard clean box polygon path for areal alerts
                 alert.latlngs = [
                     [latMin, lonMin],
-                    [latMin, lonMax],
+                    [latMax, lonMin],
                     [latMax, lonMax],
-                    [latMax, lonMin]
+                    [latMin, lonMax]
                 ];
             }
         }
@@ -951,24 +956,15 @@ async function renderAlertPolygons(lat, lon, selectedAlertTitle = null) {
         }
 
         if (lineCoords.length >= 2) {
-            // Generate a unique structural fingerprint to prevent duplicate layers
-            const layerKey = `${title}_${isLineSource ? 'line' : 'poly'}_${lineCoords[0][0].toFixed(4)}_${lineCoords[0][1].toFixed(4)}`;
-            if (addedLayerKeys.has(layerKey)) return;
-            addedLayerKeys.add(layerKey);
+            const isLineSource = alert._sourceFile === "alertlines.txt";
 
-            const layerOptions = isLineSource ? {
+            const layerOptions = {
                 color: isSelected ? "#000000" : baseColor,       
-                weight: isSelected ? 6 : 4,
+                weight: isSelected ? 5 : 3,
                 opacity: 1.0,
-                lineCap: 'round',
-                lineJoin: 'round'
-            } : {
-                color: isSelected ? "#000000" : baseColor,       
-                weight: isSelected ? 4 : 2,
-                opacity: 0.9,
-                fill: true,
+                fill: !isLineSource,                              
                 fillColor: baseColor,                             
-                fillOpacity: 0.35,                                
+                fillOpacity: isLineSource ? 0 : 0.45,             
                 lineCap: 'round',
                 lineJoin: 'round'
             };
@@ -989,6 +985,7 @@ async function renderAlertPolygons(lat, lon, selectedAlertTitle = null) {
         }
     });
 
+    // Add unique layer instances to layer group
     normalLayers.forEach(layer => window.alertPolygonsLayerGroup.addLayer(layer));
     selectedLayers.forEach(layer => {
         window.alertPolygonsLayerGroup.addLayer(layer);
