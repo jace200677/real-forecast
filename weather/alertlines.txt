@@ -1,1 +1,1 @@
-
+{"id":"line-1788215470821","type":"polyline","isLine":true,"latlngs":[[49.08556,-126.123047],[40.43545,-124.101563],[41.233413,-113.730469],[49.543925,-118.652344],[48.448333,-126.5625]],"min_lat":40.43545,"max_lat":49.543925,"min_lon":-126.5625,"max_lon":-113.730469,"title":"","description":"","severity":"","githubUrl":"https://github.com/jace200677/real-forecast/blob/main/weather/alertlines.txt"}
