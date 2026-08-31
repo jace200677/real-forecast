@@ -712,17 +712,17 @@ async function renderAlertPolygons(lat, lon, selectedAlertTitle = null) {
 
     let rawAlerts = [];
 
-    // Unified parser aligning with renderActiveAlerts() structure
+    // Robust unified parser fixing block boundaries and coordinate extraction
     const parseAlertsText = (rawText, defaultSource = '') => {
         const parsedItems = [];
         if (!rawText || typeof rawText !== 'string') return parsedItems;
 
         const trimmedText = rawText.trim();
 
-        // 1. Try standard JSON Parse first
+        // 1. Attempt standard JSON parsing first
         try {
-            const parsed = JSON.parse(trimmedText);
-            const items = Array.isArray(parsed) ? parsed : (parsed.alerts || parsed.data || parsed.results || [parsed]);
+            let parsed = JSON.parse(trimmedText);
+            let items = Array.isArray(parsed) ? parsed : (parsed.alerts || parsed.data || parsed.results || [parsed]);
             items.forEach(item => {
                 if (item && typeof item === 'object') {
                     if (defaultSource && !item._sourceFile) item._sourceFile = defaultSource;
@@ -732,72 +732,107 @@ async function renderAlertPolygons(lat, lon, selectedAlertTitle = null) {
             if (parsedItems.length > 0) return parsedItems;
         } catch (e) {}
 
-        // 2. Parse multi-line or JSON fragment entries per line
-        const lines = trimmedText.split(/\r?\n/).filter(line => line.trim() !== "");
-        
-        lines.forEach(line => {
-            let alertObj = {};
-            
-            // Attempt parsing embedded JSON object fragment per line
-            if (line.includes("{") && line.includes("}")) {
-                try {
-                    const jsonMatch = line.match(/\{.*\}/);
-                    if (jsonMatch) alertObj = JSON.parse(jsonMatch[0]);
-                } catch (e) {}
+        try {
+            const fullBracketMatch = trimmedText.match(/\[\s*\{[\s\S]*\}\s*\]/);
+            if (fullBracketMatch) {
+                const parsedArray = JSON.parse(fullBracketMatch[0]);
+                if (Array.isArray(parsedArray)) {
+                    parsedArray.forEach(item => {
+                        if (defaultSource) item._sourceFile = defaultSource;
+                        parsedItems.push(item);
+                    });
+                    return parsedItems;
+                }
+            }
+        } catch (err) {}
+
+        // 2. Fallback: Line-by-line structured text parser with proper block resets
+        const lines = trimmedText.split(/\r?\n/);
+        let currentAlert = null;
+        let coordinateBuffer = [];
+
+        const commitCurrentAlert = () => {
+            if (currentAlert) {
+                if (coordinateBuffer.length > 0 && !currentAlert.latlngs) {
+                    currentAlert.latlngs = coordinateBuffer;
+                }
+                if (defaultSource && !currentAlert._sourceFile) {
+                    currentAlert._sourceFile = defaultSource;
+                }
+                if (currentAlert.title || currentAlert.latlngs) {
+                    parsedItems.push(currentAlert);
+                }
+            }
+            currentAlert = null;
+            coordinateBuffer = [];
+        };
+
+        lines.forEach((line) => {
+            let cleanLine = line.trim();
+            if (cleanLine === "") return;
+
+            // Detect new alert block boundary (JSON object start or clear separator)
+            if (cleanLine.startsWith("{") || cleanLine.startsWith("---")) {
+                if (currentAlert) {
+                    commitCurrentAlert();
+                }
+                if (cleanLine.startsWith("{")) {
+                    try {
+                        currentAlert = JSON.parse(cleanLine.endsWith(",") ? cleanLine.slice(0, -1) : cleanLine);
+                        currentAlert._sourceFile = defaultSource;
+                        return;
+                    } catch (err) {
+                        currentAlert = {};
+                    }
+                } else {
+                    return;
+                }
             }
 
-            // Extract text fields if JSON parsing isn't applicable
-            const titleMatch = line.match(/(?:title|header|what):\s*([^|;\n]+)/i);
-            const severityMatch = line.match(/(?:severity|level):\s*([^|;\n]+)/i);
-            const descMatch = line.match(/(?:desc|description|details|where):\s*([^|;\n]+)/i);
-            const startMatch = line.match(/(?:start_time|start time|from|started at):\s*([^|;\n]+)/i);
-            const endMatch = line.match(/(?:end_time|end time|until|expires|active until):\s*([^|;\n]+)/i);
+            if (!currentAlert) currentAlert = {};
 
-            // Extract coordinates for bounding box checking or geometry shapes
-            const minLat = alertObj.bottom_lat ?? alertObj.bounding_box?.min_lat ?? parseFloat(line.match(/bottom_lat["']?\s*:\s*(-?\d+(?:\.\d+)?)/i)?.[1]);
-            const maxLat = alertObj.top_lat ?? alertObj.bounding_box?.max_lat ?? parseFloat(line.match(/top_lat["']?\s*:\s*(-?\d+(?:\.\d+)?)/i)?.[1]);
-            const minLon = alertObj.bottom_lon ?? alertObj.bounding_box?.min_lon ?? parseFloat(line.match(/bottom_lon["']?\s*:\s*(-?\d+(?:\.\d+)?)/i)?.[1]);
-            const maxLon = alertObj.top_lon ?? alertObj.bounding_box?.max_lon ?? parseFloat(line.match(/top_lon["']?\s*:\s*(-?\d+(?:\.\d+)?)/i)?.[1]);
+            const lowerLine = cleanLine.toLowerCase();
+            if (lowerLine.startsWith("severity:")) {
+                currentAlert.severity = cleanLine.substring(9).trim();
+            } else if (lowerLine.startsWith("what:") || lowerLine.startsWith("title:") || lowerLine.startsWith("headline:")) {
+                currentAlert.title = cleanLine.substring(cleanLine.indexOf(":") + 1).trim();
+            } else if (lowerLine.startsWith("where:") || lowerLine.startsWith("description:") || lowerLine.startsWith("details:")) {
+                currentAlert.description = (currentAlert.description ? currentAlert.description + " " : "") + cleanLine.substring(cleanLine.indexOf(":") + 1).trim();
+            } else if (lowerLine.startsWith("started at:") || lowerLine.startsWith("start_time:")) {
+                currentAlert.start_time = cleanLine.substring(cleanLine.indexOf(":") + 1).trim();
+            } else if (lowerLine.startsWith("active until:") || lowerLine.startsWith("end_time:") || lowerLine.startsWith("expires:")) {
+                currentAlert.end_time = cleanLine.substring(cleanLine.indexOf(":") + 1).trim();
+            }
 
-            let inlinePoints = alertObj.latlngs || alertObj.points || alertObj.coordinates || alertObj.geometry || alertObj.polygon;
+            // Extract inline coordinate arrays or raw coordinate pairs
+            let inlinePoints = currentAlert.latlngs || currentAlert.points || currentAlert.coordinates || currentAlert.polygon;
             if (!inlinePoints) {
-                const coordMatch = line.match(/(?:latlngs|points|coordinates|polygon|geom|line):\s*(\[[\s\S]*?\])/i);
+                const coordMatch = cleanLine.match(/(?:latlngs|points|coordinates|polygon|geom|line):\s*(\[[\s\S]*?\])/i);
                 if (coordMatch) {
                     try { inlinePoints = JSON.parse(coordMatch[1]); } catch (err) {}
                 }
             }
+            
             if (!inlinePoints) {
-                const rawCoordMatch = line.match(/(\[\s*-?\d+(?:\.\d+)?\s*,\s*-?\d+(?:\.\d+)?\s*(?:,\s*-?\d+(?:\.\d+)?\s*)*\])/g);
+                const rawCoordMatch = cleanLine.match(/(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)/g);
                 if (rawCoordMatch && rawCoordMatch.length > 0) {
-                    try {
-                        inlinePoints = rawCoordMatch.map(m => JSON.parse(m));
-                    } catch (err) {}
+                    rawCoordMatch.forEach(pair => {
+                        try {
+                            const parts = pair.split(',').map(n => parseFloat(n.trim()));
+                            if (parts.length === 2 && !isNaN(parts[0]) && !isNaN(parts[1])) {
+                                coordinateBuffer.push(parts);
+                            }
+                        } catch (e) {}
+                    });
                 }
             }
 
-            // Fallback bounding box conversion to polygon points if no explicit latlngs array exists
-            if (!inlinePoints && !isNaN(minLat) && !isNaN(maxLat) && !isNaN(minLon) && !isNaN(maxLon)) {
-                inlinePoints = [
-                    [minLat, minLon],
-                    [minLat, maxLon],
-                    [maxLat, maxLon],
-                    [maxLat, minLon]
-                ];
+            if (inlinePoints) {
+                currentAlert.latlngs = inlinePoints;
             }
-
-            let cleanDesc = alertObj.description || (descMatch ? descMatch[1].trim() : line.replace(/\{.*\}/, '').replace(/Active until:.*$/i, '').trim());
-
-            parsedItems.push({
-                title: alertObj.title || (titleMatch ? titleMatch[1].trim() : "Untitled Alert"),
-                severity: alertObj.severity || (severityMatch ? severityMatch[1].trim() : "Medium"),
-                description: cleanDesc || "No description provided.",
-                start_time: alertObj.start_time || (startMatch ? startMatch[1].trim() : null),
-                end_time: alertObj.end_time || (endMatch ? endMatch[1].trim() : "Indefinite"),
-                latlngs: inlinePoints || alertObj.latlngs || null,
-                _sourceFile: defaultSource
-            });
         });
 
+        commitCurrentAlert();
         return parsedItems;
     };
 
@@ -899,7 +934,6 @@ async function renderAlertPolygons(lat, lon, selectedAlertTitle = null) {
         }
 
         if (lineCoords.length >= 2) {
-            // Apply a solid black line box border when selected, otherwise use the severity color
             const layerOptions = {
                 color: isSelected ? "#000000" : baseColor,       
                 weight: isSelected ? 5 : 3,
