@@ -712,7 +712,7 @@ async function renderAlertPolygons(lat, lon, selectedAlertTitle = null) {
 
     let rawAlerts = [];
 
-    // Robust unified parser fixing block boundaries and coordinate extraction
+    // Robust parser ensuring custom multiline blocks and key-value arrays from alertlines.txt are properly mapped
     const parseAlertsText = (rawText, defaultSource = '') => {
         const parsedItems = [];
         if (!rawText || typeof rawText !== 'string') return parsedItems;
@@ -746,20 +746,20 @@ async function renderAlertPolygons(lat, lon, selectedAlertTitle = null) {
             }
         } catch (err) {}
 
-        // 2. Fallback: Line-by-line structured text parser with proper block resets
+        // 2. Fallback: Line-by-line structured text parser with deep block support for alertlines.txt
         const lines = trimmedText.split(/\r?\n/);
         let currentAlert = null;
         let coordinateBuffer = [];
 
         const commitCurrentAlert = () => {
             if (currentAlert) {
-                if (coordinateBuffer.length > 0 && !currentAlert.latlngs) {
-                    currentAlert.latlngs = coordinateBuffer;
+                if (coordinateBuffer.length > 0 && (!currentAlert.latlngs || currentAlert.latlngs.length === 0)) {
+                    currentAlert.latlngs = [...coordinateBuffer];
                 }
                 if (defaultSource && !currentAlert._sourceFile) {
                     currentAlert._sourceFile = defaultSource;
                 }
-                if (currentAlert.title || currentAlert.latlngs) {
+                if (currentAlert.title || (currentAlert.latlngs && currentAlert.latlngs.length > 0)) {
                     parsedItems.push(currentAlert);
                 }
             }
@@ -771,7 +771,6 @@ async function renderAlertPolygons(lat, lon, selectedAlertTitle = null) {
             let cleanLine = line.trim();
             if (cleanLine === "") return;
 
-            // Detect new alert block boundary (JSON object start or clear separator)
             if (cleanLine.startsWith("{") || cleanLine.startsWith("---")) {
                 if (currentAlert) {
                     commitCurrentAlert();
@@ -804,18 +803,31 @@ async function renderAlertPolygons(lat, lon, selectedAlertTitle = null) {
                 currentAlert.end_time = cleanLine.substring(cleanLine.indexOf(":") + 1).trim();
             }
 
-            // Extract inline coordinate arrays or raw coordinate pairs
-            let inlinePoints = currentAlert.latlngs || currentAlert.points || currentAlert.coordinates || currentAlert.polygon;
-            if (!inlinePoints) {
-                const coordMatch = cleanLine.match(/(?:latlngs|points|coordinates|polygon|geom|line):\s*(\[[\s\S]*?\])/i);
-                if (coordMatch) {
-                    try { inlinePoints = JSON.parse(coordMatch[1]); } catch (err) {}
-                }
+            // Target explicit property keys containing coordinate blocks
+            const explicitCoordMatch = cleanLine.match(/(?:latlngs|points|coordinates|polygon|geom|line):\s*(\[[\s\S]*?\])/i);
+            if (explicitCoordMatch) {
+                try {
+                    const parsedPoints = JSON.parse(explicitCoordMatch[1]);
+                    if (Array.isArray(parsedPoints)) {
+                        currentAlert.latlngs = parsedPoints;
+                    }
+                } catch (err) {}
             }
-            
-            if (!inlinePoints) {
+
+            // Capture inline coordinate pairs (e.g., [lat, lon] or comma-separated pairs)
+            const bracketArrayMatches = cleanLine.match(/\[\s*-?\d+(?:\.\d+)?\s*,\s*-?\d+(?:\.\d+)?\s*\]/g);
+            if (bracketArrayMatches) {
+                bracketArrayMatches.forEach(bracketStr => {
+                    try {
+                        const pair = JSON.parse(bracketStr);
+                        if (Array.isArray(pair) && pair.length === 2) {
+                            coordinateBuffer.push([parseFloat(pair[0]), parseFloat(pair[1])]);
+                        }
+                    } catch (e) {}
+                });
+            } else {
                 const rawCoordMatch = cleanLine.match(/(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)/g);
-                if (rawCoordMatch && rawCoordMatch.length > 0) {
+                if (rawCoordMatch && rawCoordMatch.length > 0 && (lowerLine.includes("lat") || lowerLine.includes("lon") || lowerLine.includes("pt") || !lowerLine.includes(":"))) {
                     rawCoordMatch.forEach(pair => {
                         try {
                             const parts = pair.split(',').map(n => parseFloat(n.trim()));
@@ -825,10 +837,6 @@ async function renderAlertPolygons(lat, lon, selectedAlertTitle = null) {
                         } catch (e) {}
                     });
                 }
-            }
-
-            if (inlinePoints) {
-                currentAlert.latlngs = inlinePoints;
             }
         });
 
@@ -850,7 +858,7 @@ async function renderAlertPolygons(lat, lon, selectedAlertTitle = null) {
         return severityColors[(severity || '').toLowerCase()] || '#5cb85c';
     };
 
-    // 3. Fetch data in parallel with cache-busting from GitHub repository sources
+    // 3. Fetch data in parallel from GitHub repository sources
     try {
         const timestamp = new Date().getTime();
         const [alertsRes, linesRes] = await Promise.allSettled([
@@ -889,7 +897,7 @@ async function renderAlertPolygons(lat, lon, selectedAlertTitle = null) {
     const normalLayers = [];
     const selectedLayers = [];
 
-    // 4. Build layers, matching line items from alertlines.txt and enforcing black borders on selection
+    // 4. Build layers: Keep custom lines from alertlines.txt as pure open polylines with zero background fill, and fill polygon alerts cleanly inside their boundaries
     alertList.forEach(alert => {
         if (!alert) return;
         const severity = alert.severity || alert.level || "Moderate";
@@ -934,17 +942,20 @@ async function renderAlertPolygons(lat, lon, selectedAlertTitle = null) {
         }
 
         if (lineCoords.length >= 2) {
+            const isLineSource = alert._sourceFile === "alertlines.txt";
+
             const layerOptions = {
                 color: isSelected ? "#000000" : baseColor,       
                 weight: isSelected ? 5 : 3,
                 opacity: 1.0,
-                fillColor: baseColor,                             
-                fillOpacity: isSelected ? 0.6 : 0.45,                                
+                // Completely disable fill for alertlines.txt so it renders strictly as lines without filling the map screen
+                fill: !isLineSource,
+                fillColor: isLineSource ? null : baseColor,                             
+                fillOpacity: isLineSource ? 0 : (isSelected ? 0.4 : 0.25),                                
                 lineCap: 'round',
                 lineJoin: 'round'
             };
 
-            const isLineSource = alert._sourceFile === "alertlines.txt";
             const shapeLayer = isLineSource ? L.polyline(lineCoords, layerOptions) : L.polygon(lineCoords, layerOptions);
 
             const popupContent = `<b>${title}</b><br>Severity: ${severity}<br>${alert.description || 'No description provided.'}`;
