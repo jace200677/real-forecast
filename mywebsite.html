@@ -711,7 +711,7 @@ async function renderAlertPolygons(lat, lon, selectedAlertTitle = null) {
 
     let rawAlerts = [];
 
-    // Robust parser for JSON / NDJSON / Structured Text
+    // Robust parser supporting NDJSON, standard JSON, and structured text blocks
     const parseAlertsText = (rawText, defaultSource = '') => {
         const parsedItems = [];
         if (!rawText || typeof rawText !== 'string') return parsedItems;
@@ -747,7 +747,7 @@ async function renderAlertPolygons(lat, lon, selectedAlertTitle = null) {
         });
         if (ndjsonSuccess && parsedItems.length > 0) return parsedItems;
 
-        // 3. Structured text parser fallback
+        // 3. Structured text parser
         let currentAlert = null;
         const commitCurrentAlert = () => {
             if (currentAlert) {
@@ -796,7 +796,7 @@ async function renderAlertPolygons(lat, lon, selectedAlertTitle = null) {
                 currentAlert.end_time = cleanLine.substring(cleanLine.indexOf(":") + 1).trim();
             }
 
-            // Extract bracketed coordinate arrays [lon, lat] or [lat, lon]
+            // Extract coordinate pairs safely
             const bracketArrayMatches = cleanLine.match(/\[\s*-?\d+(?:\.\d+)?\s*,\s*-?\d+(?:\.\d+)?\s*\]/g);
             if (bracketArrayMatches) {
                 if (!currentAlert.latlngs) currentAlert.latlngs = [];
@@ -804,15 +804,10 @@ async function renderAlertPolygons(lat, lon, selectedAlertTitle = null) {
                     try {
                         const pair = JSON.parse(bracketStr);
                         if (Array.isArray(pair) && pair.length === 2) {
-                            let v1 = parseFloat(pair[0]);
-                            let v2 = parseFloat(pair[1]);
-                            if (!isNaN(v1) && !isNaN(v2)) {
-                                // Auto-detect GeoJSON [lng, lat] vs Leaflet [lat, lng]
-                                if (v1 < -90 || v1 > 90) {
-                                    currentAlert.latlngs.push([v2, v1]);
-                                } else {
-                                    currentAlert.latlngs.push([v1, v2]);
-                                }
+                            let val1 = parseFloat(pair[0]);
+                            let val2 = parseFloat(pair[1]);
+                            if (!isNaN(val1) && !isNaN(val2)) {
+                                currentAlert.latlngs.push([val1, val2]);
                             }
                         }
                     } catch (e) {}
@@ -838,7 +833,7 @@ async function renderAlertPolygons(lat, lon, selectedAlertTitle = null) {
         return severityColors[(severity || '').toLowerCase()] || '#5cb85c';
     };
 
-    // Fetch alert files in parallel
+    // Fetch alert files
     try {
         const [alertsRes, linesRes] = await Promise.allSettled([
             fetch('https://raw.githubusercontent.com/jace200677/real-forecast/refs/heads/main/weather/alerts.txt'),
@@ -905,8 +900,8 @@ async function renderAlertPolygons(lat, lon, selectedAlertTitle = null) {
             }
         }
 
-        // Unnest nested coordinate arrays
-        while (Array.isArray(rawPoints) && rawPoints.length === 1 && Array.isArray(rawPoints[0])) {
+        // Recursively unnest array coordinate structures until reaching coordinate pairs
+        while (Array.isArray(rawPoints) && rawPoints.length > 0 && Array.isArray(rawPoints[0]) && Array.isArray(rawPoints[0][0])) {
             rawPoints = rawPoints[0];
         }
 
@@ -922,13 +917,10 @@ async function renderAlertPolygons(lat, lon, selectedAlertTitle = null) {
                     
                     if (isNaN(v1) || isNaN(v2)) return null;
 
-                    // Standardize coordinate orientation
-                    if (v1 < -90 || v1 > 90) { 
+                    // Standard GeoJSON is [lon, lat]. Check if v1 is longitude.
+                    if (v1 < -90 || v1 > 90 || v2 > 90 || v2 < -90) { 
                         pLat = v2;
                         pLon = v1;
-                    } else if (v2 < -90 || v2 > 90) {
-                        pLat = v1;
-                        pLon = v2;
                     } else {
                         pLat = v1;
                         pLon = v2;
@@ -946,7 +938,6 @@ async function renderAlertPolygons(lat, lon, selectedAlertTitle = null) {
         const isLineSource = alert._sourceFile === "alertlines.txt";
         const minPoints = isLineSource ? 2 : 3;
 
-        // Render layer only if parsing yielded sufficient points
         if (lineCoords.length >= minPoints) {
             const layerOptions = {
                 color: isSelected ? "#000000" : baseColor,       
