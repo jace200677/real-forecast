@@ -709,9 +709,6 @@ async function renderAlertPolygons(lat, lon, selectedAlertTitle = null) {
     
     window.alertPolygonsLayerGroup.clearLayers();
 
-    const userLat = !isNaN(parseFloat(lat)) ? parseFloat(lat) : (typeof targetZoneOrPoint !== 'undefined' && targetZoneOrPoint ? parseFloat(targetZoneOrPoint.lat) : 45.0);
-    const userLon = !isNaN(parseFloat(lon)) ? parseFloat(lon) : (typeof targetZoneOrPoint !== 'undefined' && targetZoneOrPoint ? parseFloat(targetZoneOrPoint.lon) : -93.0);
-
     let rawAlerts = [];
 
     // Robust parser supporting NDJSON, standard JSON, and structured text blocks
@@ -814,12 +811,9 @@ async function renderAlertPolygons(lat, lon, selectedAlertTitle = null) {
         return parsedItems;
     };
 
-    // Color mapper set strictly to red shades, defaulting to standard red (#d9534f)
-    const resolveSeverityColor = (severity) => {
-        return '#d9534f';
-    };
+    const resolveSeverityColor = () => '#d9534f';
 
-    // Fetch data in parallel
+    // Fetch data from Github repo
     try {
         const [alertsRes, linesRes] = await Promise.allSettled([
             fetch('https://raw.githubusercontent.com/jace200677/real-forecast/refs/heads/main/weather/alerts.txt'),
@@ -845,7 +839,8 @@ async function renderAlertPolygons(lat, lon, selectedAlertTitle = null) {
 
     const now = new Date();
     const alertList = rawAlerts.filter(alert => {
-        if (alert && alert.end_time && String(alert.end_time).toLowerCase() !== "indefinite") {
+        if (!alert) return false;
+        if (alert.end_time && String(alert.end_time).toLowerCase() !== "indefinite") {
             const endTime = new Date(alert.end_time);
             if (!isNaN(endTime.getTime()) && now > endTime) return false;
         }
@@ -859,9 +854,14 @@ async function renderAlertPolygons(lat, lon, selectedAlertTitle = null) {
 
     alertList.forEach(alert => {
         if (!alert) return;
+
+        // Skip default/blank fallback alerts (don't render missing data)
+        const isDefaultAlert = !alert.title && !alert.description && !alert.severity;
+        if (isDefaultAlert) return;
+
         const severity = alert.severity || alert.level || "Moderate";
         const title = alert.title || alert.header || alert.name || "Weather Alert";
-        const baseColor = resolveSeverityColor(severity);
+        const baseColor = resolveSeverityColor();
 
         const isSelected = Boolean(
             selectedAlertTitle && 
@@ -871,11 +871,61 @@ async function renderAlertPolygons(lat, lon, selectedAlertTitle = null) {
             )
         );
 
-        // First extract explicit point structures
         let rawPoints = alert.latlngs || alert.points || alert.coordinates || alert.geometry?.coordinates || alert.polygon;
 
-        // Fallback to bounding box ONLY if no raw points were found at all
-        if (!rawPoints) {
+        let lineCoords = [];
+
+        // Parse explicit coordinates if available
+        if (rawPoints) {
+            if (typeof rawPoints === 'string') {
+                try { rawPoints = JSON.parse(rawPoints); } catch (e) {
+                    try { rawPoints = JSON.parse(rawPoints.replace(/'/g, '"')); } catch (err) { rawPoints = null; }
+                }
+            }
+
+            while (Array.isArray(rawPoints) && rawPoints.length === 1 && Array.isArray(rawPoints[0])) {
+                rawPoints = rawPoints[0];
+            }
+
+            if (Array.isArray(rawPoints) && rawPoints.length > 0) {
+                lineCoords = rawPoints.map(pt => {
+                    if (!pt) return null;
+                    if (Array.isArray(pt)) {
+                        let pLat = parseFloat(pt[0]);
+                        let pLon = parseFloat(pt[1]);
+                        if (Math.abs(pLat) > 90 && Math.abs(pLon) <= 90) [pLat, pLon] = [pLon, pLat];
+                        return [pLat, pLon];
+                    }
+                    if (typeof pt === 'object') {
+                        const pLat = parseFloat(pt.lat ?? pt.latitude);
+                        const pLon = parseFloat(pt.lng ?? pt.lon ?? pt.longitude);
+                        return [pLat, pLon];
+                    }
+                    return null;
+                }).filter(pt => pt && !isNaN(pt[0]) && !isNaN(pt[1]));
+            }
+        }
+
+        const isLineSource = alert._sourceFile === "alertlines.txt";
+        let shapeLayer = null;
+
+        // 1. Render actual coordinate shapes if points exist
+        if (lineCoords.length >= 2) {
+            const layerOptions = {
+                color: isSelected ? "#000000" : baseColor,       
+                weight: isSelected ? 5 : 3,
+                opacity: 1.0,
+                fill: !isLineSource,
+                fillColor: baseColor,                             
+                fillOpacity: 0.45,                                
+                lineCap: 'round',
+                lineJoin: 'round'
+            };
+
+            shapeLayer = isLineSource ? L.polyline(lineCoords, layerOptions) : L.polygon(lineCoords, layerOptions);
+
+        // 2. Exact Bounding Box rendering for alertlines.txt / alerts without point arrays
+        } else if (alert.bounding_box || (alert.bottom_lat !== undefined && alert.top_lat !== undefined)) {
             const bb = alert.bounding_box || {
                 min_lat: alert.bottom_lat,
                 max_lat: alert.top_lat,
@@ -888,80 +938,31 @@ async function renderAlertPolygons(lat, lon, selectedAlertTitle = null) {
                 const latMax = parseFloat(bb.max_lat);
                 const lonMin = parseFloat(bb.min_lon);
                 const lonMax = parseFloat(bb.max_lon);
-                const latMid = (latMin + latMax) / 2;
-                const lonMid = (lonMin + lonMax) / 2;
 
-                rawPoints = [
-                    [latMin + (latMax - latMin) * 0.2, lonMin],
-                    [latMin, lonMin + (lonMax - lonMin) * 0.3],
-                    [latMin + (latMax - latMin) * 0.1, lonMid],
-                    [latMin, lonMax - (lonMax - lonMin) * 0.2],
-                    [latMin + (latMax - latMin) * 0.3, lonMax],
-                    [latMid, lonMax - (lonMax - lonMin) * 0.1],
-                    [latMax - (latMax - latMin) * 0.2, lonMax],
-                    [latMax, lonMax - (lonMax - lonMin) * 0.4],
-                    [latMax, lonMin + (lonMax - lonMin) * 0.3],
-                    [latMax - (latMax - latMin) * 0.1, lonMin + (lonMin - lonMin) * 0.1],
-                    [latMid, lonMin],
-                    [latMin + (latMax - latMin) * 0.4, lonMin]
-                ];
+                const bounds = [[latMin, lonMin], [latMax, lonMax]];
+                lineCoords = [[latMin, lonMin], [latMin, lonMax], [latMax, lonMax], [latMax, lonMin]];
+
+                shapeLayer = L.rectangle(bounds, {
+                    color: isSelected ? "#000000" : baseColor,
+                    weight: isSelected ? 5 : 3,
+                    opacity: 1.0,
+                    fill: !isLineSource,
+                    fillColor: baseColor,
+                    fillOpacity: 0.35
+                });
             }
         }
 
-        if (typeof rawPoints === 'string') {
-            try {
-                rawPoints = JSON.parse(rawPoints);
-            } catch (e) {
-                try {
-                    rawPoints = JSON.parse(rawPoints.replace(/'/g, '"'));
-                } catch (err) {
-                    rawPoints = null;
-                }
-            }
-        }
-
-        while (Array.isArray(rawPoints) && rawPoints.length === 1 && Array.isArray(rawPoints[0])) {
-            rawPoints = rawPoints[0];
-        }
-
-        let lineCoords = [];
-        if (Array.isArray(rawPoints) && rawPoints.length > 0) {
-            lineCoords = rawPoints.map(pt => {
-                if (!pt) return null;
-                if (Array.isArray(pt)) {
-                    let pLat = parseFloat(pt[0]);
-                    let pLon = parseFloat(pt[1]);
-                    if (Math.abs(pLat) > 90 && Math.abs(pLon) <= 90) [pLat, pLon] = [pLon, pLat];
-                    return [pLat, pLon];
-                }
-                if (typeof pt === 'object') {
-                    const pLat = parseFloat(pt.lat ?? pt.latitude);
-                    const pLon = parseFloat(pt.lng ?? pt.lon ?? pt.longitude);
-                    return [pLat, pLon];
-                }
-                return null;
-            }).filter(pt => pt && !isNaN(pt[0]) && !isNaN(pt[1]));
-        }
-
-        if (lineCoords.length >= 2) {
-            const isLineSource = alert._sourceFile === "alertlines.txt";
-
-            const layerOptions = {
-                color: isSelected ? "#000000" : baseColor,       
-                weight: isSelected ? 5 : 3,
-                opacity: 1.0,
-                fill: !isLineSource,
-                fillColor: baseColor,                             
-                fillOpacity: 0.45,                                
-                lineCap: 'round',
-                lineJoin: 'round'
-            };
-
-            const shapeLayer = isLineSource ? L.polyline(lineCoords, layerOptions) : L.polygon(lineCoords, layerOptions);
-
+        // Apply Popups and Conditional Tooltips
+        if (shapeLayer) {
             const popupContent = `<b>${title}</b><br>Severity: ${severity}<br>${alert.description || 'No description provided.'}`;
             shapeLayer.bindPopup(popupContent);
-            shapeLayer.bindTooltip(`<b>${title}</b> (${severity})`, { sticky: true, direction: 'auto' });
+
+            // Hide tooltip if it uses default values (e.g. "Weather Alert" or missing title)
+            const isDefaultTitle = !alert.title || alert.title.toLowerCase() === 'weather alert';
+            if (!isDefaultTitle) {
+                shapeLayer.bindTooltip(`<b>${title}</b> (${severity})`, { sticky: true, direction: 'auto' });
+            }
 
             if (isSelected) {
                 selectedLayers.push(shapeLayer);
