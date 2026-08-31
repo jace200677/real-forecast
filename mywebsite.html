@@ -914,7 +914,15 @@ async function renderAlertPolygons(lat, lon, selectedAlertTitle = null) {
         let rawPoints = alert.latlngs || alert.points || alert.coordinates || alert.geometry?.coordinates || alert.polygon;
 
         if (typeof rawPoints === 'string') {
-            try { rawPoints = JSON.parse(rawPoints); } catch (e) { rawPoints = null; }
+            try {
+                rawPoints = JSON.parse(rawPoints);
+            } catch (e) {
+                try {
+                    rawPoints = JSON.parse(rawPoints.replace(/'/g, '"'));
+                } catch (err) {
+                    rawPoints = null;
+                }
+            }
         }
 
         while (Array.isArray(rawPoints) && rawPoints.length === 1 && Array.isArray(rawPoints[0])) {
@@ -943,7 +951,7 @@ async function renderAlertPolygons(lat, lon, selectedAlertTitle = null) {
         if (lineCoords.length >= 2) {
             const isLineSource = alert._sourceFile === "alertlines.txt";
 
-           const layerOptions = {
+            const layerOptions = {
                 color: isSelected ? "#000000" : baseColor,       
                 weight: isSelected ? 5 : 3,
                 opacity: 1.0,
