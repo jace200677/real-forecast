@@ -711,14 +711,14 @@ async function renderAlertPolygons(lat, lon, selectedAlertTitle = null) {
 
     let rawAlerts = [];
 
-    // Parser for JSON / NDJSON / Structured Text
+    // Robust parser for JSON / NDJSON / Structured Text
     const parseAlertsText = (rawText, defaultSource = '') => {
         const parsedItems = [];
         if (!rawText || typeof rawText !== 'string') return parsedItems;
 
         const trimmedText = rawText.trim();
 
-        // Standard JSON
+        // 1. Standard JSON
         try {
             let parsed = JSON.parse(trimmedText);
             let items = Array.isArray(parsed) ? parsed : (parsed.alerts || parsed.data || parsed.results || [parsed]);
@@ -731,7 +731,7 @@ async function renderAlertPolygons(lat, lon, selectedAlertTitle = null) {
             if (parsedItems.length > 0) return parsedItems;
         } catch (e) {}
 
-        // NDJSON
+        // 2. NDJSON
         const lines = trimmedText.split(/\r?\n/);
         let ndjsonSuccess = false;
         lines.forEach(line => {
@@ -747,7 +747,7 @@ async function renderAlertPolygons(lat, lon, selectedAlertTitle = null) {
         });
         if (ndjsonSuccess && parsedItems.length > 0) return parsedItems;
 
-        // Structured text parser
+        // 3. Structured text parser fallback
         let currentAlert = null;
         const commitCurrentAlert = () => {
             if (currentAlert) {
@@ -796,6 +796,7 @@ async function renderAlertPolygons(lat, lon, selectedAlertTitle = null) {
                 currentAlert.end_time = cleanLine.substring(cleanLine.indexOf(":") + 1).trim();
             }
 
+            // Extract bracketed coordinate arrays [lon, lat] or [lat, lon]
             const bracketArrayMatches = cleanLine.match(/\[\s*-?\d+(?:\.\d+)?\s*,\s*-?\d+(?:\.\d+)?\s*\]/g);
             if (bracketArrayMatches) {
                 if (!currentAlert.latlngs) currentAlert.latlngs = [];
@@ -803,7 +804,16 @@ async function renderAlertPolygons(lat, lon, selectedAlertTitle = null) {
                     try {
                         const pair = JSON.parse(bracketStr);
                         if (Array.isArray(pair) && pair.length === 2) {
-                            currentAlert.latlngs.push([parseFloat(pair[0]), parseFloat(pair[1])]);
+                            let v1 = parseFloat(pair[0]);
+                            let v2 = parseFloat(pair[1]);
+                            if (!isNaN(v1) && !isNaN(v2)) {
+                                // Auto-detect GeoJSON [lng, lat] vs Leaflet [lat, lng]
+                                if (v1 < -90 || v1 > 90) {
+                                    currentAlert.latlngs.push([v2, v1]);
+                                } else {
+                                    currentAlert.latlngs.push([v1, v2]);
+                                }
+                            }
                         }
                     } catch (e) {}
                 });
@@ -828,7 +838,7 @@ async function renderAlertPolygons(lat, lon, selectedAlertTitle = null) {
         return severityColors[(severity || '').toLowerCase()] || '#5cb85c';
     };
 
-    // Fetch alerts
+    // Fetch alert files in parallel
     try {
         const [alertsRes, linesRes] = await Promise.allSettled([
             fetch('https://raw.githubusercontent.com/jace200677/real-forecast/refs/heads/main/weather/alerts.txt'),
@@ -866,7 +876,7 @@ async function renderAlertPolygons(lat, lon, selectedAlertTitle = null) {
     const normalLayers = [];
     const selectedLayers = [];
 
-    // Render layers
+    // Render Leaflet shapes
     alertList.forEach(alert => {
         if (!alert) return;
         const severity = alert.severity || alert.level || "Moderate";
@@ -890,12 +900,12 @@ async function renderAlertPolygons(lat, lon, selectedAlertTitle = null) {
                 try {
                     rawPoints = JSON.parse(rawPoints.replace(/'/g, '"'));
                 } catch (err) {
-                    rawPoints = null; // Mark as failed to parse
+                    rawPoints = null;
                 }
             }
         }
 
-        // Flatten single-nested coordinate arrays
+        // Unnest nested coordinate arrays
         while (Array.isArray(rawPoints) && rawPoints.length === 1 && Array.isArray(rawPoints[0])) {
             rawPoints = rawPoints[0];
         }
@@ -912,7 +922,7 @@ async function renderAlertPolygons(lat, lon, selectedAlertTitle = null) {
                     
                     if (isNaN(v1) || isNaN(v2)) return null;
 
-                    // Handle GeoJSON [lng, lat] vs Leaflet [lat, lng]
+                    // Standardize coordinate orientation
                     if (v1 < -90 || v1 > 90) { 
                         pLat = v2;
                         pLon = v1;
@@ -933,10 +943,10 @@ async function renderAlertPolygons(lat, lon, selectedAlertTitle = null) {
             }).filter(pt => pt !== null);
         }
 
-        // Require at least 3 points for polygons (or 2 for polylines) to avoid broken geometries
         const isLineSource = alert._sourceFile === "alertlines.txt";
         const minPoints = isLineSource ? 2 : 3;
 
+        // Render layer only if parsing yielded sufficient points
         if (lineCoords.length >= minPoints) {
             const layerOptions = {
                 color: isSelected ? "#000000" : baseColor,       
