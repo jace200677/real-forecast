@@ -862,8 +862,8 @@ async function renderAlertPolygons(lat, lon, selectedAlertTitle = null) {
     try {
         const timestamp = new Date().getTime();
         const [alertsRes, linesRes] = await Promise.allSettled([
-            fetch(`https://raw.githubusercontent.com/jace200677/real-forecast/refs/heads/main/weather/alerts.txt?v=${timestamp}`),
-            fetch(`https://raw.githubusercontent.com/jace200677/real-forecast/refs/heads/main/weather/alertlines.txt?v=${timestamp}`)
+            fetch('https://raw.githubusercontent.com/jace200677/real-forecast/refs/heads/main/weather/alerts.txt'),
+            fetch('https://raw.githubusercontent.com/jace200677/real-forecast/refs/heads/main/weather/alertlines.txt')
         ]);
 
         if (alertsRes.status === "fulfilled" && alertsRes.value.ok) {
