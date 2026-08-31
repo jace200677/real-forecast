@@ -1256,7 +1256,8 @@ async function pushAlertLineToGitHub(drawnAlertObj) {
     const repo = "real-forecast";
     const path = "weather/alertlines.txt";
     const url = `https://api.github.com/repos/${owner}/${repo}/contents/${path}`;
-    const rawAlertsUrl = "https://raw.githubusercontent.com/jace200677/real-forecast/refs/heads/main/weather/alerts.txt";
+    const fileWebUrl = `https://github.com/${owner}/${repo}/blob/main/${path}`;
+    const rawAlertsUrl = `https://raw.githubusercontent.com/${owner}/${repo}/refs/heads/main/weather/alerts.txt`;
 
     try {
         // Fetch external alerts data to extract metadata
@@ -1282,10 +1283,11 @@ async function pushAlertLineToGitHub(drawnAlertObj) {
             }
         }
 
-        // Merge metadata into drawnAlertObj
+        // Merge metadata and target file GitHub URL into drawnAlertObj
         const enrichedAlertObj = {
             ...drawnAlertObj,
-            ...metadata
+            ...metadata,
+            githubUrl: fileWebUrl
         };
 
         // Fetch existing alertlines.txt content
@@ -1335,7 +1337,7 @@ async function pushAlertLineToGitHub(drawnAlertObj) {
             throw new Error("GitHub API push failed");
         }
 
-        console.log("Alert line appended to alertlines.txt on a new line!");
+        console.log(`Alert line appended to alertlines.txt on a new line! View at: ${fileWebUrl}`);
     } catch (err) {
         console.error("Failed to commit alert line:", err);
     }
