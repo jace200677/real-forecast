@@ -748,16 +748,12 @@ async function renderAlertPolygons(lat, lon, selectedAlertTitle = null) {
             }
         } catch (err) {}
 
-        // 2. Fallback: Line-by-line structured text parser with deep block support for alertlines.txt
+        // 2. Fallback: Line-by-line structured text parser that splits distinct alerts correctly instead of merging everything into one giant polygon
         const lines = trimmedText.split(/\r?\n/);
         let currentAlert = null;
-        let coordinateBuffer = [];
 
         const commitCurrentAlert = () => {
             if (currentAlert) {
-                if (coordinateBuffer.length > 0 && (!currentAlert.latlngs || currentAlert.latlngs.length === 0)) {
-                    currentAlert.latlngs = [...coordinateBuffer];
-                }
                 if (defaultSource && !currentAlert._sourceFile) {
                     currentAlert._sourceFile = defaultSource;
                 }
@@ -766,35 +762,25 @@ async function renderAlertPolygons(lat, lon, selectedAlertTitle = null) {
                 }
             }
             currentAlert = null;
-            coordinateBuffer = [];
         };
 
         lines.forEach((line) => {
             let cleanLine = line.trim();
             if (cleanLine === "") return;
 
-            // Handle block breaks or JSON objects starting on their own line
-            if (cleanLine.startsWith("{") || cleanLine.startsWith("---") || cleanLine.startsWith("===")) {
-                if (currentAlert && (currentAlert.title || currentAlert.severity || coordinateBuffer.length > 0)) {
-                    commitCurrentAlert();
-                } else if (cleanLine.startsWith("{") && currentAlert) {
-                    // If we already had an empty/partial object, commit it first
+            // Detect new alert block boundaries (JSON object start, separator lines, or headers indicating a fresh entry)
+            if (cleanLine.startsWith("{") || cleanLine.startsWith("---") || cleanLine.startsWith("===") || cleanLine.toLowerCase().startsWith("what:") || cleanLine.toLowerCase().startsWith("title:")) {
+                if (cleanLine.startsWith("{") || cleanLine.startsWith("---") || cleanLine.startsWith("===") || (cleanLine.toLowerCase().startsWith("what:") && currentAlert && (currentAlert.title || currentAlert.latlngs))) {
                     commitCurrentAlert();
                 }
-                
                 if (cleanLine.startsWith("{")) {
                     try {
                         currentAlert = JSON.parse(cleanLine.endsWith(",") ? cleanLine.slice(0, -1) : cleanLine);
                         currentAlert._sourceFile = defaultSource;
-                        if (currentAlert.latlngs || currentAlert.points || currentAlert.coordinates) {
-                            coordinateBuffer = currentAlert.latlngs || currentAlert.points || currentAlert.coordinates;
-                        }
                         return;
                     } catch (err) {
                         currentAlert = {};
                     }
-                } else {
-                    return;
                 }
             }
 
@@ -818,40 +804,36 @@ async function renderAlertPolygons(lat, lon, selectedAlertTitle = null) {
             const explicitCoordMatch = cleanLine.match(/(?:latlngs|points|coordinates|polygon|geom|line):\s*(\[[\s\S]*)/i);
             if (explicitCoordMatch) {
                 try {
-                    // Try parsing inline or capturing multi-line array syntax safely
                     let potentialJson = explicitCoordMatch[1].trim();
-                    if (!potentialJson.endsWith("]") && !potentialJson.endsWith("],")) {
-                        // Keep buffering or attempt direct parse if bracket count matches
-                    }
                     const parsedPoints = JSON.parse(potentialJson.endsWith(",") ? potentialJson.slice(0, -1) : potentialJson);
                     if (Array.isArray(parsedPoints)) {
                         currentAlert.latlngs = parsedPoints;
                         return;
                     }
-                } catch (err) {
-                    // If it's a partial multi-line array start, let the line parser collect items
-                }
+                } catch (err) {}
             }
 
-            // Capture inline coordinate pairs (e.g., [lat, lon] or comma-separated pairs)
+            // Capture inline coordinate pairs directly into the current alert's coordinate buffer
             const bracketArrayMatches = cleanLine.match(/\[\s*-?\d+(?:\.\d+)?\s*,\s*-?\d+(?:\.\d+)?\s*\]/g);
             if (bracketArrayMatches) {
+                if (!currentAlert.latlngs) currentAlert.latlngs = [];
                 bracketArrayMatches.forEach(bracketStr => {
                     try {
                         const pair = JSON.parse(bracketStr);
                         if (Array.isArray(pair) && pair.length === 2) {
-                            coordinateBuffer.push([parseFloat(pair[0]), parseFloat(pair[1])]);
+                            currentAlert.latlngs.push([parseFloat(pair[0]), parseFloat(pair[1])]);
                         }
                     } catch (e) {}
                 });
             } else {
                 const rawCoordMatch = cleanLine.match(/(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)/g);
                 if (rawCoordMatch && rawCoordMatch.length > 0 && (lowerLine.includes("lat") || lowerLine.includes("lon") || lowerLine.includes("pt") || lowerLine.includes("point") || !lowerLine.includes(":"))) {
+                    if (!currentAlert.latlngs) currentAlert.latlngs = [];
                     rawCoordMatch.forEach(pair => {
                         try {
                             const parts = pair.split(',').map(n => parseFloat(n.trim()));
                             if (parts.length === 2 && !isNaN(parts[0]) && !isNaN(parts[1])) {
-                                coordinateBuffer.push(parts);
+                                currentAlert.latlngs.push(parts);
                             }
                         } catch (e) {}
                     });
@@ -860,18 +842,6 @@ async function renderAlertPolygons(lat, lon, selectedAlertTitle = null) {
         });
 
         commitCurrentAlert();
-        
-        // Final fallback safeguard: if line-by-line parsing found properties but failed to bundle 
-        // raw coordinate text blocks separated by text headers, sweep for any dangling arrays
-        if (parsedItems.length === 0 && coordinateBuffer.length > 0) {
-            parsedItems.push({
-                title: "Weather Alert",
-                severity: "Moderate",
-                latlngs: coordinateBuffer,
-                _sourceFile: defaultSource
-            });
-        }
-
         return parsedItems;
     };
 
