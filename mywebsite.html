@@ -735,7 +735,6 @@ async function renderAlertPolygons(lat, lon, selectedAlertTitle = null) {
         // 2. Fallback: Parse line-by-line or look for embedded JSON arrays / objects
         const lines = trimmedText.split(/\r?\n/).filter(line => line.trim() !== "");
         
-        // If the whole file contains an embedded JSON array block across multiple lines
         try {
             const fullBracketMatch = trimmedText.match(/\[\s*\{[\s\S]*\}\s*\]/);
             if (fullBracketMatch) {
@@ -765,14 +764,14 @@ async function renderAlertPolygons(lat, lon, selectedAlertTitle = null) {
                 }
             } catch (err) {}
 
-            // Enhanced Regex Extraction for properties in custom text files
+            // Extract multi-line or explicit fields cleanly
             const titleMatch = cleanLine.match(/(?:title|header|name|alert):\s*["']?([^|,;\n{}]+)["']?/i);
             const severityMatch = cleanLine.match(/(?:severity|level|priority):\s*["']?([^|,;\n{}]+)["']?/i);
-            const descMatch = cleanLine.match(/(?:desc|description|details|info):\s*["']?([^|;\n{}]+)["']?/i);
-            const startMatch = cleanLine.match(/(?:start_time|start time|from|effective):\s*["']?([^|,;\n{}]+)["']?/i);
-            const endMatch = cleanLine.match(/(?:end_time|end time|until|expires|to):\s*["']?([^|,;\n{}]+)["']?/i);
+            const descMatch = cleanLine.match(/(?:desc|description|details|info|what):\s*["']?([^|;\n{}]+)["']?/i);
+            const startMatch = cleanLine.match(/(?:start_time|start time|from|effective|started at):\s*["']?([^|,;\n{}]+)["']?/i);
+            const endMatch = cleanLine.match(/(?:end_time|end time|until|expires|to|active until):\s*["']?([^|,;\n{}]+)["']?/i);
 
-            // Extract coordinate array blocks from custom text lines (e.g. latlngs: [[...]] or points: [...])
+            // Extract coordinate array blocks
             let inlinePoints = alertObj.latlngs || alertObj.points || alertObj.coordinates || alertObj.geometry || alertObj.polygon || null;
             if (!inlinePoints) {
                 const coordMatch = cleanLine.match(/(?:latlngs|points|coordinates|polygon|geom):\s*(\[[\s\S]*?\])/i);
@@ -780,7 +779,6 @@ async function renderAlertPolygons(lat, lon, selectedAlertTitle = null) {
                     try { inlinePoints = JSON.parse(coordMatch[1]); } catch (err) {}
                 }
             }
-            // Fallback: search for any raw bracket coordinate set within the line
             if (!inlinePoints) {
                 const rawCoordMatch = cleanLine.match(/(\[\s*-?\d+(?:\.\d+)?\s*,\s*-?\d+(?:\.\d+)?\s*(?:,\s*-?\d+(?:\.\d+)?\s*)*\])/g);
                 if (rawCoordMatch && rawCoordMatch.length > 0) {
@@ -913,15 +911,14 @@ async function renderAlertPolygons(lat, lon, selectedAlertTitle = null) {
             const lastPt = lineCoords[lineCoords.length - 1];
             const isClosedLoop = lineCoords.length >= 3 && firstPt[0] === lastPt[0] && firstPt[1] === lastPt[1];
 
-            // Render as polygon with solid fill color if closed or area-based; render as polyline only if explicitly requested as a line
             const renderAsLine = isExplicitLine && !isClosedLoop;
 
             const layerOptions = {
-                color: isSelected ? "#111111" : baseColor,       // High contrast selection outline or severity color
+                color: isSelected ? "#111111" : baseColor,       
                 weight: isSelected ? 5 : (renderAsLine ? 4 : 3),
                 opacity: 1.0,
-                fillColor: baseColor,                             // Forces color fill inside alertlines polygons/areas
-                fillOpacity: renderAsLine ? 0 : 0.45,             // Solid fill color opacity for custom shapes
+                fillColor: baseColor,                             
+                fillOpacity: renderAsLine ? 0 : 0.45,             
                 lineCap: 'round',
                 lineJoin: 'round'
             };
