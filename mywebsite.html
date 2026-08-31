@@ -868,13 +868,17 @@ async function renderAlertPolygons(lat, lon, selectedAlertTitle = null) {
     const selectedBounds = [];
     const normalLayers = [];
     const selectedLayers = [];
+    
+    // Track added signatures to prevent duplicate map layers
+    const addedLayerKeys = new Set();
 
-    // 4. Build layers: Construct custom undulating boundary paths instead of rigid rectangles
+    // 4. Build layers: Explicitly differentiate true alert lines from areal polygon boundaries
     alertList.forEach(alert => {
         if (!alert) return;
         const severity = alert.severity || alert.level || "Moderate";
         const title = alert.title || alert.header || alert.name || "Weather Alert";
         const baseColor = resolveSeverityColor(severity);
+        const isLineSource = alert._sourceFile === "alertlines.txt";
 
         const isSelected = Boolean(
             selectedAlertTitle && 
@@ -884,8 +888,8 @@ async function renderAlertPolygons(lat, lon, selectedAlertTitle = null) {
             )
         );
 
-        // Generate an organic, custom multi-point polyline/polygon path using bounding box extremes
-        if (!alert.latlngs) {
+        // If coordinates/latlngs are missing, generate clean rectangular/perimeter bounds for polygons only (skip lines)
+        if (!alert.latlngs && !isLineSource) {
             const bb = alert.bounding_box || {
                 min_lat: alert.bottom_lat,
                 max_lat: alert.top_lat,
@@ -898,23 +902,13 @@ async function renderAlertPolygons(lat, lon, selectedAlertTitle = null) {
                 const latMax = parseFloat(bb.max_lat);
                 const lonMin = parseFloat(bb.min_lon);
                 const lonMax = parseFloat(bb.max_lon);
-                const latMid = (latMin + latMax) / 2;
-                const lonMid = (lonMin + lonMax) / 2;
 
-                // Custom multi-node path mimicking a geographical weather warning contour line
+                // Standard clean box polygon path for areal alerts
                 alert.latlngs = [
-                    [latMin + (latMax - latMin) * 0.2, lonMin],
-                    [latMin, lonMin + (lonMax - lonMin) * 0.3],
-                    [latMin + (latMax - latMin) * 0.1, lonMid],
-                    [latMin, lonMax - (lonMax - lonMin) * 0.2],
-                    [latMin + (latMax - latMin) * 0.3, lonMax],
-                    [latMid, lonMax - (lonMax - lonMin) * 0.1],
-                    [latMax - (latMax - latMin) * 0.2, lonMax],
-                    [latMax, lonMax - (lonMax - lonMin) * 0.4],
-                    [latMax, lonMin + (lonMax - lonMin) * 0.3],
-                    [latMax - (latMax - latMin) * 0.1, lonMin + (lonMax - lonMin) * 0.1],
-                    [latMid, lonMin],
-                    [latMin + (latMax - latMin) * 0.4, lonMin]
+                    [latMin, lonMin],
+                    [latMin, lonMax],
+                    [latMax, lonMax],
+                    [latMax, lonMin]
                 ];
             }
         }
@@ -957,15 +951,24 @@ async function renderAlertPolygons(lat, lon, selectedAlertTitle = null) {
         }
 
         if (lineCoords.length >= 2) {
-            const isLineSource = alert._sourceFile === "alertlines.txt";
+            // Generate a unique structural fingerprint to prevent duplicate layers
+            const layerKey = `${title}_${isLineSource ? 'line' : 'poly'}_${lineCoords[0][0].toFixed(4)}_${lineCoords[0][1].toFixed(4)}`;
+            if (addedLayerKeys.has(layerKey)) return;
+            addedLayerKeys.add(layerKey);
 
-            const layerOptions = {
+            const layerOptions = isLineSource ? {
                 color: isSelected ? "#000000" : baseColor,       
-                weight: isSelected ? 5 : 3,
+                weight: isSelected ? 6 : 4,
                 opacity: 1.0,
+                lineCap: 'round',
+                lineJoin: 'round'
+            } : {
+                color: isSelected ? "#000000" : baseColor,       
+                weight: isSelected ? 4 : 2,
+                opacity: 0.9,
                 fill: true,
                 fillColor: baseColor,                             
-                fillOpacity: 0.45,                                
+                fillOpacity: 0.35,                                
                 lineCap: 'round',
                 lineJoin: 'round'
             };
