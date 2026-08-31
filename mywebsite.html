@@ -911,18 +911,25 @@ async function renderAlertPolygons(lat, lon, selectedAlertTitle = null) {
 
         const isLineSource = alert._sourceFile === "alertlines.txt";
 
-        const layerOptions = {
-            color: isSelected ? "#000000" : fillColor,       
-            weight: isSelected ? 5 : 3,
-            opacity: 1.0,
-            fill: true,
-            fillColor: fillColor,                             
-            fillOpacity: 0.45,                                
-            lineCap: 'round',
-            lineJoin: 'round'
-        };
+        // 1. Explicitly assign a Canvas renderer with padding to prevent clipping glitches during zoom animations
+const customRenderer = L.canvas({ padding: 0.5 });
 
-        const shapeLayer = isLineSource ? L.polyline(lineCoords, layerOptions) : L.polygon(lineCoords, layerOptions);
+const layerOptions = {
+    renderer: customRenderer,                         // Smooths SVG/Canvas node transforms during zoom
+    color: isSelected ? "#000000" : fillColor,       
+    weight: isSelected ? 5 : 3,
+    opacity: 1.0,
+    fill: true,                                       
+    fillColor: fillColor,                             
+    fillOpacity: isLineSource ? 0.35 : 0.45,          
+    lineCap: 'round',
+    lineJoin: 'round'
+};
+
+// 2. If it's a line source and fill is requested, instantiate as L.polygon to guarantee closed SVG geometry
+const shapeLayer = (isLineSource && layerOptions.fill) 
+    ? L.polygon(lineCoords, layerOptions) 
+    : (isLineSource ? L.polyline(lineCoords, layerOptions) : L.polygon(lineCoords, layerOptions));
 
         const popupContent = `<b>${title}</b><br>Severity: ${severity}<br>${alert.description || 'No description provided.'}`;
         shapeLayer.bindPopup(popupContent);
