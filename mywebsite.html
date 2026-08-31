@@ -1966,9 +1966,15 @@ function geocodeLocation(query) {
 }
 async function renderActiveAlerts() {
     const container = document.getElementById("active-alerts-list");
-    if (!container) return;
+    const mapContainer = document.getElementById("map-container") || document.getElementById("map");
     
-    container.innerHTML = "<p>Loading active alerts...</p>";
+    if (container) {
+        container.innerHTML = "<p>Loading active alerts...</p>";
+    }
+    
+    if (mapContainer && !document.getElementById("alertsMap") && !window.alertsMap) {
+        // Ensure map container has minimal fallback if not yet initialized
+    }
 
     // Derive location directly from targetZoneOrPoint with fallback coordinates
     const userLat = typeof targetZoneOrPoint !== 'undefined' && targetZoneOrPoint ? parseFloat(targetZoneOrPoint.lat) : 45.0;
@@ -2029,7 +2035,8 @@ async function renderActiveAlerts() {
                         min_lat: isNaN(minLat) ? null : minLat,
                         max_lat: isNaN(maxLat) ? null : maxLat,
                         min_lon: isNaN(minLon) ? null : minLon,
-                        max_lon: isNaN(maxLon) ? null : maxLon
+                        max_lon: isNaN(maxLon) ? null : maxLon,
+                        latlngs: alertObj.latlngs || alertObj.points || alertObj.coordinates || alertObj.polygon || null
                     });
                 });
             }
@@ -2049,8 +2056,13 @@ async function renderActiveAlerts() {
         return true;
     });
 
-    // Save ALL active alerts globally for map rendering access (out-of-box alerts included)
+    // Save ALL active alerts globally for map rendering access
     window.activeAlerts = allValidAlerts;
+
+    // Trigger map polygon rendering if available
+    if (typeof renderAlertPolygons === "function") {
+        renderAlertPolygons(userLat, userLon);
+    }
 
     // 2. Filter down to user's location for the list UI card display
     const userAlerts = allValidAlerts.filter(alert => {
@@ -2075,32 +2087,34 @@ async function renderActiveAlerts() {
     }
 
     // Render cards into container using userAlerts
-    container.innerHTML = "";
+    if (container) {
+        container.innerHTML = "";
 
-    if (userAlerts.length === 0) {
-        container.innerHTML = "<p>No active alerts for your current location.</p>";
-        return;
+        if (userAlerts.length === 0) {
+            container.innerHTML = "<p>No active alerts for your current location.</p>";
+            return;
+        }
+
+        userAlerts.forEach(alert => {
+            const severityStr = alert.severity ? String(alert.severity).toLowerCase() : "medium";
+            const startTime = alert.start_time ? new Date(alert.start_time) : null;
+            const isBeforeStart = startTime && !isNaN(startTime.getTime()) && now < startTime;
+
+            const startLabel = isBeforeStart ? "Starts at" : "Started at";
+            const endLabel = isBeforeStart ? "Ends at" : "Active until";
+
+            const alertCard = document.createElement("div");
+            alertCard.className = `alert-card severity-${severityStr}`;
+            alertCard.innerHTML = `
+                <h4>${alert.title || "Untitled Alert"}</h4>
+                <p><strong>Severity:</strong> ${alert.severity || "Normal"}</p>
+                <p>${alert.description || "No description provided."}</p>
+                ${alert.start_time ? `<p><small>${startLabel}: ${alert.start_time}</small></p>` : ""}
+                <p><small>${endLabel}: ${alert.end_time || "Indefinite"}</small></p>
+            `;
+            container.appendChild(alertCard);
+        });
     }
-
-    userAlerts.forEach(alert => {
-        const severityStr = alert.severity ? String(alert.severity).toLowerCase() : "medium";
-        const startTime = alert.start_time ? new Date(alert.start_time) : null;
-        const isBeforeStart = startTime && !isNaN(startTime.getTime()) && now < startTime;
-
-        const startLabel = isBeforeStart ? "Starts at" : "Started at";
-        const endLabel = isBeforeStart ? "Ends at" : "Active until";
-
-        const alertCard = document.createElement("div");
-        alertCard.className = `alert-card severity-${severityStr}`;
-        alertCard.innerHTML = `
-            <h4>${alert.title || "Untitled Alert"}</h4>
-            <p><strong>Severity:</strong> ${alert.severity || "Normal"}</p>
-            <p>${alert.description || "No description provided."}</p>
-            ${alert.start_time ? `<p><small>${startLabel}: ${alert.start_time}</small></p>` : ""}
-            <p><small>${endLabel}: ${alert.end_time || "Indefinite"}</small></p>
-        `;
-        container.appendChild(alertCard);
-    });
 }
 function openUploadModal() {
     document.getElementById("uploadModal").style.display = "flex";
