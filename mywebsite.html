@@ -944,14 +944,13 @@ async function renderAlertPolygons(lat, lon, selectedAlertTitle = null) {
         if (lineCoords.length >= 2) {
             const isLineSource = alert._sourceFile === "alertlines.txt";
 
-            const layerOptions = {
+           const layerOptions = {
                 color: isSelected ? "#000000" : baseColor,       
                 weight: isSelected ? 5 : 3,
                 opacity: 1.0,
-                // Completely disable fill for alertlines.txt so it renders strictly as lines without filling the map screen
-                fill: !isLineSource,
-                fillColor: isLineSource ? null : baseColor,                             
-                fillOpacity: isLineSource ? 0 : (isSelected ? 0.4 : 0.25),                                
+                fill: true,
+                fillColor: baseColor,                             
+                fillOpacity: 0.45,                                
                 lineCap: 'round',
                 lineJoin: 'round'
             };
