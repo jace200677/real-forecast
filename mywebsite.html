@@ -712,25 +712,46 @@ async function renderAlertPolygons(lat, lon, selectedAlertTitle = null) {
 
     let rawAlerts = [];
 
-    // Robust parser: Handles standard JSON arrays, NDJSON, and raw custom text lines in alertlines.txt / alerts.txt
+    // Robust multi-format parser for raw GitHub text, JSON arrays, and custom line/alert files
     const parseAlertsText = (rawText, defaultSource = '') => {
         const parsedItems = [];
         if (!rawText || typeof rawText !== 'string') return parsedItems;
 
-        // Try standard JSON parse first
+        const trimmedText = rawText.trim();
+
+        // 1. Attempt standard or loose JSON parsing first
         try {
-            const parsed = JSON.parse(rawText.trim());
-            const items = Array.isArray(parsed) ? parsed : (parsed.alerts || parsed.data || parsed.results || [parsed]);
+            let parsed = JSON.parse(trimmedText);
+            let items = Array.isArray(parsed) ? parsed : (parsed.alerts || parsed.data || parsed.results || [parsed]);
             items.forEach(item => {
-                if (defaultSource && !item._sourceFile) item._sourceFile = defaultSource;
-                parsedItems.push(item);
+                if (item && typeof item === 'object') {
+                    if (defaultSource && !item._sourceFile) item._sourceFile = defaultSource;
+                    parsedItems.push(item);
+                }
             });
-            return parsedItems;
+            if (parsedItems.length > 0) return parsedItems;
         } catch (e) {}
 
-        // Fallback: Parse line by line for custom text/NDJSON or mixed formats (like alertlines.txt)
-        const lines = rawText.split(/\r?\n/).filter(line => line.trim() !== "");
-        lines.forEach(line => {
+        // 2. Fallback: Parse line-by-line or look for embedded JSON arrays / objects
+        const lines = trimmedText.split(/\r?\n/).filter(line => line.trim() !== "");
+        
+        // If the whole file contains an embedded JSON array block across multiple lines
+        try {
+            const fullBracketMatch = trimmedText.match(/\[\s*\{[\s\S]*\}\s*\]/);
+            if (fullBracketMatch) {
+                const parsedArray = JSON.parse(fullBracketMatch[0]);
+                if (Array.isArray(parsedArray)) {
+                    parsedArray.forEach(item => {
+                        if (defaultSource) item._sourceFile = defaultSource;
+                        parsedItems.push(item);
+                    });
+                    return parsedItems;
+                }
+            }
+        } catch (err) {}
+
+        // 3. Line-by-line extraction for custom text formats (alertlines.txt)
+        lines.forEach((line, index) => {
             let cleanLine = line.trim();
             if (cleanLine.endsWith(',')) cleanLine = cleanLine.slice(0, -1);
 
@@ -739,35 +760,46 @@ async function renderAlertPolygons(lat, lon, selectedAlertTitle = null) {
                 if (cleanLine.startsWith("{") && cleanLine.endsWith("}")) {
                     alertObj = JSON.parse(cleanLine);
                 } else if (cleanLine.includes("{") && cleanLine.includes("}")) {
-                    const match = cleanLine.match(/\{.*\}/);
+                    const match = cleanLine.match(/\{[\s\S]*\}/);
                     if (match) alertObj = JSON.parse(match[0]);
                 }
             } catch (err) {}
 
-            // Extract fields via regex fallback if properties are missing
-            const titleMatch = cleanLine.match(/(?:title|header|name):\s*([^|;\n]+)/i);
-            const severityMatch = cleanLine.match(/(?:severity|level):\s*([^|;\n]+)/i);
-            const descMatch = cleanLine.match(/(?:desc|description|details):\s*([^|;\n]+)/i);
-            const startMatch = cleanLine.match(/(?:start_time|start time|from):\s*([^|;\n]+)/i);
-            const endMatch = cleanLine.match(/(?:end_time|end time|until|expires):\s*([^|;\n]+)/i);
+            // Enhanced Regex Extraction for properties in custom text files
+            const titleMatch = cleanLine.match(/(?:title|header|name|alert):\s*["']?([^|,;\n{}]+)["']?/i);
+            const severityMatch = cleanLine.match(/(?:severity|level|priority):\s*["']?([^|,;\n{}]+)["']?/i);
+            const descMatch = cleanLine.match(/(?:desc|description|details|info):\s*["']?([^|;\n{}]+)["']?/i);
+            const startMatch = cleanLine.match(/(?:start_time|start time|from|effective):\s*["']?([^|,;\n{}]+)["']?/i);
+            const endMatch = cleanLine.match(/(?:end_time|end time|until|expires|to):\s*["']?([^|,;\n{}]+)["']?/i);
 
-            // Extract inline coordinate arrays if present in text lines (e.g. latlngs: [[...]] or points: [...])
+            // Extract coordinate array blocks from custom text lines (e.g. latlngs: [[...]] or points: [...])
             let inlinePoints = alertObj.latlngs || alertObj.points || alertObj.coordinates || alertObj.geometry || alertObj.polygon || null;
             if (!inlinePoints) {
-                const coordMatch = cleanLine.match(/(?:latlngs|points|coordinates|polygon):\s*(\[[\s\S]*?\])/i);
+                const coordMatch = cleanLine.match(/(?:latlngs|points|coordinates|polygon|geom):\s*(\[[\s\S]*?\])/i);
                 if (coordMatch) {
                     try { inlinePoints = JSON.parse(coordMatch[1]); } catch (err) {}
                 }
             }
+            // Fallback: search for any raw bracket coordinate set within the line
+            if (!inlinePoints) {
+                const rawCoordMatch = cleanLine.match(/(\[\s*-?\d+(?:\.\d+)?\s*,\s*-?\d+(?:\.\d+)?\s*(?:,\s*-?\d+(?:\.\d+)?\s*)*\])/g);
+                if (rawCoordMatch && rawCoordMatch.length > 0) {
+                    try {
+                        inlinePoints = rawCoordMatch.map(m => JSON.parse(m));
+                    } catch (err) {}
+                }
+            }
 
-            let cleanDesc = alertObj.description || (descMatch ? descMatch[1].trim() : cleanLine.replace(/\{.*\}/, '').replace(/Active until:.*$/i, '').trim());
+            let fallbackTitle = titleMatch ? titleMatch[1].trim() : null;
+            let fallbackSeverity = severityMatch ? severityMatch[1].trim() : null;
+            let fallbackDesc = descMatch ? descMatch[1].trim() : null;
 
             parsedItems.push({
                 ...alertObj,
                 _sourceFile: defaultSource,
-                title: alertObj.title || alertObj.header || alertObj.name || (titleMatch ? titleMatch[1].trim() : "Alert Area"),
-                severity: alertObj.severity || alertObj.level || (severityMatch ? severityMatch[1].trim() : "Minor"),
-                description: cleanDesc || "No description provided.",
+                title: alertObj.title || alertObj.header || alertObj.name || fallbackTitle || `Alert Line #${index + 1}`,
+                severity: alertObj.severity || alertObj.level || fallbackSeverity || "Moderate",
+                description: alertObj.description || fallbackDesc || cleanLine,
                 start_time: alertObj.start_time || (startMatch ? startMatch[1].trim() : null),
                 end_time: alertObj.end_time || (endMatch ? endMatch[1].trim() : "Indefinite"),
                 latlngs: inlinePoints
@@ -791,11 +823,12 @@ async function renderAlertPolygons(lat, lon, selectedAlertTitle = null) {
         return severityColors[(severity || '').toLowerCase()] || '#5cb85c';
     };
 
-    // 3. Fetch data in parallel
+    // 3. Fetch data in parallel with cache-busting
     try {
+        const timestamp = new Date().getTime();
         const [alertsRes, linesRes] = await Promise.allSettled([
-            fetch("https://raw.githubusercontent.com/jace200677/real-forecast/refs/heads/main/weather/alerts.txt"),
-            fetch("https://raw.githubusercontent.com/jace200677/real-forecast/refs/heads/main/weather/alertlines.txt")
+            fetch(`https://raw.githubusercontent.com/jace200677/real-forecast/refs/heads/main/weather/alerts.txt?v=${timestamp}`),
+            fetch(`https://raw.githubusercontent.com/jace200677/real-forecast/refs/heads/main/weather/alertlines.txt?v=${timestamp}`)
         ]);
 
         if (alertsRes.status === "fulfilled" && alertsRes.value.ok) {
@@ -826,15 +859,14 @@ async function renderAlertPolygons(lat, lon, selectedAlertTitle = null) {
 
     const boundsArray = [];
     const selectedBounds = [];
-    if (!isNaN(userLat) && !isNaN(userLon)) boundsArray.push([userLat, userLon]);
 
     const normalLayers = [];
     const selectedLayers = [];
 
-    // 4. Build layers: Ensure custom lines parse latlngs correctly, support fill color, and match tooltips/selection bounds precisely
+    // 4. Build layers with correct fill colors, strict bounding box calculation, and accurate tooltips
     alertList.forEach(alert => {
         if (!alert) return;
-        const severity = alert.severity || alert.level || "Minor";
+        const severity = alert.severity || alert.level || "Moderate";
         const title = alert.title || alert.header || alert.name || "Alert Area";
         const baseColor = resolveSeverityColor(severity);
 
@@ -881,16 +913,15 @@ async function renderAlertPolygons(lat, lon, selectedAlertTitle = null) {
             const lastPt = lineCoords[lineCoords.length - 1];
             const isClosedLoop = lineCoords.length >= 3 && firstPt[0] === lastPt[0] && firstPt[1] === lastPt[1];
 
-            // Render as polygon with fill color even for custom/alertlines files if it's a closed area or polygon format
-            const renderAsLine = isExplicitLine || (lineCoords.length < 3 && !isClosedLoop);
+            // Render as polygon with solid fill color if closed or area-based; render as polyline only if explicitly requested as a line
+            const renderAsLine = isExplicitLine && !isClosedLoop;
 
-            // Styling: Use base severity color for borders and fills, with a clean distinct selection border if active
             const layerOptions = {
-                color: isSelected ? "#111111" : baseColor,       
-                weight: isSelected ? 5 : (renderAsLine ? 4 : 2.5),
+                color: isSelected ? "#111111" : baseColor,       // High contrast selection outline or severity color
+                weight: isSelected ? 5 : (renderAsLine ? 4 : 3),
                 opacity: 1.0,
-                fillColor: baseColor,                             // Adds fill color inside custom lines/polygons
-                fillOpacity: renderAsLine ? 0 : 0.4,              // Solid area fill inside the boundaries
+                fillColor: baseColor,                             // Forces color fill inside alertlines polygons/areas
+                fillOpacity: renderAsLine ? 0 : 0.45,             // Solid fill color opacity for custom shapes
                 lineCap: 'round',
                 lineJoin: 'round'
             };
@@ -904,7 +935,7 @@ async function renderAlertPolygons(lat, lon, selectedAlertTitle = null) {
 
             if (isSelected) {
                 selectedLayers.push(shapeLayer);
-                selectedBounds.push(...lineCoords); // Confines selection zoom bounds strictly to the custom alert coordinates
+                selectedBounds.push(...lineCoords);
             } else {
                 normalLayers.push(shapeLayer);
                 boundsArray.push(...lineCoords);
@@ -920,9 +951,9 @@ async function renderAlertPolygons(lat, lon, selectedAlertTitle = null) {
 
     if (mapInstance) {
         if (selectedBounds.length > 0) {
-            mapInstance.fitBounds(selectedBounds, { padding: [40, 40], maxZoom: 12 });
+            mapInstance.fitBounds(selectedBounds, { padding: [50, 50], maxZoom: 11 });
         } else if (boundsArray.length > 0) {
-            mapInstance.fitBounds(boundsArray, { padding: [30, 30] });
+            mapInstance.fitBounds(boundsArray, { padding: [40, 40], maxZoom: 10 });
         }
     }
 }
