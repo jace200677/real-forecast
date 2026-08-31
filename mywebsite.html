@@ -714,14 +714,14 @@ async function renderAlertPolygons(lat, lon, selectedAlertTitle = null) {
 
     let rawAlerts = [];
 
-    // Robust parser ensuring custom multiline blocks and key-value arrays from alertlines.txt are properly mapped
+    // Robust parser supporting NDJSON, standard JSON, and structured text blocks
     const parseAlertsText = (rawText, defaultSource = '') => {
         const parsedItems = [];
         if (!rawText || typeof rawText !== 'string') return parsedItems;
 
         const trimmedText = rawText.trim();
 
-        // 1. Attempt standard JSON parsing first
+        // 1. Attempt standard JSON parsing first (arrays or objects)
         try {
             let parsed = JSON.parse(trimmedText);
             let items = Array.isArray(parsed) ? parsed : (parsed.alerts || parsed.data || parsed.results || [parsed]);
@@ -734,30 +734,30 @@ async function renderAlertPolygons(lat, lon, selectedAlertTitle = null) {
             if (parsedItems.length > 0) return parsedItems;
         } catch (e) {}
 
-        try {
-            const fullBracketMatch = trimmedText.match(/\[\s*\{[\s\S]*\}\s*\]/);
-            if (fullBracketMatch) {
-                const parsedArray = JSON.parse(fullBracketMatch[0]);
-                if (Array.isArray(parsedArray)) {
-                    parsedArray.forEach(item => {
-                        if (defaultSource) item._sourceFile = defaultSource;
-                        parsedItems.push(item);
-                    });
-                    return parsedItems;
-                }
-            }
-        } catch (err) {}
-
-        // 2. Fallback: Line-by-line structured text parser that splits distinct alerts correctly instead of merging everything into one giant polygon
+        // 2. Attempt parsing as Newline-Delimited JSON (NDJSON) where each line is a separate JSON object
         const lines = trimmedText.split(/\r?\n/);
-        let currentAlert = null;
+        let ndjsonSuccess = false;
+        lines.forEach(line => {
+            const clean = line.trim();
+            if (clean.startsWith('{') && clean.endsWith('}')) {
+                try {
+                    const item = JSON.parse(clean);
+                    if (defaultSource && !item._sourceFile) item._sourceFile = defaultSource;
+                    parsedItems.push(item);
+                    ndjsonSuccess = true;
+                } catch (err) {}
+            }
+        });
+        if (ndjsonSuccess && parsedItems.length > 0) return parsedItems;
 
+        // 3. Fallback: Line-by-line structured text parser
+        let currentAlert = null;
         const commitCurrentAlert = () => {
             if (currentAlert) {
                 if (defaultSource && !currentAlert._sourceFile) {
                     currentAlert._sourceFile = defaultSource;
                 }
-                if (currentAlert.title || currentAlert.severity || currentAlert.description || (currentAlert.latlngs && currentAlert.latlngs.length > 0)) {
+                if (currentAlert.title || currentAlert.severity || currentAlert.description || (currentAlert.latlngs && currentAlert.latlngs.length > 0) || currentAlert.bounding_box) {
                     parsedItems.push(currentAlert);
                 }
             }
@@ -768,7 +768,6 @@ async function renderAlertPolygons(lat, lon, selectedAlertTitle = null) {
             let cleanLine = line.trim();
             if (cleanLine === "") return;
 
-            // Detect new alert block boundaries (JSON object start, separator lines, or headers indicating a fresh entry)
             if (cleanLine.startsWith("{") || cleanLine.startsWith("---") || cleanLine.startsWith("===") || cleanLine.toLowerCase().startsWith("what:") || cleanLine.toLowerCase().startsWith("title:")) {
                 if (cleanLine.startsWith("{") || cleanLine.startsWith("---") || cleanLine.startsWith("===") || (cleanLine.toLowerCase().startsWith("what:") && currentAlert && (currentAlert.title || currentAlert.latlngs))) {
                     commitCurrentAlert();
@@ -800,20 +799,6 @@ async function renderAlertPolygons(lat, lon, selectedAlertTitle = null) {
                 currentAlert.end_time = cleanLine.substring(cleanLine.indexOf(":") + 1).trim();
             }
 
-            // Target explicit property keys containing coordinate blocks across single or multiple lines
-            const explicitCoordMatch = cleanLine.match(/(?:latlngs|points|coordinates|polygon|geom|line):\s*(\[[\s\S]*)/i);
-            if (explicitCoordMatch) {
-                try {
-                    let potentialJson = explicitCoordMatch[1].trim();
-                    const parsedPoints = JSON.parse(potentialJson.endsWith(",") ? potentialJson.slice(0, -1) : potentialJson);
-                    if (Array.isArray(parsedPoints)) {
-                        currentAlert.latlngs = parsedPoints;
-                        return;
-                    }
-                } catch (err) {}
-            }
-
-            // Capture inline coordinate pairs directly into the current alert's coordinate buffer
             const bracketArrayMatches = cleanLine.match(/\[\s*-?\d+(?:\.\d+)?\s*,\s*-?\d+(?:\.\d+)?\s*\]/g);
             if (bracketArrayMatches) {
                 if (!currentAlert.latlngs) currentAlert.latlngs = [];
@@ -825,19 +810,6 @@ async function renderAlertPolygons(lat, lon, selectedAlertTitle = null) {
                         }
                     } catch (e) {}
                 });
-            } else {
-                const rawCoordMatch = cleanLine.match(/(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)/g);
-                if (rawCoordMatch && rawCoordMatch.length > 0 && (lowerLine.includes("lat") || lowerLine.includes("lon") || lowerLine.includes("pt") || lowerLine.includes("point") || !lowerLine.includes(":"))) {
-                    if (!currentAlert.latlngs) currentAlert.latlngs = [];
-                    rawCoordMatch.forEach(pair => {
-                        try {
-                            const parts = pair.split(',').map(n => parseFloat(n.trim()));
-                            if (parts.length === 2 && !isNaN(parts[0]) && !isNaN(parts[1])) {
-                                currentAlert.latlngs.push(parts);
-                            }
-                        } catch (e) {}
-                    });
-                }
             }
         });
 
@@ -897,7 +869,7 @@ async function renderAlertPolygons(lat, lon, selectedAlertTitle = null) {
     const normalLayers = [];
     const selectedLayers = [];
 
-    // 4. Build layers: Keep custom lines from alertlines.txt as pure open polylines with zero background fill, and fill polygon alerts cleanly inside their boundaries
+    // 4. Build layers: Convert bounding boxes/coordinates and build Leaflet shapes
     alertList.forEach(alert => {
         if (!alert) return;
         const severity = alert.severity || alert.level || "Moderate";
@@ -911,6 +883,26 @@ async function renderAlertPolygons(lat, lon, selectedAlertTitle = null) {
                 (alert.id && String(alert.id).toLowerCase() === String(selectedAlertTitle).toLowerCase())
             )
         );
+
+        // Map bounding box or coordinate fields into standard latlngs array if missing
+        if (!alert.latlngs) {
+            if (alert.bounding_box) {
+                const bb = alert.bounding_box;
+                alert.latlngs = [
+                    [bb.max_lat, bb.min_lon],
+                    [bb.max_lat, bb.max_lon],
+                    [bb.min_lat, bb.max_lon],
+                    [bb.min_lat, bb.min_lon]
+                ];
+            } else if (alert.bottom_lat !== undefined && alert.top_lat !== undefined && alert.bottom_lon !== undefined && alert.top_lon !== undefined) {
+                alert.latlngs = [
+                    [alert.top_lat, alert.bottom_lon],
+                    [alert.top_lat, alert.top_lon],
+                    [alert.bottom_lat, alert.top_lon],
+                    [alert.bottom_lat, alert.bottom_lon]
+                ];
+            }
+        }
 
         let rawPoints = alert.latlngs || alert.points || alert.coordinates || alert.geometry?.coordinates || alert.polygon;
 
