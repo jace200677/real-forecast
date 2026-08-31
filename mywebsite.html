@@ -869,7 +869,7 @@ async function renderAlertPolygons(lat, lon, selectedAlertTitle = null) {
     const normalLayers = [];
     const selectedLayers = [];
 
-    // 4. Build layers: Construct custom undulating boundary paths instead of rigid rectangles
+    // 4. Build layers correctly without artificial distortion
     alertList.forEach(alert => {
         if (!alert) return;
         const severity = alert.severity || alert.level || "Moderate";
@@ -884,7 +884,7 @@ async function renderAlertPolygons(lat, lon, selectedAlertTitle = null) {
             )
         );
 
-        // Generate an organic, custom multi-point polyline/polygon path using bounding box extremes
+        // Standard bounding box fallback (creates valid rectangle bounding box)
         if (!alert.latlngs) {
             const bb = alert.bounding_box || {
                 min_lat: alert.bottom_lat,
@@ -898,23 +898,12 @@ async function renderAlertPolygons(lat, lon, selectedAlertTitle = null) {
                 const latMax = parseFloat(bb.max_lat);
                 const lonMin = parseFloat(bb.min_lon);
                 const lonMax = parseFloat(bb.max_lon);
-                const latMid = (latMin + latMax) / 2;
-                const lonMid = (lonMin + lonMax) / 2;
 
-                // Custom multi-node path mimicking a geographical weather warning contour line
                 alert.latlngs = [
-                    [latMin + (latMax - latMin) * 0.2, lonMin],
-                    [latMin, lonMin + (lonMax - lonMin) * 0.3],
-                    [latMin + (latMax - latMin) * 0.1, lonMid],
-                    [latMin, lonMax - (lonMax - lonMin) * 0.2],
-                    [latMin + (latMax - latMin) * 0.3, lonMax],
-                    [latMid, lonMax - (lonMax - lonMin) * 0.1],
-                    [latMax - (latMax - latMin) * 0.2, lonMax],
-                    [latMax, lonMax - (lonMax - lonMin) * 0.4],
-                    [latMax, lonMin + (lonMax - lonMin) * 0.3],
-                    [latMax - (latMax - latMin) * 0.1, lonMin + (lonMax - lonMin) * 0.1],
-                    [latMid, lonMin],
-                    [latMin + (latMax - latMin) * 0.4, lonMin]
+                    [latMin, lonMin],
+                    [latMin, lonMax],
+                    [latMax, lonMax],
+                    [latMax, lonMin]
                 ];
             }
         }
@@ -941,18 +930,29 @@ async function renderAlertPolygons(lat, lon, selectedAlertTitle = null) {
         if (Array.isArray(rawPoints) && rawPoints.length > 0) {
             lineCoords = rawPoints.map(pt => {
                 if (!pt) return null;
+                let pLat, pLon;
+
                 if (Array.isArray(pt)) {
-                    let pLat = parseFloat(pt[0]);
-                    let pLon = parseFloat(pt[1]);
-                    if (Math.abs(pLat) > 90 && Math.abs(pLon) <= 90) [pLat, pLon] = [pLon, pLat];
-                    return [pLat, pLon];
+                    let v1 = parseFloat(pt[0]);
+                    let v2 = parseFloat(pt[1]);
+                    
+                    // Correctly handle standard GeoJSON [lng, lat] vs Leaflet [lat, lng]
+                    if (v1 < -90 || v1 > 90) { 
+                        pLat = v2;
+                        pLon = v1;
+                    } else if (v2 < -90 || v2 > 90) {
+                        pLat = v1;
+                        pLon = v2;
+                    } else {
+                        pLat = v1;
+                        pLon = v2;
+                    }
+                } else if (typeof pt === 'object') {
+                    pLat = parseFloat(pt.lat ?? pt.latitude);
+                    pLon = parseFloat(pt.lng ?? pt.lon ?? pt.longitude);
                 }
-                if (typeof pt === 'object') {
-                    const pLat = parseFloat(pt.lat ?? pt.latitude);
-                    const pLon = parseFloat(pt.lng ?? pt.lon ?? pt.longitude);
-                    return [pLat, pLon];
-                }
-                return null;
+
+                return [pLat, pLon];
             }).filter(pt => pt && !isNaN(pt[0]) && !isNaN(pt[1]));
         }
 
@@ -963,7 +963,7 @@ async function renderAlertPolygons(lat, lon, selectedAlertTitle = null) {
                 color: isSelected ? "#000000" : baseColor,       
                 weight: isSelected ? 5 : 3,
                 opacity: 1.0,
-                fill: true,
+                fill: !isLineSource,
                 fillColor: baseColor,                             
                 fillOpacity: 0.45,                                
                 lineCap: 'round',
