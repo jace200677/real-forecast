@@ -692,6 +692,8 @@ function processAndStoreAlerts(rawAlertData) {
     return window.allAlerts;
 }
 async function renderAlertPolygons(lat, lon, selectedAlertTitle = null) {
+    const container = document.getElementById("active-alerts-list");
+
     // 1. Resolve active Leaflet map instance
     const mapInstance = window.alertsMap 
         || ((typeof userAlertMap !== 'undefined' && userAlertMap) ? userAlertMap : null)
@@ -746,7 +748,6 @@ async function renderAlertPolygons(lat, lon, selectedAlertTitle = null) {
             }
         } catch (err) {}
 
-        // 2. Fallback: Line-by-line structured text parser with deep block support for alertlines.txt
         // 2. Fallback: Line-by-line structured text parser with deep block support for alertlines.txt
         const lines = trimmedText.split(/\r?\n/);
         let currentAlert = null;
@@ -872,7 +873,7 @@ async function renderAlertPolygons(lat, lon, selectedAlertTitle = null) {
         }
 
         return parsedItems;
-    }
+    };
 
     const severityColors = {
         extreme: '#d9534f', 
