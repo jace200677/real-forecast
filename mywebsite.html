@@ -711,14 +711,14 @@ async function renderAlertPolygons(lat, lon, selectedAlertTitle = null) {
 
     let rawAlerts = [];
 
-    // Unified parser applied identically to both alerts.txt and alertlines.txt
+    // Unified parser supporting JSON, NDJSON, and structured text
     const parseAlertsText = (rawText, defaultSource = '') => {
         const parsedItems = [];
         if (!rawText || typeof rawText !== 'string') return parsedItems;
 
         const trimmedText = rawText.trim();
 
-        // Step A: Attempt standard JSON parsing (covers root arrays, root objects, or wrapped JSON arrays)
+        // 1. Attempt standard JSON parsing
         try {
             let parsed = JSON.parse(trimmedText);
             let items = Array.isArray(parsed) ? parsed : (parsed.alerts || parsed.data || parsed.results || [parsed]);
@@ -731,40 +731,16 @@ async function renderAlertPolygons(lat, lon, selectedAlertTitle = null) {
             if (parsedItems.length > 0) return parsedItems;
         } catch (e) {}
 
-        // Step B: Attempt parsing concatenated JSON blocks / NDJSON line-by-line
+        // 2. Line-by-line NDJSON and structured text block parsing
         const lines = trimmedText.split(/\r?\n/);
-        lines.forEach(line => {
-            const clean = line.trim();
-            if (!clean) return;
-            // Handle JSON object lines (even if ending in trailing commas)
-            if (clean.startsWith('{')) {
-                try {
-                    const jsonStr = clean.endsWith(',') ? clean.slice(0, -1) : clean;
-                    const item = JSON.parse(jsonStr);
-                    if (item && typeof item === 'object') {
-                        if (defaultSource && !item._sourceFile) item._sourceFile = defaultSource;
-                        parsedItems.push(item);
-                    }
-                } catch (err) {}
-            }
-        });
-        if (parsedItems.length > 0) return parsedItems;
-
-        // Step C: Fallback structured text parser with embedded JSON bracket extraction
         let currentAlert = null;
+        
         const commitCurrentAlert = () => {
             if (currentAlert) {
                 if (defaultSource && !currentAlert._sourceFile) {
                     currentAlert._sourceFile = defaultSource;
                 }
-                const hasValidGeom = (currentAlert.latlngs && currentAlert.latlngs.length >= 2) || 
-                                     currentAlert.bounding_box || 
-                                     (currentAlert.min_lat !== undefined && currentAlert.max_lat !== undefined);
-                const hasValidMeta = currentAlert.title || currentAlert.description || currentAlert.severity;
-                
-                if (hasValidGeom || hasValidMeta) {
-                    parsedItems.push(currentAlert);
-                }
+                parsedItems.push(currentAlert);
             }
             currentAlert = null;
         };
@@ -773,18 +749,22 @@ async function renderAlertPolygons(lat, lon, selectedAlertTitle = null) {
             let cleanLine = line.trim();
             if (cleanLine === "") return;
 
-            if (cleanLine.startsWith("{") || cleanLine.startsWith("---") || cleanLine.startsWith("===") || cleanLine.toLowerCase().startsWith("what:") || cleanLine.toLowerCase().startsWith("title:")) {
+            // Check for JSON line
+            if (cleanLine.startsWith("{")) {
                 commitCurrentAlert();
-                if (cleanLine.startsWith("{")) {
-                    try {
-                        const jsonStr = cleanLine.endsWith(",") ? cleanLine.slice(0, -1) : cleanLine;
-                        currentAlert = JSON.parse(jsonStr);
-                        currentAlert._sourceFile = defaultSource;
+                try {
+                    const jsonStr = cleanLine.endsWith(",") ? cleanLine.slice(0, -1) : cleanLine;
+                    const item = JSON.parse(jsonStr);
+                    if (item && typeof item === 'object') {
+                        if (defaultSource && !item._sourceFile) item._sourceFile = defaultSource;
+                        parsedItems.push(item);
                         return;
-                    } catch (err) {
-                        currentAlert = null;
                     }
-                }
+                } catch (err) {}
+            }
+
+            if (cleanLine.startsWith("---") || cleanLine.startsWith("===") || cleanLine.toLowerCase().startsWith("what:") || cleanLine.toLowerCase().startsWith("title:")) {
+                commitCurrentAlert();
             }
 
             if (!currentAlert) currentAlert = {};
@@ -866,8 +846,8 @@ async function renderAlertPolygons(lat, lon, selectedAlertTitle = null) {
     alertList.forEach(alert => {
         if (!alert) return;
 
-        // Skip default/blank alerts
-        const isDefaultAlert = !alert.title && !alert.description && !alert.severity;
+        // Skip default/empty alerts (do not render blank objects)
+        const isDefaultAlert = !alert.title && !alert.description && !alert.severity && !alert.latlngs && !alert.points && !alert.coordinates;
         if (isDefaultAlert) return;
 
         const severity = alert.severity || alert.level || "Moderate";
@@ -882,11 +862,17 @@ async function renderAlertPolygons(lat, lon, selectedAlertTitle = null) {
             )
         );
 
-        let rawPoints = alert.latlngs || alert.points || alert.coordinates || alert.geometry?.coordinates || alert.polygon;
+        // Exhaustive coordinate extraction (checking latlngs, points, coordinates, geometry, lines, line)
+        let rawPoints = alert.latlngs 
+            || alert.points 
+            || alert.coordinates 
+            || alert.lines
+            || alert.line
+            || alert.geometry?.coordinates 
+            || alert.polygon;
 
         let lineCoords = [];
 
-        // Parse coordinates from stringified JSON if needed
         if (rawPoints) {
             if (typeof rawPoints === 'string') {
                 try { rawPoints = JSON.parse(rawPoints); } catch (e) {
@@ -894,6 +880,7 @@ async function renderAlertPolygons(lat, lon, selectedAlertTitle = null) {
                 }
             }
 
+            // Unwrap nested single arrays (e.g., GeoJSON [[[lat, lon], ...]])
             while (Array.isArray(rawPoints) && rawPoints.length === 1 && Array.isArray(rawPoints[0])) {
                 rawPoints = rawPoints[0];
             }
@@ -917,72 +904,40 @@ async function renderAlertPolygons(lat, lon, selectedAlertTitle = null) {
             }
         }
 
+        // Drop rendering completely if there are no valid matching coordinate paths
+        if (lineCoords.length < 2) return;
+
         const isLineSource = alert._sourceFile === "alertlines.txt";
-        let shapeLayer = null;
 
-        // 1. Exact Shape Rendering using parsed polyline/polygon coordinates
-        if (lineCoords.length >= 2) {
-            const layerOptions = {
-                color: isSelected ? "#000000" : baseColor,       
-                weight: isSelected ? 5 : 3,
-                opacity: 1.0,
-                fill: !isLineSource,
-                fillColor: baseColor,                             
-                fillOpacity: 0.45,                                
-                lineCap: 'round',
-                lineJoin: 'round'
-            };
+        // Render matching Polyline / Polygon path (NO L.rectangle fallbacks)
+        const layerOptions = {
+            color: isSelected ? "#000000" : baseColor,       
+            weight: isSelected ? 5 : 3,
+            opacity: 1.0,
+            fill: !isLineSource,
+            fillColor: baseColor,                             
+            fillOpacity: 0.45,                                
+            lineCap: 'round',
+            lineJoin: 'round'
+        };
 
-            shapeLayer = isLineSource ? L.polyline(lineCoords, layerOptions) : L.polygon(lineCoords, layerOptions);
-
-        // 2. Exact Bounding Box rectangle fallback if explicit min/max values exist
-        } else if (alert.bounding_box || (alert.bottom_lat !== undefined && alert.top_lat !== undefined && alert.min_lon !== undefined)) {
-            const bb = alert.bounding_box || {
-                min_lat: alert.bottom_lat || alert.min_lat,
-                max_lat: alert.top_lat || alert.max_lat,
-                min_lon: alert.bottom_lon || alert.min_lon,
-                max_lon: alert.top_lon || alert.max_lon
-            };
-
-            if (bb && bb.min_lat !== undefined && bb.max_lat !== undefined && bb.min_lon !== undefined && bb.max_lon !== undefined) {
-                const latMin = parseFloat(bb.min_lat);
-                const latMax = parseFloat(bb.max_lat);
-                const lonMin = parseFloat(bb.min_lon);
-                const lonMax = parseFloat(bb.max_lon);
-
-                if (!isNaN(latMin) && !isNaN(latMax) && !isNaN(lonMin) && !isNaN(lonMax)) {
-                    const bounds = [[latMin, lonMin], [latMax, lonMax]];
-                    lineCoords = [[latMin, lonMin], [latMin, lonMax], [latMax, lonMax], [latMax, lonMin]];
-
-                    shapeLayer = L.rectangle(bounds, {
-                        color: isSelected ? "#000000" : baseColor,
-                        weight: isSelected ? 5 : 3,
-                        opacity: 1.0,
-                        fill: !isLineSource,
-                        fillColor: baseColor,
-                        fillOpacity: 0.35
-                    });
-                }
-            }
-        }
+        const shapeLayer = isLineSource ? L.polyline(lineCoords, layerOptions) : L.polygon(lineCoords, layerOptions);
 
         // Apply Popups and strict Conditional Tooltips
-        if (shapeLayer) {
-            const popupContent = `<b>${title}</b><br>Severity: ${severity}<br>${alert.description || 'No description provided.'}`;
-            shapeLayer.bindPopup(popupContent);
+        const popupContent = `<b>${title}</b><br>Severity: ${severity}<br>${alert.description || 'No description provided.'}`;
+        shapeLayer.bindPopup(popupContent);
 
-            const isDefaultTitle = !alert.title || alert.title.toLowerCase().trim() === 'weather alert';
-            if (!isDefaultTitle && !isDefaultAlert) {
-                shapeLayer.bindTooltip(`<b>${title}</b> (${severity})`, { sticky: true, direction: 'auto' });
-            }
+        const isDefaultTitle = !alert.title || alert.title.toLowerCase().trim() === 'weather alert';
+        if (!isDefaultTitle) {
+            shapeLayer.bindTooltip(`<b>${title}</b> (${severity})`, { sticky: true, direction: 'auto' });
+        }
 
-            if (isSelected) {
-                selectedLayers.push(shapeLayer);
-                selectedBounds.push(...lineCoords);
-            } else {
-                normalLayers.push(shapeLayer);
-                boundsArray.push(...lineCoords);
-            }
+        if (isSelected) {
+            selectedLayers.push(shapeLayer);
+            selectedBounds.push(...lineCoords);
+        } else {
+            normalLayers.push(shapeLayer);
+            boundsArray.push(...lineCoords);
         }
     });
 
