@@ -721,7 +721,6 @@ async function renderAlertPolygons(lat, lon, selectedAlertTitle = null) {
 
         const trimmedText = rawText.trim();
 
-        // 1. Attempt standard JSON parsing first (arrays or objects)
         try {
             let parsed = JSON.parse(trimmedText);
             let items = Array.isArray(parsed) ? parsed : (parsed.alerts || parsed.data || parsed.results || [parsed]);
@@ -734,7 +733,6 @@ async function renderAlertPolygons(lat, lon, selectedAlertTitle = null) {
             if (parsedItems.length > 0) return parsedItems;
         } catch (e) {}
 
-        // 2. Attempt parsing as Newline-Delimited JSON (NDJSON) where each line is a separate JSON object
         const lines = trimmedText.split(/\r?\n/);
         let ndjsonSuccess = false;
         lines.forEach(line => {
@@ -750,7 +748,6 @@ async function renderAlertPolygons(lat, lon, selectedAlertTitle = null) {
         });
         if (ndjsonSuccess && parsedItems.length > 0) return parsedItems;
 
-        // 3. Fallback: Line-by-line structured text parser
         let currentAlert = null;
         const commitCurrentAlert = () => {
             if (currentAlert) {
@@ -817,21 +814,12 @@ async function renderAlertPolygons(lat, lon, selectedAlertTitle = null) {
         return parsedItems;
     };
 
-    const severityColors = {
-        extreme: '#d9534f', 
-        severe: '#f0ad4e',  
-        moderate: '#5bc0de',
-        minor: '#5cb85c'    
-    };
-
+    // Color mapper set strictly to red shades, defaulting to standard red (#d9534f)
     const resolveSeverityColor = (severity) => {
-        if (typeof getSeverityColor === "function") {
-            return getSeverityColor(severity);
-        }
-        return severityColors[(severity || '').toLowerCase()] || '#5cb85c';
+        return '#d9534f';
     };
 
-    // 3. Fetch data in parallel from GitHub repository sources
+    // Fetch data in parallel
     try {
         const [alertsRes, linesRes] = await Promise.allSettled([
             fetch('https://raw.githubusercontent.com/jace200677/real-forecast/refs/heads/main/weather/alerts.txt'),
@@ -869,7 +857,6 @@ async function renderAlertPolygons(lat, lon, selectedAlertTitle = null) {
     const normalLayers = [];
     const selectedLayers = [];
 
-    // 4. Build layers: Construct custom undulating boundary paths instead of rigid rectangles
     alertList.forEach(alert => {
         if (!alert) return;
         const severity = alert.severity || alert.level || "Moderate";
@@ -884,8 +871,11 @@ async function renderAlertPolygons(lat, lon, selectedAlertTitle = null) {
             )
         );
 
-        // Generate an organic, custom multi-point polyline/polygon path using bounding box extremes
-        if (!alert.latlngs) {
+        // First extract explicit point structures
+        let rawPoints = alert.latlngs || alert.points || alert.coordinates || alert.geometry?.coordinates || alert.polygon;
+
+        // Fallback to bounding box ONLY if no raw points were found at all
+        if (!rawPoints) {
             const bb = alert.bounding_box || {
                 min_lat: alert.bottom_lat,
                 max_lat: alert.top_lat,
@@ -901,8 +891,7 @@ async function renderAlertPolygons(lat, lon, selectedAlertTitle = null) {
                 const latMid = (latMin + latMax) / 2;
                 const lonMid = (lonMin + lonMax) / 2;
 
-                // Custom multi-node path mimicking a geographical weather warning contour line
-                alert.latlngs = [
+                rawPoints = [
                     [latMin + (latMax - latMin) * 0.2, lonMin],
                     [latMin, lonMin + (lonMax - lonMin) * 0.3],
                     [latMin + (latMax - latMin) * 0.1, lonMid],
@@ -912,14 +901,12 @@ async function renderAlertPolygons(lat, lon, selectedAlertTitle = null) {
                     [latMax - (latMax - latMin) * 0.2, lonMax],
                     [latMax, lonMax - (lonMax - lonMin) * 0.4],
                     [latMax, lonMin + (lonMax - lonMin) * 0.3],
-                    [latMax - (latMax - latMin) * 0.1, lonMin + (lonMax - lonMin) * 0.1],
+                    [latMax - (latMax - latMin) * 0.1, lonMin + (lonMin - lonMin) * 0.1],
                     [latMid, lonMin],
                     [latMin + (latMax - latMin) * 0.4, lonMin]
                 ];
             }
         }
-
-        let rawPoints = alert.latlngs || alert.points || alert.coordinates || alert.geometry?.coordinates || alert.polygon;
 
         if (typeof rawPoints === 'string') {
             try {
@@ -963,7 +950,7 @@ async function renderAlertPolygons(lat, lon, selectedAlertTitle = null) {
                 color: isSelected ? "#000000" : baseColor,       
                 weight: isSelected ? 5 : 3,
                 opacity: 1.0,
-                fill: true,
+                fill: !isLineSource,
                 fillColor: baseColor,                             
                 fillOpacity: 0.45,                                
                 lineCap: 'round',
