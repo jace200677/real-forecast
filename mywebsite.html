@@ -718,7 +718,7 @@ async function renderAlertPolygons(lat, lon, selectedAlertTitle = null) {
 
         const trimmedText = rawText.trim();
 
-        // Standard JSON parsing
+        // 1. Standard JSON parsing (arrays or objects)
         try {
             let parsed = JSON.parse(trimmedText);
             let items = Array.isArray(parsed) ? parsed : (parsed.alerts || parsed.data || parsed.results || [parsed]);
@@ -731,7 +731,7 @@ async function renderAlertPolygons(lat, lon, selectedAlertTitle = null) {
             if (parsedItems.length > 0) return parsedItems;
         } catch (e) {}
 
-        // Newline-Delimited JSON (NDJSON) parsing
+        // 2. Newline-Delimited JSON (NDJSON) parsing
         const lines = trimmedText.split(/\r?\n/);
         let ndjsonSuccess = false;
         lines.forEach(line => {
@@ -747,7 +747,7 @@ async function renderAlertPolygons(lat, lon, selectedAlertTitle = null) {
         });
         if (ndjsonSuccess && parsedItems.length > 0) return parsedItems;
 
-        // Structured text parser fallback
+        // 3. Fallback: Line-by-line structured text parser
         let currentAlert = null;
         const commitCurrentAlert = () => {
             if (currentAlert) {
@@ -828,7 +828,7 @@ async function renderAlertPolygons(lat, lon, selectedAlertTitle = null) {
         return severityColors[(severity || '').toLowerCase()] || '#5cb85c';
     };
 
-    // 2. Fetch external layers
+    // 2. Fetch live data from external repository
     try {
         const [alertsRes, linesRes] = await Promise.allSettled([
             fetch('https://raw.githubusercontent.com/jace200677/real-forecast/refs/heads/main/weather/alerts.txt'),
@@ -852,6 +852,7 @@ async function renderAlertPolygons(lat, lon, selectedAlertTitle = null) {
         rawAlerts = window.activeAlerts || window.allAlerts || [];
     }
 
+    // Filter out expired alerts
     const now = new Date();
     const alertList = rawAlerts.filter(alert => {
         if (alert && alert.end_time && String(alert.end_time).toLowerCase() !== "indefinite") {
@@ -866,7 +867,7 @@ async function renderAlertPolygons(lat, lon, selectedAlertTitle = null) {
     const normalLayers = [];
     const selectedLayers = [];
 
-    // 3. Render precise coordinates from alert sources
+    // 3. Process exact lat/lng coordinate arrays directly
     alertList.forEach(alert => {
         if (!alert) return;
         const severity = alert.severity || alert.level || "Moderate";
@@ -895,6 +896,7 @@ async function renderAlertPolygons(lat, lon, selectedAlertTitle = null) {
             }
         }
 
+        // Flatten single-wrapped coordinate arrays
         while (Array.isArray(rawPoints) && rawPoints.length === 1 && Array.isArray(rawPoints[0])) {
             rawPoints = rawPoints[0];
         }
@@ -906,6 +908,7 @@ async function renderAlertPolygons(lat, lon, selectedAlertTitle = null) {
                 if (Array.isArray(pt)) {
                     let pLat = parseFloat(pt[0]);
                     let pLon = parseFloat(pt[1]);
+                    // Swap inverted latitude/longitude coordinates if latitude bounds exceed [-90, 90]
                     if (Math.abs(pLat) > 90 && Math.abs(pLon) <= 90) [pLat, pLon] = [pLon, pLat];
                     return [pLat, pLon];
                 }
@@ -918,8 +921,9 @@ async function renderAlertPolygons(lat, lon, selectedAlertTitle = null) {
             }).filter(pt => pt && !isNaN(pt[0]) && !isNaN(pt[1]));
         }
 
+        // Draw polyline or polygon layers using actual parsed points
         if (lineCoords.length >= 2) {
-            const isLineSource = alert.isLine || alert.type === 'polyline' || alert._sourceFile === "alertlines.txt";
+            const isLineSource = alert.isLine || alert.type === "polyline" || alert._sourceFile === "alertlines.txt";
 
             const layerOptions = {
                 color: isSelected ? "#000000" : baseColor,       
@@ -932,7 +936,9 @@ async function renderAlertPolygons(lat, lon, selectedAlertTitle = null) {
                 lineJoin: 'round'
             };
 
-            const shapeLayer = isLineSource ? L.polyline(lineCoords, layerOptions) : L.polygon(lineCoords, layerOptions);
+            const shapeLayer = isLineSource 
+                ? L.polyline(lineCoords, layerOptions) 
+                : L.polygon(lineCoords, layerOptions);
 
             const popupContent = `<b>${title}</b><br>Severity: ${severity}<br>${alert.description || 'No description provided.'}`;
             shapeLayer.bindPopup(popupContent);
@@ -948,6 +954,7 @@ async function renderAlertPolygons(lat, lon, selectedAlertTitle = null) {
         }
     });
 
+    // 4. Render layers and fit bounds
     normalLayers.forEach(layer => window.alertPolygonsLayerGroup.addLayer(layer));
     selectedLayers.forEach(layer => {
         window.alertPolygonsLayerGroup.addLayer(layer);
