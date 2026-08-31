@@ -1238,7 +1238,16 @@ async function initAlertMap() {
 }
 
 // Token retriever & GitHub pusher helper
+// Queue lock mechanism to handle concurrent commits
+let commitQueue = Promise.resolve();
+
 async function pushAlertLineToGitHub(drawnAlertObj) {
+    // Chain the task onto the queue so calls execute sequentially
+    commitQueue = commitQueue.then(() => _executePushAlertLine(drawnAlertObj)).catch(() => {});
+    return commitQueue;
+}
+
+async function _executePushAlertLine(drawnAlertObj) {
     let token = localStorage.getItem("API_AUTH_TOKEN");
 
     if (!token) {
@@ -1266,7 +1275,6 @@ async function pushAlertLineToGitHub(drawnAlertObj) {
         
         if (alertsRes.ok) {
             const alertsData = await alertsRes.json();
-            // Handle array of alert objects or a feature collection
             const alertsList = Array.isArray(alertsData) ? alertsData : (alertsData.features || []);
             const matchedAlert = alertsList.find(item => {
                 const id = item.id || (item.properties && item.properties.id);
@@ -1290,7 +1298,7 @@ async function pushAlertLineToGitHub(drawnAlertObj) {
             githubUrl: fileWebUrl
         };
 
-        // Fetch existing alertlines.txt content
+        // Fetch existing alertlines.txt content (fetching latest SHA & content)
         const getRes = await fetch(url, {
             headers: { 
                 "Authorization": `Bearer ${token}`,
