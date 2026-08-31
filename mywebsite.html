@@ -860,7 +860,6 @@ async function renderAlertPolygons(lat, lon, selectedAlertTitle = null) {
 
     // 3. Fetch data in parallel from GitHub repository sources
     try {
-        const timestamp = new Date().getTime();
         const [alertsRes, linesRes] = await Promise.allSettled([
             fetch('https://raw.githubusercontent.com/jace200677/real-forecast/refs/heads/main/weather/alerts.txt'),
             fetch('https://raw.githubusercontent.com/jace200677/real-forecast/refs/heads/main/weather/alertlines.txt')
