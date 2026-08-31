@@ -711,14 +711,14 @@ async function renderAlertPolygons(lat, lon, selectedAlertTitle = null) {
 
     let rawAlerts = [];
 
-    // Robust parser supporting NDJSON, standard JSON, and structured text blocks
+    // Unified parser applied identically to both alerts.txt and alertlines.txt
     const parseAlertsText = (rawText, defaultSource = '') => {
         const parsedItems = [];
         if (!rawText || typeof rawText !== 'string') return parsedItems;
 
         const trimmedText = rawText.trim();
 
-        // 1. Standard JSON parsing
+        // Step A: Attempt standard JSON parsing (covers root arrays, root objects, or wrapped JSON arrays)
         try {
             let parsed = JSON.parse(trimmedText);
             let items = Array.isArray(parsed) ? parsed : (parsed.alerts || parsed.data || parsed.results || [parsed]);
@@ -731,30 +731,32 @@ async function renderAlertPolygons(lat, lon, selectedAlertTitle = null) {
             if (parsedItems.length > 0) return parsedItems;
         } catch (e) {}
 
-        // 2. NDJSON parsing
+        // Step B: Attempt parsing concatenated JSON blocks / NDJSON line-by-line
         const lines = trimmedText.split(/\r?\n/);
-        let ndjsonSuccess = false;
         lines.forEach(line => {
             const clean = line.trim();
-            if (clean.startsWith('{') && clean.endsWith('}')) {
+            if (!clean) return;
+            // Handle JSON object lines (even if ending in trailing commas)
+            if (clean.startsWith('{')) {
                 try {
-                    const item = JSON.parse(clean);
-                    if (defaultSource && !item._sourceFile) item._sourceFile = defaultSource;
-                    parsedItems.push(item);
-                    ndjsonSuccess = true;
+                    const jsonStr = clean.endsWith(',') ? clean.slice(0, -1) : clean;
+                    const item = JSON.parse(jsonStr);
+                    if (item && typeof item === 'object') {
+                        if (defaultSource && !item._sourceFile) item._sourceFile = defaultSource;
+                        parsedItems.push(item);
+                    }
                 } catch (err) {}
             }
         });
-        if (ndjsonSuccess && parsedItems.length > 0) return parsedItems;
+        if (parsedItems.length > 0) return parsedItems;
 
-        // 3. Strict line-by-line parser
+        // Step C: Fallback structured text parser with embedded JSON bracket extraction
         let currentAlert = null;
         const commitCurrentAlert = () => {
             if (currentAlert) {
                 if (defaultSource && !currentAlert._sourceFile) {
                     currentAlert._sourceFile = defaultSource;
                 }
-                // Strict check: require explicit title OR actual coordinates/bounding box to commit
                 const hasValidGeom = (currentAlert.latlngs && currentAlert.latlngs.length >= 2) || 
                                      currentAlert.bounding_box || 
                                      (currentAlert.min_lat !== undefined && currentAlert.max_lat !== undefined);
@@ -775,7 +777,8 @@ async function renderAlertPolygons(lat, lon, selectedAlertTitle = null) {
                 commitCurrentAlert();
                 if (cleanLine.startsWith("{")) {
                     try {
-                        currentAlert = JSON.parse(cleanLine.endsWith(",") ? cleanLine.slice(0, -1) : cleanLine);
+                        const jsonStr = cleanLine.endsWith(",") ? cleanLine.slice(0, -1) : cleanLine;
+                        currentAlert = JSON.parse(jsonStr);
                         currentAlert._sourceFile = defaultSource;
                         return;
                     } catch (err) {
@@ -800,6 +803,7 @@ async function renderAlertPolygons(lat, lon, selectedAlertTitle = null) {
                 currentAlert.end_time = cleanLine.substring(cleanLine.indexOf(":") + 1).trim();
             }
 
+            // Extract latlng coordinate arrays from bracket strings `[lat, lon]`
             const bracketArrayMatches = cleanLine.match(/\[\s*-?\d+(?:\.\d+)?\s*,\s*-?\d+(?:\.\d+)?\s*\]/g);
             if (bracketArrayMatches) {
                 if (!currentAlert.latlngs) currentAlert.latlngs = [];
@@ -862,7 +866,7 @@ async function renderAlertPolygons(lat, lon, selectedAlertTitle = null) {
     alertList.forEach(alert => {
         if (!alert) return;
 
-        // 1. Strict skip: If alert has no title, description, or severity, do NOT render default shapes
+        // Skip default/blank alerts
         const isDefaultAlert = !alert.title && !alert.description && !alert.severity;
         if (isDefaultAlert) return;
 
@@ -882,7 +886,7 @@ async function renderAlertPolygons(lat, lon, selectedAlertTitle = null) {
 
         let lineCoords = [];
 
-        // Parse explicit coordinates from alert or alertlines.txt
+        // Parse coordinates from stringified JSON if needed
         if (rawPoints) {
             if (typeof rawPoints === 'string') {
                 try { rawPoints = JSON.parse(rawPoints); } catch (e) {
@@ -916,7 +920,7 @@ async function renderAlertPolygons(lat, lon, selectedAlertTitle = null) {
         const isLineSource = alert._sourceFile === "alertlines.txt";
         let shapeLayer = null;
 
-        // 2. Exact Shape Rendering: Strictly render polyline/polygon using latlngs
+        // 1. Exact Shape Rendering using parsed polyline/polygon coordinates
         if (lineCoords.length >= 2) {
             const layerOptions = {
                 color: isSelected ? "#000000" : baseColor,       
@@ -931,7 +935,7 @@ async function renderAlertPolygons(lat, lon, selectedAlertTitle = null) {
 
             shapeLayer = isLineSource ? L.polyline(lineCoords, layerOptions) : L.polygon(lineCoords, layerOptions);
 
-        // 3. Exact Bounding Box rectangle fallback ONLY if explicit box points are supplied
+        // 2. Exact Bounding Box rectangle fallback if explicit min/max values exist
         } else if (alert.bounding_box || (alert.bottom_lat !== undefined && alert.top_lat !== undefined && alert.min_lon !== undefined)) {
             const bb = alert.bounding_box || {
                 min_lat: alert.bottom_lat || alert.min_lat,
@@ -967,7 +971,6 @@ async function renderAlertPolygons(lat, lon, selectedAlertTitle = null) {
             const popupContent = `<b>${title}</b><br>Severity: ${severity}<br>${alert.description || 'No description provided.'}`;
             shapeLayer.bindPopup(popupContent);
 
-            // Strictly suppress tooltips if title is missing, default, or uninformative
             const isDefaultTitle = !alert.title || alert.title.toLowerCase().trim() === 'weather alert';
             if (!isDefaultTitle && !isDefaultAlert) {
                 shapeLayer.bindTooltip(`<b>${title}</b> (${severity})`, { sticky: true, direction: 'auto' });
