@@ -912,31 +912,36 @@ async function renderAlertPolygons(lat, lon, selectedAlertTitle = null) {
         const isLineSource = alert._sourceFile === "alertlines.txt";
 
         // 1. Explicitly assign a Canvas renderer with padding to prevent clipping glitches during zoom animations
-const customRenderer = L.canvas({ padding: 0.5 });
+        const customRenderer = L.canvas({ padding: 0.5 });
 
-const layerOptions = {
-    renderer: customRenderer,                         // Smooths SVG/Canvas node transforms during zoom
-    color: isSelected ? "#000000" : fillColor,       
-    weight: isSelected ? 5 : 3,
-    opacity: 1.0,
-    fill: true,                                       
-    fillColor: fillColor,                             
-    fillOpacity: isLineSource ? 0.35 : 0.45,          
-    lineCap: 'round',
-    lineJoin: 'round'
-};
+        const layerOptions = {
+            renderer: customRenderer,
+            color: isSelected ? "#000000" : fillColor,       
+            weight: isSelected ? 5 : 3,
+            opacity: 1.0,
+            fill: true,                                       
+            fillColor: fillColor,                             
+            fillOpacity: isLineSource ? 0.35 : 0.45,          
+            lineCap: 'round',
+            lineJoin: 'round'
+        };
 
-// 2. If it's a line source and fill is requested, instantiate as L.polygon to guarantee closed SVG geometry
-const shapeLayer = (isLineSource && layerOptions.fill) 
-    ? L.polygon(lineCoords, layerOptions) 
-    : (isLineSource ? L.polyline(lineCoords, layerOptions) : L.polygon(lineCoords, layerOptions));
+        // 2. If it's a line source and fill is requested, instantiate as L.polygon to guarantee closed SVG geometry
+        const shapeLayer = (isLineSource && layerOptions.fill) 
+            ? L.polygon(lineCoords, layerOptions) 
+            : (isLineSource ? L.polyline(lineCoords, layerOptions) : L.polygon(lineCoords, layerOptions));
 
         const popupContent = `<b>${title}</b><br>Severity: ${severity}<br>${alert.description || 'No description provided.'}`;
         shapeLayer.bindPopup(popupContent);
 
         const isDefaultTitle = !alert.title || alert.title.toLowerCase().trim() === 'weather alert';
         if (!isDefaultTitle) {
-            shapeLayer.bindTooltip(`<b>${title}</b> (${severity})`, { sticky: true, direction: 'auto' });
+            // Apply tooltip configuration directly here
+            shapeLayer.bindTooltip(`<b>${title}</b> (${severity})`, { 
+                sticky: !isSelected, 
+                permanent: isSelected, 
+                direction: isSelected ? 'center' : 'auto' 
+            });
         }
 
         if (isSelected) {
@@ -947,28 +952,9 @@ const shapeLayer = (isLineSource && layerOptions.fill)
         }
     });
 
+    // Add all layers to the group
     normalLayers.forEach(layer => window.alertPolygonsLayerGroup.addLayer(layer));
-
-selectedLayers.forEach(layer => {
-    window.alertPolygonsLayerGroup.addLayer(layer);
-    
-    const tooltip = layer.getTooltip();
-    
-    if (tooltip) {
-        // 1. Get the existing tooltip's content
-        const content = tooltip.getContent();
-        
-        // 2. Remove the old, non-permanent tooltip
-        layer.unbindTooltip();
-        
-        // 3. Rebind it as permanent so it stays open alongside others
-        layer.bindTooltip(content, { 
-            permanent: true, 
-            direction: 'center', // Adjust to 'top', 'bottom', or 'auto' as needed
-            className: tooltip.options.className // Preserve any custom styling
-        });
-    }
-});
+    selectedLayers.forEach(layer => window.alertPolygonsLayerGroup.addLayer(layer));
 
     // Only pan/zoom the map if an explicit alert was clicked/selected by the user
     if (mapInstance && selectedAlertTitle && selectedBounds.length > 0) {
