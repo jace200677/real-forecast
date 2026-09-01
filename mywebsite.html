@@ -948,12 +948,27 @@ const shapeLayer = (isLineSource && layerOptions.fill)
     });
 
     normalLayers.forEach(layer => window.alertPolygonsLayerGroup.addLayer(layer));
-    selectedLayers.forEach(layer => {
-        window.alertPolygonsLayerGroup.addLayer(layer);
-        if (typeof layer.openTooltip === "function" && layer.getTooltip()) {
-            layer.openTooltip();
-        }
-    });
+
+selectedLayers.forEach(layer => {
+    window.alertPolygonsLayerGroup.addLayer(layer);
+    
+    const tooltip = layer.getTooltip();
+    
+    if (tooltip) {
+        // 1. Get the existing tooltip's content
+        const content = tooltip.getContent();
+        
+        // 2. Remove the old, non-permanent tooltip
+        layer.unbindTooltip();
+        
+        // 3. Rebind it as permanent so it stays open alongside others
+        layer.bindTooltip(content, { 
+            permanent: true, 
+            direction: 'center', // Adjust to 'top', 'bottom', or 'auto' as needed
+            className: tooltip.options.className // Preserve any custom styling
+        });
+    }
+});
 
     // Only pan/zoom the map if an explicit alert was clicked/selected by the user
     if (mapInstance && selectedAlertTitle && selectedBounds.length > 0) {
