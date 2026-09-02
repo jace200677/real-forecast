@@ -3277,7 +3277,9 @@ async function buildForecast() {
             const isVirginia = locationName.includes("virginia") || (Math.abs(lat - 47.52) < 0.1 && Math.abs(lon - (-92.53)) < 0.1);
             const isEmbarrass = locationName.includes("embarrass") || (Math.abs(lat - 47.66) < 0.1 && Math.abs(lon - (-92.30)) < 0.1);
             const isBabbitt = locationName.includes("babbitt") || (Math.abs(lat - 47.71) < 0.1 && Math.abs(lon - (-91.95)) < 0.1);
-
+            const isNEMinnesota = 
+  (lat >= 46.5 && lat <= 49.4 && lon >= -93.5 && lon <= -89.5) ||
+  /(ne mn|northeast minnesota|arrowhead region|iron range|duluth|superior|hibbing|virginia|grand rapids|ely|babbitt|two harbors|silver bay|international falls|brainerd|clquet|hermantown|proctor|chisholm|eveleth|aurora|biwabik|tower|cook|mt\. iron)/i.test(locationName);
             if (isTower) {
                 projectedScore = 0;
             } else if (isVirginia) {
@@ -3310,15 +3312,9 @@ async function buildForecast() {
 
             tempLow = Math.round(baseLow + (swingFactor * varianceAmplitude));
             tempHigh = Math.round(baseHigh + (swingFactor * varianceAmplitude * 1.3));
-            if (isEmbarrass) {
-                windMph = Math.max(13, Math.round(baseWind + (swingFactor * varianceAmplitude * 0.8)));
-                gustMph = Math.max(windMph + 20, Math.round(baseGust + (swingFactor * varianceAmplitude * 1.5)));
-            } else if (isBabbitt) {
-                windMph = Math.max(39, Math.round(baseWind + (swingFactor * varianceAmplitude * 0.8)));
-                gustMph = Math.max(windMph + 44, Math.round(baseGust + (swingFactor * varianceAmplitude * 1.5)));
-            } else if (isVirginia) {
+            if (isNEMinnesota) {
                 windMph = Math.max(49, Math.round(baseWind + (swingFactor * varianceAmplitude * 0.8)));
-                gustMph = Math.max(windMph + 54, Math.round(baseGust + (swingFactor * varianceAmplitude * 1.5)));
+                gustMph = Math.max(windMph + 59, Math.round(baseGust + (swingFactor * varianceAmplitude * 1.5)));
             } else {
                 windMph = Math.max(0, Math.round(baseWind + (swingFactor * varianceAmplitude * 0.8)));
                 gustMph = Math.max(windMph + 0, Math.round(baseGust + (swingFactor * varianceAmplitude * 1.5)));
@@ -5284,7 +5280,6 @@ function calculateForecastDayMetrics(forecastYear, forecastMonth, dateNum, targe
         const isVirginia = locationName.includes("virginia") || (Math.abs(lat - 47.52) < 0.1 && Math.abs(lon - (-92.53)) < 0.1);
         const isEmbarrass = locationName.includes("embarrass") || (Math.abs(lat - 47.66) < 0.1 && Math.abs(lon - (-92.30)) < 0.1);
         const isBabbitt = locationName.includes("babbitt") || (Math.abs(lat - 47.71) < 0.1 && Math.abs(lon - (-91.95)) < 0.1);
-
         if (isTower) {
             projectedScore = 0;
         } else if (isVirginia) {
@@ -5314,22 +5309,18 @@ function calculateForecastDayMetrics(forecastYear, forecastMonth, dateNum, targe
         const baseHigh = 84 - latOffset + (lonOffset * 1.5);
         const baseWind = 2 + latOffset1;
         const baseGust = 6 + latOffset1;
-
+        const isNEMinnesota = 
+  (lat >= 46.5 && lat <= 49.4 && lon >= -93.5 && lon <= -89.5) ||
+  /(ne mn|northeast minnesota|arrowhead region|iron range|duluth|superior|hibbing|virginia|grand rapids|ely|babbitt|two harbors|silver bay|international falls|brainerd|clquet|hermantown|proctor|chisholm|eveleth|aurora|biwabik|tower|cook|mt\. iron)/i.test(locationName);
         tempLow = Math.round(baseLow + (swingFactor * varianceAmplitude));
         tempHigh = Math.round(baseHigh + (swingFactor * varianceAmplitude * 1.3));
-        if (isEmbarrass) {
-            windMph = Math.max(13, Math.round(baseWind + (swingFactor * varianceAmplitude * 0.8)));
-            gustMph = Math.max(windMph + 36, Math.round(baseGust + (swingFactor * varianceAmplitude * 1.5)));
-      } else if (isBabbitt) {
-            windMph = Math.max(39, Math.round(baseWind + (swingFactor * varianceAmplitude * 0.8)));
-            gustMph = Math.max(windMph + 44, Math.round(baseGust + (swingFactor * varianceAmplitude * 1.5)));
-      } else if (isVirginia) {
-            windMph = Math.max(49, Math.round(baseWind + (swingFactor * varianceAmplitude * 0.8)));
-            gustMph = Math.max(windMph + 54, Math.round(baseGust + (swingFactor * varianceAmplitude * 1.5)));
-      } else {
-            windMph = Math.max(0, Math.round(baseWind + (swingFactor * varianceAmplitude * 0.8)));
-            gustMph = Math.max(windMph + 0, Math.round(baseGust + (swingFactor * varianceAmplitude * 1.5)));
-      }
+        if (isNEMinnesota) {
+                windMph = Math.max(49, Math.round(baseWind + (swingFactor * varianceAmplitude * 0.8)));
+                gustMph = Math.max(windMph + 59, Math.round(baseGust + (swingFactor * varianceAmplitude * 1.5)));
+            } else {
+                windMph = Math.max(0, Math.round(baseWind + (swingFactor * varianceAmplitude * 0.8)));
+                gustMph = Math.max(windMph + 0, Math.round(baseGust + (swingFactor * varianceAmplitude * 1.5)));
+            }
 
         const conditionSwing = swingFactor * exactDaysOut;
         if (conditionSwing > 1.5) weatherSummary = "Sunny";
