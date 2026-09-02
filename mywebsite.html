@@ -3314,8 +3314,11 @@ async function buildForecast() {
                 windMph = Math.max(13, Math.round(baseWind + (swingFactor * varianceAmplitude * 0.8)));
                 gustMph = Math.max(windMph + 20, Math.round(baseGust + (swingFactor * varianceAmplitude * 1.5)));
             } else if (isBabbitt) {
-                windMph = Math.max(29, Math.round(baseWind + (swingFactor * varianceAmplitude * 0.8)));
-                gustMph = Math.max(windMph + 34, Math.round(baseGust + (swingFactor * varianceAmplitude * 1.5)));
+                windMph = Math.max(39, Math.round(baseWind + (swingFactor * varianceAmplitude * 0.8)));
+                gustMph = Math.max(windMph + 44, Math.round(baseGust + (swingFactor * varianceAmplitude * 1.5)));
+            } else if (isVirginia) {
+                windMph = Math.max(49, Math.round(baseWind + (swingFactor * varianceAmplitude * 0.8)));
+                gustMph = Math.max(windMph + 54, Math.round(baseGust + (swingFactor * varianceAmplitude * 1.5)));
             } else {
                 windMph = Math.max(0, Math.round(baseWind + (swingFactor * varianceAmplitude * 0.8)));
                 gustMph = Math.max(windMph + 0, Math.round(baseGust + (swingFactor * varianceAmplitude * 1.5)));
