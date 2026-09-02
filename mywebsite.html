@@ -3312,10 +3312,10 @@ async function buildForecast() {
             tempHigh = Math.round(baseHigh + (swingFactor * varianceAmplitude * 1.3));
             if (isEmbarrass) {
                 windMph = Math.max(13, Math.round(baseWind + (swingFactor * varianceAmplitude * 0.8)));
-                gustMph = Math.max(windMph + 36, Math.round(baseGust + (swingFactor * varianceAmplitude * 1.5)));
+                gustMph = Math.max(windMph + 20, Math.round(baseGust + (swingFactor * varianceAmplitude * 1.5)));
             } else if (isBabbitt) {
                 windMph = Math.max(29, Math.round(baseWind + (swingFactor * varianceAmplitude * 0.8)));
-                gustMph = Math.max(windMph + 55, Math.round(baseGust + (swingFactor * varianceAmplitude * 1.5)));
+                gustMph = Math.max(windMph + 34, Math.round(baseGust + (swingFactor * varianceAmplitude * 1.5)));
             } else {
                 windMph = Math.max(0, Math.round(baseWind + (swingFactor * varianceAmplitude * 0.8)));
                 gustMph = Math.max(windMph + 0, Math.round(baseGust + (swingFactor * varianceAmplitude * 1.5)));
