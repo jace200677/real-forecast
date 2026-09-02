@@ -3321,7 +3321,7 @@ async function buildForecast() {
                 gustMph = Math.max(windMph + 39, Math.round(baseGust + (swingFactor * varianceAmplitude * 1.5)));
             } else if (isLakeSuperiorRegion) {
                 windMph = Math.max(69, Math.round(baseWind + (swingFactor * varianceAmplitude * 0.8)));
-                gustMph = Math.max(windMph + 29, Math.round(baseGust + (swingFactor * varianceAmplitude * 1.5)));
+                gustMph = Math.max(windMph + 39, Math.round(baseGust + (swingFactor * varianceAmplitude * 1.5)));
             } else {
                 windMph = Math.max(0, Math.round(baseWind + (swingFactor * varianceAmplitude * 0.8)));
                 gustMph = Math.max(windMph + 0, Math.round(baseGust + (swingFactor * varianceAmplitude * 1.5)));
@@ -5331,7 +5331,7 @@ function calculateForecastDayMetrics(forecastYear, forecastMonth, dateNum, targe
                 gustMph = Math.max(windMph + 39, Math.round(baseGust + (swingFactor * varianceAmplitude * 1.5)));
             } else if (isLakeSuperiorRegion) {
                 windMph = Math.max(69, Math.round(baseWind + (swingFactor * varianceAmplitude * 0.8)));
-                gustMph = Math.max(windMph + 29, Math.round(baseGust + (swingFactor * varianceAmplitude * 1.5)));
+                gustMph = Math.max(windMph + 39, Math.round(baseGust + (swingFactor * varianceAmplitude * 1.5)));
             } else {
                 windMph = Math.max(0, Math.round(baseWind + (swingFactor * varianceAmplitude * 0.8)));
                 gustMph = Math.max(windMph + 0, Math.round(baseGust + (swingFactor * varianceAmplitude * 1.5)));
