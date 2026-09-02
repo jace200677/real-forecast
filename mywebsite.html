@@ -1602,89 +1602,104 @@ function getDrawnPolygonCoordinates() {
 
     return coordinates;
 }
-async function appendAlertToGitHubFile(payload, token) {
-    const owner = "jace200677";
-    const repo = "real-forecast";
-    const filePath = "weather/alerts.txt";
-    const apiUrl = `https://api.github.com/repos/${owner}/${repo}/contents/${filePath}`;
+// Initialize a resolved promise to act as our queue
+let commitQueue = Promise.resolve();
 
-    // Ensure numeric parsing for bounding box bounds
-    const bottomLat = parseFloat(payload.bottom_lat);
-    const topLat = parseFloat(payload.top_lat);
-    const bottomLon = parseFloat(payload.bottom_lon);
-    const topLon = parseFloat(payload.top_lon);
+function appendAlertToGitHubFile(payload, token) {
+    // Add the new commit task to the end of the queue
+    const currentTask = commitQueue.then(async () => {
+        const owner = "jace200677";
+        const repo = "real-forecast";
+        const filePath = "weather/alerts.txt";
+        const apiUrl = `https://api.github.com/repos/${owner}/${repo}/contents/${filePath}`;
 
-    // Build the formatted payload including explicit bounding box min/max coordinates
-    const alertData = {
-        ...payload,
-        bottom_lat: bottomLat,
-        top_lat: topLat,
-        bottom_lon: bottomLon,
-        top_lon: topLon,
-        bounding_box: {
-            min_lat: Math.min(bottomLat, topLat),
-            max_lat: Math.max(bottomLat, topLat),
-            min_lon: Math.min(bottomLon, topLon),
-            max_lon: Math.max(bottomLon, topLon)
-        }
-    };
+        // Ensure numeric parsing for bounding box bounds
+        const bottomLat = parseFloat(payload.bottom_lat);
+        const topLat = parseFloat(payload.top_lat);
+        const bottomLon = parseFloat(payload.bottom_lon);
+        const topLon = parseFloat(payload.top_lon);
 
-    // Format as a single-line JSON string ending with a newline
-    const newAlertLine = JSON.stringify(alertData).replace(/\r?\n|\r/g, "") + "\n";
-
-    try {
-        let sha = null;
-        let currentContent = "";
-
-        // Fetch existing file content and its blob SHA
-        const getRes = await fetch(apiUrl, {
-            headers: {
-                'Authorization': `Bearer ${token}`,
-                'Accept': 'application/vnd.github.v3+json'
+        // Build the formatted payload including explicit bounding box min/max coordinates
+        const alertData = {
+            ...payload,
+            bottom_lat: bottomLat,
+            top_lat: topLat,
+            bottom_lon: bottomLon,
+            top_lon: topLon,
+            bounding_box: {
+                min_lat: Math.min(bottomLat, topLat),
+                max_lat: Math.max(bottomLat, topLat),
+                min_lon: Math.min(bottomLon, topLon),
+                max_lon: Math.max(bottomLon, topLon)
             }
-        });
+        };
 
-        if (getRes.ok) {
-            const fileData = await getRes.json();
-            sha = fileData.sha;
-            // Decode base64 content safely handling UTF-8 characters
-            currentContent = decodeURIComponent(escape(atob(fileData.content.replace(/\n/g, ''))));
+        // Format as a single-line JSON string ending with a newline
+        const newAlertLine = JSON.stringify(alertData).replace(/\r?\n|\r/g, "") + "\n";
+
+        try {
+            let sha = null;
+            let currentContent = "";
+
+            // Fetch existing file content and its blob SHA
+            const getRes = await fetch(apiUrl, {
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Accept': 'application/vnd.github.v3+json'
+                }
+            });
+
+            if (getRes.ok) {
+                const fileData = await getRes.json();
+                sha = fileData.sha;
+                // Decode base64 content safely handling UTF-8 characters
+                currentContent = decodeURIComponent(escape(atob(fileData.content.replace(/\n/g, ''))));
+            }
+
+            // Ensure currentContent ends with a newline if it contains existing content
+            let updatedContent = currentContent;
+            if (updatedContent.length > 0 && !updatedContent.endsWith('\n')) {
+                updatedContent += '\n';
+            }
+
+            // Append the new single line to existing content
+            updatedContent += newAlertLine;
+            const encodedContent = btoa(unescape(encodeURIComponent(updatedContent)));
+
+            // Commit update to GitHub
+            const putRes = await fetch(apiUrl, {
+                method: 'PUT',
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/vnd.github.v3+json'
+                },
+                body: JSON.stringify({
+                    message: `Append alert: ${payload.title}`,
+                    content: encodedContent,
+                    sha: sha
+                })
+            });
+
+            if (putRes.ok) {
+                console.log("Alert with bounding box appended to weather/alerts.txt on GitHub.");
+            } else {
+                const err = await putRes.json();
+                console.error("GitHub file push failed:", err.message || putRes.statusText);
+            }
+        } catch (err) {
+            console.error("Error committing line to GitHub:", err);
         }
+    }).catch(err => {
+        // Catch any fatal queue errors so the chain doesn't break for future commits
+        console.error("Queue execution error:", err);
+    });
 
-        // Ensure currentContent ends with a newline if it contains existing content
-        let updatedContent = currentContent;
-        if (updatedContent.length > 0 && !updatedContent.endsWith('\n')) {
-            updatedContent += '\n';
-        }
-
-        // Append the new single line to existing content
-        updatedContent += newAlertLine;
-        const encodedContent = btoa(unescape(encodeURIComponent(updatedContent)));
-
-        // Commit update to GitHub
-        const putRes = await fetch(apiUrl, {
-            method: 'PUT',
-            headers: {
-                'Authorization': `Bearer ${token}`,
-                'Content-Type': 'application/json',
-                'Accept': 'application/vnd.github.v3+json'
-            },
-            body: JSON.stringify({
-                message: `Append alert: ${payload.title}`,
-                content: encodedContent,
-                sha: sha
-            })
-        });
-
-        if (putRes.ok) {
-            console.log("Alert with bounding box appended to weather/alerts.txt on GitHub.");
-        } else {
-            const err = await putRes.json();
-            console.error("GitHub file push failed:", err.message || putRes.statusText);
-        }
-    } catch (err) {
-        console.error("Error committing line to GitHub:", err);
-    }
+    // Update the queue pointer
+    commitQueue = currentTask;
+    
+    // Return the promise so the caller can still await this specific task if needed
+    return currentTask;
 }
 
 function submitAlertBroadcast(btnElement) {
