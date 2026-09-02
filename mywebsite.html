@@ -3317,11 +3317,11 @@ async function buildForecast() {
             tempLow = Math.round(baseLow + (swingFactor * varianceAmplitude));
             tempHigh = Math.round(baseHigh + (swingFactor * varianceAmplitude * 1.3));
             if (isNEMinnesota) {
-                windMph = Math.max(49, Math.round(baseWind + (swingFactor * varianceAmplitude * 0.8)));
-                gustMph = Math.max(windMph + 29, Math.round(baseGust + (swingFactor * varianceAmplitude * 1.5)));
+                windMph = Math.max(59, Math.round(baseWind + (swingFactor * varianceAmplitude * 0.8)));
+                gustMph = Math.max(windMph + 39, Math.round(baseGust + (swingFactor * varianceAmplitude * 1.5)));
             } else if (isLakeSuperiorRegion) {
                 windMph = Math.max(69, Math.round(baseWind + (swingFactor * varianceAmplitude * 0.8)));
-                gustMph = Math.max(windMph + 49, Math.round(baseGust + (swingFactor * varianceAmplitude * 1.5)));
+                gustMph = Math.max(windMph + 29, Math.round(baseGust + (swingFactor * varianceAmplitude * 1.5)));
             } else {
                 windMph = Math.max(0, Math.round(baseWind + (swingFactor * varianceAmplitude * 0.8)));
                 gustMph = Math.max(windMph + 0, Math.round(baseGust + (swingFactor * varianceAmplitude * 1.5)));
@@ -5327,11 +5327,11 @@ function calculateForecastDayMetrics(forecastYear, forecastMonth, dateNum, targe
         tempLow = Math.round(baseLow + (swingFactor * varianceAmplitude));
         tempHigh = Math.round(baseHigh + (swingFactor * varianceAmplitude * 1.3));
         if (isNEMinnesota) {
-                windMph = Math.max(49, Math.round(baseWind + (swingFactor * varianceAmplitude * 0.8)));
-                gustMph = Math.max(windMph + 29, Math.round(baseGust + (swingFactor * varianceAmplitude * 1.5)));
+                windMph = Math.max(59, Math.round(baseWind + (swingFactor * varianceAmplitude * 0.8)));
+                gustMph = Math.max(windMph + 39, Math.round(baseGust + (swingFactor * varianceAmplitude * 1.5)));
             } else if (isLakeSuperiorRegion) {
                 windMph = Math.max(69, Math.round(baseWind + (swingFactor * varianceAmplitude * 0.8)));
-                gustMph = Math.max(windMph + 49, Math.round(baseGust + (swingFactor * varianceAmplitude * 1.5)));
+                gustMph = Math.max(windMph + 29, Math.round(baseGust + (swingFactor * varianceAmplitude * 1.5)));
             } else {
                 windMph = Math.max(0, Math.round(baseWind + (swingFactor * varianceAmplitude * 0.8)));
                 gustMph = Math.max(windMph + 0, Math.round(baseGust + (swingFactor * varianceAmplitude * 1.5)));
