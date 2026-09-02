@@ -1603,7 +1603,6 @@ function getDrawnPolygonCoordinates() {
     return coordinates;
 }
 // Initialize a resolved promise to act as our queue
-let commitQueue = Promise.resolve();
 
 function appendAlertToGitHubFile(payload, token) {
     // Add the new commit task to the end of the queue
