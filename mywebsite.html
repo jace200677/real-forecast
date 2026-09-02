@@ -3310,8 +3310,11 @@ async function buildForecast() {
 
             tempLow = Math.round(baseLow + (swingFactor * varianceAmplitude));
             tempHigh = Math.round(baseHigh + (swingFactor * varianceAmplitude * 1.3));
-            windMph = Math.max(0, Math.round(baseWind + (swingFactor * varianceAmplitude * 0.8)));
-            gustMph = Math.max(windMph + 0, Math.round(baseGust + (swingFactor * varianceAmplitude * 1.5)));
+            if(isBabbitt)
+            {
+               windMph = Math.max(21, Math.round(baseWind + (swingFactor * varianceAmplitude * 0.8)));
+               gustMph = Math.max(windMph + 21, Math.round(baseGust + (swingFactor * varianceAmplitude * 1.5)));
+            }
 
             const conditionSwing = swingFactor * exactDaysOut;
             if (conditionSwing > 1.5) weatherSummary = "Sunny";
