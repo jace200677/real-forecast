@@ -1,1 +1,1 @@
-
+{"id":"line-1788391081801","type":"polyline","isLine":true,"latlngs":[[48.519333,-93.68042],[46.682421,-93.614502],[46.652264,-91.922607],[46.766911,-92.112122],[47.252203,-91.307373],[47.727316,-90.582275],[48.007381,-89.307861],[48.489648,-93.681793]],"min_lat":46.652264,"max_lat":48.519333,"min_lon":-93.681793,"max_lon":-89.307861,"title":"Weather Alert","description":"No description provided.","severity":"Moderate","githubUrl":"https://github.com/jace200677/real-forecast/blob/main/weather/alertlines.txt"}
