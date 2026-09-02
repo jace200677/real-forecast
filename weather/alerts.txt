@@ -1,1 +1,2 @@
 
+{"title":"High WInd Watch","description":"Winds 30 to 40 mph with gusts to 55 to 65 mph possible tomorrow","start_time":"2026-09-02T08:03","end_time":"2026-09-02T22:00","severity":"Severe","bottom_lat":47.672399,"top_lat":47.720232,"bottom_lon":-92.071266,"top_lon":-91.872826,"created_at":"2026-09-02T13:04:48.625Z","bounding_box":{"min_lat":47.672399,"max_lat":47.720232,"min_lon":-92.071266,"max_lon":-91.872826}}
