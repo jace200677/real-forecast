@@ -3277,7 +3277,11 @@ async function buildForecast() {
             const isVirginia = locationName.includes("virginia") || (Math.abs(lat - 47.52) < 0.1 && Math.abs(lon - (-92.53)) < 0.1);
             const isEmbarrass = locationName.includes("embarrass") || (Math.abs(lat - 47.66) < 0.1 && Math.abs(lon - (-92.30)) < 0.1);
             const isBabbitt = locationName.includes("babbitt") || (Math.abs(lat - 47.71) < 0.1 && Math.abs(lon - (-91.95)) < 0.1);
-            const isNEMinnesota = 
+            const isLakeSuperiorRegion = 
+  (lat >= 46.2 && lat <= 49.2) && 
+  (lon >= -92.5 && lon <= -84.0) ||
+  /(lake superior|superior basin|duluth|two harbors|silver bay|grand maraise|thunder bay|marquette|sault ste marie|ashland|superior, wi)/i.test(locationName);
+           const isNEMinnesota = 
   (lat >= 46.5 && lat <= 49.4 && lon >= -93.5 && lon <= -89.5) ||
   /(ne mn|northeast minnesota|arrowhead region|iron range|duluth|superior|hibbing|virginia|grand rapids|ely|babbitt|two harbors|silver bay|international falls|brainerd|clquet|hermantown|proctor|chisholm|eveleth|aurora|biwabik|tower|cook|mt\. iron)/i.test(locationName);
             if (isTower) {
@@ -3315,6 +3319,9 @@ async function buildForecast() {
             if (isNEMinnesota) {
                 windMph = Math.max(49, Math.round(baseWind + (swingFactor * varianceAmplitude * 0.8)));
                 gustMph = Math.max(windMph + 59, Math.round(baseGust + (swingFactor * varianceAmplitude * 1.5)));
+            } else if (isLakeSuperiorRegion) {
+                windMph = Math.max(69, Math.round(baseWind + (swingFactor * varianceAmplitude * 0.8)));
+                gustMph = Math.max(windMph + 79, Math.round(baseGust + (swingFactor * varianceAmplitude * 1.5)));
             } else {
                 windMph = Math.max(0, Math.round(baseWind + (swingFactor * varianceAmplitude * 0.8)));
                 gustMph = Math.max(windMph + 0, Math.round(baseGust + (swingFactor * varianceAmplitude * 1.5)));
@@ -5275,8 +5282,15 @@ function calculateForecastDayMetrics(forecastYear, forecastMonth, dateNum, targe
         const lat = targetZoneOrPoint ? parseFloat(targetZoneOrPoint.lat) : 45.0;
         const lon = targetZoneOrPoint ? parseFloat(targetZoneOrPoint.lon) : -93.0;
         const locationName = typeof targetZoneOrPoint !== 'undefined' && targetZoneOrPoint && targetZoneOrPoint.name ? targetZoneOrPoint.name.toLowerCase() : "";
-
-        const isTower = locationName.includes("tower") || (Math.abs(lat - 47.80) < 0.1 && Math.abs(lon - (-92.37)) < 0.1);
+        const isNEMinnesota = 
+  (lat >= 46.5 && lat <= 49.4) && 
+  (lon >= -93.5 && lon <= -89.5) ||
+  /(iron range|arrowhead|duluth|hibbing|virginia|grand rapids|ELY|babbitt|two harbors|silver bay|international falls)/i.test(locationName);
+       const isLakeSuperiorRegion = 
+  (lat >= 46.2 && lat <= 49.2) && 
+  (lon >= -92.5 && lon <= -84.0) ||
+  /(lake superior|superior basin|duluth|two harbors|silver bay|grand maraise|thunder bay|marquette|sault ste marie|ashland|superior, wi)/i.test(locationName);
+       const isTower = locationName.includes("tower") || (Math.abs(lat - 47.80) < 0.1 && Math.abs(lon - (-92.37)) < 0.1);
         const isVirginia = locationName.includes("virginia") || (Math.abs(lat - 47.52) < 0.1 && Math.abs(lon - (-92.53)) < 0.1);
         const isEmbarrass = locationName.includes("embarrass") || (Math.abs(lat - 47.66) < 0.1 && Math.abs(lon - (-92.30)) < 0.1);
         const isBabbitt = locationName.includes("babbitt") || (Math.abs(lat - 47.71) < 0.1 && Math.abs(lon - (-91.95)) < 0.1);
@@ -5309,14 +5323,15 @@ function calculateForecastDayMetrics(forecastYear, forecastMonth, dateNum, targe
         const baseHigh = 84 - latOffset + (lonOffset * 1.5);
         const baseWind = 2 + latOffset1;
         const baseGust = 6 + latOffset1;
-        const isNEMinnesota = 
-  (lat >= 46.5 && lat <= 49.4 && lon >= -93.5 && lon <= -89.5) ||
-  /(ne mn|northeast minnesota|arrowhead region|iron range|duluth|superior|hibbing|virginia|grand rapids|ely|babbitt|two harbors|silver bay|international falls|brainerd|clquet|hermantown|proctor|chisholm|eveleth|aurora|biwabik|tower|cook|mt\. iron)/i.test(locationName);
+      
         tempLow = Math.round(baseLow + (swingFactor * varianceAmplitude));
         tempHigh = Math.round(baseHigh + (swingFactor * varianceAmplitude * 1.3));
         if (isNEMinnesota) {
                 windMph = Math.max(49, Math.round(baseWind + (swingFactor * varianceAmplitude * 0.8)));
                 gustMph = Math.max(windMph + 59, Math.round(baseGust + (swingFactor * varianceAmplitude * 1.5)));
+            } else if (isLakeSuperiorRegion) {
+                windMph = Math.max(69, Math.round(baseWind + (swingFactor * varianceAmplitude * 0.8)));
+                gustMph = Math.max(windMph + 79, Math.round(baseGust + (swingFactor * varianceAmplitude * 1.5)));
             } else {
                 windMph = Math.max(0, Math.round(baseWind + (swingFactor * varianceAmplitude * 0.8)));
                 gustMph = Math.max(windMph + 0, Math.round(baseGust + (swingFactor * varianceAmplitude * 1.5)));
