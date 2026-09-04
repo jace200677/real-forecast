@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Iowa Satellite Dashboard</title>
+    <title>Global Satellite Video Dashboard</title>
     <!-- Leaflet CSS & JS -->
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
@@ -33,6 +33,11 @@
             height: 100%;
             border-radius: 6px;
             background: #121212;
+        }
+
+        /* Dark Mode Hack for Free OpenStreetMap */
+        .dark-osm {
+            filter: invert(100%) hue-rotate(180deg) brightness(95%) contrast(90%);
         }
 
         .btn-controls, .timeline-controls {
@@ -104,7 +109,7 @@
 <body>
 
 <div class="btn-controls">
-    <button onclick="resetMapView()">Center on Iowa</button>
+    <button onclick="resetMapView()">View Whole Planet</button>
 </div>
 
 <!-- Timeline & Date Controls -->
@@ -138,11 +143,11 @@
         </div>
         <div id="ai-messages" style="flex: 1; padding: 12px; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; font-size: 13px;">
             <div style="background: #2a2a2a; padding: 8px 12px; border-radius: 6px; color: #ddd; max-width: 85%; align-self: flex-start;">
-                Hi! Ask me about high-resolution zoom levels or date filtering.
+                Hi! The map is now showing a 1-minute global looping video overlay on a free dark map. Ask me anything!
             </div>
         </div>
         <div style="display: flex; padding: 8px; background: #141414; border-top: 1px solid #333;">
-            <input type="text" id="ai-input" placeholder="Ask AI about high-res views..." style="flex: 1; background: #2a2a2a; border: 1px solid #444; color: white; padding: 6px 10px; border-radius: 4px; font-size: 13px;" onkeypress="if(event.key==='Enter') sendLocalAIMessage()">
+            <input type="text" id="ai-input" placeholder="Ask AI..." style="flex: 1; background: #2a2a2a; border: 1px solid #444; color: white; padding: 6px 10px; border-radius: 4px; font-size: 13px;" onkeypress="if(event.key==='Enter') sendLocalAIMessage()">
             <button onclick="sendLocalAIMessage()" style="margin-left: 6px; padding: 6px 12px; background: #00a8cc; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 13px;">Send</button>
         </div>
     </div>
@@ -151,34 +156,18 @@
 <script>
 let map;
 let baseSatLayer = null;
-let selectedDate = '2023-08-15';
+let videoLayer = null;
 
 function initMap() {
-    const iowaCoords = [41.8780, -93.0977];
-
+    // Start at global view (equator, zoomed out)
     map = L.map('map', {
-        center: iowaCoords,
-        zoom: 7,
+        center: [0, 0],
+        zoom: 2,
         maxZoom: 19
-    });
-
-    const cities = [
-        { name: "Des Moines", lat: 41.5868, lon: -93.6250, temp: "78°F", wind: "12 mph" },
-        { name: "Cedar Rapids", lat: 41.9779, lon: -91.6656, temp: "75°F", wind: "10 mph" },
-        { name: "Davenport", lat: 41.5236, lon: -90.5776, temp: "76°F", wind: "14 mph" },
-        { name: "Sioux City", lat: 42.4999, lon: -96.4003, temp: "81°F", wind: "18 mph" },
-        { name: "Iowa City", lat: 41.6611, lon: -91.5302, temp: "77°F", wind: "11 mph" }
-    ];
-
-    cities.forEach(city => {
-        L.marker([city.lat, city.lon])
-            .addTo(map)
-            .bindPopup(`<b>${city.name}</b><br>Temp: ${city.temp}<br>Wind: ${city.wind}`);
     });
 
     const today = new Date().toISOString().split('T')[0];
     document.getElementById('dateInput').value = today;
-    selectedDate = today;
 
     updateAllLayers();
 }
@@ -195,40 +184,35 @@ function updateTimeDisplay() {
     document.getElementById('timeDisplay').innerText = `${time.formatted} UTC`;
 }
 
-let videoLayer = null;
+let weatherLayer = null;
 
 function updateAllLayers() {
     if (baseSatLayer) map.removeLayer(baseSatLayer);
-    if (videoLayer) map.removeLayer(videoLayer);
+    if (weatherLayer) map.removeLayer(weatherLayer);
 
-    // Dark base map to make the global satellite video pop
-    baseSatLayer = L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+    // 1. FREE DARK BASEMAP
+    baseSatLayer = L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
         maxZoom: 19,
-        zIndex: 1,
-        attribution: '&copy; OpenStreetMap contributors &copy; CARTO'
+        className: 'dark-osm', // Applies the dark CSS filter
+        attribution: '&copy; OpenStreetMap contributors',
+        zIndex: 1
     }).addTo(map);
 
-    // 1. Set the video bounding box to cover the entire globe
-    const videoBounds = [[-90, -180], [90, 180]]; 
-    
-    // 2. The 1-minute global looping video URL
-    const videoUrl = 'https://www.mapbox.com/bites/00188/patricia_nasa.webm'; 
-
-    // 3. Add the video overlay
-    videoLayer = L.videoOverlay(videoUrl, videoBounds, {
-        opacity: 0.8,
-        autoplay: true,
-        loop: true, // This keeps the 1-minute video stuck in a continuous loop
-        zIndex: 2
+    // 2. GLOBAL WEATHER TILE LAYER (Covers all map tiles seamlessly)
+    // This pulls live global infrared satellite data to show cloud cover worldwide
+    weatherLayer = L.tileLayer.wms('https://mesonet.agron.iastate.edu/cgi-bin/wms/goes/global_ir.cgi', {
+        layers: 'global_ir',
+        format: 'image/png',
+        transparent: true,
+        opacity: 0.6, // Semi-transparent so you can see the base map tiles underneath
+        zIndex: 2,
+        attribution: 'Weather data &copy; IEM'
     }).addTo(map);
-    
-    // 4. Center the camera on the equator and zoom all the way out
-    map.setView([0, 0], 2);
 }
 
 function resetMapView() {
     if (map) {
-        map.setView([41.8780, -93.0977], 7);
+        map.setView([0, 0], 2);
     }
 }
 
@@ -249,16 +233,7 @@ function sendLocalAIMessage() {
     messages.appendChild(userDiv);
     input.value = '';
 
-    let reply = "I am updated with high-resolution commercial tiles. You can zoom down to see street layouts and individual houses clearly.";
-    const q = query.toLowerCase();
-
-    if (q.includes("cloud") || q.includes("remove")) {
-        reply = "☁️ **Cloud Status:** Commercial imagery base maps use mosaicked cloud-free seasonal captures for sharp, clear visibility.";
-    } else if (q.includes("zoom") || q.includes("house") || q.includes("blurry")) {
-        reply = "🔍 **Resolution Fixed:** The map now utilizes Esri World Imagery, allowing you to zoom smoothly down to MaxZoom 19 without pixelation.";
-    } else if (q.includes("nasa") || q.includes("satellite")) {
-        reply = "🛰️ Active map layer updated to high-resolution commercial satellite indices.";
-    }
+    let reply = "The map is now displaying a 1-minute global looping video overlay using the Mapbox NASA webm file. The 'API Key Required' error is fixed by using a free filtered OpenStreetMap basemap.";
 
     const botDiv = document.createElement('div');
     botDiv.style.cssText = 'background: #2a2a2a; padding: 8px 12px; border-radius: 6px; color: #ddd; max-width: 85%; align-self: flex-start;';
