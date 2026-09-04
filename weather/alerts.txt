@@ -1,1 +1,0 @@
-{"title":"Tornado Watch","description":"possible tornados today","start_time":"2026-09-03T00:00","end_time":"2026-09-04T00:00","severity":"Extreme","bottom_lat":46.10109,"top_lat":49.804757,"bottom_lon":-98.613281,"top_lon":-89.055176,"created_at":"2026-09-03T12:55:07.264Z","bounding_box":{"min_lat":46.10109,"max_lat":49.804757,"min_lon":-98.613281,"max_lon":-89.055176}}
