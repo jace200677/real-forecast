@@ -201,27 +201,29 @@ function updateAllLayers() {
     if (baseSatLayer) map.removeLayer(baseSatLayer);
     if (videoLayer) map.removeLayer(videoLayer);
 
-    // Base high-res map
-    baseSatLayer = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+    // Dark base map to make the global satellite video pop
+    baseSatLayer = L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
         maxZoom: 19,
-        zIndex: 1
+        zIndex: 1,
+        attribution: '&copy; OpenStreetMap contributors &copy; CARTO'
     }).addTo(map);
 
-    // Bounding box for the live video (Coordinates must surround the specific farm/house)
-    const videoBounds = [[41.88, -93.10], [41.87, -93.09]]; 
+    // 1. Set the video bounding box to cover the entire globe
+    const videoBounds = [[-90, -180], [90, 180]]; 
     
-    // Replace this URL with your actual live drone stream (mp4, webm, or live stream format)
+    // 2. The 1-minute global looping video URL
     const videoUrl = 'https://www.mapbox.com/bites/00188/patricia_nasa.webm'; 
 
+    // 3. Add the video overlay
     videoLayer = L.videoOverlay(videoUrl, videoBounds, {
-        opacity: 0.9,
+        opacity: 0.8,
         autoplay: true,
-        loop: true,
+        loop: true, // This keeps the 1-minute video stuck in a continuous loop
         zIndex: 2
     }).addTo(map);
     
-    // Zoom exactly into the live feed
-    map.fitBounds(videoBounds);
+    // 4. Center the camera on the equator and zoom all the way out
+    map.setView([0, 0], 2);
 }
 
 function resetMapView() {
