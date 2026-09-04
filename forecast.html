@@ -195,19 +195,33 @@ function updateTimeDisplay() {
     document.getElementById('timeDisplay').innerText = `${time.formatted} UTC`;
 }
 
+let videoLayer = null;
+
 function updateAllLayers() {
-    if (baseSatLayer) {
-        map.removeLayer(baseSatLayer);
-    }
+    if (baseSatLayer) map.removeLayer(baseSatLayer);
+    if (videoLayer) map.removeLayer(videoLayer);
 
-    selectedDate = document.getElementById('dateInput').value;
-
-    // Upgraded to Esri World Imagery for crisp, house-level zoom clarity
+    // Base high-res map
     baseSatLayer = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
-        attribution: 'Tiles &copy; Esri &mdash; Source: Esri, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-gigas',
         maxZoom: 19,
+        zIndex: 1
+    }).addTo(map);
+
+    // Bounding box for the live video (Coordinates must surround the specific farm/house)
+    const videoBounds = [[41.88, -93.10], [41.87, -93.09]]; 
+    
+    // Replace this URL with your actual live drone stream (mp4, webm, or live stream format)
+    const videoUrl = 'https://www.mapbox.com/bites/00188/patricia_nasa.webm'; 
+
+    videoLayer = L.videoOverlay(videoUrl, videoBounds, {
+        opacity: 0.9,
+        autoplay: true,
+        loop: true,
         zIndex: 2
     }).addTo(map);
+    
+    // Zoom exactly into the live feed
+    map.fitBounds(videoBounds);
 }
 
 function resetMapView() {
