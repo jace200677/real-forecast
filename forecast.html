@@ -184,29 +184,35 @@ function updateTimeDisplay() {
     document.getElementById('timeDisplay').innerText = `${time.formatted} UTC`;
 }
 
-let weatherLayer = null;
+let videoLayer = null;
 
 function updateAllLayers() {
     if (baseSatLayer) map.removeLayer(baseSatLayer);
-    if (weatherLayer) map.removeLayer(weatherLayer);
+    if (videoLayer) map.removeLayer(videoLayer);
 
-    // 1. FREE DARK BASEMAP
+    // 1. Free Dark Base Map Tiles
     baseSatLayer = L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
         maxZoom: 19,
-        className: 'dark-osm', // Applies the dark CSS filter
-        attribution: '&copy; OpenStreetMap contributors',
+        className: 'dark-osm',
+        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
         zIndex: 1
     }).addTo(map);
 
-    // 2. GLOBAL WEATHER TILE LAYER (Covers all map tiles seamlessly)
-    // This pulls live global infrared satellite data to show cloud cover worldwide
-    weatherLayer = L.tileLayer.wms('https://mesonet.agron.iastate.edu/cgi-bin/wms/goes/global_ir.cgi', {
-        layers: 'global_ir',
-        format: 'image/png',
-        transparent: true,
-        opacity: 0.6, // Semi-transparent so you can see the base map tiles underneath
-        zIndex: 2,
-        attribution: 'Weather data &copy; IEM'
+    // 2. Exact Global Lat-Lon Boundaries (South, West to North, East)
+    const globalLatLonBounds = [
+        [-90.0, -180.0], // Southwest corner (South Pole, International Date Line West)
+        [90.0, 180.0]    // Northeast corner (North Pole, International Date Line East)
+    ]; 
+    
+    // 3. Your Mapbox video URL
+    const videoUrl = 'https://www.mapbox.com/bites/00188/patricia_nasa.webm'; 
+
+    // 4. Stretch Video Overlay to cover everywhere via lat-lon bounds
+    videoLayer = L.videoOverlay(videoUrl, globalLatLonBounds, {
+        opacity: 0.85,
+        autoplay: true,
+        loop: true,
+        zIndex: 2
     }).addTo(map);
 }
 
