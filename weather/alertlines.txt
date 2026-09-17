@@ -1,1 +1,1 @@
-{"id":"line-1788438356689","type":"polyline","isLine":true,"latlngs":[[48.617761,-101.942139],[48.044406,-101.99707],[47.816209,-99.645996],[48.661319,-99.684448],[48.54508,-101.953125]],"min_lat":47.816209,"max_lat":48.661319,"min_lon":-101.99707,"max_lon":-99.645996,"title":"Flash FLood Warning","description":"Flash flooding is right now take precautions","severity":"Extreme","githubUrl":"https://github.com/jace200677/real-forecast/blob/main/weather/alertlines.txt"}
+
